@@ -86,7 +86,7 @@ const SIDEBAR_SCROLL_STORAGE_KEY = 'sb_scroll_top';
 // Группы меню: id → массив путей
 const NAV_GROUPS: Array<{ id: string; label: string; paths: Set<string> }> = [
   { id: 'home', label: '🏠 Главная', paths: new Set(['/dashboard', '/parent-dashboard', '/b2b-schools/plan']) },
-  { id: 'education', label: '🎓 Обучение', paths: new Set(['/trainer-cockpit', '/students', '/groups', '/lessons', '/programs', '/grades', '/characteristics', '/trainer-grades', '/trainers']) },
+  { id: 'education', label: '🎓 Обучение', paths: new Set(['/trainer-cockpit', '/students', '/groups', '/lessons', '/programs', '/grades', '/characteristics', '/trainer-grades', '/trainers', '/methodists']) },
   { id: 'ops', label: '📋 Учебные операции', paths: new Set(['/operations/absences', '/operations/program-makeup', '/operations/instructions', '/operations/manual-lessons', '/projects']) },
   { id: 'finance', label: '💰 Финансы', paths: new Set(['/finance/overview', '/abonements', '/finance/payments', '/calculations', '/finance/tax-deduction']) },
   { id: 'workspace', label: '✅ Задачи и проекты', paths: new Set(['/tasks', '/owner-workspace/projects', '/owner-workspace/links', '/disk', '/passwords', '/transcription', '/notes']) },
@@ -471,6 +471,7 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
     }
     if (role === 'owner') {
       items.push({ text: 'Тренеры', icon: <People />, path: '/trainers' });
+      items.push({ text: 'Методисты', icon: <People />, path: '/methodists' });
     }
     // У админа отдельная страница "Тренеры" убрана — доступ через объединённый раздел Ученики/группы при необходимости
     return items;
@@ -481,6 +482,7 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
     if (item.path === '/abonements') return canAccessAbonements;
     if (item.path === '/lessons') return canAccessLessons;
     if (item.path === '/trainers') return canAccessUsers;
+    if (item.path === '/methodists') return canAccessUsers;
     return true;
   });
   const permissionExpandedMenuItems = [...permissionFilteredMenuItems];
@@ -498,6 +500,9 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
   }
   if (canAccessUsers && !permissionExpandedMenuItems.some((item) => item.path === '/trainers')) {
     permissionExpandedMenuItems.push({ text: 'Тренеры', icon: <People />, path: '/trainers' });
+  }
+  if (canAccessUsers && !permissionExpandedMenuItems.some((item) => item.path === '/methodists')) {
+    permissionExpandedMenuItems.push({ text: 'Методисты', icon: <People />, path: '/methodists' });
   }
   const baseVisibleMenuItems = canAccessOwnerWorkspace
     ? permissionExpandedMenuItems

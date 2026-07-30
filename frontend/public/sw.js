@@ -1,5 +1,8 @@
-const CACHE_VERSION = 'learning-portal-pwa-v3';
-const STATIC_CACHE = `${CACHE_VERSION}-static`;
+const CACHE_VERSION = 'learning-portal-pwa-v5';
+
+// Предварительно кешируем только статичные иконки и манифест.
+// Vite-ассеты с хешем в имени кешируются браузером через HTTP-кеш (Cache-Control).
+// SW намеренно НЕ перехватывает /assets/ — это предотвращает белый экран после деплоя.
 const STATIC_ASSETS = [
   '/manifest.webmanifest',
   '/favicon.ico',
@@ -9,6 +12,7 @@ const STATIC_ASSETS = [
   '/icon-192.png',
   '/icon-512.png',
 ];
+const STATIC_CACHE = `${CACHE_VERSION}-static`;
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -24,7 +28,9 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((key) => !key.startsWith(CACHE_VERSION)).map((key) => caches.delete(key))))
+      .then((keys) =>
+        Promise.all(keys.filter((key) => !key.startsWith(CACHE_VERSION)).map((key) => caches.delete(key)))
+      )
       .then(() => self.clients.claim())
   );
 });
@@ -43,22 +49,22 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/disk/')) return;
 
+  // Навигация: network-first, fallback на кешированный /
   if (request.mode === 'navigate') {
     event.respondWith(fetch(request, { cache: 'no-store' }).catch(() => caches.match('/')));
     return;
   }
 
-  if (url.pathname.startsWith('/assets/') || STATIC_ASSETS.includes(url.pathname)) {
+  // Только статичные иконки/манифест кешируем — /assets/ НЕ перехватываем
+  if (STATIC_ASSETS.includes(url.pathname)) {
     event.respondWith(
       caches.open(STATIC_CACHE).then(async (cache) => {
         const cached = await cache.match(request);
-        const network = fetch(request)
-          .then((response) => {
-            if (response.ok) cache.put(request, response.clone());
-            return response;
-          })
-          .catch(() => cached);
-        return cached || network;
+        const networkFetch = fetch(request).then((response) => {
+          if (response.ok) cache.put(request, response.clone());
+          return response;
+        });
+        return cached || networkFetch;
       })
     );
   }
@@ -75,9 +81,7 @@ self.addEventListener('push', (event) => {
   const title = payload.title || 'Уведомление';
   const options = {
     body: payload.body || '',
-    data: {
-      path: payload.path || '/mobile',
-    },
+    data: { path: payload.path || '/mobile' },
   };
   event.waitUntil(self.registration.showNotification(title, options));
 });

@@ -37,6 +37,7 @@ class EmailBroadcastResponse(BaseModel):
     html_body: str
     plain_body: Optional[str] = None
     status: str
+    campaign_id: Optional[int] = None
     created_by_id: Optional[int] = None
     created_by_name: Optional[str] = None
     created_at: Optional[datetime] = None

@@ -67,3 +67,50 @@ async def reset_trainer_password(
         pass
     return {"temporary_password": temp_password}
 
+
+ELEVATED_ROLES = {UserRole.ADMIN, UserRole.OWNER}
+
+
+@router.post(
+    "/reset-user-password/{user_id}",
+    status_code=status.HTTP_200_OK,
+)
+async def reset_user_password(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("admin_tools.manage")),
+) -> Dict[str, str]:
+    """Сброс пароля для любого не-привилегированного пользователя (кроме admin/owner)."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if auth.resolve_effective_role(user) in ELEVATED_ROLES:
+        raise HTTPException(status_code=403, detail="Нельзя сбрасывать пароль администраторам и владельцам")
+
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
+    temp_password = "".join(secrets.choice(alphabet) for _ in range(10))
+
+    user.hashed_password = auth.get_password_hash(temp_password)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    log_action(
+        db,
+        current_user.id,
+        action_type="reset_user_password",
+        entity_type="user",
+        entity_id=user.id,
+        details={"user_email": user.email, "user_role": user.role},
+    )
+
+    try:
+        await notify_user(
+            db,
+            user.id,
+            f"Вам установлен новый временный пароль для входа в портал: {temp_password}",
+        )
+    except Exception:
+        pass
+    return {"temporary_password": temp_password}
+

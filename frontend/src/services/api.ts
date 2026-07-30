@@ -424,6 +424,10 @@ export const adminToolsApi = {
     const response = await api.post(`/api/admin-tools/reset-trainer-password/${userId}`);
     return response.data;
   },
+  resetUserPassword: async (userId: number): Promise<{ temporary_password: string }> => {
+    const response = await api.post(`/api/admin-tools/reset-user-password/${userId}`);
+    return response.data;
+  },
 };
 
 export const studentsApi = {

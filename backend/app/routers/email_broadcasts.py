@@ -68,6 +68,7 @@ def _to_response(broadcast: EmailBroadcast, db: Session | None = None) -> EmailB
         html_body=broadcast.html_body,
         plain_body=broadcast.plain_body,
         status=broadcast.status,
+        campaign_id=broadcast.campaign_id,
         created_by_id=broadcast.created_by_id,
         created_by_name=created_by_name,
         created_at=broadcast.created_at,

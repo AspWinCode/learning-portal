@@ -14,9 +14,11 @@ from app.models import (
     B2BSchool,
     B2BSchoolInteraction,
     B2BSchoolInteractionType,
+    CampaignStage,
     EmailBroadcast,
     EmailBroadcastAttachment,
     EmailBroadcastRecipient,
+    SchoolCampaign,
 )
 
 _BROADCAST_STORAGE_ROOT = os.getenv("DISK_STORAGE_ROOT", "/app/storage/disk")
@@ -73,6 +75,34 @@ def _inject_click_tracking(html: str, token: str) -> str:
         return f"href={quote}{tracked}{quote}"
 
     return _HREF_RE.sub(_replace, html)
+
+
+def _advance_campaign_stage(db: Session, campaign_id: int, school_id: int, target_stage_key: str) -> None:
+    """Продвигает школу в кампании на указанный этап, если текущий этап стоит раньше."""
+    target_stage = (
+        db.query(CampaignStage)
+        .filter(CampaignStage.campaign_id == campaign_id, CampaignStage.key == target_stage_key)
+        .first()
+    )
+    if not target_stage:
+        return  # этапа нет в этой кампании — игнорируем
+
+    sc = (
+        db.query(SchoolCampaign)
+        .filter(SchoolCampaign.campaign_id == campaign_id, SchoolCampaign.b2b_school_id == school_id)
+        .first()
+    )
+    if not sc:
+        return  # школы нет в кампании — игнорируем
+
+    current_stage = (
+        db.query(CampaignStage)
+        .filter(CampaignStage.campaign_id == campaign_id, CampaignStage.key == sc.stage)
+        .first()
+    )
+    # Продвигаем только вперёд (никогда не откатываем)
+    if not current_stage or current_stage.position < target_stage.position:
+        sc.stage = target_stage_key
 
 
 def create_recipients(db: Session, broadcast: EmailBroadcast, school_ids: List[int], limit: int | None = None) -> int:
@@ -165,6 +195,9 @@ def send_broadcast(db: Session, broadcast_id: int) -> None:
                 recipient.status = "sent"
                 recipient.sent_at = utcnow()
                 sent += 1
+                # Автоматически продвигаем этап в привязанной кампании
+                if broadcast.campaign_id and recipient.school_id:
+                    _advance_campaign_stage(db, broadcast.campaign_id, recipient.school_id, "email_sent")
             else:
                 recipient.status = "failed"
                 recipient.error_message = "SMTP send returned False"
@@ -201,9 +234,16 @@ def record_open(db: Session, token: str) -> None:
         if recipient.status == "sent":
             recipient.status = "opened"
 
+        # Atomic increment to avoid race condition when multiple opens happen concurrently
+        db.query(EmailBroadcast).filter(EmailBroadcast.id == recipient.broadcast_id).update(
+            {"opened_count": EmailBroadcast.opened_count + 1},
+            synchronize_session=False,
+        )
         broadcast = db.query(EmailBroadcast).filter(EmailBroadcast.id == recipient.broadcast_id).first()
         if broadcast:
-            broadcast.opened_count = (broadcast.opened_count or 0) + 1
+            # Автоматически продвигаем этап при первом открытии
+            if broadcast.campaign_id and recipient.school_id:
+                _advance_campaign_stage(db, broadcast.campaign_id, recipient.school_id, "email_opened")
 
         # Auto-create interaction in b2b school log on first open
         if recipient.school_id:

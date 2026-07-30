@@ -6,7 +6,7 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session, joinedload
 
 from app import auth
@@ -19,6 +19,8 @@ from app.models import (
     CampaignEvent,
     CampaignEventStage,
     CampaignStage,
+    EmailBroadcast,
+    EmailBroadcastRecipient,
     SchoolCampaign,
     SchoolCampaignEvent,
     SalesCity,
@@ -73,6 +75,8 @@ def _split_csv_filter(value: Optional[str]) -> List[str]:
 
 _DEFAULT_STAGES_GAME_JAM = [
     {"key": "not_contacted", "label": "Не связались", "is_terminal": False},
+    {"key": "email_sent", "label": "Отправили письмо на почту", "is_terminal": False},
+    {"key": "email_opened", "label": "Письмо открыли", "is_terminal": False},
     {"key": "contact_established", "label": "Контакт установлен", "is_terminal": False},
     {"key": "director_agreed", "label": "Директор согласен", "is_terminal": False},
     {"key": "contact_person_received", "label": "Получен контакт ответственного", "is_terminal": False},
@@ -85,6 +89,8 @@ _DEFAULT_STAGES_GAME_JAM = [
 
 _DEFAULT_STAGES_ONLINE = [
     {"key": "not_contacted", "label": "Не связались", "is_terminal": False},
+    {"key": "email_sent", "label": "Отправили письмо на почту", "is_terminal": False},
+    {"key": "email_opened", "label": "Письмо открыли", "is_terminal": False},
     {"key": "invited", "label": "Приглашены", "is_terminal": False},
     {"key": "info_sent", "label": "Инфо отправлено", "is_terminal": False},
     {"key": "confirmed", "label": "Подтвердили", "is_terminal": False},
@@ -1097,43 +1103,37 @@ async def get_campaign_school_event_counts(
 
     event_subq = db.query(CampaignEvent.id).filter(CampaignEvent.campaign_id == campaign_id).subquery()
 
-    invited = (
-        db.query(SchoolCampaignEvent.school_campaign_id, func.count(SchoolCampaignEvent.id))
-        .filter(
-            SchoolCampaignEvent.school_campaign_id.in_(sc_subq),
-            SchoolCampaignEvent.campaign_event_id.in_(event_subq),
-            SchoolCampaignEvent.invite_status.in_(["invited", "awaiting_reply", "accepted", "declined"]),
+    # Single aggregation query instead of three separate ones
+    rows = (
+        db.query(
+            SchoolCampaignEvent.school_campaign_id,
+            func.count(case(
+                (SchoolCampaignEvent.invite_status.in_(["invited", "awaiting_reply", "accepted", "declined"]), 1),
+                else_=None,
+            )).label("invited"),
+            func.count(case(
+                (SchoolCampaignEvent.participation_status == "participated", 1),
+                else_=None,
+            )).label("participated"),
+            func.count(case(
+                (SchoolCampaignEvent.host_status.in_(["host_proposed", "host_confirmed", "hosted"]), 1),
+                else_=None,
+            )).label("hosted"),
         )
-        .group_by(SchoolCampaignEvent.school_campaign_id)
-        .all()
-    )
-    participated = (
-        db.query(SchoolCampaignEvent.school_campaign_id, func.count(SchoolCampaignEvent.id))
         .filter(
             SchoolCampaignEvent.school_campaign_id.in_(sc_subq),
             SchoolCampaignEvent.campaign_event_id.in_(event_subq),
-            SchoolCampaignEvent.participation_status == "participated",
-        )
-        .group_by(SchoolCampaignEvent.school_campaign_id)
-        .all()
-    )
-    hosted = (
-        db.query(SchoolCampaignEvent.school_campaign_id, func.count(SchoolCampaignEvent.id))
-        .filter(
-            SchoolCampaignEvent.school_campaign_id.in_(sc_subq),
-            SchoolCampaignEvent.campaign_event_id.in_(event_subq),
-            SchoolCampaignEvent.host_status.in_(["host_proposed", "host_confirmed", "hosted"]),
         )
         .group_by(SchoolCampaignEvent.school_campaign_id)
         .all()
     )
     by_sc = {sid: {"events_invited_count": 0, "events_participated_count": 0, "events_hosted_count": 0} for sid in sc_ids_list}
-    for sid, cnt in invited:
-        by_sc[sid]["events_invited_count"] = cnt
-    for sid, cnt in participated:
-        by_sc[sid]["events_participated_count"] = cnt
-    for sid, cnt in hosted:
-        by_sc[sid]["events_hosted_count"] = cnt
+    for sc_id, invited, participated, hosted in rows:
+        by_sc[sc_id] = {
+            "events_invited_count": invited,
+            "events_participated_count": participated,
+            "events_hosted_count": hosted,
+        }
     return {str(k): v for k, v in by_sc.items()}
 
 
@@ -1471,3 +1471,187 @@ async def get_school_campaign_events_history(
             }
         )
     return result
+
+
+# ---------------------------------------------------------------------------
+# Broadcasts ↔ Campaign integration
+# ---------------------------------------------------------------------------
+
+def _ensure_email_stages(db: Session, campaign_id: int) -> None:
+    """Автоматически создаёт этапы email_sent / email_opened, если их ещё нет в кампании."""
+    existing_keys = {
+        row[0]
+        for row in db.query(CampaignStage.key).filter(CampaignStage.campaign_id == campaign_id).all()
+    }
+    not_contacted_pos = (
+        db.query(CampaignStage.position)
+        .filter(CampaignStage.campaign_id == campaign_id, CampaignStage.key == "not_contacted")
+        .scalar()
+        or 10
+    )
+    stages_to_add = []
+    if "email_sent" not in existing_keys:
+        stages_to_add.append(("email_sent", "Отправили письмо на почту", not_contacted_pos + 5))
+    if "email_opened" not in existing_keys:
+        stages_to_add.append(("email_opened", "Письмо открыли", not_contacted_pos + 7))
+    if not stages_to_add:
+        return
+    # Сдвигаем остальные этапы, чтобы освободить место
+    db.query(CampaignStage).filter(
+        CampaignStage.campaign_id == campaign_id,
+        CampaignStage.position > not_contacted_pos,
+    ).update({CampaignStage.position: CampaignStage.position + 20}, synchronize_session=False)
+    for key, label, position in stages_to_add:
+        db.add(CampaignStage(campaign_id=campaign_id, key=key, label=label, position=position, is_terminal=False))
+    db.commit()
+
+
+@router.get("/campaigns/{campaign_id}/broadcasts", response_model=List[Dict[str, Any]])
+async def list_campaign_broadcasts(
+    campaign_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("campaigns.access")),
+):
+    """Список рассылок, привязанных к кампании."""
+    _require_campaign(db, campaign_id)
+    try:
+        broadcasts = (
+            db.query(EmailBroadcast)
+            .filter(EmailBroadcast.campaign_id == campaign_id)
+            .order_by(EmailBroadcast.created_at.desc())
+            .all()
+        )
+    except Exception:
+        db.rollback()
+        return []
+    result = []
+    for b in broadcasts:
+        result.append({
+            "id": b.id,
+            "name": b.name,
+            "subject": b.subject,
+            "status": b.status,
+            "sent_at": b.sent_at.isoformat() if b.sent_at else None,
+            "total_recipients": b.total_recipients or 0,
+            "sent_count": b.sent_count or 0,
+            "opened_count": b.opened_count or 0,
+            "clicked_count": b.clicked_count or 0,
+        })
+    return result
+
+
+@router.post("/campaigns/{campaign_id}/broadcasts/{broadcast_id}/link", status_code=200)
+async def link_broadcast_to_campaign(
+    campaign_id: int,
+    broadcast_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("campaigns.manage")),
+):
+    """Привязывает рассылку к кампании и создаёт этапы email_sent/email_opened."""
+    _require_campaign(db, campaign_id)
+    broadcast = db.query(EmailBroadcast).filter(EmailBroadcast.id == broadcast_id).first()
+    if not broadcast:
+        raise HTTPException(status_code=404, detail="Рассылка не найдена")
+    broadcast.campaign_id = campaign_id
+    db.commit()
+    _ensure_email_stages(db, campaign_id)
+    return {"ok": True, "campaign_id": campaign_id, "broadcast_id": broadcast_id}
+
+
+@router.delete("/campaigns/{campaign_id}/broadcasts/{broadcast_id}/link", status_code=200)
+async def unlink_broadcast_from_campaign(
+    campaign_id: int,
+    broadcast_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("campaigns.manage")),
+):
+    """Отвязывает рассылку от кампании."""
+    broadcast = db.query(EmailBroadcast).filter(
+        EmailBroadcast.id == broadcast_id,
+        EmailBroadcast.campaign_id == campaign_id,
+    ).first()
+    if not broadcast:
+        raise HTTPException(status_code=404, detail="Рассылка не найдена или не привязана к этой кампании")
+    broadcast.campaign_id = None
+    db.flush()
+
+    # If no more broadcasts linked, remove email stages that have no schools in them
+    remaining = db.query(EmailBroadcast).filter(
+        EmailBroadcast.campaign_id == campaign_id
+    ).count()
+    if remaining == 0:
+        for stage_key in ("email_sent", "email_opened"):
+            stage = db.query(CampaignStage).filter(
+                CampaignStage.campaign_id == campaign_id,
+                CampaignStage.key == stage_key,
+            ).first()
+            if not stage:
+                continue
+            occupied = db.query(SchoolCampaign).filter(
+                SchoolCampaign.campaign_id == campaign_id,
+                SchoolCampaign.stage == stage_key,
+            ).count()
+            if occupied == 0:
+                db.delete(stage)
+
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/campaigns/{campaign_id}/broadcasts/{broadcast_id}/sync", response_model=Dict[str, int])
+async def sync_broadcast_campaign_stages(
+    campaign_id: int,
+    broadcast_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("campaigns.manage")),
+):
+    """Ретроспективно синхронизирует этапы кампании по уже отправленной/открытой рассылке."""
+    _require_campaign(db, campaign_id)
+    broadcast = db.query(EmailBroadcast).filter(
+        EmailBroadcast.id == broadcast_id,
+        EmailBroadcast.campaign_id == campaign_id,
+    ).first()
+    if not broadcast:
+        raise HTTPException(status_code=404, detail="Рассылка не привязана к этой кампании")
+
+    _ensure_email_stages(db, campaign_id)
+
+    from app.services.email_broadcast_service import _advance_campaign_stage
+
+    from sqlalchemy import or_
+    recipients = (
+        db.query(EmailBroadcastRecipient)
+        .filter(
+            EmailBroadcastRecipient.broadcast_id == broadcast_id,
+            EmailBroadcastRecipient.school_id.isnot(None),
+            or_(
+                EmailBroadcastRecipient.status.in_(["sent", "opened", "failed"]),
+                EmailBroadcastRecipient.opened_at.isnot(None),
+            ),
+        )
+        .all()
+    )
+
+    advanced_sent = 0
+    advanced_opened = 0
+    for r in recipients:
+        if r.status in ("sent", "opened"):
+            _advance_campaign_stage(db, campaign_id, r.school_id, "email_sent")
+            advanced_sent += 1
+        # Also advance to email_opened if opened_at is set but status didn't reach "opened"
+        # (can happen with race conditions or if status was modified after open tracking)
+        if r.status == "opened" or r.opened_at is not None:
+            _advance_campaign_stage(db, campaign_id, r.school_id, "email_opened")
+            advanced_opened += 1
+    # Recalculate opened_count from actual DB data (fixes undercounting from race conditions)
+    actual_opened = (
+        db.query(EmailBroadcastRecipient)
+        .filter(
+            EmailBroadcastRecipient.broadcast_id == broadcast_id,
+            EmailBroadcastRecipient.opened_at.isnot(None),
+        )
+        .count()
+    )
+    broadcast.opened_count = actual_opened
+    db.commit()
+    return {"advanced_sent": advanced_sent, "advanced_opened": advanced_opened}

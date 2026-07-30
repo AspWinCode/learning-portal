@@ -97,6 +97,7 @@ const NotesPage = React.lazy(() => import('./pages/NotesPage'));
 const KodexStudioPage = React.lazy(() => import('./pages/KodexStudioPage'));
 const MethodistStudioLoginPage = React.lazy(() => import('./pages/MethodistStudioLoginPage'));
 const MethodistStudioPage = React.lazy(() => import('./pages/MethodistStudioPage'));
+const MethodistsPage = React.lazy(() => import('./pages/MethodistsPage'));
 
 const DefaultRedirect: React.FC = () => {
   const { user } = useAuth();
@@ -632,6 +633,14 @@ function App() {
               element={
                 <PrivateRoute requiredPermission="users.access">
                   <TrainersPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/methodists"
+              element={
+                <PrivateRoute requiredPermission="users.access">
+                  <MethodistsPage />
                 </PrivateRoute>
               }
             />

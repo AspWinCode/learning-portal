@@ -16,6 +16,7 @@ import {
   FormControlLabel,
   IconButton,
   InputLabel,
+  LinearProgress,
   MenuItem,
   Select,
   Stack,
@@ -24,9 +25,12 @@ import {
   TableCell,
   TableContainer,
   TableHead,
+  TablePagination,
   TableRow,
   Paper,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Tooltip,
   Typography,
   Checkbox,
@@ -37,6 +41,8 @@ import DeleteOutline from '@mui/icons-material/DeleteOutline';
 import DragIndicator from '@mui/icons-material/DragIndicator';
 import DriveFileRenameOutline from '@mui/icons-material/DriveFileRenameOutline';
 import Edit from '@mui/icons-material/Edit';
+import TableRowsIcon from '@mui/icons-material/TableRows';
+import ViewKanban from '@mui/icons-material/ViewKanban';
 import {
   DndContext,
   DragEndEvent,
@@ -50,8 +56,12 @@ import {
 } from '@dnd-kit/core';
 import History from '@mui/icons-material/History';
 import SettingsOutlined from '@mui/icons-material/SettingsOutlined';
+import Email from '@mui/icons-material/Email';
+import LinkOff from '@mui/icons-material/LinkOff';
+import Sync from '@mui/icons-material/Sync';
 import { useAuth } from '../contexts/AuthContext';
-import { b2bApi, campaignsApi, settingsApi } from '../services/api';
+import { b2bApi, campaignsApi, emailBroadcastsApi, settingsApi } from '../services/api';
+import type { EmailBroadcast as EmailBroadcastItem } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 import { hasPermission } from '../utils/permissions';
 import type { Campaign, CampaignSettings, CampaignStage, SchoolCampaign } from '../types';
@@ -80,26 +90,54 @@ interface KanbanColumnProps {
 const KanbanColumn: React.FC<KanbanColumnProps> = ({ stageKey, label, isTerminal, count, children }) => {
   const { setNodeRef, isOver } = useDroppable({ id: `col-${stageKey}` });
   return (
-    <Card
+    <Box
       ref={setNodeRef}
-      variant="outlined"
       sx={{
-        minWidth: 260, flex: '0 0 auto',
-        bgcolor: isOver ? 'action.selected' : undefined,
-        border: isOver ? '2px solid' : undefined,
-        borderColor: isOver ? 'primary.main' : undefined,
-        transition: 'background-color 0.15s',
+        width: 260, flex: '0 0 260px',
+        scrollSnapAlign: 'start',
+        display: 'flex', flexDirection: 'column',
+        borderRadius: 2,
+        border: '1px solid',
+        borderColor: isOver ? 'primary.light' : 'divider',
+        bgcolor: isOver ? 'primary.50' : 'grey.50',
+        transition: 'border-color 0.15s, background-color 0.15s',
+        overflow: 'hidden',
+        maxHeight: 'calc(100vh - 270px)',
       }}
     >
-      <CardContent>
-        <Stack direction="row" alignItems="center" gap={0.5} mb={0.5}>
-          <Typography variant="subtitle2" color="text.secondary" sx={{ flex: 1 }}>{label}</Typography>
-          {isTerminal && <Chip label="финал" size="small" variant="outlined" />}
+      <Box sx={{
+        px: 1.5, py: 1.25, flexShrink: 0,
+        bgcolor: isTerminal ? '#f0fdf4' : 'background.paper',
+        borderBottom: '1px solid', borderBottomColor: isTerminal ? '#bbf7d0' : 'divider',
+      }}>
+        <Stack direction="row" alignItems="center" justifyContent="space-between" gap={0.75}>
+          <Typography
+            variant="subtitle2"
+            fontWeight={600}
+            sx={{ flex: 1, fontSize: 13, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+          >
+            {label}
+          </Typography>
+          <Box sx={{
+            minWidth: 24, height: 20, px: 0.75, borderRadius: 10, flexShrink: 0,
+            bgcolor: isTerminal ? '#bbf7d0' : 'grey.200',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <Typography component="span" sx={{ fontSize: 11, fontWeight: 700, color: isTerminal ? '#15803d' : 'text.secondary' }}>
+              {count}
+            </Typography>
+          </Box>
         </Stack>
-        <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>{count} шт.</Typography>
-        <Stack spacing={1}>{children}</Stack>
-      </CardContent>
-    </Card>
+        {isTerminal && (
+          <Typography variant="caption" sx={{ color: 'success.main', fontSize: 10, display: 'block', mt: 0.25 }}>
+            финальный этап
+          </Typography>
+        )}
+      </Box>
+      <Box sx={{ p: 0.75, overflowY: 'auto', flex: 1 }}>
+        <Stack spacing={0.75}>{children}</Stack>
+      </Box>
+    </Box>
   );
 };
 
@@ -127,32 +165,53 @@ const KanbanSchoolCard: React.FC<KanbanSchoolCardProps> = ({
       ref={setNodeRef}
       variant="outlined"
       style={transform ? { transform: `translate(${transform.x}px,${transform.y}px)`, opacity: isDragging ? 0.4 : 1 } : undefined}
-      sx={{ bgcolor: 'background.paper', touchAction: 'none' }}
+      sx={{
+        bgcolor: 'background.paper',
+        touchAction: 'none',
+        borderRadius: 1.5,
+        borderColor: 'grey.200',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+        '&:hover': { boxShadow: '0 2px 8px rgba(0,0,0,0.1)', borderColor: 'grey.300' },
+        transition: 'box-shadow 0.15s, border-color 0.15s',
+      }}
     >
-      <CardContent sx={{ py: 1, px: 1.5 }}>
+      <CardContent sx={{ py: 1, px: 1.25, '&:last-child': { pb: 1 } }}>
         <Stack direction="row" alignItems="flex-start" gap={0.5}>
-          <Box {...attributes} {...listeners} sx={{ cursor: 'grab', pt: 0.3 }}>
-            <DragIndicator fontSize="small" sx={{ color: 'text.disabled' }} />
+          <Box {...attributes} {...listeners} sx={{ cursor: isDragging ? 'grabbing' : 'grab', pt: 0.25, flexShrink: 0 }}>
+            <DragIndicator sx={{ color: 'text.disabled', fontSize: 16 }} />
           </Box>
-          <Box sx={{ flex: 1 }}>
-            <Typography variant="body2">{schoolName}</Typography>
-            <Typography variant="caption" color="text.secondary">{schoolCity || '—'}</Typography>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography
+              variant="body2"
+              fontWeight={600}
+              sx={{ lineHeight: 1.3, mb: 0.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 13 }}
+            >
+              {schoolName}
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: countLabel ? 0.2 : 0.75, fontSize: 11 }}>
+              {schoolCity || '—'}
+            </Typography>
             {countLabel && (
-              <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.25 }}>{countLabel}</Typography>
+              <Typography variant="caption" sx={{ display: 'block', mb: 0.75, fontSize: 10, color: 'text.disabled' }}>
+                {countLabel}
+              </Typography>
             )}
-            <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.5 }}>
+            <Stack direction="row" spacing={0.5} alignItems="center">
               <FormControl size="small" sx={{ flex: 1, minWidth: 0 }}>
                 <Select
                   value={currentStage}
                   onChange={(e) => onStageChange(scId, e.target.value)}
                   disabled={!canManage}
                   displayEmpty
+                  sx={{ fontSize: 12, '& .MuiSelect-select': { py: '3px', px: '8px' } }}
                 >
-                  {stages.map((s) => <MenuItem key={s.key} value={s.key}>{s.label}</MenuItem>)}
+                  {stages.map((s) => <MenuItem key={s.key} value={s.key} sx={{ fontSize: 12 }}>{s.label}</MenuItem>)}
                 </Select>
               </FormControl>
               <Tooltip title="История активностей">
-                <IconButton size="small" onClick={() => onHistory(scId)}><History fontSize="small" /></IconButton>
+                <IconButton size="small" onClick={() => onHistory(scId)} sx={{ flexShrink: 0 }}>
+                  <History sx={{ fontSize: 15 }} />
+                </IconButton>
               </Tooltip>
             </Stack>
           </Box>
@@ -357,7 +416,26 @@ export const CampaignsTab: React.FC = () => {
   const [addSchoolsLoading, setAddSchoolsLoading] = useState(false);
   const [createContactTask, setCreateContactTask] = useState(true);
 
+  // --- schools loading ---
+  const [schoolsLoading, setSchoolsLoading] = useState(false);
+  // Per-column render limit (key = stage key → how many cards to show)
+  const [colLimits, setColLimits] = useState<Record<string, number>>({});
+
+  // --- view mode + table state ---
+  const [viewMode, setViewMode] = useState<'table' | 'kanban'>('table');
+  const [stageFilter, setStageFilter] = useState('');
+  const [tablePage, setTablePage] = useState(0);
+  const TABLE_ROWS_PER_PAGE = 50;
+
+  // --- broadcasts ---
+  type LinkedBroadcast = { id: number; name: string; subject: string; status: string; sent_at: string | null; total_recipients: number; sent_count: number; opened_count: number; clicked_count: number };
+  const [linkedBroadcasts, setLinkedBroadcasts] = useState<LinkedBroadcast[]>([]);
+  const [allBroadcasts, setAllBroadcasts] = useState<EmailBroadcastItem[]>([]);
+  const [linkBroadcastOpen, setLinkBroadcastOpen] = useState(false);
+  const [syncingBroadcastId, setSyncingBroadcastId] = useState<number | null>(null);
+
   // --- archive / history ---
+  const [kanbanSearch, setKanbanSearch] = useState('');
   const [showArchived, setShowArchived] = useState(false);
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
   const [historyData, setHistoryData] = useState<Array<{
@@ -472,31 +550,48 @@ export const CampaignsTab: React.FC = () => {
       setSchoolCampaigns([]);
       setStages([]);
       setEventCounts({});
+      setColLimits({});
+      setLinkedBroadcasts([]);
       return;
     }
     setCampaignDetail(null);
     setSchoolCampaigns([]);
     setStages([]);
     setEventCounts({});
+    setColLimits({});
+    setLinkedBroadcasts([]);
+    setSchoolsLoading(true);
+
+    // Load campaign metadata + stages first, then kick off heavy requests after page renders
     Promise.all([
       campaignsApi.get(selectedCampaignId),
-      campaignsApi.listSchoolCampaigns(selectedCampaignId),
       campaignsApi.listStages(selectedCampaignId),
     ])
-      .then(([c, list, stageList]) => {
+      .then(([c, stageList]) => {
         setCampaignDetail(c);
-        setSchoolCampaigns(list);
         setStages(stageList);
+
+        // Defer heavy requests so metadata renders first (avoids competing for DB connections)
+        const cid = selectedCampaignId;
+        setSchoolsLoading(true);
+        campaignsApi.listSchoolCampaigns(cid)
+          .then(setSchoolCampaigns)
+          .catch((err: any) => setError(extractApiError(err, 'Не удалось загрузить школы кампании')))
+          .finally(() => setSchoolsLoading(false));
+
+        campaignsApi.listCampaignBroadcasts(cid)
+          .then(setLinkedBroadcasts)
+          .catch(() => setLinkedBroadcasts([]));
+
+        campaignsApi.getCampaignSchoolEventCounts(cid)
+          .then(setEventCounts)
+          .catch(() => setEventCounts({}));
       })
       .catch((err: any) => setError(extractApiError(err, 'Не удалось загрузить кампанию')));
   }, [selectedCampaignId]);
 
-  useEffect(() => {
-    if (!selectedCampaignId) return;
-    campaignsApi.getCampaignSchoolEventCounts(selectedCampaignId)
-      .then(setEventCounts)
-      .catch(() => setEventCounts({}));
-  }, [selectedCampaignId]);
+  // Reset table page when search or filter changes
+  useEffect(() => { setTablePage(0); }, [kanbanSearch, stageFilter]);
 
   // ---------------------------------------------------------------------------
   // DnD для обычного канбана
@@ -532,12 +627,25 @@ export const CampaignsTab: React.FC = () => {
   // ---------------------------------------------------------------------------
   // Kanban derived data — используем этапы из API, а не константы
   // ---------------------------------------------------------------------------
+  const COLUMN_RENDER_LIMIT = 50; // начальный лимит карточек на колонку
+  const COLUMN_LOAD_MORE = 50;    // сколько добавлять при каждом нажатии
+  const kanbanSearchLower = kanbanSearch.toLowerCase().trim();
   const byStage = useMemo(() =>
-    stages.map((s) => ({
-      ...s,
-      items: schoolCampaigns.filter((sc) => sc.stage === s.key),
-    })),
-  [stages, schoolCampaigns]);
+    stages.map((s) => {
+      const allItems = schoolCampaigns.filter((sc) =>
+        sc.stage === s.key &&
+        (!kanbanSearchLower || (sc.school_name || '').toLowerCase().includes(kanbanSearchLower))
+      );
+      // При активном поиске — показываем все совпадения (их обычно мало)
+      const limit = kanbanSearchLower.length > 0 ? Infinity : (colLimits[s.key] ?? COLUMN_RENDER_LIMIT);
+      return {
+        ...s,
+        items: allItems.slice(0, limit),
+        totalItems: allItems.length,
+        hasMore: allItems.length > limit,
+      };
+    }),
+  [stages, schoolCampaigns, kanbanSearchLower, colLimits]);
 
   // ---------------------------------------------------------------------------
   // Actions
@@ -618,11 +726,14 @@ export const CampaignsTab: React.FC = () => {
 
   const handleStageChange = async (scId: number, newStage: string) => {
     if (!selectedCampaignId) return;
+    // Optimistic update — не перезагружаем все школы
+    setSchoolCampaigns((prev) => prev.map((s) => s.id === scId ? { ...s, stage: newStage } : s));
     try {
       await campaignsApi.updateSchoolCampaign(selectedCampaignId, scId, { stage: newStage });
-      setSchoolCampaigns(await campaignsApi.listSchoolCampaigns(selectedCampaignId));
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось обновить стадию'));
+      // Откат при ошибке
+      setSchoolCampaigns(await campaignsApi.listSchoolCampaigns(selectedCampaignId));
     }
   };
 
@@ -637,6 +748,50 @@ export const CampaignsTab: React.FC = () => {
     }
   };
 
+  const openLinkBroadcastDialog = () => {
+    setLinkBroadcastOpen(true);
+    emailBroadcastsApi.list().then(setAllBroadcasts).catch(() => {});
+  };
+
+  const handleLinkBroadcast = async (broadcastId: number) => {
+    if (!selectedCampaignId) return;
+    try {
+      await campaignsApi.linkBroadcastToCampaign(selectedCampaignId, broadcastId);
+      setLinkedBroadcasts(await campaignsApi.listCampaignBroadcasts(selectedCampaignId));
+      // Reload stages — new email_sent/email_opened stages may have been created
+      campaignsApi.listStages(selectedCampaignId).then(setStages).catch(() => {});
+      setLinkBroadcastOpen(false);
+    } catch (err: any) {
+      setError(extractApiError(err, 'Не удалось привязать рассылку'));
+    }
+  };
+
+  const handleUnlinkBroadcast = async (broadcastId: number) => {
+    if (!selectedCampaignId) return;
+    try {
+      await campaignsApi.unlinkBroadcastFromCampaign(selectedCampaignId, broadcastId);
+      setLinkedBroadcasts(await campaignsApi.listCampaignBroadcasts(selectedCampaignId));
+    } catch (err: any) {
+      setError(extractApiError(err, 'Не удалось отвязать рассылку'));
+    }
+  };
+
+  const handleSyncBroadcast = async (broadcastId: number) => {
+    if (!selectedCampaignId) return;
+    setSyncingBroadcastId(broadcastId);
+    try {
+      const result = await campaignsApi.syncBroadcastCampaignStages(selectedCampaignId, broadcastId);
+      // Reload schools after sync
+      setSchoolCampaigns(await campaignsApi.listSchoolCampaigns(selectedCampaignId));
+      setError(null);
+      alert(`Синхронизировано: ${result.advanced_sent} писем отправлено, ${result.advanced_opened} писем открыто`);
+    } catch (err: any) {
+      setError(extractApiError(err, 'Не удалось синхронизировать'));
+    } finally {
+      setSyncingBroadcastId(null);
+    }
+  };
+
   const openHistoryDialog = (schoolCampaignId: number) => {
     setHistoryDialogOpen(true);
     setHistoryData([]);
@@ -648,6 +803,19 @@ export const CampaignsTab: React.FC = () => {
       .catch(() => setHistoryData([]))
       .finally(() => setHistoryLoading(false));
   };
+
+  // Table-view filtered list
+  const filteredSchools = useMemo(() => {
+    return schoolCampaigns.filter((sc) => {
+      const matchSearch = !kanbanSearchLower || (sc.school_name || '').toLowerCase().includes(kanbanSearchLower);
+      const matchStage = !stageFilter || sc.stage === stageFilter;
+      return matchSearch && matchStage;
+    });
+  }, [schoolCampaigns, kanbanSearchLower, stageFilter]);
+
+  const paginatedSchools = useMemo(() =>
+    filteredSchools.slice(tablePage * TABLE_ROWS_PER_PAGE, (tablePage + 1) * TABLE_ROWS_PER_PAGE),
+  [filteredSchools, tablePage]);
 
   const activeCampaigns = useMemo(() => campaigns.filter((c) => c.status === 'draft' || c.status === 'active'), [campaigns]);
   const archivedCampaigns = useMemo(() => campaigns.filter((c) => c.status === 'done' || c.status === 'canceled'), [campaigns]);
@@ -690,80 +858,352 @@ export const CampaignsTab: React.FC = () => {
 
               {!campaignDetail.is_game_jam && (
                 <>
-                  <Stack direction="row" gap={1} sx={{ mb: 2 }} flexWrap="wrap">
+                  {/* Toolbar */}
+                  <Stack direction="row" gap={1} sx={{ mb: 2 }} flexWrap="wrap" alignItems="center">
                     {canManageCampaigns && (
-                      <Button variant="contained" startIcon={<Add />} onClick={openAddSchools}>
+                      <Button variant="contained" size="small" startIcon={<Add />} onClick={openAddSchools}>
                         Добавить школы
                       </Button>
                     )}
                     {canManageCampaigns && (
                       <Button
                         variant="outlined"
+                        size="small"
                         startIcon={<SettingsOutlined />}
                         onClick={() => setStagesDialogOpen(true)}
                       >
                         Этапы
                       </Button>
                     )}
+                    <TextField
+                      size="small"
+                      placeholder={schoolsLoading ? 'Загрузка школ…' : `Поиск по ${schoolCampaigns.length} школам…`}
+                      value={kanbanSearch}
+                      onChange={(e) => setKanbanSearch(e.target.value)}
+                      sx={{ flex: '1 1 200px', maxWidth: 320 }}
+                    />
+                    <FormControl size="small" sx={{ minWidth: 160 }}>
+                      <Select
+                        value={stageFilter}
+                        onChange={(e) => setStageFilter(e.target.value)}
+                        displayEmpty
+                        renderValue={(v) => v ? (stages.find((s) => s.key === v)?.label ?? v) : 'Все этапы'}
+                      >
+                        <MenuItem value="">Все этапы</MenuItem>
+                        {stages.map((s) => (
+                          <MenuItem key={s.key} value={s.key}>
+                            <Stack direction="row" alignItems="center" gap={1} sx={{ width: '100%' }}>
+                              <Typography variant="body2" sx={{ flex: 1 }}>{s.label}</Typography>
+                              <Chip
+                                label={schoolCampaigns.filter((sc) => sc.stage === s.key).length}
+                                size="small"
+                                variant="outlined"
+                                sx={{ height: 18, fontSize: 11 }}
+                              />
+                            </Stack>
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    <ToggleButtonGroup
+                      value={viewMode}
+                      exclusive
+                      onChange={(_, v) => { if (v) setViewMode(v); }}
+                      size="small"
+                    >
+                      <ToggleButton value="table" aria-label="таблица">
+                        <Tooltip title="Таблица"><TableRowsIcon fontSize="small" /></Tooltip>
+                      </ToggleButton>
+                      <ToggleButton value="kanban" aria-label="канбан">
+                        <Tooltip title="Канбан"><ViewKanban fontSize="small" /></Tooltip>
+                      </ToggleButton>
+                    </ToggleButtonGroup>
                   </Stack>
 
-                  {stages.length === 0 ? (
-                    <Typography color="text.secondary">Загрузка этапов…</Typography>
-                  ) : (
-                    <DndContext
-                      sensors={dndSensors}
-                      onDragStart={handleDndDragStart}
-                      onDragEnd={(e) => void handleDndDragEnd(e)}
-                    >
-                      <Box sx={{ display: 'flex', gap: 2, overflowX: 'auto', flexWrap: 'nowrap', pb: 1 }}>
-                        {byStage.map((col) => (
-                          <KanbanColumn
-                            key={col.key}
-                            stageKey={col.key}
-                            label={col.label}
-                            isTerminal={col.is_terminal}
-                            count={col.items.length}
-                          >
-                            {col.items.map((sc) => {
-                              const counts = eventCounts[String(sc.id)];
-                              const countLabel = counts?.events_invited_count !== undefined
-                                ? `приглаш.: ${counts.events_invited_count} · участий: ${counts.events_participated_count} · площадок: ${counts.events_hosted_count}`
-                                : undefined;
-                              return (
-                                <KanbanSchoolCard
-                                  key={sc.id}
-                                  scId={sc.id}
-                                  schoolName={sc.school_name || `Школа #${sc.b2b_school_id}`}
-                                  schoolCity={sc.school_city}
-                                  countLabel={countLabel}
-                                  stages={stages}
-                                  currentStage={sc.stage}
-                                  canManage={canManageCampaigns}
-                                  onStageChange={handleStageChange}
-                                  onHistory={openHistoryDialog}
-                                />
-                              );
-                            })}
-                          </KanbanColumn>
-                        ))}
-                      </Box>
-                      <DragOverlay>
-                        {dndActiveSchool && (
-                          <Card variant="outlined" sx={{ minWidth: 200, opacity: 0.9, boxShadow: 4 }}>
-                            <CardContent sx={{ py: 1, px: 1.5 }}>
-                              <Typography variant="body2">{dndActiveSchool.school_name}</Typography>
-                              <Typography variant="caption" color="text.secondary">{dndActiveSchool.school_city}</Typography>
-                            </CardContent>
-                          </Card>
-                        )}
-                      </DragOverlay>
-                    </DndContext>
+                  {/* Loading bar */}
+                  {schoolsLoading && <LinearProgress sx={{ mb: 1, borderRadius: 1 }} />}
+
+                  {/* ── TABLE VIEW ── */}
+                  {viewMode === 'table' && (
+                    <Paper variant="outlined">
+                      <TableContainer>
+                        <Table size="small" stickyHeader>
+                          <TableHead>
+                            <TableRow>
+                              <TableCell sx={{ width: 48, color: 'text.disabled' }}>#</TableCell>
+                              <TableCell>Школа</TableCell>
+                              <TableCell sx={{ width: 160 }}>Город</TableCell>
+                              <TableCell sx={{ width: 200 }}>Этап</TableCell>
+                              <TableCell sx={{ width: 48 }} />
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {paginatedSchools.length === 0 && !schoolsLoading ? (
+                              <TableRow>
+                                <TableCell colSpan={5} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                                  {kanbanSearch || stageFilter ? 'Нет совпадений' : 'Нет школ в кампании'}
+                                </TableCell>
+                              </TableRow>
+                            ) : (
+                              paginatedSchools.map((sc, idx) => (
+                                <TableRow key={sc.id} hover>
+                                  <TableCell sx={{ color: 'text.disabled', fontSize: 12 }}>
+                                    {tablePage * TABLE_ROWS_PER_PAGE + idx + 1}
+                                  </TableCell>
+                                  <TableCell>
+                                    <Typography variant="body2" fontWeight={500}>
+                                      {sc.school_name || `Школа #${sc.b2b_school_id}`}
+                                    </Typography>
+                                    {sc.school_district && (
+                                      <Typography variant="caption" color="text.secondary">{sc.school_district}</Typography>
+                                    )}
+                                  </TableCell>
+                                  <TableCell>
+                                    <Typography variant="body2">{sc.school_city || '—'}</Typography>
+                                  </TableCell>
+                                  <TableCell>
+                                    <Select
+                                      value={sc.stage}
+                                      onChange={(e) => void handleStageChange(sc.id, e.target.value)}
+                                      disabled={!canManageCampaigns}
+                                      size="small"
+                                      fullWidth
+                                      variant="outlined"
+                                      sx={{ fontSize: 13 }}
+                                    >
+                                      {stages.map((s) => (
+                                        <MenuItem key={s.key} value={s.key}>{s.label}</MenuItem>
+                                      ))}
+                                    </Select>
+                                  </TableCell>
+                                  <TableCell align="center" sx={{ pr: 1 }}>
+                                    <Tooltip title="История активностей">
+                                      <IconButton size="small" onClick={() => openHistoryDialog(sc.id)}>
+                                        <History fontSize="small" />
+                                      </IconButton>
+                                    </Tooltip>
+                                  </TableCell>
+                                </TableRow>
+                              ))
+                            )}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                      <TablePagination
+                        component="div"
+                        count={filteredSchools.length}
+                        page={tablePage}
+                        onPageChange={(_, p) => setTablePage(p)}
+                        rowsPerPage={TABLE_ROWS_PER_PAGE}
+                        rowsPerPageOptions={[TABLE_ROWS_PER_PAGE]}
+                        labelDisplayedRows={({ from, to, count }) => `${from}–${to} из ${count}`}
+                      />
+                    </Paper>
                   )}
+
+                  {/* ── KANBAN VIEW ── */}
+                  {viewMode === 'kanban' && (
+                    stages.length === 0 ? (
+                      <Typography color="text.secondary">Загрузка этапов…</Typography>
+                    ) : (
+                      <DndContext
+                        sensors={dndSensors}
+                        onDragStart={handleDndDragStart}
+                        onDragEnd={(e) => void handleDndDragEnd(e)}
+                      >
+                        <Box sx={{ display: 'flex', gap: 2, overflowX: 'auto', flexWrap: 'nowrap', pb: 2, alignItems: 'flex-start', scrollSnapType: 'x proximity' }}>
+                          {byStage.map((col) => (
+                            <KanbanColumn
+                              key={col.key}
+                              stageKey={col.key}
+                              label={col.label}
+                              isTerminal={col.is_terminal}
+                              count={col.totalItems}
+                            >
+                              {schoolsLoading ? (
+                                <Box sx={{ py: 1 }}>
+                                  {[0, 1, 2].map((i) => (
+                                    <Box key={i} sx={{ mb: 0.75, borderRadius: 1.5, bgcolor: 'grey.200', height: 72, opacity: 1 - i * 0.25 }} />
+                                  ))}
+                                </Box>
+                              ) : col.items.length === 0 ? (
+                                <Typography variant="caption" color="text.disabled" align="center" sx={{ display: 'block', py: 2 }}>
+                                  Нет школ
+                                </Typography>
+                              ) : (
+                                <>
+                                  {col.items.map((sc) => {
+                                    const counts = eventCounts[String(sc.id)];
+                                    const countLabel = counts?.events_invited_count !== undefined
+                                      ? `приглаш.: ${counts.events_invited_count} · участий: ${counts.events_participated_count} · площадок: ${counts.events_hosted_count}`
+                                      : undefined;
+                                    return (
+                                      <KanbanSchoolCard
+                                        key={sc.id}
+                                        scId={sc.id}
+                                        schoolName={sc.school_name?.trim() || `Школа #${sc.b2b_school_id}`}
+                                        schoolCity={sc.school_city}
+                                        countLabel={countLabel}
+                                        stages={stages}
+                                        currentStage={sc.stage}
+                                        canManage={canManageCampaigns}
+                                        onStageChange={handleStageChange}
+                                        onHistory={openHistoryDialog}
+                                      />
+                                    );
+                                  })}
+                                  {col.hasMore && (
+                                    <Button
+                                      size="small"
+                                      variant="text"
+                                      fullWidth
+                                      onClick={() => setColLimits((prev) => ({
+                                        ...prev,
+                                        [col.key]: (prev[col.key] ?? COLUMN_RENDER_LIMIT) + COLUMN_LOAD_MORE,
+                                      }))}
+                                      sx={{ mt: 0.5 }}
+                                    >
+                                      Ещё 50 из {col.totalItems}
+                                    </Button>
+                                  )}
+                                </>
+                              )}
+                            </KanbanColumn>
+                          ))}
+                        </Box>
+                        <DragOverlay>
+                          {dndActiveSchool && (
+                            <Card variant="outlined" sx={{ width: 240, opacity: 0.9, boxShadow: 4 }}>
+                              <CardContent sx={{ py: 1, px: 1.5 }}>
+                                <Typography variant="body2">{dndActiveSchool.school_name}</Typography>
+                                <Typography variant="caption" color="text.secondary">{dndActiveSchool.school_city}</Typography>
+                              </CardContent>
+                            </Card>
+                          )}
+                        </DragOverlay>
+                      </DndContext>
+                    )
+                  )}
+                  {/* ── РАССЫЛКИ КАМПАНИИ ── */}
+                  <Box sx={{ mt: 3 }}>
+                    <Divider sx={{ mb: 2 }} />
+                    <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.5 }}>
+                      <Stack direction="row" alignItems="center" gap={1}>
+                        <Email fontSize="small" color="action" />
+                        <Typography variant="subtitle1" fontWeight={600}>
+                          Рассылки кампании
+                        </Typography>
+                        {linkedBroadcasts.length > 0 && (
+                          <Chip label={linkedBroadcasts.length} size="small" variant="outlined" />
+                        )}
+                      </Stack>
+                      {canManageCampaigns && (
+                        <Button size="small" variant="outlined" startIcon={<Add />} onClick={openLinkBroadcastDialog}>
+                          Привязать рассылку
+                        </Button>
+                      )}
+                    </Stack>
+                    {linkedBroadcasts.length === 0 ? (
+                      <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
+                        Нет привязанных рассылок
+                      </Typography>
+                    ) : (
+                      <Stack gap={1.5}>
+                        {linkedBroadcasts.map((b) => (
+                          <Paper key={b.id} variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
+                            <Stack direction="row" alignItems="flex-start" gap={1.5} flexWrap="wrap">
+                              <Box sx={{ flex: 1, minWidth: 160 }}>
+                                <Typography variant="body2" fontWeight={500}>{b.name}</Typography>
+                                <Typography variant="caption" color="text.secondary">{b.subject}</Typography>
+                              </Box>
+                              <Stack direction="row" gap={0.5} flexWrap="wrap" alignItems="center">
+                                <Chip
+                                  label={b.status === 'done' ? 'Отправлена' : b.status === 'draft' ? 'Черновик' : b.status === 'sending' ? 'Отправка…' : b.status}
+                                  size="small"
+                                  color={b.status === 'done' ? 'success' : b.status === 'sending' ? 'warning' : 'default'}
+                                  variant="outlined"
+                                />
+                                <Chip label={`Отправлено: ${b.sent_count}`} size="small" variant="outlined" />
+                                <Chip label={`Открыто: ${b.opened_count}`} size="small" variant="outlined" color="info" />
+                              </Stack>
+                              {canManageCampaigns && (
+                                <Stack direction="row" gap={0.5}>
+                                  <Tooltip title="Синхронизировать этапы со школами">
+                                    <span>
+                                      <IconButton
+                                        size="small"
+                                        disabled={syncingBroadcastId === b.id}
+                                        onClick={() => void handleSyncBroadcast(b.id)}
+                                      >
+                                        <Sync fontSize="small" />
+                                      </IconButton>
+                                    </span>
+                                  </Tooltip>
+                                  <Tooltip title="Отвязать рассылку">
+                                    <IconButton size="small" onClick={() => void handleUnlinkBroadcast(b.id)}>
+                                      <LinkOff fontSize="small" />
+                                    </IconButton>
+                                  </Tooltip>
+                                </Stack>
+                              )}
+                            </Stack>
+                          </Paper>
+                        ))}
+                      </Stack>
+                    )}
+                  </Box>
+
+                  {/* ── DIALOG: привязать рассылку ── */}
+                  <Dialog open={linkBroadcastOpen} onClose={() => setLinkBroadcastOpen(false)} maxWidth="sm" fullWidth>
+                    <DialogTitle>Привязать рассылку к кампании</DialogTitle>
+                    <DialogContent dividers>
+                      {allBroadcasts.filter((b) => !linkedBroadcasts.some((lb) => lb.id === b.id)).length === 0 ? (
+                        <Typography color="text.secondary">Нет доступных рассылок для привязки</Typography>
+                      ) : (
+                        <Stack gap={1}>
+                          {allBroadcasts
+                            .filter((b) => !linkedBroadcasts.some((lb) => lb.id === b.id))
+                            .map((b) => (
+                              <Stack
+                                key={b.id}
+                                direction="row"
+                                alignItems="center"
+                                justifyContent="space-between"
+                                sx={{
+                                  px: 2, py: 1.5, border: '1px solid', borderColor: 'divider',
+                                  borderRadius: 2, cursor: 'pointer',
+                                  '&:hover': { bgcolor: 'action.hover' },
+                                }}
+                                onClick={() => void handleLinkBroadcast(b.id)}
+                              >
+                                <Box>
+                                  <Typography variant="body2" fontWeight={500}>{b.name}</Typography>
+                                  <Chip
+                                    label={b.status === 'done' ? 'Отправлена' : b.status === 'draft' ? 'Черновик' : b.status === 'sending' ? 'Отправка…' : b.status}
+                                    size="small"
+                                    color={b.status === 'done' ? 'success' : b.status === 'sending' ? 'warning' : 'default'}
+                                    variant="outlined"
+                                    sx={{ mt: 0.5 }}
+                                  />
+                                </Box>
+                                <Add fontSize="small" color="action" />
+                              </Stack>
+                            ))}
+                        </Stack>
+                      )}
+                    </DialogContent>
+                    <DialogActions>
+                      <Button onClick={() => setLinkBroadcastOpen(false)}>Закрыть</Button>
+                    </DialogActions>
+                  </Dialog>
                 </>
               )}
             </>
           ) : (
-            <Typography color="text.secondary">Загрузка данных кампании…</Typography>
+            <Box sx={{ mt: 2 }}>
+              <LinearProgress sx={{ borderRadius: 1, mb: 1 }} />
+              <Typography variant="body2" color="text.secondary">Загрузка данных кампании…</Typography>
+            </Box>
           )}
         </Box>
       ) : (

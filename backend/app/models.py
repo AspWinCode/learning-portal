@@ -3175,7 +3175,10 @@ class EmailBroadcast(Base):
     opened_count = Column(Integer, nullable=False, default=0)
     clicked_count = Column(Integer, nullable=False, default=0)
 
+    campaign_id = Column(Integer, ForeignKey("campaigns.id", ondelete="SET NULL"), nullable=True, index=True)
+
     created_by = relationship("User", foreign_keys=[created_by_id])
+    campaign = relationship("Campaign", foreign_keys=[campaign_id])
     recipients = relationship("EmailBroadcastRecipient", back_populates="broadcast", cascade="all, delete-orphan")
     attachments = relationship("EmailBroadcastAttachment", back_populates="broadcast", cascade="all, delete-orphan")
 

@@ -262,16 +262,16 @@ const FinanceCommandCenter: React.FC<Props> = ({ onNavigateToJournal }) => {
       )}
 
       {/* Main content: projects table + accounts */}
-      <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 270px', gap: 1.5, alignItems: 'start' }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 270px', gap: 1.5, alignItems: 'start' }}>
 
         {/* Project comparison table */}
-        <Paper variant="outlined" sx={{ borderRadius: 2 }}>
+        <Paper variant="outlined" sx={{ borderRadius: 2, minWidth: 0, overflow: 'hidden' }}>
           <Box sx={{ px: 2, pt: 1.5, pb: 0.5 }}>
             <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: '0.05em', fontSize: '0.68rem', fontWeight: 500 }}>
               Сравнение проектов — {data ? monthLabel(data.period) : ''}
             </Typography>
           </Box>
-          <TableContainer>
+          <TableContainer sx={{ maxWidth: '100%' }}>
             <Table size="small" sx={{ 'td,th': { fontSize: '0.78rem' } }}>
               <TableHead>
                 <TableRow sx={{ bgcolor: 'action.hover' }}>

@@ -10,8 +10,6 @@ import {
   DialogContent,
   DialogTitle,
   Divider,
-  Drawer,
-  Fab,
   FormControl,
   FormControlLabel,
   IconButton,
@@ -29,21 +27,15 @@ import {
 } from '@mui/material';
 import {
   Add as AddIcon,
-  ArrowBack as ArrowBackIcon,
-  CheckCircle as CheckCircleIcon,
   Close as CloseIcon,
   Delete as DeleteIcon,
-  Edit as EditIcon,
-  KeyboardArrowDown,
-  Psychology as PsychologyIcon,
   Save as SaveIcon,
   Search as SearchIcon,
   Shield as ShieldIcon,
-  Visibility as VisibilityIcon,
 } from '@mui/icons-material';
-import { kodexApi, KodexCaseFull, KodexCaseSummary } from '../services/kodexApi';
+import { kodexExternalApi, KodexExternalFull, KodexExternalSummary } from '../services/kodexApi';
 
-type KodexApiClient = typeof kodexApi;
+type KodexApiClient = typeof kodexExternalApi;
 
 // ─── Colour palette matching Kodex theme ────────────────────────────────────
 const K = {
@@ -71,7 +63,7 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 const DIFFICULTY_LABELS = ['', 'Новичок', 'Агент', 'Эксперт'];
 
 // ─── Empty case template ─────────────────────────────────────────────────────
-const EMPTY_CASE = (): Partial<KodexCaseFull> => ({
+const EMPTY_CASE = (): Partial<KodexExternalFull> => ({
   slug: '',
   num: '',
   title: '',
@@ -85,13 +77,17 @@ const EMPTY_CASE = (): Partial<KodexCaseFull> => ({
   suspects: '',
   task: '',
   anno: '',
+  fn_name: '',
+  starter: '',
   briefing: [],
   materials: [],
   evidence: [],
   hints: {},
   versions: [],
   finale: [],
-  theory: [],
+  is_seed: false,
+  is_override: false,
+  status: null,
 });
 
 // ─── JSON editor helper ──────────────────────────────────────────────────────
@@ -139,116 +135,15 @@ const JsonField: React.FC<JsonFieldProps> = ({ label, value, onChange }) => {
   );
 };
 
-// ─── Theory block editor ─────────────────────────────────────────────────────
-interface TheoryBlock {
-  type: 'text' | 'code' | 'image' | 'tip';
-  content: string;
-  lang?: string;
-  caption?: string;
-}
-
-interface TheoryEditorProps {
-  blocks: TheoryBlock[];
-  onChange: (blocks: TheoryBlock[]) => void;
-}
-
-const TheoryEditor: React.FC<TheoryEditorProps> = ({ blocks, onChange }) => {
-  const add = (type: TheoryBlock['type']) => {
-    onChange([...blocks, { type, content: '', lang: type === 'code' ? 'python' : undefined }]);
-  };
-
-  const update = (idx: number, patch: Partial<TheoryBlock>) => {
-    const next = blocks.map((b, i) => (i === idx ? { ...b, ...patch } : b));
-    onChange(next);
-  };
-
-  const remove = (idx: number) => {
-    onChange(blocks.filter((_, i) => i !== idx));
-  };
-
-  return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      {blocks.map((block, idx) => (
-        <Paper
-          key={idx}
-          sx={{
-            p: 2,
-            background: 'rgba(0,255,171,0.03)',
-            border: `1px solid ${K.panelBorder}`,
-            borderRadius: 1,
-          }}
-        >
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-            <Chip
-              label={block.type}
-              size="small"
-              sx={{ fontFamily: K.mono, fontSize: 11, bgcolor: 'rgba(0,255,171,0.12)', color: K.neon, border: 'none' }}
-            />
-            <Box sx={{ flex: 1 }} />
-            <IconButton size="small" onClick={() => remove(idx)} sx={{ color: K.danger }}>
-              <CloseIcon fontSize="small" />
-            </IconButton>
-          </Box>
-
-          {block.type === 'code' && (
-            <TextField
-              label="Язык"
-              size="small"
-              value={block.lang || 'python'}
-              onChange={(e) => update(idx, { lang: e.target.value })}
-              sx={{ mb: 1, width: 140 }}
-            />
-          )}
-
-          <TextField
-            label={block.type === 'image' ? 'URL изображения' : 'Содержимое'}
-            multiline={block.type !== 'image'}
-            minRows={block.type === 'text' || block.type === 'tip' ? 3 : block.type === 'code' ? 4 : 1}
-            fullWidth
-            value={block.content}
-            onChange={(e) => update(idx, { content: e.target.value })}
-            inputProps={block.type === 'code' ? { style: { fontFamily: K.mono, fontSize: 12 } } : undefined}
-          />
-
-          {block.type === 'image' && (
-            <TextField
-              label="Подпись"
-              size="small"
-              fullWidth
-              value={block.caption || ''}
-              onChange={(e) => update(idx, { caption: e.target.value })}
-              sx={{ mt: 1 }}
-            />
-          )}
-        </Paper>
-      ))}
-
-      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-        {(['text', 'code', 'image', 'tip'] as TheoryBlock['type'][]).map((t) => (
-          <Button
-            key={t}
-            size="small"
-            variant="outlined"
-            onClick={() => add(t)}
-            sx={{ color: K.neonDim, borderColor: K.panelBorder, fontFamily: K.mono, fontSize: 11 }}
-          >
-            + {t}
-          </Button>
-        ))}
-      </Box>
-    </Box>
-  );
-};
-
 // ─── Case card in sidebar ────────────────────────────────────────────────────
 interface CaseCardProps {
-  c: KodexCaseSummary;
+  c: KodexExternalSummary;
   selected: boolean;
   onClick: () => void;
 }
 
 const CaseCard: React.FC<CaseCardProps> = ({ c, selected, onClick }) => {
-  const st = STATUS_LABELS[c.status] || STATUS_LABELS.draft;
+  const st = STATUS_LABELS[c.status ?? ''] || STATUS_LABELS.draft;
   return (
     <Box
       onClick={onClick}
@@ -286,19 +181,20 @@ const CaseCard: React.FC<CaseCardProps> = ({ c, selected, onClick }) => {
 // ─── Main page ───────────────────────────────────────────────────────────────
 const SIDEBAR_WIDTH = 280;
 
-const KodexStudioPage: React.FC<{ api?: KodexApiClient }> = ({ api: apiClient = kodexApi }) => {
-  const [cases, setCases] = useState<KodexCaseSummary[]>([]);
+const KodexStudioPage: React.FC<{ api?: KodexApiClient }> = ({ api: apiClient = kodexExternalApi }) => {
+  const [cases, setCases] = useState<KodexExternalSummary[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [editing, setEditing] = useState<Partial<KodexCaseFull> | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [editing, setEditing] = useState<Partial<KodexExternalFull> | null>(null);
   const [tab, setTab] = useState(0);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ msg: string; severity: 'success' | 'error' } | null>(null);
   const [newDialog, setNewDialog] = useState(false);
-  const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [search, setSearch] = useState('');
 
   const loadCases = useCallback(async () => {
+    setLoading(true);
     try {
       const data = await apiClient.list();
       setCases(data);
@@ -307,17 +203,17 @@ const KodexStudioPage: React.FC<{ api?: KodexApiClient }> = ({ api: apiClient = 
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [apiClient]);
 
   useEffect(() => {
     loadCases();
   }, [loadCases]);
 
-  const openCase = async (id: number) => {
-    setSelectedId(id);
+  const openCase = async (slug: string) => {
+    setSelectedId(slug);
     setTab(0);
     try {
-      const full = await apiClient.get(id);
+      const full = await apiClient.get(slug);
       setEditing({ ...full });
     } catch {
       setToast({ msg: 'Ошибка загрузки дела', severity: 'error' });
@@ -330,39 +226,45 @@ const KodexStudioPage: React.FC<{ api?: KodexApiClient }> = ({ api: apiClient = 
     try {
       const updated = await apiClient.update(selectedId, editing as any);
       setEditing({ ...updated });
-      setCases((prev) => prev.map((c) => (c.id === selectedId ? { ...c, ...updated } : c)));
+      setCases((prev) => prev.map((c) => (c.slug === selectedId ? { ...c, ...updated } : c)));
       setToast({ msg: 'Сохранено', severity: 'success' });
     } catch (e: any) {
-      setToast({ msg: e?.response?.data?.detail || 'Ошибка сохранения', severity: 'error' });
+      const detail = e?.response?.data?.detail;
+      const errMsg = Array.isArray(detail?.errors)
+        ? detail.errors.join('; ')
+        : (detail?.error || (typeof detail === 'string' ? detail : null) || 'Ошибка сохранения');
+      setToast({ msg: String(errMsg), severity: 'error' });
     } finally {
       setSaving(false);
     }
   };
 
-  const createCase = async (payload: Partial<KodexCaseFull>) => {
+  const createCase = async (payload: Partial<KodexExternalFull>) => {
     try {
-      const created = await apiClient.create(payload as any);
-      setCases((prev) => [created, ...prev]);
+      await apiClient.create(payload as any);
       setNewDialog(false);
-      await openCase(created.id);
+      await loadCases();
+      if (payload.slug) await openCase(payload.slug);
       setToast({ msg: 'Дело создано', severity: 'success' });
     } catch (e: any) {
-      setToast({ msg: e?.response?.data?.detail || 'Ошибка создания', severity: 'error' });
+      setToast({ msg: e?.response?.data?.detail?.error || e?.response?.data?.detail || 'Ошибка создания', severity: 'error' });
     }
   };
 
-  const deleteCase = async (id: number) => {
+  const deleteCase = async (slug: string) => {
+    const isSeed = cases.find((c) => c.slug === slug)?.is_seed ?? true;
     try {
-      await apiClient.delete(id);
-      setCases((prev) => prev.filter((c) => c.id !== id));
-      if (selectedId === id) {
+      await apiClient.delete(slug);
+      setCases((prev) => prev.filter((c) => c.slug !== slug));
+      if (selectedId === slug) {
         setSelectedId(null);
         setEditing(null);
       }
       setDeleteConfirm(null);
-      setToast({ msg: 'Дело удалено', severity: 'success' });
+      setToast({ msg: isSeed ? 'Правки сброшены к исходному делу' : 'Дело удалено', severity: 'success' });
+      if (isSeed) await loadCases();
     } catch {
-      setToast({ msg: 'Ошибка удаления', severity: 'error' });
+      setToast({ msg: 'Ошибка', severity: 'error' });
     }
   };
 
@@ -451,11 +353,11 @@ const KodexStudioPage: React.FC<{ api?: KodexApiClient }> = ({ api: apiClient = 
             </Box>
           ) : (
             filtered.map((c) => (
-              <React.Fragment key={c.id}>
+              <React.Fragment key={c.slug}>
                 <CaseCard
                   c={c}
-                  selected={c.id === selectedId}
-                  onClick={() => openCase(c.id)}
+                  selected={c.slug === selectedId}
+                  onClick={() => openCase(c.slug)}
                 />
                 <Divider sx={{ borderColor: K.panelBorder, opacity: 0.4 }} />
               </React.Fragment>
@@ -522,27 +424,22 @@ const KodexStudioPage: React.FC<{ api?: KodexApiClient }> = ({ api: apiClient = 
               </Typography>
 
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                {/* Status selector */}
-                <FormControl size="small" sx={{ minWidth: 150 }}>
-                  <Select
-                    value={editing.status || 'draft'}
-                    onChange={(e) => patch('status', e.target.value)}
+                {/* Status badge (read-only — managed by Kodex review flow) */}
+                {editing.status && (
+                  <Chip
+                    label={STATUS_LABELS[editing.status]?.label || editing.status}
+                    size="small"
                     sx={{
                       fontFamily: K.mono,
-                      fontSize: 12,
-                      color: STATUS_LABELS[editing.status || 'draft']?.color || K.textDim,
-                      '& .MuiOutlinedInput-notchedOutline': { borderColor: K.panelBorder },
+                      fontSize: 11,
+                      color: STATUS_LABELS[editing.status]?.color || K.textDim,
+                      bgcolor: 'rgba(0,0,0,0.3)',
+                      border: `1px solid ${STATUS_LABELS[editing.status]?.color || K.panelBorder}`,
                     }}
-                  >
-                    {Object.entries(STATUS_LABELS).map(([k, v]) => (
-                      <MenuItem key={k} value={k} sx={{ fontFamily: K.mono, fontSize: 12 }}>
-                        {v.label}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
+                  />
+                )}
 
-                <Tooltip title="Удалить дело">
+                <Tooltip title={editing.is_seed ? 'Сбросить правки к исходному делу' : 'Удалить дело'}>
                   <IconButton
                     size="small"
                     onClick={() => setDeleteConfirm(selectedId!)}
@@ -595,7 +492,6 @@ const KodexStudioPage: React.FC<{ api?: KodexApiClient }> = ({ api: apiClient = 
               <Tab label="Основное" />
               <Tab label="Брифинг" />
               <Tab label="Улики" />
-              <Tab label="Теория" />
               <Tab label="Финал" />
               <Tab label="JSON" />
             </Tabs>
@@ -735,6 +631,28 @@ const KodexStudioPage: React.FC<{ api?: KodexApiClient }> = ({ api: apiClient = 
                     multiline
                     rows={3}
                   />
+
+                  <Divider sx={{ borderColor: K.panelBorder }} />
+
+                  <TextField
+                    label="Имя функции (fnName)"
+                    value={editing.fn_name || ''}
+                    onChange={(e) => patch('fn_name', e.target.value)}
+                    fullWidth
+                    inputProps={{ style: { fontFamily: K.mono } }}
+                    helperText="Пустое значение = script mode (студент пишет скрипт целиком)"
+                  />
+
+                  <TextField
+                    label="Стартовый код"
+                    value={editing.starter || ''}
+                    onChange={(e) => patch('starter', e.target.value)}
+                    fullWidth
+                    multiline
+                    rows={5}
+                    inputProps={{ style: { fontFamily: K.mono, fontSize: 12 } }}
+                    helperText="Шаблон кода, который видит студент в начале задачи"
+                  />
                 </Box>
               )}
 
@@ -811,27 +729,8 @@ const KodexStudioPage: React.FC<{ api?: KodexApiClient }> = ({ api: apiClient = 
                 </Box>
               )}
 
-              {/* ── Tab 3: Theory ── */}
+              {/* ── Tab 3: Finale ── */}
               {tab === 3 && (
-                <Box sx={{ maxWidth: 800 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                    <PsychologyIcon sx={{ color: K.neon, fontSize: 18 }} />
-                    <Typography sx={{ fontFamily: K.mono, fontSize: 13, color: K.text }}>
-                      Теория для учеников
-                    </Typography>
-                  </Box>
-                  <Typography sx={{ fontFamily: K.mono, fontSize: 12, color: K.textFaint, mb: 3 }}>
-                    Добавьте блоки теории: текст, код, изображения, подсказки. Они будут доступны ученикам при прохождении дела.
-                  </Typography>
-                  <TheoryEditor
-                    blocks={(editing.theory as TheoryBlock[]) || []}
-                    onChange={(v) => patch('theory', v)}
-                  />
-                </Box>
-              )}
-
-              {/* ── Tab 4: Finale ── */}
-              {tab === 4 && (
                 <Box sx={{ maxWidth: 720 }}>
                   <Typography sx={{ fontFamily: K.mono, fontSize: 12, color: K.textDim, mb: 2 }}>
                     Финальный диалог — показывается после решения дела
@@ -844,8 +743,8 @@ const KodexStudioPage: React.FC<{ api?: KodexApiClient }> = ({ api: apiClient = 
                 </Box>
               )}
 
-              {/* ── Tab 5: Raw JSON ── */}
-              {tab === 5 && (
+              {/* ── Tab 4: Raw JSON ── */}
+              {tab === 4 && (
                 <Box sx={{ maxWidth: 900 }}>
                   <Typography sx={{ fontFamily: K.mono, fontSize: 12, color: K.textFaint, mb: 2 }}>
                     Полный JSON дела. Изменения здесь не применяются автоматически — используйте вкладки выше.
@@ -875,18 +774,20 @@ const KodexStudioPage: React.FC<{ api?: KodexApiClient }> = ({ api: apiClient = 
         onCreate={createCase}
       />
 
-      {/* ── Delete confirm ── */}
+      {/* ── Delete / reset confirm ── */}
       <Dialog
         open={deleteConfirm !== null}
         onClose={() => setDeleteConfirm(null)}
         PaperProps={{ sx: { bgcolor: '#0a0f12', border: `1px solid ${K.danger}`, borderRadius: 2 } }}
       >
         <DialogTitle sx={{ fontFamily: K.mono, color: K.danger, fontSize: 14 }}>
-          Удалить дело?
+          {editing?.is_seed ? 'Сбросить правки?' : 'Удалить дело?'}
         </DialogTitle>
         <DialogContent>
           <Typography sx={{ fontFamily: K.mono, fontSize: 13, color: K.textDim }}>
-            Это действие необратимо. Все данные дела будут удалены.
+            {editing?.is_seed
+              ? 'Все изменения этого дела будут удалены. Дело вернётся к исходному виду из базы Кодэкс.'
+              : 'Это действие необратимо. Новое дело будет удалено из базы Кодэкс.'}
           </Typography>
         </DialogContent>
         <DialogActions>
@@ -897,7 +798,7 @@ const KodexStudioPage: React.FC<{ api?: KodexApiClient }> = ({ api: apiClient = 
             onClick={() => deleteCase(deleteConfirm!)}
             sx={{ color: K.danger, fontFamily: K.mono }}
           >
-            Удалить
+            {editing?.is_seed ? 'Сбросить' : 'Удалить'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -925,7 +826,7 @@ const KodexStudioPage: React.FC<{ api?: KodexApiClient }> = ({ api: apiClient = 
 interface NewCaseDialogProps {
   open: boolean;
   onClose: () => void;
-  onCreate: (payload: Partial<KodexCaseFull>) => void;
+  onCreate: (payload: Partial<KodexExternalFull>) => void;
 }
 
 const NewCaseDialog: React.FC<NewCaseDialogProps> = ({ open, onClose, onCreate }) => {

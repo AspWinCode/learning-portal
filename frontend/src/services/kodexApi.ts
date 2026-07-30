@@ -34,6 +34,55 @@ export interface KodexCaseFull extends KodexCaseSummary {
 export type KodexCaseCreate = Omit<KodexCaseFull, 'id' | 'created_at' | 'updated_at' | 'created_by_id' | 'status'>;
 export type KodexCaseUpdate = Partial<KodexCaseCreate & { status: string }>;
 
+// ─── External Kodex (kodex.tirskix.space) types ─────────────────────────────
+
+export interface KodexExternalSummary {
+  slug: string;
+  num: string | null;
+  title: string;
+  curator: string | null;
+  rank: number;
+  difficulty: number;
+  playable: boolean;
+  anno: string | null;
+  status: string | null;
+  is_override: boolean;
+  is_seed: boolean;
+}
+
+export interface KodexExternalFull extends KodexExternalSummary {
+  goal: string | null;
+  suspects: string | null;
+  task: string | null;
+  reward_credits: number;
+  reward_rep: number;
+  fn_name: string | null;
+  starter: string | null;
+  briefing: any[];
+  materials: any[];
+  evidence: any[];
+  hints: Record<string, any>;
+  versions: any[];
+  finale: any[];
+}
+
+export const kodexExternalApi = {
+  list: (): Promise<KodexExternalSummary[]> =>
+    api.get('/kodex/cases/external').then((r) => r.data),
+
+  get: (slug: string): Promise<KodexExternalFull> =>
+    api.get(`/kodex/cases/external/${slug}`).then((r) => r.data),
+
+  update: (slug: string, payload: Partial<KodexExternalFull>): Promise<KodexExternalFull> =>
+    api.put(`/kodex/cases/external/${slug}`, payload).then((r) => r.data),
+
+  create: (payload: Partial<KodexExternalFull>): Promise<KodexExternalFull> =>
+    api.put(`/kodex/cases/external/${payload.slug}`, payload).then((r) => r.data),
+
+  delete: (slug: string): Promise<void> =>
+    api.delete(`/kodex/cases/external/${slug}`).then(() => undefined),
+};
+
 export const kodexApi = {
   list: (): Promise<KodexCaseSummary[]> =>
     api.get('/kodex/cases/').then((r) => r.data),

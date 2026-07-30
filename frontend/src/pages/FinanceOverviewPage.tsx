@@ -2727,7 +2727,7 @@ const FinanceOverviewPageContent: React.FC = () => {
                   onChange={(e) => setManualArticleId(e.target.value === '' ? '' : Number(e.target.value))}
                 >
                   <MenuItem value="">Не выбрана</MenuItem>
-                  {articles
+                  {(manualTargetId !== '' ? allArticles.filter((a) => a.target_id === Number(manualTargetId)) : allArticles)
                     .filter((article) => article.direction === manualDirection)
                     .map((article) => (
                       <MenuItem key={article.id} value={article.id}>

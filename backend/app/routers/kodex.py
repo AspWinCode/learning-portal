@@ -31,7 +31,7 @@ def _strip_js_comments(s: str) -> str:
     n = len(s)
     while i < n:
         c = s[i]
-        if c in ('"', "'"):
+        if c in ('"', "'", "`"):
             out.append(c)
             i += 1
             while i < n:
@@ -131,6 +131,45 @@ def _js_to_json(js: str) -> str:
                 else:
                     out.append(c2)
                     i += 1
+        elif c == "`":
+            # Template literal → convert to JSON double-quoted string
+            out.append('"')
+            i += 1
+            while i < n:
+                c2 = s[i]
+                if c2 == "\\" and i + 1 < n:
+                    nc = s[i + 1]
+                    if nc == "`":
+                        out.append("`")
+                    elif nc == '"':
+                        out.append('\\"')
+                    elif nc == "\\":
+                        out.append("\\\\")
+                    elif nc == "n":
+                        out.append("\\n")
+                    elif nc == "r":
+                        out.append("\\r")
+                    elif nc == "t":
+                        out.append("\\t")
+                    else:
+                        out.append("\\")
+                        out.append(nc)
+                    i += 2
+                elif c2 == '"':
+                    out.append('\\"')
+                    i += 1
+                elif c2 == "`":
+                    out.append('"')
+                    i += 1
+                    break
+                elif c2 == "\n":
+                    out.append("\\n")
+                    i += 1
+                elif c2 == "\r":
+                    i += 1
+                else:
+                    out.append(c2)
+                    i += 1
         elif c == ",":
             j = i + 1
             while j < n and s[j] in " \t\r\n":
@@ -154,6 +193,26 @@ def _js_to_json(js: str) -> str:
                 out.append('"')
             else:
                 out.append(identifier)
+            i = j
+        elif c.isdigit():
+            # Could be a numeric value or a numeric object key (JS allows `{ 1: "..." }`)
+            j = i
+            while j < n and s[j].isdigit():
+                j += 1
+            if j < n and s[j] == ".":
+                j += 1
+                while j < n and s[j].isdigit():
+                    j += 1
+            number = s[i:j]
+            k = j
+            while k < n and s[k] in " \t\r\n":
+                k += 1
+            if k < n and s[k] == ":":
+                out.append('"')
+                out.append(number)
+                out.append('"')
+            else:
+                out.append(number)
             i = j
         else:
             out.append(c)

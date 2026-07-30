@@ -85,6 +85,10 @@ DEFAULT_ROLE_PERMISSIONS: Dict[str, Set[str]] = {
         "seo.access",
         "seo.manage",
     },
+    UserRole.METHODIST.value: {
+        "kodex.access",
+        "kodex.manage",
+    },
 }
 
 

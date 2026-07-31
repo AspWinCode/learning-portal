@@ -388,6 +388,125 @@ async def reset_external_case(
 
 VALID_STATUSES = {"draft", "in_review", "approved", "changes_requested"}
 
+# ─── AI draft generation ──────────────────────────────────────────────────────
+
+_ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
+_ANTHROPIC_VERSION = "2023-06-01"
+
+_AI_SYSTEM = """Ты — методист в школе программирования. Создай структуру нового детективного дела для платформы Кодэкс.
+Дело — серия заданий на программирование (Python), оформленная как детективная история.
+
+Верни ТОЛЬКО валидный JSON (без markdown, без пояснений):
+{
+  "slug": "case-xxx",
+  "num": "ДЕЛО-XXX",
+  "title": "Краткое название дела",
+  "curator": "viktor",
+  "anno": "1–2 предложения для карточки студента",
+  "goal": "Цель расследования",
+  "suspects": "Участники / подозреваемые",
+  "task": "Задание для агента (студента)",
+  "difficulty": 1,
+  "rank": 1,
+  "reward_credits": 100,
+  "reward_rep": 10,
+  "fn_name": "solve",
+  "starter": "def solve():\\n    pass",
+  "playable": false,
+  "briefing": [
+    {
+      "curator": "viktor",
+      "body": ["Вводный абзац брифинга", {"code": "# пример кода если нужен"}]
+    }
+  ],
+  "evidence": [
+    {
+      "id": "1",
+      "title": "Название задачи-улики",
+      "fnName": "solve",
+      "starter": "def solve():\\n    pass",
+      "tests": [{"input": [], "expected": null}]
+    }
+  ],
+  "finale": [
+    {"curator": "viktor", "text": "Поздравляю! Дело раскрыто."}
+  ],
+  "hints": {},
+  "versions": [],
+  "materials": []
+}
+
+Правила: slug только a-z 0-9 дефис; difficulty 1/2/3; код Python; пиши по-русски."""
+
+
+def _extract_claude_text(content: Any) -> str:
+    if not isinstance(content, list):
+        return ""
+    return "\n".join(
+        item["text"] for item in content
+        if isinstance(item, dict) and item.get("type") == "text" and isinstance(item.get("text"), str)
+    ).strip()
+
+
+def _parse_json_loose(text: str) -> Optional[dict]:
+    raw = text.strip()
+    if raw.startswith("```"):
+        raw = raw.strip("`").strip()
+        if raw.lower().startswith("json"):
+            raw = raw[4:].strip()
+    try:
+        v = json.loads(raw)
+        return v if isinstance(v, dict) else None
+    except json.JSONDecodeError:
+        s, e = raw.find("{"), raw.rfind("}")
+        if s < 0 or e <= s:
+            return None
+        try:
+            v = json.loads(raw[s:e + 1])
+            return v if isinstance(v, dict) else None
+        except json.JSONDecodeError:
+            return None
+
+
+async def _ai_generate_draft(idea: str) -> dict:
+    api_key = (os.getenv("ANTHROPIC_API_KEY") or "").strip()
+    if not api_key:
+        raise HTTPException(status_code=503, detail="ANTHROPIC_API_KEY не настроен")
+
+    model = (os.getenv("ANTHROPIC_MODEL") or "claude-sonnet-4-6").strip()
+    payload = {
+        "model": model,
+        "max_tokens": 2400,
+        "system": _AI_SYSTEM,
+        "messages": [{"role": "user", "content": f"Идея дела:\n{idea.strip()}"}],
+    }
+    headers = {
+        "x-api-key": api_key,
+        "anthropic-version": _ANTHROPIC_VERSION,
+        "content-type": "application/json",
+    }
+    async with httpx.AsyncClient(timeout=40.0) as client:
+        res = await client.post(_ANTHROPIC_URL, headers=headers, json=payload)
+    if not res.is_success:
+        raise HTTPException(status_code=502, detail=f"AI API error: {res.status_code}")
+
+    text = _extract_claude_text(res.json().get("content"))
+    draft = _parse_json_loose(text)
+    if not draft:
+        raise HTTPException(status_code=502, detail="AI вернул невалидный JSON")
+    return draft
+
+
+@router.post("/ai-draft")
+async def generate_ai_draft(
+    body: Dict[str, Any],
+    current_user: User = Depends(auth.require_permission("kodex.manage")),
+) -> dict:
+    idea = str(body.get("idea") or "").strip()
+    if not idea:
+        raise HTTPException(status_code=422, detail="idea обязательно")
+    return await _ai_generate_draft(idea)
+
 
 def _get_case_or_404(db: Session, case_id: int) -> KodexCase:
     case = db.query(KodexCase).filter(KodexCase.id == case_id).first()

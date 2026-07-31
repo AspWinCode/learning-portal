@@ -29,6 +29,7 @@ import {
 } from '@mui/material';
 import {
   Add as AddIcon,
+  AutoAwesome as AiIcon,
   Delete as DeleteIcon,
   ExpandLess as ExpandLessIcon,
   ExpandMore as ExpandMoreIcon,
@@ -410,6 +411,7 @@ const KodexStudioPage: React.FC<{ api?: KodexApiClient }> = ({ api: apiClient = 
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ msg: string; sev: 'success' | 'error' } | null>(null);
   const [newDialog, setNewDialog] = useState(false);
+  const [aiDialog, setAiDialog] = useState(false);
   const [delConfirm, setDelConfirm] = useState<string | null>(null);
   const [search, setSearch] = useState('');
 
@@ -446,6 +448,7 @@ const KodexStudioPage: React.FC<{ api?: KodexApiClient }> = ({ api: apiClient = 
     try {
       await apiClient.create(payload as any);
       setNewDialog(false);
+      setAiDialog(false);
       await loadCases();
       if (payload.slug) await openCase(payload.slug);
       setToast({ msg: 'Дело создано', sev: 'success' });
@@ -578,7 +581,12 @@ const KodexStudioPage: React.FC<{ api?: KodexApiClient }> = ({ api: apiClient = 
                 ))
               )}
             </Box>
-            <Box sx={{ p: 1.5, borderTop: `1px solid ${K.border}` }}>
+            <Box sx={{ p: 1.5, borderTop: `1px solid ${K.border}`, display: 'flex', flexDirection: 'column', gap: 1 }}>
+              <Button fullWidth variant="outlined" startIcon={<AiIcon sx={{ fontSize: 15 }} />} onClick={() => setAiDialog(true)}
+                sx={{ color: K.cyan, borderColor: 'rgba(53,199,255,0.25)', fontSize: 12, height: 36,
+                  '&:hover': { borderColor: K.cyan, bgcolor: 'rgba(53,199,255,0.06)' } }}>
+                AI Черновик
+              </Button>
               <Button fullWidth variant="outlined" startIcon={<AddIcon />} onClick={() => setNewDialog(true)}
                 sx={{ color: K.neon, borderColor: K.border, fontSize: 12, height: 36, '&:hover': { borderColor: K.neon, bgcolor: 'rgba(0,255,171,0.06)' } }}>
                 Новое дело
@@ -720,6 +728,9 @@ const KodexStudioPage: React.FC<{ api?: KodexApiClient }> = ({ api: apiClient = 
           )}
         </Box>
 
+        {/* ── AI draft dialog ── */}
+        <AiDraftDialog open={aiDialog} onClose={() => setAiDialog(false)} onDraft={createCase} api={apiClient} />
+
         {/* ── New case dialog ── */}
         <NewCaseDialog open={newDialog} onClose={() => setNewDialog(false)} onCreate={createCase} />
 
@@ -754,6 +765,110 @@ const KodexStudioPage: React.FC<{ api?: KodexApiClient }> = ({ api: apiClient = 
 
       </Box>
     </ThemeProvider>
+  );
+};
+
+// ─── AI draft dialog ──────────────────────────────────────────────────────────
+interface AiDraftDialogProps {
+  open: boolean;
+  onClose: () => void;
+  onDraft: (p: Partial<KodexExternalFull>) => void;
+  api: KodexApiClient;
+}
+const AiDraftDialog: React.FC<AiDraftDialogProps> = ({ open, onClose, onDraft, api }) => {
+  const [idea, setIdea] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [preview, setPreview] = useState<Partial<KodexExternalFull> | null>(null);
+  const [err, setErr] = useState('');
+
+  useEffect(() => { if (open) { setIdea(''); setPreview(null); setErr(''); setLoading(false); } }, [open]);
+
+  const generate = async () => {
+    if (!idea.trim()) return;
+    setLoading(true); setErr(''); setPreview(null);
+    try {
+      const draft = await api.aiDraft(idea.trim());
+      setPreview(draft);
+    } catch (e: any) {
+      setErr(e?.response?.data?.detail || 'Ошибка генерации');
+    } finally { setLoading(false); }
+  };
+
+  const save = () => { if (preview) onDraft(preview); };
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle sx={{ color: K.cyan, fontSize: 14, letterSpacing: '0.12em', display: 'flex', alignItems: 'center', gap: 1 }}>
+        <AiIcon sx={{ fontSize: 18 }} /> AI ЧЕРНОВИК ДЕЛА
+      </DialogTitle>
+      <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, pt: 2 }}>
+        <TextField
+          label="Опишите идею дела"
+          multiline rows={4} fullWidth
+          value={idea} onChange={(e) => setIdea(e.target.value)}
+          placeholder="Например: Дело о пропавшей переменной. Студент должен написать функцию, которая находит все неиспользуемые переменные в коде. Сложность — Агент."
+          helperText="Опишите тему, задачу, сложность — AI сгенерирует полную структуру дела"
+        />
+        {err && <Alert severity="error">{err}</Alert>}
+        {preview && (
+          <Box sx={{ border: `1px solid ${K.border}`, borderRadius: 1.5, overflow: 'hidden' }}>
+            <Box sx={{ px: 2, py: 1.5, bgcolor: 'rgba(0,255,171,0.04)', borderBottom: `1px solid ${K.border}`, display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <AiIcon sx={{ fontSize: 14, color: K.neonDim }} />
+              <Typography sx={{ fontSize: 12, color: K.neonDim, fontFamily: K.mono }}>Черновик сгенерирован</Typography>
+              <Box sx={{ flex: 1 }} />
+              <Chip label={preview.num || preview.slug} size="small" sx={{ fontSize: 10, height: 20, color: K.textDim }} />
+            </Box>
+            <Box sx={{ px: 2, py: 2, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+              <Typography sx={{ fontSize: 15, color: K.text, fontWeight: 600 }}>{preview.title}</Typography>
+              {preview.anno && <Typography sx={{ fontSize: 12, color: K.textDim }}>{preview.anno}</Typography>}
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                {preview.difficulty != null && (
+                  <Chip label={DIFFICULTY[preview.difficulty]?.label || `Сложность ${preview.difficulty}`} size="small"
+                    sx={{ fontSize: 10, height: 20, color: DIFFICULTY[preview.difficulty]?.color || K.textDim }} />
+                )}
+                {preview.curator && <Chip label={`Куратор: ${preview.curator}`} size="small" sx={{ fontSize: 10, height: 20, color: K.textDim }} />}
+                {preview.fn_name && <Chip label={`fn: ${preview.fn_name}()`} size="small" sx={{ fontSize: 10, height: 20, color: K.cyan, fontFamily: K.mono }} />}
+                {Array.isArray(preview.briefing) && preview.briefing.length > 0 && (
+                  <Chip label={`Брифинг: ${preview.briefing.length} блок(а)`} size="small" sx={{ fontSize: 10, height: 20, color: K.textDim }} />
+                )}
+                {Array.isArray(preview.evidence) && preview.evidence.length > 0 && (
+                  <Chip label={`Улики: ${preview.evidence.length}`} size="small" sx={{ fontSize: 10, height: 20, color: K.textDim }} />
+                )}
+              </Box>
+              {preview.task && (
+                <Box sx={{ borderLeft: `2px solid ${K.neonDim}`, pl: 1.5 }}>
+                  <Typography sx={{ fontSize: 11, color: K.textFaint, mb: 0.5, letterSpacing: '0.12em' }}>ЗАДАНИЕ</Typography>
+                  <Typography sx={{ fontSize: 12, color: K.textDim }}>{preview.task}</Typography>
+                </Box>
+              )}
+            </Box>
+          </Box>
+        )}
+      </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2, gap: 1 }}>
+        <Button onClick={onClose} sx={{ color: K.textDim }}>Отмена</Button>
+        {!preview ? (
+          <Button onClick={generate} variant="contained" disabled={loading || !idea.trim()}
+            startIcon={loading ? <CircularProgress size={14} color="inherit" /> : <AiIcon sx={{ fontSize: 16 }} />}
+            sx={{ bgcolor: K.cyan, color: '#021520', fontWeight: 700, '&:hover': { bgcolor: '#6dd9ff' }, '&:disabled': { bgcolor: 'rgba(53,199,255,0.3)', color: '#021520' } }}>
+            {loading ? 'Генерирую...' : 'Сгенерировать'}
+          </Button>
+        ) : (
+          <>
+            <Button onClick={generate} disabled={loading}
+              startIcon={loading ? <CircularProgress size={13} color="inherit" /> : <AiIcon sx={{ fontSize: 14 }} />}
+              sx={{ color: K.cyan, fontSize: 12 }}>
+              Перегенерировать
+            </Button>
+            <Button onClick={save} variant="contained"
+              startIcon={<SaveIcon sx={{ fontSize: 16 }} />}
+              sx={{ bgcolor: K.neon, color: '#04140f', fontWeight: 700, '&:hover': { bgcolor: K.neonSoft } }}>
+              Создать дело
+            </Button>
+          </>
+        )}
+      </DialogActions>
+    </Dialog>
   );
 };
 

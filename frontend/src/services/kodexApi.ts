@@ -81,6 +81,9 @@ export const kodexExternalApi = {
 
   delete: (slug: string): Promise<void> =>
     api.delete(`/kodex/cases/external/${slug}`).then(() => undefined),
+
+  aiDraft: (idea: string): Promise<Partial<KodexExternalFull>> =>
+    api.post('/kodex/cases/ai-draft', { idea }).then((r) => r.data),
 };
 
 export const kodexApi = {

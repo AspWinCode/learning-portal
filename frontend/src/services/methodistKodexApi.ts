@@ -16,4 +16,7 @@ export const methodistKodexApi = {
 
   delete: (slug: string): Promise<void> =>
     methodistStudioClient.delete(`/kodex/cases/external/${slug}`).then(() => undefined),
+
+  aiDraft: (idea: string): Promise<any> =>
+    methodistStudioClient.post('/kodex/cases/ai-draft', { idea }).then((r) => r.data),
 };

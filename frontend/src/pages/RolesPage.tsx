@@ -31,11 +31,12 @@ import type { PermissionCatalogItem, Role, User } from '../types';
 import { extractApiError } from '../utils/extractApiError';
 import { getEffectiveRole, hasPermission } from '../utils/permissions';
 
-const BASE_ROLE_OPTIONS: Array<Role['base_role']> = ['owner', 'admin', 'sales', 'seo_manager', 'methodist', 'trainer', 'parent', 'guest'];
+const BASE_ROLE_OPTIONS: Array<Role['base_role']> = ['owner', 'admin', 'developer', 'sales', 'seo_manager', 'methodist', 'trainer', 'parent', 'guest'];
 
 const BASE_ROLE_LABELS: Record<Role['base_role'], string> = {
   owner: 'Владелец',
   admin: 'Администратор',
+  developer: 'Разработчик',
   sales: 'Продажи',
   seo_manager: 'SEO-менеджер',
   methodist: 'Методист',

@@ -27,6 +27,7 @@ const STATUS_COLORS: Record<string, 'success' | 'default'> = {
 };
 
 const ROLE_LABELS: Record<string, string> = {
+  developer: 'Разработчик',
   trainer: 'Тренер',
   sales: 'Менеджер продаж',
   methodist: 'Методист',

@@ -16,10 +16,10 @@ export interface User {
   person_id?: number | null;
   email: string;
   full_name: string;
-  role: 'admin' | 'owner' | 'trainer' | 'parent' | 'guest' | 'sales' | 'seo_manager' | 'methodist';
+  role: 'admin' | 'owner' | 'trainer' | 'parent' | 'guest' | 'sales' | 'seo_manager' | 'methodist' | 'developer';
   custom_role_id?: number | null;
   custom_role_name?: string | null;
-  effective_role?: 'admin' | 'owner' | 'trainer' | 'parent' | 'guest' | 'sales' | 'seo_manager' | 'methodist' | null;
+  effective_role?: 'admin' | 'owner' | 'trainer' | 'parent' | 'guest' | 'sales' | 'seo_manager' | 'methodist' | 'developer' | null;
   role_permissions?: string[];
   is_active: boolean;
   created_at: string;
@@ -45,7 +45,7 @@ export interface Role {
   key: string;
   name: string;
   description?: string | null;
-  base_role: 'admin' | 'owner' | 'trainer' | 'parent' | 'guest' | 'sales' | 'seo_manager' | 'methodist';
+  base_role: 'admin' | 'owner' | 'trainer' | 'parent' | 'guest' | 'sales' | 'seo_manager' | 'methodist' | 'developer';
   permissions: string[];
   is_system: boolean;
   is_active: boolean;

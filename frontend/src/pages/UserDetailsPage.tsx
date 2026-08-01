@@ -29,6 +29,7 @@ const roleLabel = (value?: string | null): string => {
   if (value === 'guest') return 'Гость';
   if (value === 'seo_manager') return 'SEO-менеджер';
   if (value === 'methodist') return 'Методист';
+  if (value === 'developer') return 'Разработчик';
   return value;
 };
 

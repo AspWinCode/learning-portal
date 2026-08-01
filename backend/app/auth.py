@@ -89,6 +89,13 @@ DEFAULT_ROLE_PERMISSIONS: Dict[str, Set[str]] = {
         "kodex.access",
         "kodex.manage",
     },
+    UserRole.DEVELOPER.value: {
+        "agile.access",
+        "agile.manage",
+        "tasks.access",
+        "projects.access",
+        "owner_workspace.access",
+    },
 }
 
 # Роли с постоянным agile-доступом (admin/owner имеют '*', поэтому не нужны здесь явно)

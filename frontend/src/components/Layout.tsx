@@ -377,6 +377,16 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const canAccessAgile = hasPermission(user, 'agile.access');
 
   const effectiveMenuItems = (() => {
+    if (role === 'developer')
+      return [
+        { text: 'IT-проекты', icon: <RocketLaunch />, path: '/agile' },
+        { text: 'Задачи', icon: <Assignment />, path: '/tasks' },
+        { text: 'Проекты', icon: <Assignment />, path: '/projects' },
+        { text: 'Таск трекер', icon: <Assignment />, path: '/owner-workspace/projects' },
+        { text: 'Диск', icon: <Folder />, path: '/disk' },
+        ...(canAccessPasswords ? [{ text: 'Пароли', icon: <Lock />, path: '/passwords' }] : []),
+        ...(canAccessNotes ? [{ text: 'Заметки', icon: <EditNoteIcon />, path: '/notes' }] : []),
+      ];
     if (role === 'guest') return [{ text: 'Программы', icon: <Book />, path: '/programs' }];
     if (role === 'parent')
       return [

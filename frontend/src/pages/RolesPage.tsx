@@ -12,6 +12,8 @@ import {
   DialogTitle,
   Divider,
   FormControlLabel,
+  IconButton,
+  Menu,
   MenuItem,
   Paper,
   Stack,
@@ -21,8 +23,10 @@ import {
   TableHead,
   TableRow,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
+import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 
 import Layout from '../components/Layout';
 import { useAuth } from '../contexts/AuthContext';
@@ -75,6 +79,53 @@ const PERMISSION_MODULE_LABELS: Record<string, string> = {
   telegram: 'Telegram',
   trainer_cockpit: 'Кабинет преподавателя',
   users: 'Пользователи',
+};
+
+// Компонент для отображения и редактирования дополнительных ролей пользователя
+const ExtraRolesCell: React.FC<{
+  user: User;
+  busy: boolean;
+  canManage: boolean;
+  roleLabels: Record<string, string>;
+  roleOptions: string[];
+  onAdd: (user: User, role: string) => void;
+  onRemove: (user: User, role: string) => void;
+}> = ({ user, busy, canManage, roleLabels, roleOptions, onAdd, onRemove }) => {
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const extra = user.extra_roles || [];
+  const available = roleOptions.filter(r => r !== user.role && !extra.includes(r) && r !== 'owner' && r !== 'admin');
+
+  return (
+    <Box sx={{ mt: 0.5, display: 'flex', flexWrap: 'wrap', gap: 0.4, alignItems: 'center', minHeight: 24 }}>
+      {extra.map(r => (
+        <Chip
+          key={r}
+          label={roleLabels[r] || r}
+          size="small"
+          variant="outlined"
+          color="info"
+          onDelete={canManage && !busy ? () => onRemove(user, r) : undefined}
+          sx={{ fontSize: 10, height: 20 }}
+        />
+      ))}
+      {canManage && available.length > 0 && (
+        <>
+          <Tooltip title="Добавить роль">
+            <IconButton size="small" disabled={busy} onClick={e => setAnchorEl(e.currentTarget)} sx={{ p: 0.2 }}>
+              <AddCircleOutlineIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
+            </IconButton>
+          </Tooltip>
+          <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={() => setAnchorEl(null)}>
+            {available.map(r => (
+              <MenuItem key={r} dense onClick={() => { setAnchorEl(null); onAdd(user, r); }}>
+                {roleLabels[r] || r}
+              </MenuItem>
+            ))}
+          </Menu>
+        </>
+      )}
+    </Box>
+  );
 };
 
 type RoleFormState = {
@@ -327,6 +378,35 @@ const RolesPage: React.FC = () => {
     await updateUserRoleAssignment(targetUser, nextBaseRole as Role['base_role'], nextCustomRoleIdRaw);
   };
 
+  const handleAddExtraRole = async (targetUser: User, newRole: string) => {
+    const current = targetUser.extra_roles || [];
+    if (current.includes(newRole)) return;
+    setUpdatingUserId(targetUser.id);
+    try {
+      await usersApi.update(targetUser.id, { extra_roles: [...current, newRole] } as any);
+      setSuccess(`Дополнительная роль добавлена.`);
+      await loadData();
+    } catch (err: unknown) {
+      setError(extractApiError(err, 'Не удалось обновить роли.'));
+    } finally {
+      setUpdatingUserId(null);
+    }
+  };
+
+  const handleRemoveExtraRole = async (targetUser: User, roleToRemove: string) => {
+    const current = targetUser.extra_roles || [];
+    setUpdatingUserId(targetUser.id);
+    try {
+      await usersApi.update(targetUser.id, { extra_roles: current.filter(r => r !== roleToRemove) } as any);
+      setSuccess(`Дополнительная роль удалена.`);
+      await loadData();
+    } catch (err: unknown) {
+      setError(extractApiError(err, 'Не удалось обновить роли.'));
+    } finally {
+      setUpdatingUserId(null);
+    }
+  };
+
   const handleToggleUserActive = async (targetUser: User) => {
     setUpdatingUserId(targetUser.id);
     try {
@@ -408,11 +488,11 @@ const RolesPage: React.FC = () => {
           </Alert>
         )}
 
-        <Paper sx={{ p: 2 }}>
+        <Paper sx={{ p: 2, overflowX: 'auto' }}>
           <Typography variant="h6" mb={1}>
             Каталог ролей
           </Typography>
-          <Table size="small">
+          <Table size="small" sx={{ minWidth: 700 }}>
             <TableHead>
               <TableRow>
                 <TableCell>Название</TableCell>
@@ -483,14 +563,14 @@ const RolesPage: React.FC = () => {
         </Paper>
 
         {canViewUsers && (
-          <Paper sx={{ p: 2 }}>
+          <Paper sx={{ p: 2, overflowX: 'auto' }}>
             <Typography variant="h6" mb={1}>
               Пользователи и роли
             </Typography>
             <Typography variant="body2" color="text.secondary" mb={2}>
               Здесь владелец задает базовую роль пользователя, назначает подходящую кастомную роль и управляет архивом.
             </Typography>
-            <Table size="small">
+            <Table size="small" sx={{ minWidth: 800 }}>
               <TableHead>
                 <TableRow>
                   <TableCell>Пользователь</TableCell>
@@ -529,7 +609,7 @@ const RolesPage: React.FC = () => {
                           {targetUser.email}
                         </Typography>
                       </TableCell>
-                      <TableCell sx={{ minWidth: 180 }}>
+                      <TableCell sx={{ minWidth: 220 }}>
                         <TextField
                           select
                           size="small"
@@ -546,6 +626,16 @@ const RolesPage: React.FC = () => {
                             </MenuItem>
                           ))}
                         </TextField>
+                        {/* Дополнительные роли */}
+                        <ExtraRolesCell
+                          user={targetUser}
+                          busy={isBusy}
+                          canManage={!!canManageUsers}
+                          onAdd={handleAddExtraRole}
+                          onRemove={handleRemoveExtraRole}
+                          roleLabels={BASE_ROLE_LABELS}
+                          roleOptions={manageableBaseRoleOptions}
+                        />
                       </TableCell>
                       <TableCell sx={{ minWidth: 280 }}>
                         <TextField

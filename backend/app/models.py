@@ -1,4 +1,5 @@
 from sqlalchemy import Column, Integer, BigInteger, String, Boolean, DateTime, Date, Time, ForeignKey, Text, Float, Numeric, Enum as SQLEnum, JSON, UniqueConstraint, LargeBinary
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from sqlalchemy.types import TypeDecorator
@@ -179,6 +180,7 @@ class User(Base):
     work_schedule = Column(Text, nullable=True)
     qualification = Column(Text, nullable=True)
     trainer_comment = Column(Text, nullable=True)
+    extra_roles = Column(postgresql.ARRAY(String(32)), nullable=False, server_default='{}', default=list)
 
     # Relationships
     person = relationship("Person", back_populates="users", foreign_keys=[person_id])

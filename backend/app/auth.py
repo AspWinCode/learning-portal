@@ -337,10 +337,17 @@ def get_user_permissions(user: User) -> Set[str]:
     explicit_permissions = _normalize_permission_values(getattr(user, "role_permissions", []))
     custom_role = getattr(user, "custom_role", None)
 
-    if custom_role and getattr(custom_role, "is_active", False):
-        return explicit_permissions or default_permissions
+    # Collect permissions from extra base roles
+    extra_roles = getattr(user, "extra_roles", None) or []
+    extra_permissions: Set[str] = set()
+    for extra_role in extra_roles:
+        extra_permissions |= set(DEFAULT_ROLE_PERMISSIONS.get(str(extra_role), set()))
 
-    return default_permissions | explicit_permissions
+    if custom_role and getattr(custom_role, "is_active", False):
+        base = explicit_permissions or default_permissions
+        return base | extra_permissions
+
+    return default_permissions | explicit_permissions | extra_permissions
 
 
 def has_permission(user: User, permission: str) -> bool:

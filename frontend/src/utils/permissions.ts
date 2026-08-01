@@ -24,11 +24,17 @@ export const getUserPermissions = (user: User | null | undefined): string[] => {
   const defaults = effectiveRole ? DEFAULT_ROLE_PERMISSIONS[effectiveRole] || [] : [];
   const explicitPermissions = (user.role_permissions || []).map((permission) => permission.trim()).filter(Boolean);
 
+  // Extra base roles
+  const extraPerms: string[] = (user.extra_roles || []).flatMap(
+    (r) => DEFAULT_ROLE_PERMISSIONS[r] || []
+  );
+
   if (user.custom_role_id) {
-    return explicitPermissions.length ? Array.from(new Set(explicitPermissions)) : Array.from(new Set(defaults));
+    const base = explicitPermissions.length ? explicitPermissions : defaults;
+    return Array.from(new Set([...base, ...extraPerms]));
   }
 
-  return Array.from(new Set([...defaults, ...explicitPermissions]));
+  return Array.from(new Set([...defaults, ...explicitPermissions, ...extraPerms]));
 };
 
 export const hasPermission = (user: User | null | undefined, permission: string): boolean => {

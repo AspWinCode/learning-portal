@@ -17,6 +17,7 @@ export interface User {
   email: string;
   full_name: string;
   role: 'admin' | 'owner' | 'trainer' | 'parent' | 'guest' | 'sales' | 'seo_manager' | 'methodist' | 'developer';
+  extra_roles?: string[];
   custom_role_id?: number | null;
   custom_role_name?: string | null;
   effective_role?: 'admin' | 'owner' | 'trainer' | 'parent' | 'guest' | 'sales' | 'seo_manager' | 'methodist' | 'developer' | null;

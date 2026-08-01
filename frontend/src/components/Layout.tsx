@@ -94,6 +94,50 @@ const NAV_GROUPS: Array<{ id: string; label: string; paths: Set<string> }> = [
   { id: 'system', label: '⚙️ Администрирование', paths: new Set(['/admin/settings', '/settings/communications', '/roles', '/reports']) },
 ];
 
+// Метки базовых ролей для заголовков секций навбара
+const BASE_ROLE_SECTION_LABELS: Record<string, string> = {
+  developer: '💻 Разработчик',
+  trainer: '🎓 Преподаватель',
+  sales: '📊 Менеджер продаж',
+  seo_manager: '🌐 SEO',
+  methodist: '📚 Методист',
+  admin: '⚙️ Администратор',
+  owner: '👑 Владелец',
+  parent: '👪 Родитель',
+};
+
+// Статические пункты меню для каждой базовой роли (используются для доп. ролей пользователя)
+const EXTRA_ROLE_NAV_ITEMS: Record<string, Array<{ text: string; icon: React.ReactNode; path: string }>> = {
+  developer: [
+    { text: 'IT-проекты', icon: <RocketLaunch sx={{ fontSize: 18 }} />, path: '/agile' },
+    { text: 'Задачи', icon: <Assignment sx={{ fontSize: 18 }} />, path: '/tasks' },
+    { text: 'Таск трекер', icon: <Assignment sx={{ fontSize: 18 }} />, path: '/owner-workspace/projects' },
+    { text: 'Диск', icon: <Folder sx={{ fontSize: 18 }} />, path: '/disk' },
+  ],
+  trainer: [
+    { text: 'Кокпит тренера', icon: <Bolt sx={{ fontSize: 18 }} />, path: '/trainer-cockpit' },
+    { text: 'Ученики', icon: <People sx={{ fontSize: 18 }} />, path: '/students' },
+    { text: 'Уроки', icon: <EventAvailable sx={{ fontSize: 18 }} />, path: '/lessons' },
+    { text: 'Программы', icon: <Book sx={{ fontSize: 18 }} />, path: '/programs' },
+    { text: 'Задачи', icon: <Assignment sx={{ fontSize: 18 }} />, path: '/tasks' },
+  ],
+  sales: [
+    { text: 'Ученики', icon: <People sx={{ fontSize: 18 }} />, path: '/students' },
+    { text: 'Лиды', icon: <WorkOutline sx={{ fontSize: 18 }} />, path: '/sales/leads' },
+    { text: 'Оплаты', icon: <ReceiptLong sx={{ fontSize: 18 }} />, path: '/finance/payments' },
+    { text: 'Задачи', icon: <Assignment sx={{ fontSize: 18 }} />, path: '/tasks' },
+  ],
+  seo_manager: [
+    { text: 'Страницы сайта', icon: <Description sx={{ fontSize: 18 }} />, path: '/seo/pages' },
+    { text: 'Блог', icon: <RssFeed sx={{ fontSize: 18 }} />, path: '/blog/posts' },
+    { text: 'Публикация', icon: <RocketLaunch sx={{ fontSize: 18 }} />, path: '/seo/publish' },
+  ],
+  methodist: [
+    { text: 'Методист хаб', icon: <School sx={{ fontSize: 18 }} />, path: '/methodist-hub' },
+    { text: 'Kodex Studio', icon: <EditNoteIcon sx={{ fontSize: 18 }} />, path: '/kodex' },
+  ],
+};
+
 interface LayoutProps {
   children: React.ReactNode;
 }
@@ -549,6 +593,19 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
     return removeDuplicateContentTitle(children, appBarPageTitle, { current: false });
   }, [appBarPageTitle, children, isPwaNavigation]);
 
+  // Секции навбара для дополнительных ролей пользователя
+  const extraRoleSections = React.useMemo(() => {
+    const extra = (user?.extra_roles || []).filter(r => EXTRA_ROLE_NAV_ITEMS[r]);
+    return extra.map(r => ({
+      id: `extra-${r}`,
+      label: BASE_ROLE_SECTION_LABELS[r] || r,
+      items: (EXTRA_ROLE_NAV_ITEMS[r] || []).filter(
+        item => !visibleMenuItems.some(m => m.path === item.path)
+      ),
+    })).filter(s => s.items.length > 0);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.extra_roles, visibleMenuItems.map(i => i.path).join(',')]);
+
   const allGroupedPaths = new Set(NAV_GROUPS.flatMap(g => [...g.paths]));
   const grouped = NAV_GROUPS.map(g => {
     const pathOrder = new Map([...g.paths].map((path, index) => [path, index]));
@@ -677,6 +734,36 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
 
             <Collapse in={sidebarCollapsed || isGroupOpen(g.id)} timeout={160} unmountOnExit>
               {g.items.map(item => navItem(item, !sidebarCollapsed))}
+            </Collapse>
+          </Box>
+        ))}
+
+        {/* Секции дополнительных ролей */}
+        {extraRoleSections.map(s => (
+          <Box key={s.id}>
+            <Box sx={{ mx: 1, my: 0.5, height: '1px', bgcolor: SIDEBAR_BORDER }} />
+            {!sidebarCollapsed ? (
+              <ListItemButton
+                onClick={(event) => {
+                  const scrollNode = event.currentTarget.closest('[data-sidebar-scroll]') as HTMLElement | null;
+                  saveSidebarScroll(scrollNode);
+                  toggleGroup(s.id);
+                }}
+                sx={{ py: 0.4, px: 1.5, mb: 0.25, borderRadius: 1.5, '&:hover': { bgcolor: SIDEBAR_ITEM_HO } }}
+              >
+                <ListItemText
+                  primary={s.label}
+                  primaryTypographyProps={{ fontSize: '0.68rem', fontWeight: 700, color: SIDEBAR_TEXT_DIM, textTransform: 'uppercase', letterSpacing: '0.08em' }}
+                />
+                {isGroupOpen(s.id)
+                  ? <ExpandLess sx={{ fontSize: 14, color: SIDEBAR_TEXT_DIM }} />
+                  : <ExpandMore sx={{ fontSize: 14, color: SIDEBAR_TEXT_DIM }} />}
+              </ListItemButton>
+            ) : (
+              <Box sx={{ mx: 1, my: 0.75, height: '1px', bgcolor: SIDEBAR_BORDER }} />
+            )}
+            <Collapse in={sidebarCollapsed || isGroupOpen(s.id)} timeout={160} unmountOnExit>
+              {s.items.map(item => navItem(item, !sidebarCollapsed))}
             </Collapse>
           </Box>
         ))}

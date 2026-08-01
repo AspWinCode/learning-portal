@@ -342,24 +342,34 @@ const AgileProjectPage: React.FC = () => {
 
   // ── участники ────────────────────────────────────────────────────────────
 
-  const searchMemberSearchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [allUsers, setAllUsers] = useState<any[]>([]);
 
-  const handleMemberSearchChange = (value: string) => {
-    setMemberSearch(value);
-    if (searchMemberSearchRef.current) clearTimeout(searchMemberSearchRef.current);
-    if (!value.trim()) { setMemberSearchResults([]); return; }
-    searchMemberSearchRef.current = setTimeout(async () => {
+  const handleOpenAddMember = async () => {
+    setAddMemberOpen(true);
+    if (allUsers.length === 0) {
       setMemberSearchLoading(true);
       try {
-        const res = await api.get('/api/users/', { params: { search: value, limit: 20 } });
-        const existing = new Set(members.map((m: any) => m.user_id));
-        setMemberSearchResults((res.data?.items || res.data || []).filter((u: any) => !existing.has(u.id)));
+        const res = await api.get('/api/users/', { params: { limit: 200 } });
+        setAllUsers(res.data?.items || res.data || []);
       } catch {
-        setMemberSearchResults([]);
+        setAllUsers([]);
       } finally {
         setMemberSearchLoading(false);
       }
-    }, 300);
+    }
+  };
+
+  const handleMemberSearchChange = (value: string) => {
+    setMemberSearch(value);
+    if (!value.trim()) { setMemberSearchResults([]); return; }
+    const q = value.toLowerCase();
+    const existing = new Set(members.map((m: any) => m.user_id));
+    setMemberSearchResults(
+      allUsers.filter((u: any) =>
+        !existing.has(u.id) &&
+        ((u.full_name || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q))
+      ).slice(0, 10)
+    );
   };
 
   const handleAddMember = async (userId: number) => {
@@ -748,7 +758,7 @@ const AgileProjectPage: React.FC = () => {
   const TeamTab = () => (
     <Box>
       {canManage && (
-        <Button size="small" startIcon={<PersonAddIcon />} onClick={() => setAddMemberOpen(true)} sx={{ mb: 2 }}>
+        <Button size="small" startIcon={<PersonAddIcon />} onClick={handleOpenAddMember} sx={{ mb: 2 }}>
           Добавить участника
         </Button>
       )}
@@ -1055,7 +1065,7 @@ const AgileProjectPage: React.FC = () => {
       {/* ── Диалог добавления участника ── */}
       <Dialog
         open={addMemberOpen}
-        onClose={() => { setAddMemberOpen(false); setMemberSearch(''); setMemberSearchResults([]); }}
+        onClose={() => { setAddMemberOpen(false); setMemberSearch(''); setMemberSearchResults([]); setAllUsers([]); }}
         maxWidth="sm" fullWidth
       >
         <DialogTitle>Добавить участника</DialogTitle>
@@ -1107,7 +1117,7 @@ const AgileProjectPage: React.FC = () => {
           </TextField>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => { setAddMemberOpen(false); setMemberSearch(''); setMemberSearchResults([]); }}>
+          <Button onClick={() => { setAddMemberOpen(false); setMemberSearch(''); setMemberSearchResults([]); setAllUsers([]); }}>
             Отмена
           </Button>
         </DialogActions>

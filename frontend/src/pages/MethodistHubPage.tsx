@@ -2,47 +2,28 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
+  Card,
+  CardActionArea,
+  CardContent,
   Chip,
   CircularProgress,
-  createTheme,
   Divider,
-  ThemeProvider,
+  Grid,
   Typography,
 } from '@mui/material';
-import { Shield as ShieldIcon } from '@mui/icons-material';
+import {
+  Shield as ShieldIcon,
+  SportsEsports as GameIcon,
+  School as SchoolIcon,
+  MenuBook as BookIcon,
+  Add as AddIcon,
+  CheckCircleOutline as CheckIcon,
+  RateReview as ReviewIcon,
+  EditNote as DraftIcon,
+  ErrorOutline as ErrorIcon,
+} from '@mui/icons-material';
+import Layout from '../components/Layout';
 import { kodexExternalApi, KodexExternalSummary } from '../services/kodexApi';
-
-const K = {
-  void: '#05070a',
-  surface: '#0d1117',
-  surfaceUp: '#131a21',
-  border: 'rgba(0,255,171,0.14)',
-  neon: '#00ffab',
-  neonDim: '#00c98a',
-  cyan: '#35c7ff',
-  danger: '#ff3d54',
-  warning: '#f59e0b',
-  text: '#ddeae7',
-  textDim: '#7a9490',
-  textFaint: '#3e5450',
-  mono: '"JetBrains Mono","SFMono-Regular",Consolas,monospace',
-};
-
-const theme = createTheme({
-  palette: {
-    mode: 'dark',
-    primary: { main: K.neon },
-    background: { default: K.void, paper: K.surface },
-    text: { primary: K.text, secondary: K.textDim },
-    divider: K.border,
-  },
-  typography: { fontFamily: K.mono, fontSize: 13 },
-  shape: { borderRadius: 6 },
-  components: {
-    MuiPaper: { styleOverrides: { root: { backgroundImage: 'none' } } },
-    MuiChip: { styleOverrides: { root: { fontFamily: K.mono } } },
-  },
-});
 
 interface Direction {
   id: string;
@@ -50,55 +31,66 @@ interface Direction {
   desc: string;
   icon: React.ReactNode;
   status: 'live' | 'soon' | 'planned';
-  accentBg: string;
-  accentColor: string;
+  color: 'primary' | 'warning' | 'info' | 'secondary' | 'default';
   route?: string;
 }
 
 const DIRECTIONS: Direction[] = [
   {
-    id: 'kodex', name: 'Кодэкс',
+    id: 'kodex',
+    name: 'Кодэкс',
     desc: 'Детективные дела на программирование. Брифинг, улики, финал.',
-    icon: <ShieldIcon sx={{ fontSize: 20 }} />,
-    status: 'live', accentBg: 'rgba(0,255,171,0.1)', accentColor: K.neon, route: '/kodex',
+    icon: <ShieldIcon />,
+    status: 'live',
+    color: 'primary',
+    route: '/kodex',
   },
   {
-    id: 'game', name: 'Гейм Студия',
+    id: 'game',
+    name: 'Гейм Студия',
     desc: 'Интерактивные игровые сценарии и обучающие механики.',
-    icon: <span style={{ fontFamily: K.mono, fontSize: 18, lineHeight: 1 }}>⬡</span>,
-    status: 'soon', accentBg: 'rgba(245,158,11,0.08)', accentColor: K.warning,
+    icon: <GameIcon />,
+    status: 'soon',
+    color: 'warning',
   },
   {
-    id: 'oge', name: 'ОГЭ / ЕГЭ',
+    id: 'oge',
+    name: 'ОГЭ / ЕГЭ',
     desc: 'Тестовые задания и разборы по информатике и математике.',
-    icon: <span style={{ fontFamily: K.mono, fontSize: 16, lineHeight: 1 }}>∑</span>,
-    status: 'soon', accentBg: 'rgba(53,199,255,0.08)', accentColor: K.cyan,
+    icon: <SchoolIcon />,
+    status: 'soon',
+    color: 'info',
   },
   {
-    id: 'courses', name: 'Учебные курсы',
+    id: 'courses',
+    name: 'Учебные курсы',
     desc: 'Уроки, теория, домашние задания по программам обучения.',
-    icon: <span style={{ fontFamily: K.mono, fontSize: 18, lineHeight: 1 }}>◈</span>,
-    status: 'soon', accentBg: 'rgba(167,139,250,0.08)', accentColor: '#a78bfa',
+    icon: <BookIcon />,
+    status: 'soon',
+    color: 'secondary',
   },
   {
-    id: 'new', name: 'Новое направление',
+    id: 'new',
+    name: 'Новое направление',
     desc: 'Подключается по запросу. Собственный редактор контента.',
-    icon: <span style={{ fontFamily: K.mono, fontSize: 20, lineHeight: 1, color: K.textFaint }}>+</span>,
-    status: 'planned', accentBg: 'transparent', accentColor: K.textFaint,
+    icon: <AddIcon />,
+    status: 'planned',
+    color: 'default',
   },
 ];
 
-const STATUS_CHIP = {
-  live: { label: 'Подключено', color: K.neonDim, bg: 'rgba(0,201,138,0.12)' },
-  soon: { label: 'Скоро', color: K.warning, bg: 'rgba(245,158,11,0.1)' },
-  planned: { label: 'Планируется', color: K.textFaint, bg: 'rgba(62,84,80,0.2)' },
+const STATUS_CHIP: Record<Direction['status'], { label: string; color: 'success' | 'warning' | 'default' }> = {
+  live: { label: 'Подключено', color: 'success' },
+  soon: { label: 'Скоро', color: 'warning' },
+  planned: { label: 'Планируется', color: 'default' },
 };
 
-const SL: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <Typography sx={{ fontSize: 10, letterSpacing: '0.2em', color: K.textFaint, mb: 1.5, textTransform: 'uppercase' }}>
-    {children}
-  </Typography>
-);
+const STATUS_META: Record<string, { label: string; color: 'default' | 'info' | 'success' | 'error' }> = {
+  draft: { label: 'Черновик', color: 'default' },
+  in_review: { label: 'Ревью', color: 'info' },
+  approved: { label: 'Активно', color: 'success' },
+  changes_requested: { label: 'Правки', color: 'error' },
+};
 
 export default function MethodistHubPage() {
   const navigate = useNavigate();
@@ -120,192 +112,291 @@ export default function MethodistHubPage() {
   const drafts = cases.filter((c) => !c.status || c.status === 'draft').length;
 
   const recentChanged = cases.filter((c) => c.is_override).slice(0, 5);
-  const needAttention = cases.filter((c) => c.status === 'changes_requested' || c.status === 'in_review').slice(0, 5);
+  const needAttention = cases.filter(
+    (c) => c.status === 'changes_requested' || c.status === 'in_review',
+  ).slice(0, 5);
 
-  const statusMeta: Record<string, { label: string; color: string }> = {
-    draft: { label: 'Черновик', color: K.textDim },
-    in_review: { label: 'Ревью', color: K.cyan },
-    approved: { label: 'Активно', color: K.neonDim },
-    changes_requested: { label: 'Правки', color: K.danger },
-  };
+  const stats = [
+    {
+      label: 'Направлений',
+      value: '1 / 5',
+      sub: 'подключено',
+      icon: <CheckIcon fontSize="small" color="success" />,
+    },
+    {
+      label: 'Контент всего',
+      value: loading ? '…' : total,
+      sub: 'дел, задач, тем',
+      icon: <DraftIcon fontSize="small" color="action" />,
+    },
+    {
+      label: 'На проверке',
+      value: loading ? '…' : inReview,
+      sub: 'ждут ревью',
+      icon: <ReviewIcon fontSize="small" color="info" />,
+    },
+    {
+      label: 'Нужны правки',
+      value: loading ? '…' : attention,
+      sub: 'по замечаниям',
+      icon: <ErrorIcon fontSize="small" color={attention > 0 ? 'error' : 'disabled'} />,
+    },
+  ];
 
   return (
-    <ThemeProvider theme={theme}>
-      <Box sx={{ minHeight: '100vh', bgcolor: K.void, overflowY: 'auto' }}>
-        <Box sx={{ maxWidth: 900, mx: 'auto', px: 4, py: 4, display: 'flex', flexDirection: 'column', gap: 4 }}>
+    <Layout>
+      <Box sx={{ maxWidth: 960, mx: 'auto' }}>
+        {/* Page header */}
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="h5">Студия методиста</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            Управление учебными направлениями платформы
+          </Typography>
+        </Box>
 
-          {/* Header */}
-          <Box>
-            <Typography sx={{ fontFamily: K.mono, fontWeight: 700, letterSpacing: '0.18em', color: K.text, fontSize: 16 }}>
-              СТУДИЯ МЕТОДИСТА
-            </Typography>
-            <Typography sx={{ fontSize: 12, color: K.textFaint, letterSpacing: '0.15em', mt: 0.5 }}>
-              Управление учебными направлениями
-            </Typography>
-          </Box>
+        {/* Stats row */}
+        <Grid container spacing={2} sx={{ mb: 3 }}>
+          {stats.map((s) => (
+            <Grid item xs={12} sm={6} md={3} key={s.label}>
+              <Card variant="outlined">
+                <CardContent sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
+                  <Box sx={{ mt: 0.25 }}>{s.icon}</Box>
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">{s.label}</Typography>
+                    <Typography variant="h4" sx={{ lineHeight: 1.2, my: 0.25 }}>{s.value}</Typography>
+                    <Typography variant="caption" color="text.secondary">{s.sub}</Typography>
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
 
-          {/* Stats */}
-          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1.5 }}>
-            {[
-              { label: 'Направлений', value: '1 / 5', sub: 'подключено', color: undefined },
-              { label: 'Контент всего', value: loading ? '…' : total, sub: 'дел, задач, тем', color: undefined },
-              { label: 'На проверке', value: loading ? '…' : inReview, sub: 'ждут ревью', color: inReview > 0 ? K.cyan : undefined },
-              { label: 'Нужны правки', value: loading ? '…' : attention, sub: 'по замечаниям', color: attention > 0 ? K.danger : undefined },
-            ].map((s) => (
-              <Box key={s.label} sx={{ bgcolor: K.surfaceUp, borderRadius: 1.5, p: '14px 16px', border: `1px solid ${K.border}` }}>
-                <Typography sx={{ fontSize: 11, color: K.textDim, mb: 0.5 }}>{s.label}</Typography>
-                <Typography sx={{ fontSize: 22, fontWeight: 700, color: s.color || K.text, lineHeight: 1.2 }}>{s.value}</Typography>
-                <Typography sx={{ fontSize: 11, color: K.textFaint, mt: 0.5 }}>{s.sub}</Typography>
+        {/* Pipeline */}
+        {!loading && total > 0 && (
+          <Card variant="outlined" sx={{ mb: 3 }}>
+            <CardContent>
+              <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
+                Воронка по статусам — Кодэкс
+              </Typography>
+              <Box sx={{ display: 'flex', gap: '3px', height: 8, borderRadius: 999, overflow: 'hidden', bgcolor: 'action.hover' }}>
+                <Box sx={{ width: `${(active / total) * 100}%`, bgcolor: 'success.main', borderRadius: 999 }} />
+                <Box sx={{ width: `${(inReview / total) * 100}%`, bgcolor: 'info.main', borderRadius: 999 }} />
+                <Box sx={{ width: `${(attention / total) * 100}%`, bgcolor: 'error.main', borderRadius: 999 }} />
               </Box>
-            ))}
-          </Box>
-
-          {/* Pipeline */}
-          {!loading && total > 0 && (
-            <Box>
-              <SL>Воронка по статусам — Кодэкс</SL>
-              <Box sx={{ display: 'flex', gap: '3px', height: 6, borderRadius: 1, overflow: 'hidden' }}>
-                <Box sx={{ width: `${(active / total) * 100}%`, bgcolor: K.neonDim }} />
-                <Box sx={{ width: `${(inReview / total) * 100}%`, bgcolor: K.cyan }} />
-                <Box sx={{ width: `${(attention / total) * 100}%`, bgcolor: K.danger }} />
-                <Box sx={{ flex: 1, bgcolor: K.surfaceUp }} />
-              </Box>
-              <Box sx={{ display: 'flex', gap: 2.5, mt: 1 }}>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mt: 1.5 }}>
                 {[
-                  { label: `Активно — ${active}`, color: K.neonDim },
-                  { label: `На ревью — ${inReview}`, color: K.cyan },
-                  { label: `Правки — ${attention}`, color: K.danger },
-                  { label: `Черновик — ${drafts}`, color: K.textFaint },
+                  { label: `Активно — ${active}`, color: 'success.main' },
+                  { label: `На ревью — ${inReview}`, color: 'info.main' },
+                  { label: `Правки — ${attention}`, color: 'error.main' },
+                  { label: `Черновик — ${drafts}`, color: 'text.disabled' },
                 ].map((s) => (
                   <Box key={s.label} sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                    <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: s.color, flexShrink: 0 }} />
-                    <Typography sx={{ fontSize: 11, color: K.textDim }}>{s.label}</Typography>
+                    <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: s.color, flexShrink: 0 }} />
+                    <Typography variant="caption" color="text.secondary">{s.label}</Typography>
                   </Box>
                 ))}
               </Box>
-            </Box>
-          )}
+            </CardContent>
+          </Card>
+        )}
 
-          {/* Directions grid */}
-          <Box>
-            <SL>Направления</SL>
-            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1.5 }}>
-              {DIRECTIONS.map((dir) => {
-                const chip = STATUS_CHIP[dir.status];
-                const isLive = dir.status === 'live';
-                return (
-                  <Box
-                    key={dir.id}
-                    onClick={isLive && dir.route ? () => navigate(dir.route!) : undefined}
-                    sx={{
-                      border: `1px solid ${isLive ? K.border : 'rgba(255,255,255,0.05)'}`,
-                      borderRadius: 2, p: 2.5,
-                      display: 'flex', flexDirection: 'column', gap: 1.5,
-                      cursor: isLive ? 'pointer' : 'default',
-                      opacity: dir.status === 'planned' ? 0.5 : 1,
-                      bgcolor: K.surface, transition: 'all 0.15s',
-                      '&:hover': isLive ? { borderColor: dir.accentColor, bgcolor: dir.accentBg } : {},
-                    }}
-                  >
-                    <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-                      <Box sx={{
-                        width: 38, height: 38, borderRadius: 1.5,
-                        bgcolor: dir.accentBg, border: `1px solid ${dir.accentColor}22`,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        color: dir.accentColor, flexShrink: 0,
-                      }}>
-                        {dir.icon}
-                      </Box>
-                      <Chip label={chip.label} size="small"
-                        sx={{ fontSize: 10, height: 20, color: chip.color, bgcolor: chip.bg, borderRadius: 1 }} />
-                    </Box>
-                    <Box>
-                      <Typography sx={{ fontSize: 14, fontWeight: 600, color: K.text, mb: 0.5 }}>{dir.name}</Typography>
-                      <Typography sx={{ fontSize: 12, color: K.textDim, lineHeight: 1.5 }}>{dir.desc}</Typography>
-                    </Box>
-                    {isLive && !loading ? (
-                      <Box sx={{ display: 'flex', gap: 2.5, pt: 0.5, borderTop: `1px solid ${K.border}` }}>
-                        <Box>
-                          <Typography sx={{ fontSize: 18, fontWeight: 700, color: K.text, lineHeight: 1.2 }}>{total}</Typography>
-                          <Typography sx={{ fontSize: 10, color: K.textFaint }}>единиц</Typography>
-                        </Box>
-                        <Box>
-                          <Typography sx={{ fontSize: 18, fontWeight: 700, color: K.neonDim, lineHeight: 1.2 }}>{active}</Typography>
-                          <Typography sx={{ fontSize: 10, color: K.textFaint }}>активных</Typography>
-                        </Box>
-                        {attention > 0 && (
-                          <Box>
-                            <Typography sx={{ fontSize: 18, fontWeight: 700, color: K.danger, lineHeight: 1.2 }}>{attention}</Typography>
-                            <Typography sx={{ fontSize: 10, color: K.textFaint }}>правок</Typography>
-                          </Box>
-                        )}
-                      </Box>
-                    ) : (
-                      <Box sx={{ pt: 0.5, borderTop: `1px solid rgba(255,255,255,0.04)` }}>
-                        {isLive ? (
-                          <CircularProgress size={14} sx={{ color: K.neonDim }} />
-                        ) : (
-                          <Typography sx={{ fontSize: 11, color: K.textFaint, fontStyle: 'italic' }}>
-                            {dir.status === 'planned' ? 'Нет данных' : 'Ожидается подключение'}
-                          </Typography>
-                        )}
-                      </Box>
+        {/* Directions */}
+        <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1.5, textTransform: 'uppercase', letterSpacing: '0.08em', fontSize: '0.7rem' }}>
+          Направления
+        </Typography>
+        <Grid container spacing={2} sx={{ mb: 3 }}>
+          {DIRECTIONS.map((dir) => {
+            const chip = STATUS_CHIP[dir.status];
+            const isLive = dir.status === 'live';
+            const isPlanned = dir.status === 'planned';
+            return (
+              <Grid item xs={12} sm={6} md={4} key={dir.id}>
+                <Card
+                  variant="outlined"
+                  sx={{
+                    height: '100%',
+                    opacity: isPlanned ? 0.55 : 1,
+                    transition: 'box-shadow 150ms',
+                    '&:hover': isLive ? { boxShadow: 2 } : {},
+                  }}
+                >
+                  {isLive ? (
+                    <CardActionArea
+                      onClick={() => dir.route && navigate(dir.route)}
+                      sx={{ height: '100%', alignItems: 'flex-start', display: 'flex', flexDirection: 'column' }}
+                    >
+                      <DirectionCardContent
+                        dir={dir}
+                        chip={chip}
+                        loading={loading}
+                        total={total}
+                        active={active}
+                        attention={attention}
+                        isLive
+                      />
+                    </CardActionArea>
+                  ) : (
+                    <DirectionCardContent
+                      dir={dir}
+                      chip={chip}
+                      loading={loading}
+                      total={total}
+                      active={active}
+                      attention={attention}
+                      isLive={false}
+                    />
+                  )}
+                </Card>
+              </Grid>
+            );
+          })}
+        </Grid>
+
+        {/* Bottom panels */}
+        <Grid container spacing={2}>
+          <Grid item xs={12} md={6}>
+            <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1, textTransform: 'uppercase', letterSpacing: '0.08em', fontSize: '0.7rem' }}>
+              Последние изменения
+            </Typography>
+            <Card variant="outlined">
+              {loading ? (
+                <Box sx={{ p: 3, display: 'flex', justifyContent: 'center' }}>
+                  <CircularProgress size={20} />
+                </Box>
+              ) : recentChanged.length === 0 ? (
+                <Box sx={{ p: 2.5 }}>
+                  <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                    Нет изменённых дел
+                  </Typography>
+                </Box>
+              ) : recentChanged.map((c, i) => (
+                <React.Fragment key={c.slug}>
+                  {i > 0 && <Divider />}
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 2, py: 1.25 }}>
+                    <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'success.main', flexShrink: 0 }} />
+                    <Typography variant="body2" sx={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {c.title}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0 }}>
+                      Кодэкс
+                    </Typography>
+                    {c.status && (
+                      <Chip
+                        label={STATUS_META[c.status]?.label || c.status}
+                        color={STATUS_META[c.status]?.color || 'default'}
+                        size="small"
+                      />
                     )}
                   </Box>
-                );
-              })}
-            </Box>
-          </Box>
+                </React.Fragment>
+              ))}
+            </Card>
+          </Grid>
 
-          {/* Bottom */}
-          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
-            <Box>
-              <SL>Последние изменения</SL>
-              <Box sx={{ border: `1px solid ${K.border}`, borderRadius: 1.5, overflow: 'hidden', bgcolor: K.surface }}>
-                {loading ? (
-                  <Box sx={{ p: 3, display: 'flex', justifyContent: 'center' }}><CircularProgress size={18} sx={{ color: K.neon }} /></Box>
-                ) : recentChanged.length === 0 ? (
-                  <Box sx={{ p: 2.5 }}><Typography sx={{ fontSize: 12, color: K.textFaint, fontStyle: 'italic' }}>Нет изменённых дел</Typography></Box>
-                ) : recentChanged.map((c, i) => (
-                  <React.Fragment key={c.slug}>
-                    {i > 0 && <Divider sx={{ borderColor: K.border }} />}
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 2, py: 1.25 }}>
-                      <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: K.neonDim, flexShrink: 0 }} />
-                      <Typography sx={{ fontSize: 12, color: K.text, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title}</Typography>
-                      <Typography sx={{ fontSize: 10, color: K.textFaint, flexShrink: 0 }}>Кодэкс</Typography>
-                      {c.status && (
-                        <Chip label={statusMeta[c.status]?.label || c.status} size="small"
-                          sx={{ fontSize: 10, height: 18, color: statusMeta[c.status]?.color || K.textDim, bgcolor: 'rgba(0,0,0,0.3)', ml: 0.5 }} />
-                      )}
-                    </Box>
-                  </React.Fragment>
-                ))}
-              </Box>
-            </Box>
-            <Box>
-              <SL>Требуют внимания</SL>
-              <Box sx={{ border: `1px solid ${K.border}`, borderRadius: 1.5, overflow: 'hidden', bgcolor: K.surface }}>
-                {loading ? (
-                  <Box sx={{ p: 3, display: 'flex', justifyContent: 'center' }}><CircularProgress size={18} sx={{ color: K.neon }} /></Box>
-                ) : needAttention.length === 0 ? (
-                  <Box sx={{ p: 2.5 }}><Typography sx={{ fontSize: 12, color: K.textFaint, fontStyle: 'italic' }}>Всё в порядке</Typography></Box>
-                ) : needAttention.map((c, i) => (
-                  <React.Fragment key={c.slug}>
-                    {i > 0 && <Divider sx={{ borderColor: K.border }} />}
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 2, py: 1.25 }}>
-                      <Box sx={{ width: 7, height: 7, borderRadius: '50%', flexShrink: 0, bgcolor: c.status === 'changes_requested' ? K.danger : K.cyan }} />
-                      <Typography sx={{ fontSize: 12, color: K.text, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title}</Typography>
-                      <Chip label={statusMeta[c.status || '']?.label || c.status} size="small"
-                        sx={{ fontSize: 10, height: 18, color: statusMeta[c.status || '']?.color || K.textDim, bgcolor: 'rgba(0,0,0,0.3)' }} />
-                    </Box>
-                  </React.Fragment>
-                ))}
-              </Box>
-            </Box>
-          </Box>
-
-        </Box>
+          <Grid item xs={12} md={6}>
+            <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1, textTransform: 'uppercase', letterSpacing: '0.08em', fontSize: '0.7rem' }}>
+              Требуют внимания
+            </Typography>
+            <Card variant="outlined">
+              {loading ? (
+                <Box sx={{ p: 3, display: 'flex', justifyContent: 'center' }}>
+                  <CircularProgress size={20} />
+                </Box>
+              ) : needAttention.length === 0 ? (
+                <Box sx={{ p: 2.5 }}>
+                  <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                    Всё в порядке
+                  </Typography>
+                </Box>
+              ) : needAttention.map((c, i) => (
+                <React.Fragment key={c.slug}>
+                  {i > 0 && <Divider />}
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 2, py: 1.25 }}>
+                    <Box sx={{
+                      width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
+                      bgcolor: c.status === 'changes_requested' ? 'error.main' : 'info.main',
+                    }} />
+                    <Typography variant="body2" sx={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {c.title}
+                    </Typography>
+                    <Chip
+                      label={STATUS_META[c.status || '']?.label || c.status}
+                      color={STATUS_META[c.status || '']?.color || 'default'}
+                      size="small"
+                    />
+                  </Box>
+                </React.Fragment>
+              ))}
+            </Card>
+          </Grid>
+        </Grid>
       </Box>
-    </ThemeProvider>
+    </Layout>
+  );
+}
+
+interface DirectionCardContentProps {
+  dir: Direction;
+  chip: { label: string; color: 'success' | 'warning' | 'default' };
+  loading: boolean;
+  total: number;
+  active: number;
+  attention: number;
+  isLive: boolean;
+}
+
+function DirectionCardContent({ dir, chip, loading, total, active, attention, isLive }: DirectionCardContentProps) {
+  return (
+    <CardContent sx={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+      <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+        <Box sx={{
+          width: 40, height: 40, borderRadius: 2,
+          bgcolor: `${dir.color}.light` === 'default.light' ? 'action.hover' : undefined,
+          backgroundColor: dir.color !== 'default' ? undefined : 'action.hover',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: dir.color !== 'default' ? `${dir.color}.main` : 'text.disabled',
+          border: '1px solid',
+          borderColor: 'divider',
+        }}>
+          {dir.icon}
+        </Box>
+        <Chip label={chip.label} color={chip.color} size="small" />
+      </Box>
+      <Box>
+        <Typography variant="subtitle1" sx={{ mb: 0.25 }}>{dir.name}</Typography>
+        <Typography variant="body2" color="text.secondary">{dir.desc}</Typography>
+      </Box>
+      {isLive ? (
+        loading ? (
+          <Box sx={{ pt: 1, borderTop: 1, borderColor: 'divider' }}>
+            <CircularProgress size={14} />
+          </Box>
+        ) : (
+          <Box sx={{ display: 'flex', gap: 2.5, pt: 1, borderTop: 1, borderColor: 'divider' }}>
+            <Box>
+              <Typography variant="h6" sx={{ lineHeight: 1.2 }}>{total}</Typography>
+              <Typography variant="caption" color="text.secondary">единиц</Typography>
+            </Box>
+            <Box>
+              <Typography variant="h6" color="success.main" sx={{ lineHeight: 1.2 }}>{active}</Typography>
+              <Typography variant="caption" color="text.secondary">активных</Typography>
+            </Box>
+            {attention > 0 && (
+              <Box>
+                <Typography variant="h6" color="error.main" sx={{ lineHeight: 1.2 }}>{attention}</Typography>
+                <Typography variant="caption" color="text.secondary">правок</Typography>
+              </Box>
+            )}
+          </Box>
+        )
+      ) : (
+        <Box sx={{ pt: 1, borderTop: 1, borderColor: 'divider' }}>
+          <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+            {dir.status === 'planned' ? 'Нет данных' : 'Ожидается подключение'}
+          </Typography>
+        </Box>
+      )}
+    </CardContent>
   );
 }

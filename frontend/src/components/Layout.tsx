@@ -89,7 +89,7 @@ const NAV_GROUPS: Array<{ id: string; label: string; paths: Set<string> }> = [
   { id: 'education', label: '🎓 Обучение', paths: new Set(['/trainer-cockpit', '/students', '/groups', '/lessons', '/programs', '/grades', '/characteristics', '/trainer-grades', '/trainers', '/methodists']) },
   { id: 'ops', label: '📋 Учебные операции', paths: new Set(['/operations/absences', '/operations/program-makeup', '/operations/instructions', '/operations/manual-lessons', '/projects']) },
   { id: 'finance', label: '💰 Финансы', paths: new Set(['/finance/overview', '/abonements', '/finance/payments', '/calculations', '/finance/tax-deduction']) },
-  { id: 'workspace', label: '✅ Задачи и проекты', paths: new Set(['/tasks', '/owner-workspace/projects', '/owner-workspace/links', '/disk', '/passwords', '/transcription', '/notes']) },
+  { id: 'workspace', label: '✅ Задачи и проекты', paths: new Set(['/tasks', '/owner-workspace/projects', '/owner-workspace/links', '/disk', '/passwords', '/transcription', '/notes', '/agile']) },
   { id: 'b2b', label: '🤝 Контрагенты и B2B', paths: new Set(['/owner-workspace/counterparties', '/b2b-schools']) },
   { id: 'system', label: '⚙️ Администрирование', paths: new Set(['/admin/settings', '/settings/communications', '/roles', '/reports']) },
 ];
@@ -374,6 +374,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const canAccessRoles = hasPermission(user, 'roles.access');
   const canAccessPasswords = hasPermission(user, 'passwords.access');
   const canAccessNotes = notesEnabledRoles.includes(role ?? '') || role === 'owner' || role === 'admin';
+  const canAccessAgile = hasPermission(user, 'agile.access');
 
   const effectiveMenuItems = (() => {
     if (role === 'guest') return [{ text: 'Программы', icon: <Book />, path: '/programs' }];
@@ -504,6 +505,9 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
   if (canAccessUsers && !permissionExpandedMenuItems.some((item) => item.path === '/methodists')) {
     permissionExpandedMenuItems.push({ text: 'Методисты', icon: <People />, path: '/methodists' });
   }
+  if (canAccessAgile && !permissionExpandedMenuItems.some(i => i.path === '/agile')) {
+    permissionExpandedMenuItems.push({ text: 'IT-проекты', icon: <RocketLaunch />, path: '/agile' });
+  }
   const baseVisibleMenuItems = canAccessOwnerWorkspace
     ? permissionExpandedMenuItems
     : permissionExpandedMenuItems.filter((item) => !item.path.startsWith('/owner-workspace') && item.path !== '/disk');
@@ -526,6 +530,7 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
     effectiveMenuItems.find((item) => item.path === location.pathname)?.text ??
     (location.pathname.startsWith('/owner-workspace/counterparties') ? 'Контрагенты' : null) ??
     (isOwnerWorkspaceMainSection(location.pathname) ? 'Таск трекер' : null) ??
+    (location.pathname.startsWith('/agile') ? 'IT-проекты' : null) ??
     'Портал управления обучением';
 
   // Группируем видимые пункты меню

@@ -99,6 +99,8 @@ const MethodistHubPage = React.lazy(() => import('./pages/MethodistHubPage'));
 const MethodistStudioLoginPage = React.lazy(() => import('./pages/MethodistStudioLoginPage'));
 const MethodistStudioPage = React.lazy(() => import('./pages/MethodistStudioPage'));
 const MethodistsPage = React.lazy(() => import('./pages/MethodistsPage'));
+const AgileProjectsPage = React.lazy(() => import('./pages/AgileProjectsPage'));
+const AgileProjectPage = React.lazy(() => import('./pages/AgileProjectPage'));
 
 const DefaultRedirect: React.FC = () => {
   const { user } = useAuth();
@@ -924,6 +926,26 @@ function App() {
               element={
                 <PrivateRoute requiredPermission="owner_workspace.access">
                   <OwnerWorkspacePage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/agile"
+              element={
+                <PrivateRoute requiredPermission="agile.access">
+                  <SectionBoundary>
+                    <AgileProjectsPage />
+                  </SectionBoundary>
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/agile/:projectId"
+              element={
+                <PrivateRoute requiredPermission="agile.access">
+                  <SectionBoundary>
+                    <AgileProjectPage />
+                  </SectionBoundary>
                 </PrivateRoute>
               }
             />

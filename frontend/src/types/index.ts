@@ -2456,3 +2456,204 @@ export interface UnitEconomicsResponse {
   cohorts: UnitEconomicsCohortRow[];
   notes: string[];
 }
+
+// ─── Agile-трекер IT-проектов ───────────────────────────────────────────────
+
+export type ItIssueType = 'story' | 'bug' | 'task' | 'chore';
+export type ItIssueStatus = 'todo' | 'in_progress' | 'review' | 'done';
+export type ItIssuePriority = 'critical' | 'high' | 'medium' | 'low';
+export type ItSprintStatus = 'planning' | 'active' | 'completed';
+export type ItEpicStatus = 'open' | 'done' | 'cancelled';
+export type ItMemberRole = 'owner' | 'member' | 'viewer';
+
+export const IT_ISSUE_TYPE_LABELS: Record<ItIssueType, string> = {
+  story: 'История',
+  bug: 'Баг',
+  task: 'Задача',
+  chore: 'Техдолг',
+};
+
+export const IT_ISSUE_STATUS_LABELS: Record<ItIssueStatus, string> = {
+  todo: 'В очереди',
+  in_progress: 'В работе',
+  review: 'На проверке',
+  done: 'Готово',
+};
+
+export const IT_ISSUE_PRIORITY_LABELS: Record<ItIssuePriority, string> = {
+  critical: 'Критический',
+  high: 'Высокий',
+  medium: 'Средний',
+  low: 'Низкий',
+};
+
+export const IT_SPRINT_STATUS_LABELS: Record<ItSprintStatus, string> = {
+  planning: 'Планирование',
+  active: 'Активный',
+  completed: 'Завершён',
+};
+
+export const IT_EPIC_STATUS_LABELS: Record<ItEpicStatus, string> = {
+  open: 'Открыт',
+  done: 'Выполнен',
+  cancelled: 'Отменён',
+};
+
+export const IT_MEMBER_ROLE_LABELS: Record<ItMemberRole, string> = {
+  owner: 'Владелец',
+  member: 'Участник',
+  viewer: 'Наблюдатель',
+};
+
+export interface ItMemberShort {
+  id: number;
+  full_name: string;
+  email: string;
+  role: ItMemberRole;
+}
+
+export interface ItProject {
+  id: number;
+  name: string;
+  key: string;
+  description?: string | null;
+  owner_id: number;
+  status: string;
+  visibility: string;
+  created_at: string;
+  updated_at?: string | null;
+  member_count?: number | null;
+  issue_count?: number | null;
+  open_sprint_name?: string | null;
+  members?: ItMemberShort[];
+}
+
+export interface ItEpic {
+  id: number;
+  project_id: number;
+  title: string;
+  description?: string | null;
+  color: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  status: ItEpicStatus;
+  position: number;
+  issue_count?: number | null;
+  done_count?: number | null;
+  created_at: string;
+  updated_at?: string | null;
+}
+
+export interface ItSprint {
+  id: number;
+  project_id: number;
+  name: string;
+  goal?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  status: ItSprintStatus;
+  total_points?: number | null;
+  done_points?: number | null;
+  issue_count?: number | null;
+  created_at: string;
+  updated_at?: string | null;
+}
+
+export interface ItChecklistItem {
+  id: number;
+  issue_id: number;
+  text: string;
+  completed: boolean;
+  assignee_id?: number | null;
+  order: number;
+}
+
+export interface ItIssueComment {
+  id: number;
+  issue_id: number;
+  author_id: number;
+  author_name?: string | null;
+  text: string;
+  created_at: string;
+  updated_at?: string | null;
+}
+
+export interface ItIssueShort {
+  id: number;
+  project_id: number;
+  number: number;
+  type: ItIssueType;
+  title: string;
+  status: ItIssueStatus;
+  priority: ItIssuePriority;
+  story_points?: number | null;
+  assignee_id?: number | null;
+  assignee_name?: string | null;
+  epic_id?: number | null;
+  epic_title?: string | null;
+  epic_color?: string | null;
+  sprint_id?: number | null;
+  labels?: string[] | null;
+  checklist_total: number;
+  checklist_done: number;
+  created_at: string;
+  updated_at?: string | null;
+}
+
+export interface ItIssue extends ItIssueShort {
+  description?: string | null;
+  reporter_id: number;
+  reporter_name?: string | null;
+  due_date?: string | null;
+  checklist: ItChecklistItem[];
+  comments: ItIssueComment[];
+}
+
+export interface ItBoardColumn {
+  status: ItIssueStatus;
+  label: string;
+  issues: ItIssueShort[];
+}
+
+export interface ItBoard {
+  sprint?: ItSprint | null;
+  columns: ItBoardColumn[];
+}
+
+export interface ItBacklogGroup {
+  epic_id?: number | null;
+  epic_title?: string | null;
+  epic_color?: string | null;
+  issues: ItIssueShort[];
+}
+
+export interface ItBacklog {
+  groups: ItBacklogGroup[];
+  total: number;
+}
+
+export interface BurndownPoint {
+  date: string;
+  planned: number;
+  actual?: number | null;
+}
+
+export interface ItAnalytics {
+  sprint?: ItSprint | null;
+  burndown: BurndownPoint[];
+  velocity: { sprint: string; done_points: number }[];
+  by_type: Record<string, number>;
+  by_priority: Record<string, number>;
+  cycle_time_avg_days?: number | null;
+}
+
+export interface AgileRoleAccessItem {
+  role: string;
+  enabled: boolean;
+  access_level: string;
+}
+
+export interface AgileRoleAccessResponse {
+  items: AgileRoleAccessItem[];
+}
+

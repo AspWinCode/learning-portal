@@ -3260,3 +3260,157 @@ class KodexCase(Base):
     created_by = relationship("User", foreign_keys=[created_by_id])
 
 
+# ─────────────────────────────────────────────
+# Agile-трекер IT-проектов
+# ─────────────────────────────────────────────
+
+class ItProject(Base):
+    __tablename__ = "it_projects"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    key = Column(String(10), nullable=False, unique=True, index=True)
+    description = Column(Text, nullable=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    status = Column(String(20), default="active", nullable=False)
+    visibility = Column(String(20), default="internal", nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    owner = relationship("User", foreign_keys=[owner_id])
+    members = relationship("ItProjectMember", back_populates="project", cascade="all, delete-orphan")
+    epics = relationship("ItEpic", back_populates="project", cascade="all, delete-orphan", order_by="ItEpic.position")
+    sprints = relationship("ItSprint", back_populates="project", cascade="all, delete-orphan")
+    issues = relationship("ItIssue", back_populates="project", cascade="all, delete-orphan")
+
+
+class ItProjectMember(Base):
+    __tablename__ = "it_project_members"
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("it_projects.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    role = Column(String(20), default="member", nullable=False)
+    joined_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    project = relationship("ItProject", back_populates="members")
+    user = relationship("User", foreign_keys=[user_id])
+
+    __table_args__ = (UniqueConstraint("project_id", "user_id", name="uq_it_project_members"),)
+
+
+class ItEpic(Base):
+    __tablename__ = "it_epics"
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("it_projects.id"), nullable=False, index=True)
+    title = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    color = Column(String(20), default="#7c3aed", nullable=False)
+    start_date = Column(Date, nullable=True)
+    end_date = Column(Date, nullable=True)
+    status = Column(String(20), default="open", nullable=False)
+    position = Column(Integer, default=0, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    project = relationship("ItProject", back_populates="epics")
+    issues = relationship("ItIssue", back_populates="epic")
+
+
+class ItSprint(Base):
+    __tablename__ = "it_sprints"
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("it_projects.id"), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    goal = Column(Text, nullable=True)
+    start_date = Column(Date, nullable=True)
+    end_date = Column(Date, nullable=True)
+    status = Column(String(20), default="planning", nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    project = relationship("ItProject", back_populates="sprints")
+    issues = relationship("ItIssue", back_populates="sprint")
+
+
+class ItIssue(Base):
+    __tablename__ = "it_issues"
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("it_projects.id"), nullable=False, index=True)
+    epic_id = Column(Integer, ForeignKey("it_epics.id"), nullable=True, index=True)
+    sprint_id = Column(Integer, ForeignKey("it_sprints.id"), nullable=True, index=True)
+    number = Column(Integer, nullable=False)
+    type = Column(String(20), default="task", nullable=False)
+    title = Column(String(500), nullable=False)
+    description = Column(Text, nullable=True)
+    status = Column(String(20), default="todo", nullable=False)
+    priority = Column(String(20), default="medium", nullable=False)
+    story_points = Column(Integer, nullable=True)
+    assignee_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    reporter_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    due_date = Column(Date, nullable=True)
+    labels = Column(JSON, nullable=True)
+    position = Column(Integer, default=0, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    project = relationship("ItProject", back_populates="issues")
+    epic = relationship("ItEpic", back_populates="issues")
+    sprint = relationship("ItSprint", back_populates="issues")
+    assignee = relationship("User", foreign_keys=[assignee_id])
+    reporter = relationship("User", foreign_keys=[reporter_id])
+    checklist = relationship(
+        "ItChecklistItem", back_populates="issue",
+        cascade="all, delete-orphan",
+        order_by="ItChecklistItem.order",
+    )
+    comments = relationship(
+        "ItIssueComment", back_populates="issue",
+        cascade="all, delete-orphan",
+    )
+
+    __table_args__ = (UniqueConstraint("project_id", "number", name="uq_it_issues_project_number"),)
+
+
+class ItChecklistItem(Base):
+    __tablename__ = "it_checklist_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    issue_id = Column(Integer, ForeignKey("it_issues.id"), nullable=False, index=True)
+    text = Column(String(500), nullable=False)
+    completed = Column(Boolean, default=False, nullable=False)
+    assignee_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    order = Column(Integer, default=0, nullable=False)
+
+    issue = relationship("ItIssue", back_populates="checklist")
+    assignee = relationship("User", foreign_keys=[assignee_id])
+
+
+class ItIssueComment(Base):
+    __tablename__ = "it_issue_comments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    issue_id = Column(Integer, ForeignKey("it_issues.id"), nullable=False, index=True)
+    author_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    text = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    issue = relationship("ItIssue", back_populates="comments")
+    author = relationship("User", foreign_keys=[author_id])
+
+
+class AgileRoleAccess(Base):
+    __tablename__ = "agile_role_access"
+
+    id = Column(Integer, primary_key=True, index=True)
+    role = Column(String(30), unique=True, nullable=False, index=True)
+    enabled = Column(Boolean, default=False, nullable=False)
+    access_level = Column(String(20), default="access", nullable=False)
+    updated_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    updated_by = relationship("User", foreign_keys=[updated_by_id])

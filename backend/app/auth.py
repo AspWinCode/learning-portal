@@ -91,6 +91,9 @@ DEFAULT_ROLE_PERMISSIONS: Dict[str, Set[str]] = {
     },
 }
 
+# Роли с постоянным agile-доступом (admin/owner имеют '*', поэтому не нужны здесь явно)
+AGILE_ALWAYS_ACCESS_ROLES = {UserRole.OWNER.value, UserRole.ADMIN.value}
+
 
 def get_redis_client() -> Redis:
     global _redis_client

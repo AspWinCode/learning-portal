@@ -95,6 +95,7 @@ const DiskPage = React.lazy(() => import('./pages/DiskPage'));
 const PasswordsPage = React.lazy(() => import('./pages/PasswordsPage'));
 const NotesPage = React.lazy(() => import('./pages/NotesPage'));
 const KodexStudioPage = React.lazy(() => import('./pages/KodexStudioPage'));
+const MethodistHubPage = React.lazy(() => import('./pages/MethodistHubPage'));
 const MethodistStudioLoginPage = React.lazy(() => import('./pages/MethodistStudioLoginPage'));
 const MethodistStudioPage = React.lazy(() => import('./pages/MethodistStudioPage'));
 const MethodistsPage = React.lazy(() => import('./pages/MethodistsPage'));
@@ -112,7 +113,7 @@ const DefaultRedirect: React.FC = () => {
   if (effectiveRole === 'parent') return <Navigate to="/parent-dashboard" replace />;
   if (effectiveRole === 'sales') return <Navigate to="/tasks" replace />;
   if (effectiveRole === 'seo_manager') return <Navigate to="/seo/pages" replace />;
-  if (effectiveRole === 'methodist') return <Navigate to="/kodex" replace />;
+  if (effectiveRole === 'methodist') return <Navigate to="/methodist-hub" replace />;
   if (effectiveRole === 'trainer') return <Navigate to="/trainer-cockpit" replace />;
   return <Navigate to="/dashboard" replace />;
 };
@@ -823,6 +824,16 @@ function App() {
                 <PrivateRoute>
                   <SectionBoundary>
                     <NotesPage />
+                  </SectionBoundary>
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/methodist-hub"
+              element={
+                <PrivateRoute requiredPermission="kodex.access">
+                  <SectionBoundary>
+                    <MethodistHubPage />
                   </SectionBoundary>
                 </PrivateRoute>
               }

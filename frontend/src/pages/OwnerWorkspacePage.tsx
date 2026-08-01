@@ -1568,6 +1568,7 @@ const OwnerWorkspacePage: React.FC = () => {
 
   const [completeDialogTask, setCompleteDialogTask] = useState<OwnerWorkspaceTask | null>(null);
   const [completeMode, setCompleteMode] = useState<'close' | 'close_and_create_next'>('close');
+  const [closeComment, setCloseComment] = useState('');
   const nextTaskTitleRef = useRef<HTMLInputElement>(null);
 
   const [commsContactId, setCommsContactId] = useState<number | null>(null);
@@ -2847,6 +2848,9 @@ const OwnerWorkspacePage: React.FC = () => {
     try {
       if (completeMode === 'close') {
         const res = await ownerWorkspaceApi.completeTask(completeDialogTask.id, { action: 'close' });
+        if (closeComment.trim()) {
+          await ownerWorkspaceApi.addTaskComment(completeDialogTask.id, closeComment.trim());
+        }
         if (res.next_task) {
           setRepeatTaskNotice(res.next_task);
         }
@@ -2867,6 +2871,7 @@ const OwnerWorkspacePage: React.FC = () => {
         }
       }
       setCompleteDialogTask(null);
+      setCloseComment('');
       await loadTasksFiltered();
       void loadDigest();
       void loadNotifications(80);
@@ -8771,7 +8776,7 @@ const OwnerWorkspacePage: React.FC = () => {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={Boolean(completeDialogTask)} onClose={() => setCompleteDialogTask(null)} maxWidth="xs" fullWidth>
+      <Dialog open={Boolean(completeDialogTask)} onClose={() => { setCompleteDialogTask(null); setCloseComment(''); }} maxWidth="xs" fullWidth>
         <DialogTitle>Завершить задачу</DialogTitle>
         <DialogContent>
           {completeDialogTask && !canCompleteTaskActionUi(completeDialogTask) && (
@@ -8787,6 +8792,19 @@ const OwnerWorkspacePage: React.FC = () => {
                 label="Закрыть и создать следующую"
               />
             </RadioGroup>
+            {completeMode === 'close' && (
+              <TextField
+                fullWidth
+                multiline
+                minRows={2}
+                sx={{ mt: 2 }}
+                label="Комментарий при закрытии (необязательно)"
+                placeholder="Опишите итог или причину закрытия задачи"
+                value={closeComment}
+                onChange={(e) => setCloseComment(e.target.value)}
+                disabled={completeDialogTask ? !canCompleteTaskActionUi(completeDialogTask) : false}
+              />
+            )}
             {!canCreateTaskUi && (
               <Alert severity="info" sx={{ mt: 1.5 }}>
                 Создание следующей задачи после завершения сейчас отключено policy-моделью.

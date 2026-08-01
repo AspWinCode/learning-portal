@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-  Alert, Box, Button, Card, CardContent, Chip, CircularProgress,
+  Alert, Avatar, Box, Button, Card, CardContent, Chip, CircularProgress,
   Dialog, DialogActions, DialogContent, DialogTitle, Divider,
-  Drawer, Grid, IconButton, LinearProgress, MenuItem, Paper,
+  Drawer, Grid, IconButton, InputAdornment, LinearProgress, List, ListItem,
+  ListItemAvatar, ListItemText, MenuItem, Paper,
   Tab, Tabs, TextField, Tooltip, Typography,
 } from '@mui/material';
 import {
@@ -15,9 +16,12 @@ import {
   Delete as DeleteIcon,
   EditNote as EditNoteIcon,
   Flag as FlagIcon,
+  Group as GroupIcon,
   Person as PersonIcon,
+  PersonAdd as PersonAddIcon,
   PlayArrow,
   RocketLaunch,
+  Search as SearchIcon,
   Send as SendIcon,
   SportsScore,
   Timeline,
@@ -33,13 +37,14 @@ import { useAuth } from '../contexts/AuthContext';
 import { hasPermission } from '../utils/permissions';
 import type {
   ItAnalytics, ItBacklog, ItBoard, ItEpic, ItIssue,
-  ItIssueShort, ItIssueStatus, ItIssueType, ItProject, ItSprint,
+  ItIssueShort, ItIssueStatus, ItIssueType, ItMemberRole, ItProject, ItSprint,
 } from '../types';
 import {
   IT_EPIC_STATUS_LABELS, IT_ISSUE_PRIORITY_LABELS,
   IT_ISSUE_STATUS_LABELS, IT_ISSUE_TYPE_LABELS,
-  IT_SPRINT_STATUS_LABELS,
+  IT_MEMBER_ROLE_LABELS, IT_SPRINT_STATUS_LABELS,
 } from '../types';
+import { api } from '../services/api/client';
 
 // ─── Константы ────────────────────────────────────────────────────────────
 
@@ -135,6 +140,13 @@ const AgileProjectPage: React.FC = () => {
   const [epics, setEpics] = useState<ItEpic[]>([]);
   const [analytics, setAnalytics] = useState<ItAnalytics | null>(null);
 
+  const [members, setMembers] = useState<any[]>([]);
+  const [addMemberOpen, setAddMemberOpen] = useState(false);
+  const [memberSearch, setMemberSearch] = useState('');
+  const [memberSearchResults, setMemberSearchResults] = useState<any[]>([]);
+  const [memberSearchLoading, setMemberSearchLoading] = useState(false);
+  const [addMemberRole, setAddMemberRole] = useState<ItMemberRole>('member');
+
   const [selectedIssue, setSelectedIssue] = useState<ItIssue | null>(null);
   const [issueDrawerOpen, setIssueDrawerOpen] = useState(false);
 
@@ -195,6 +207,10 @@ const AgileProjectPage: React.FC = () => {
     try { setAnalytics(await agileApi.getAnalytics(id)); } catch {}
   }, [id]);
 
+  const loadMembers = useCallback(async () => {
+    try { setMembers(await agileApi.listMembers(id)); } catch {}
+  }, [id]);
+
   useEffect(() => { loadProject(); }, [loadProject]);
 
   useEffect(() => {
@@ -204,6 +220,7 @@ const AgileProjectPage: React.FC = () => {
     if (tab === 2) loadSprints();
     if (tab === 3) loadEpics();
     if (tab === 4) loadAnalytics();
+    if (tab === 5) loadMembers();
   }, [tab, project]);
 
   // ── действия со спринтом ────────────────────────────────────────────────
@@ -320,6 +337,58 @@ const AgileProjectPage: React.FC = () => {
       setCommentText('');
       const updated = await agileApi.getIssue(id, selectedIssue.id);
       setSelectedIssue(updated);
+    } catch {}
+  };
+
+  // ── участники ────────────────────────────────────────────────────────────
+
+  const searchMemberSearchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleMemberSearchChange = (value: string) => {
+    setMemberSearch(value);
+    if (searchMemberSearchRef.current) clearTimeout(searchMemberSearchRef.current);
+    if (!value.trim()) { setMemberSearchResults([]); return; }
+    searchMemberSearchRef.current = setTimeout(async () => {
+      setMemberSearchLoading(true);
+      try {
+        const res = await api.get('/api/users/', { params: { search: value, limit: 20 } });
+        const existing = new Set(members.map((m: any) => m.user_id));
+        setMemberSearchResults((res.data?.items || res.data || []).filter((u: any) => !existing.has(u.id)));
+      } catch {
+        setMemberSearchResults([]);
+      } finally {
+        setMemberSearchLoading(false);
+      }
+    }, 300);
+  };
+
+  const handleAddMember = async (userId: number) => {
+    try {
+      await agileApi.addMember(id, userId, addMemberRole);
+      setAddMemberOpen(false);
+      setMemberSearch('');
+      setMemberSearchResults([]);
+      setAddMemberRole('member');
+      loadMembers();
+    } catch (e: any) {
+      alert(e?.response?.data?.detail || 'Ошибка добавления участника');
+    }
+  };
+
+  const handleRemoveMember = async (userId: number) => {
+    if (!window.confirm('Удалить участника из проекта?')) return;
+    try {
+      await agileApi.removeMember(id, userId);
+      loadMembers();
+    } catch (e: any) {
+      alert(e?.response?.data?.detail || 'Ошибка удаления участника');
+    }
+  };
+
+  const handleUpdateMemberRole = async (userId: number, role: ItMemberRole) => {
+    try {
+      await agileApi.updateMember(id, userId, role);
+      loadMembers();
     } catch {}
   };
 
@@ -674,6 +743,69 @@ const AgileProjectPage: React.FC = () => {
     );
   };
 
+  // ── Вкладка: Команда ─────────────────────────────────────────────────────
+
+  const TeamTab = () => (
+    <Box>
+      {canManage && (
+        <Button size="small" startIcon={<PersonAddIcon />} onClick={() => setAddMemberOpen(true)} sx={{ mb: 2 }}>
+          Добавить участника
+        </Button>
+      )}
+      {members.length === 0 ? (
+        <Box sx={{ textAlign: 'center', py: 6, color: 'text.secondary' }}>
+          <GroupIcon sx={{ fontSize: 48, mb: 1, opacity: 0.3 }} />
+          <Typography>Участников пока нет</Typography>
+        </Box>
+      ) : (
+        <List disablePadding>
+          {members.map((m: any) => (
+            <ListItem
+              key={m.user_id}
+              disableGutters
+              sx={{ py: 1, borderBottom: 1, borderColor: 'divider' }}
+              secondaryAction={
+                canManage && (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <TextField
+                      select size="small" value={m.role}
+                      onChange={e => handleUpdateMemberRole(m.user_id, e.target.value as ItMemberRole)}
+                      sx={{ minWidth: 130 }}
+                    >
+                      {(Object.entries(IT_MEMBER_ROLE_LABELS) as [ItMemberRole, string][]).map(([k, v]) => (
+                        <MenuItem key={k} value={k}>{v}</MenuItem>
+                      ))}
+                    </TextField>
+                    <Tooltip title="Удалить из проекта">
+                      <IconButton size="small" color="error" onClick={() => handleRemoveMember(m.user_id)}>
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </Box>
+                )
+              }
+            >
+              <ListItemAvatar>
+                <Avatar sx={{ width: 36, height: 36, bgcolor: 'primary.main', fontSize: 14 }}>
+                  {(m.full_name || m.email || '?').charAt(0).toUpperCase()}
+                </Avatar>
+              </ListItemAvatar>
+              <ListItemText
+                primary={m.full_name || m.email}
+                secondary={m.full_name ? m.email : undefined}
+                primaryTypographyProps={{ variant: 'body2', fontWeight: 600 }}
+                secondaryTypographyProps={{ variant: 'caption' }}
+              />
+              {!canManage && (
+                <Chip label={IT_MEMBER_ROLE_LABELS[m.role as ItMemberRole] || m.role} size="small" variant="outlined" sx={{ mr: 1 }} />
+              )}
+            </ListItem>
+          ))}
+        </List>
+      )}
+    </Box>
+  );
+
   return (
     <Layout>
       <Box sx={{ p: 3 }}>
@@ -699,6 +831,7 @@ const AgileProjectPage: React.FC = () => {
           <Tab icon={<PlayArrow />} iconPosition="start" label="Спринты" />
           <Tab icon={<FlagIcon />} iconPosition="start" label="Эпики" />
           <Tab icon={<Timeline />} iconPosition="start" label="Аналитика" />
+          <Tab icon={<GroupIcon />} iconPosition="start" label="Команда" />
         </Tabs>
 
         {tab === 0 && <BoardTab />}
@@ -706,6 +839,7 @@ const AgileProjectPage: React.FC = () => {
         {tab === 2 && <SprintsTab />}
         {tab === 3 && <EpicsTab />}
         {tab === 4 && <AnalyticsTab />}
+        {tab === 5 && <TeamTab />}
       </Box>
 
       {/* ── Drawer: детали задачи ── */}
@@ -915,6 +1049,67 @@ const AgileProjectPage: React.FC = () => {
         <DialogActions>
           <Button onClick={() => setCreateSprintOpen(false)}>Отмена</Button>
           <Button onClick={handleCreateSprint} variant="contained">Создать</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ── Диалог добавления участника ── */}
+      <Dialog
+        open={addMemberOpen}
+        onClose={() => { setAddMemberOpen(false); setMemberSearch(''); setMemberSearchResults([]); }}
+        maxWidth="sm" fullWidth
+      >
+        <DialogTitle>Добавить участника</DialogTitle>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '16px !important' }}>
+          <TextField
+            label="Поиск по имени или email" fullWidth autoFocus
+            value={memberSearch}
+            onChange={e => handleMemberSearchChange(e.target.value)}
+            InputProps={{
+              startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment>,
+              endAdornment: memberSearchLoading ? <InputAdornment position="end"><CircularProgress size={16} /></InputAdornment> : null,
+            }}
+          />
+          {memberSearchResults.length > 0 && (
+            <List dense sx={{ border: 1, borderColor: 'divider', borderRadius: 1, maxHeight: 260, overflow: 'auto' }}>
+              {memberSearchResults.map((u: any) => (
+                <ListItem
+                  key={u.id}
+                  button
+                  onClick={() => handleAddMember(u.id)}
+                  sx={{ '&:hover': { bgcolor: 'action.hover' } }}
+                >
+                  <ListItemAvatar>
+                    <Avatar sx={{ width: 32, height: 32, fontSize: 13, bgcolor: 'secondary.main' }}>
+                      {(u.full_name || u.email || '?').charAt(0).toUpperCase()}
+                    </Avatar>
+                  </ListItemAvatar>
+                  <ListItemText
+                    primary={u.full_name || u.email}
+                    secondary={u.full_name ? u.email : undefined}
+                    primaryTypographyProps={{ variant: 'body2' }}
+                    secondaryTypographyProps={{ variant: 'caption' }}
+                  />
+                  <Chip label={u.role} size="small" variant="outlined" sx={{ fontSize: 10 }} />
+                </ListItem>
+              ))}
+            </List>
+          )}
+          {memberSearch.trim() && !memberSearchLoading && memberSearchResults.length === 0 && (
+            <Typography variant="body2" color="text.secondary" textAlign="center">Пользователи не найдены</Typography>
+          )}
+          <TextField
+            select label="Роль в проекте" value={addMemberRole}
+            onChange={e => setAddMemberRole(e.target.value as ItMemberRole)}
+          >
+            {(Object.entries(IT_MEMBER_ROLE_LABELS) as [ItMemberRole, string][]).map(([k, v]) => (
+              <MenuItem key={k} value={k}>{v}</MenuItem>
+            ))}
+          </TextField>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { setAddMemberOpen(false); setMemberSearch(''); setMemberSearchResults([]); }}>
+            Отмена
+          </Button>
         </DialogActions>
       </Dialog>
 

@@ -27,7 +27,7 @@ def upgrade():
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.Column('updated_at', sa.DateTime(timezone=True), onupdate=sa.func.now()),
     )
-    op.create_index('ix_it_projects_key', 'it_projects', ['key'])
+    op.execute("CREATE INDEX IF NOT EXISTS ix_it_projects_key ON it_projects (key)")
 
     op.create_table(
         'it_project_members',

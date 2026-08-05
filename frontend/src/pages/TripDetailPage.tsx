@@ -98,6 +98,9 @@ const TripDetailPage: React.FC = () => {
   const [exSaving, setExSaving] = useState(false);
   const [exError, setExError] = useState('');
 
+  // Dashboard state
+  const [dashboard, setDashboard] = useState<any>(null);
+
   // Budget state
   const [budgetSummary, setBudgetSummary] = useState<any>(null);
   const [budgetEdit, setBudgetEdit] = useState<Record<string, string>>({});
@@ -123,7 +126,7 @@ const TripDetailPage: React.FC = () => {
     setLoading(true);
     setError('');
     try {
-      const [t, sm, exp, exch, txns, bs, itn] = await Promise.all([
+      const [t, sm, exp, exch, txns, bs, itn, dash] = await Promise.all([
         tripsApi.get(tripId),
         tripsApi.getSummary(tripId),
         tripsApi.listExpenses(tripId),
@@ -131,9 +134,11 @@ const TripDetailPage: React.FC = () => {
         tripsApi.getTransactions(tripId),
         tripsApi.getBudgetSummary(tripId),
         tripsApi.listItinerary(tripId),
+        tripsApi.getDashboard(tripId),
       ]);
       setTrip(t);
       setSummary(sm);
+      setDashboard(dash);
       setExpenses(exp);
       setExchanges(exch);
       setTransactions(txns);
@@ -154,6 +159,15 @@ const TripDetailPage: React.FC = () => {
   }, [tripId]);
 
   useEffect(() => { load(); }, [load]);
+
+  const refreshSummaries = async () => {
+    const [sm, dash] = await Promise.all([
+      tripsApi.getSummary(tripId),
+      tripsApi.getDashboard(tripId),
+    ]);
+    setSummary(sm);
+    setDashboard(dash);
+  };
 
   // ── Edit Trip ───────────────────────────────────────────────────────────────
   const handleEditOpen = () => {
@@ -215,9 +229,7 @@ const TripDetailPage: React.FC = () => {
         notes: expForm.notes.trim() || undefined,
       });
       setExpenses(prev => [newExp, ...prev]);
-      // refresh summary
-      const sm = await tripsApi.getSummary(tripId);
-      setSummary(sm);
+      await refreshSummaries();
       setExpOpen(false);
       setExpForm({ category: 'food', description: '', amount_local: '', exchange_rate: '', occurred_at: '', notes: '' });
     } catch (e: any) {
@@ -229,8 +241,7 @@ const TripDetailPage: React.FC = () => {
     try {
       await tripsApi.deleteExpense(tripId, expId);
       setExpenses(prev => prev.filter(e => e.id !== expId));
-      const sm = await tripsApi.getSummary(tripId);
-      setSummary(sm);
+      await refreshSummaries();
     } catch { /* silent */ }
   };
 
@@ -250,8 +261,7 @@ const TripDetailPage: React.FC = () => {
         notes: exForm.notes.trim() || undefined,
       });
       setExchanges(prev => [newEx, ...prev]);
-      const sm = await tripsApi.getSummary(tripId);
-      setSummary(sm);
+      await refreshSummaries();
       setExOpen(false);
       setExForm({ amount_base: '', exchange_rate: '', occurred_at: '', notes: '' });
     } catch (e: any) {
@@ -263,8 +273,7 @@ const TripDetailPage: React.FC = () => {
     try {
       await tripsApi.deleteCashExchange(tripId, exId);
       setExchanges(prev => prev.filter(e => e.id !== exId));
-      const sm = await tripsApi.getSummary(tripId);
-      setSummary(sm);
+      await refreshSummaries();
     } catch { /* silent */ }
   };
 
@@ -378,8 +387,7 @@ const TripDetailPage: React.FC = () => {
         return { ...prev, [key]: (prev[key] || []).map(i => i.id === updatedItem.id ? updatedItem : i) };
       });
       setExpenses(prev => [res.expense, ...prev]);
-      const sm = await tripsApi.getSummary(tripId);
-      setSummary(sm);
+      await refreshSummaries();
       const bs = await tripsApi.getBudgetSummary(tripId);
       setBudgetSummary(bs);
       setConvertItem(null);
@@ -419,9 +427,6 @@ const TripDetailPage: React.FC = () => {
     </Box>
   );
 
-  const cashUsedPct = summary && summary.total_exchanged_local > 0
-    ? Math.min(100, (summary.total_expense_local / summary.total_exchanged_local) * 100)
-    : 0;
 
   return (
     <Box>
@@ -463,108 +468,119 @@ const TripDetailPage: React.FC = () => {
             sx={{ minHeight: 48, fontSize: '0.84rem' }} />
         </Tabs>
 
-        {/* ── Tab 0: Overview ── */}
+        {/* ── Tab 0: Dashboard ── */}
         {tab === 0 && (
           <Box sx={{ p: 2.5 }}>
-            {summary ? (
+            {dashboard ? (
               <>
-                <Grid container spacing={2} sx={{ mb: 3 }}>
+                {/* Row 1: key metrics */}
+                <Grid container spacing={2} sx={{ mb: 2.5 }}>
                   <Grid item xs={6} md={3}>
                     <SummaryCard
-                      label={`Потрачено, ${summary.local_currency}`}
-                      value={fmt(summary.total_expense_local)}
-                      subtitle={`${fmt(summary.total_expense_base)} ${summary.base_currency}`}
+                      label={`Потрачено, ${dashboard.local_currency}`}
+                      value={fmt(dashboard.total_spent_local)}
+                      subtitle={`${fmt(dashboard.total_spent_base)} ${dashboard.base_currency}`}
                       color="error.main"
                     />
                   </Grid>
                   <Grid item xs={6} md={3}>
                     <SummaryCard
-                      label={`Обменяно, ${summary.local_currency}`}
-                      value={fmt(summary.total_exchanged_local)}
-                      subtitle={`из ${fmt(summary.total_exchanged_base)} ${summary.base_currency}`}
-                      color="info.main"
+                      label={`Наличные на руках, ${dashboard.local_currency}`}
+                      value={fmt(dashboard.cash_on_hand)}
+                      subtitle={dashboard.cash_on_hand >= 0 ? 'Достаточно' : '⚠️ Нехватает'}
+                      color={dashboard.cash_on_hand >= 0 ? 'success.main' : 'error.main'}
                     />
                   </Grid>
                   <Grid item xs={6} md={3}>
                     <SummaryCard
-                      label={`Остаток нала, ${summary.local_currency}`}
-                      value={fmt(summary.cash_balance_local)}
-                      subtitle={summary.cash_balance_local >= 0 ? 'Достаточно' : '⚠️ Нехватает'}
-                      color={summary.cash_balance_local >= 0 ? 'success.main' : 'error.main'}
+                      label={`Скорость трат / день`}
+                      value={dashboard.burn_rate != null ? `${fmt(dashboard.burn_rate)} ${dashboard.local_currency}` : '—'}
+                      subtitle={dashboard.days_elapsed != null ? `за ${dashboard.days_elapsed} дн.` : 'данных нет'}
                     />
                   </Grid>
                   <Grid item xs={6} md={3}>
                     <SummaryCard
-                      label="Средний курс"
-                      value={summary.avg_exchange_rate
-                        ? `1 ${summary.base_currency} = ${fmt(summary.avg_exchange_rate, 4)} ${summary.local_currency}`
-                        : '—'}
-                      subtitle="По всем обменам"
+                      label="Прогноз на поездку"
+                      value={dashboard.projected_total != null ? `${fmt(dashboard.projected_total)} ${dashboard.local_currency}` : '—'}
+                      subtitle={dashboard.days_remaining != null ? `осталось ${dashboard.days_remaining} дн.` : 'нет даты окончания'}
+                      color={
+                        dashboard.projected_total != null && dashboard.total_plan != null
+                          ? (dashboard.projected_total > dashboard.total_plan ? 'error.main' : 'success.main')
+                          : undefined
+                      }
                     />
                   </Grid>
                 </Grid>
 
-                {/* Cash usage progress */}
-                {summary.total_exchanged_local > 0 && (
-                  <Box sx={{ mb: 3 }}>
+                {/* Budget progress bar */}
+                {dashboard.total_plan != null && (
+                  <Box sx={{ mb: 2.5 }}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                      <Typography variant="caption" color="text.secondary">
-                        Использовано наличных
-                      </Typography>
-                      <Typography variant="caption" fontWeight={600}>
-                        {fmt(cashUsedPct, 1)}%
+                      <Typography variant="caption" color="text.secondary">Общий бюджет</Typography>
+                      <Typography variant="caption" fontWeight={600} color={dashboard.total_over ? 'error.main' : 'inherit'}>
+                        {fmt(dashboard.total_spent_local)} / {fmt(dashboard.total_plan)} {dashboard.local_currency}
+                        {dashboard.total_pct != null && ` (${fmt(dashboard.total_pct, 0)}%)`}
                       </Typography>
                     </Box>
                     <LinearProgress
                       variant="determinate"
-                      value={cashUsedPct}
-                      color={cashUsedPct > 90 ? 'error' : cashUsedPct > 70 ? 'warning' : 'success'}
-                      sx={{ height: 8, borderRadius: 4 }}
+                      value={Math.min(dashboard.total_pct ?? 0, 100)}
+                      color={dashboard.total_over ? 'error' : dashboard.total_pct > 80 ? 'warning' : 'success'}
+                      sx={{ height: 10, borderRadius: 5 }}
                     />
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 0.5 }}>
-                      <Typography variant="caption" color="text.secondary">
-                        {fmt(summary.total_expense_local)} {summary.local_currency} потрачено
+                    {dashboard.projected_total != null && dashboard.total_plan != null && dashboard.projected_total > dashboard.total_plan && (
+                      <Typography variant="caption" color="error.main" sx={{ mt: 0.5, display: 'block' }}>
+                        ⚠️ При текущей скорости трат прогноз превысит бюджет на {fmt(dashboard.projected_total - dashboard.total_plan)} {dashboard.local_currency}
                       </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {fmt(summary.total_exchanged_local)} {summary.local_currency} обменяно
-                      </Typography>
-                    </Box>
+                    )}
                   </Box>
                 )}
 
-                {/* By category */}
-                {Object.keys(summary.by_category).length > 0 && (
+                {/* Category breakdown */}
+                {dashboard.category_breakdown.length > 0 && (
                   <>
                     <Divider sx={{ mb: 2 }} />
                     <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1.5 }}>По категориям</Typography>
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                      {Object.entries(summary.by_category)
-                        .sort((a: any, b: any) => b[1].local - a[1].local)
-                        .map(([cat, data]: any) => {
-                          const pct = summary.total_expense_local > 0
-                            ? (data.local / summary.total_expense_local) * 100 : 0;
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                      {[...dashboard.category_breakdown]
+                        .sort((a: any, b: any) => b.actual - a.actual)
+                        .map((cat: any) => {
+                          const barPct = cat.plan ? Math.min((cat.actual / cat.plan) * 100, 100) : 0;
+                          const shareOfTotal = dashboard.total_spent_local > 0
+                            ? (cat.actual / dashboard.total_spent_local) * 100 : 0;
                           return (
-                            <Box key={cat}>
+                            <Box key={cat.category}>
                               <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.25 }}>
                                 <Typography variant="body2">
-                                  {CATEGORY_LABELS[cat] || cat}
+                                  {CATEGORY_LABELS[cat.category] || cat.category}
                                   <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 0.75 }}>
-                                    ({data.count} шт.)
+                                    {fmt(shareOfTotal, 0)}% от общего
                                   </Typography>
                                 </Typography>
                                 <Box sx={{ textAlign: 'right' }}>
-                                  <Typography variant="body2" fontWeight={600}>
-                                    {fmt(data.local)} {summary.local_currency}
-                                  </Typography>
-                                  <Typography variant="caption" color="text.secondary">
-                                    {fmt(data.base)} {summary.base_currency}
+                                  <Typography variant="body2" fontWeight={600} color={cat.over ? 'error.main' : 'inherit'}>
+                                    {fmt(cat.actual)} {dashboard.local_currency}
+                                    {cat.plan != null && (
+                                      <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 0.5 }}>
+                                        / {fmt(cat.plan)}
+                                      </Typography>
+                                    )}
                                   </Typography>
                                 </Box>
                               </Box>
-                              <LinearProgress
-                                variant="determinate" value={pct}
-                                sx={{ height: 4, borderRadius: 2 }}
-                              />
+                              {cat.plan ? (
+                                <LinearProgress
+                                  variant="determinate" value={barPct}
+                                  color={cat.over ? 'error' : barPct > 80 ? 'warning' : 'primary'}
+                                  sx={{ height: 5, borderRadius: 3 }}
+                                />
+                              ) : (
+                                <LinearProgress
+                                  variant="determinate"
+                                  value={shareOfTotal}
+                                  sx={{ height: 5, borderRadius: 3 }}
+                                />
+                              )}
                             </Box>
                           );
                         })}
@@ -572,10 +588,38 @@ const TripDetailPage: React.FC = () => {
                   </>
                 )}
 
-                {summary.expense_count === 0 && summary.exchange_count === 0 && (
+                {/* Upcoming itinerary items */}
+                {dashboard.upcoming_items.length > 0 && (
+                  <>
+                    <Divider sx={{ my: 2 }} />
+                    <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1.5 }}>Ближайшие пункты маршрута</Typography>
+                    {dashboard.upcoming_items.map((item: any) => (
+                      <Box key={item.id} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
+                        <Box sx={{ minWidth: 64 }}>
+                          <Typography variant="caption" color="text.secondary" fontFamily="monospace">
+                            {new Date(item.day_date + 'T12:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
+                            {item.time_of_day && ` ${item.time_of_day}`}
+                          </Typography>
+                        </Box>
+                        <Box sx={{ flex: 1 }}>
+                          <Typography variant="body2">{item.title}</Typography>
+                          {item.estimated_cost != null && (
+                            <Typography variant="caption" color="text.secondary">
+                              ~{fmt(item.estimated_cost)} {dashboard.local_currency}
+                            </Typography>
+                          )}
+                        </Box>
+                        <Chip size="small" label={CATEGORY_LABELS[item.category] || item.category}
+                          variant="outlined" sx={{ fontSize: '0.68rem', height: 20 }} />
+                      </Box>
+                    ))}
+                  </>
+                )}
+
+                {dashboard.total_spent_local === 0 && dashboard.total_exchanged_local === 0 && (
                   <Box sx={{ textAlign: 'center', py: 4, color: 'text.secondary' }}>
                     <Typography variant="body2">
-                      Добавьте траты и операции обмена во вкладках выше, чтобы увидеть аналитику
+                      Добавьте траты и обмены во вкладках, чтобы увидеть аналитику
                     </Typography>
                   </Box>
                 )}

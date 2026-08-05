@@ -872,3 +872,103 @@ async def convert_itinerary_to_expense(
     db.commit()
     db.refresh(item)
     return {"item": _serialize_item(item), "expense": _serialize_expense(expense)}
+
+
+# ── Dashboard ─────────────────────────────────────────────────────────────────
+
+@router.get("/{trip_id}/dashboard")
+async def get_dashboard(
+    trip_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """Aggregated dashboard: burn rate, cash on hand, category bars, upcoming items."""
+    _require_owner(current_user)
+    trip = _get_trip_or_404(db, trip_id, current_user)
+
+    today = date.today()
+    expenses = db.query(TripExpense).filter(TripExpense.trip_id == trip_id).all()
+    exchanges = db.query(TripCashExchange).filter(TripCashExchange.trip_id == trip_id).all()
+    budgets = db.query(TripBudget).filter(TripBudget.trip_id == trip_id).all()
+    upcoming = (
+        db.query(TripItineraryItem)
+        .filter(
+            TripItineraryItem.trip_id == trip_id,
+            TripItineraryItem.status == "planned",
+            TripItineraryItem.day_date >= today,
+        )
+        .order_by(TripItineraryItem.day_date, TripItineraryItem.time_of_day, TripItineraryItem.sort_order)
+        .limit(5)
+        .all()
+    )
+
+    total_spent_local = round(sum(e.amount_local for e in expenses), 2)
+    total_spent_base = round(sum(e.amount_base for e in expenses), 2)
+    total_exchanged_local = round(sum(ex.amount_local for ex in exchanges), 2)
+    cash_on_hand = round(total_exchanged_local - total_spent_local, 2)
+
+    budget_map: Dict[str, float] = {b.category: b.amount_local for b in budgets}
+    actual_map: Dict[str, float] = {}
+    for e in expenses:
+        actual_map[e.category] = round(actual_map.get(e.category, 0) + e.amount_local, 2)
+
+    # Burn rate
+    days_elapsed: Optional[int] = None
+    days_remaining: Optional[int] = None
+    days_total: Optional[int] = None
+    burn_rate: Optional[float] = None       # local per day
+    projected_total: Optional[float] = None
+
+    if trip.start_date:
+        elapsed = (today - trip.start_date).days
+        days_elapsed = max(0, elapsed)
+        if trip.end_date:
+            days_total = max(1, (trip.end_date - trip.start_date).days + 1)
+            days_remaining = max(0, (trip.end_date - today).days)
+        if days_elapsed > 0:
+            burn_rate = round(total_spent_local / days_elapsed, 2)
+            if days_total:
+                projected_total = round(burn_rate * days_total, 2)
+
+    # Category breakdown (only categories with budget or actual spend)
+    all_cats = sorted(set(list(actual_map.keys()) + [k for k in budget_map if k != "total"]))
+    category_breakdown = []
+    for cat in all_cats:
+        plan = budget_map.get(cat)
+        actual = actual_map.get(cat, 0)
+        pct = round(actual / plan * 100, 1) if plan and plan > 0 else None
+        category_breakdown.append({
+            "category": cat,
+            "plan": plan,
+            "actual": actual,
+            "remaining": round(plan - actual, 2) if plan is not None else None,
+            "pct": pct,
+            "over": (actual > plan) if plan is not None else False,
+        })
+
+    total_plan = budget_map.get("total")
+    total_pct = round(total_spent_local / total_plan * 100, 1) if total_plan and total_plan > 0 else None
+
+    return {
+        "local_currency": trip.local_currency,
+        "base_currency": trip.base_currency,
+        # Spending
+        "total_spent_local": total_spent_local,
+        "total_spent_base": total_spent_base,
+        "total_exchanged_local": total_exchanged_local,
+        "cash_on_hand": cash_on_hand,
+        # Budget
+        "total_plan": total_plan,
+        "total_pct": total_pct,
+        "total_over": (total_spent_local > total_plan) if total_plan is not None else False,
+        # Time
+        "days_elapsed": days_elapsed,
+        "days_remaining": days_remaining,
+        "days_total": days_total,
+        "burn_rate": burn_rate,
+        "projected_total": projected_total,
+        # Category bars
+        "category_breakdown": category_breakdown,
+        # Upcoming itinerary
+        "upcoming_items": [_serialize_item(i) for i in upcoming],
+    }

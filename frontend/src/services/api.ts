@@ -4475,6 +4475,10 @@ export const tripsApi = {
     const res = await api.post(`/trips/${tripId}/itinerary/${itemId}/convert`, payload);
     return res.data;
   },
+  getDashboard: async (id: number): Promise<any> => {
+    const res = await api.get(`/trips/${id}/dashboard`);
+    return res.data;
+  },
 };
 
 export default api;

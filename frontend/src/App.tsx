@@ -101,6 +101,8 @@ const MethodistStudioPage = React.lazy(() => import('./pages/MethodistStudioPage
 const MethodistsPage = React.lazy(() => import('./pages/MethodistsPage'));
 const AgileProjectsPage = React.lazy(() => import('./pages/AgileProjectsPage'));
 const AgileProjectPage = React.lazy(() => import('./pages/AgileProjectPage'));
+const TravelPage = React.lazy(() => import('./pages/TravelPage'));
+const TripDetailPage = React.lazy(() => import('./pages/TripDetailPage'));
 
 const DefaultRedirect: React.FC = () => {
   const { user } = useAuth();
@@ -945,6 +947,26 @@ function App() {
                 <PrivateRoute requiredPermission="agile.access">
                   <SectionBoundary>
                     <AgileProjectPage />
+                  </SectionBoundary>
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/travel"
+              element={
+                <PrivateRoute>
+                  <SectionBoundary>
+                    <TravelPage />
+                  </SectionBoundary>
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/travel/:id"
+              element={
+                <PrivateRoute>
+                  <SectionBoundary>
+                    <TripDetailPage />
                   </SectionBoundary>
                 </PrivateRoute>
               }

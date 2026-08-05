@@ -68,6 +68,7 @@ from app.routers import (
     trainer_cockpit,
     trainer_lessons,
     transcription,
+    trips,
     users,
 )
 
@@ -469,6 +470,7 @@ app.include_router(media.router, prefix="/api/v1/media", tags=["media"])
 app.include_router(public_site.router, prefix="/api/v1/public-site", tags=["public-site"])
 app.include_router(public_api.router, prefix="/api/v1/public", tags=["public"])
 app.include_router(cms.router, prefix="/api/v1/cms", tags=["cms"])
+app.include_router(trips.router, prefix="/api/v1/trips", tags=["trips"])
 
 
 @app.exception_handler(Exception)

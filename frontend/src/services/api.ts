@@ -4318,5 +4318,59 @@ export const emailBroadcastsApi = {
   },
 };
 
+export const tripsApi = {
+  list: async (statusFilter?: string): Promise<any[]> => {
+    const params: Record<string, string> = {};
+    if (statusFilter) params.status = statusFilter;
+    const res = await api.get('/trips', { params });
+    return res.data;
+  },
+  get: async (id: number): Promise<any> => {
+    const res = await api.get(`/trips/${id}`);
+    return res.data;
+  },
+  create: async (payload: {
+    title: string;
+    country?: string;
+    city?: string;
+    start_date: string;
+    end_date?: string;
+    base_currency?: string;
+    local_currency?: string;
+    status?: string;
+    notes?: string;
+  }): Promise<any> => {
+    const res = await api.post('/trips', payload);
+    return res.data;
+  },
+  update: async (id: number, payload: Partial<{
+    title: string;
+    country: string;
+    city: string;
+    start_date: string;
+    end_date: string;
+    base_currency: string;
+    local_currency: string;
+    status: string;
+    notes: string;
+  }>): Promise<any> => {
+    const res = await api.patch(`/trips/${id}`, payload);
+    return res.data;
+  },
+  delete: async (id: number): Promise<void> => {
+    await api.delete(`/trips/${id}`);
+  },
+  getTransactions: async (id: number): Promise<any[]> => {
+    const res = await api.get(`/trips/${id}/transactions`);
+    return res.data;
+  },
+  linkTransaction: async (tripId: number, transactionId: number): Promise<void> => {
+    await api.post(`/trips/${tripId}/transactions/${transactionId}/link`);
+  },
+  unlinkTransaction: async (tripId: number, transactionId: number): Promise<void> => {
+    await api.delete(`/trips/${tripId}/transactions/${transactionId}/link`);
+  },
+};
+
 export default api;
 

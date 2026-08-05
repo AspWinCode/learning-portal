@@ -68,6 +68,7 @@ import {
   Tune,
   WebAsset,
   DesktopWindows,
+  FlightTakeoff,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { salesApi, settingsApi, telegramApi } from '../services/api';
@@ -88,7 +89,7 @@ const NAV_GROUPS: Array<{ id: string; label: string; paths: Set<string> }> = [
   { id: 'home', label: '🏠 Главная', paths: new Set(['/dashboard', '/parent-dashboard', '/b2b-schools/plan']) },
   { id: 'education', label: '🎓 Обучение', paths: new Set(['/trainer-cockpit', '/students', '/groups', '/lessons', '/programs', '/grades', '/characteristics', '/trainer-grades', '/trainers', '/methodists']) },
   { id: 'ops', label: '📋 Учебные операции', paths: new Set(['/operations/absences', '/operations/program-makeup', '/operations/instructions', '/operations/manual-lessons', '/projects']) },
-  { id: 'finance', label: '💰 Финансы', paths: new Set(['/finance/overview', '/abonements', '/finance/payments', '/calculations', '/finance/tax-deduction']) },
+  { id: 'finance', label: '💰 Финансы', paths: new Set(['/finance/overview', '/abonements', '/finance/payments', '/calculations', '/finance/tax-deduction', '/travel']) },
   { id: 'workspace', label: '✅ Задачи и проекты', paths: new Set(['/tasks', '/owner-workspace/projects', '/owner-workspace/links', '/disk', '/passwords', '/transcription', '/notes', '/agile']) },
   { id: 'b2b', label: '🤝 Контрагенты и B2B', paths: new Set(['/owner-workspace/counterparties', '/b2b-schools']) },
   { id: 'system', label: '⚙️ Администрирование', paths: new Set(['/admin/settings', '/settings/communications', '/roles', '/reports']) },
@@ -498,6 +499,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       if (canAccessAbonements) items.push({ text: 'Абонементы', icon: <LocalOffer />, path: '/abonements' });
       items.push({ text: 'Оплаты', icon: <ReceiptLong />, path: '/finance/payments' });
       if (canAccessOwnerCalculations) items.push({ text: 'Расчёты', icon: <ReceiptLong />, path: '/calculations' });
+      items.push({ text: 'Путешествия', icon: <FlightTakeoff />, path: '/travel' });
     }
     if (isAdminLike) {
       items.push({ text: 'Инструкции', icon: <Description />, path: '/operations/instructions' });
@@ -585,6 +587,7 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
     (location.pathname.startsWith('/owner-workspace/counterparties') ? 'Контрагенты' : null) ??
     (isOwnerWorkspaceMainSection(location.pathname) ? 'Таск трекер' : null) ??
     (location.pathname.startsWith('/agile') ? 'IT-проекты' : null) ??
+    (location.pathname.startsWith('/travel') ? 'Путешествия' : null) ??
     'Портал управления обучением';
 
   // Группируем видимые пункты меню

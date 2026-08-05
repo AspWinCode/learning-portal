@@ -1066,6 +1066,7 @@ class FinanceTransaction(Base):
     student_id = Column(Integer, ForeignKey("students.id"), nullable=True, index=True)
     group_id = Column(Integer, ForeignKey("groups.id"), nullable=True, index=True)
     teacher_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    trip_id = Column(Integer, ForeignKey("trips.id", ondelete="SET NULL"), nullable=True, index=True)
 
     status = Column(
         SQLEnum(FinanceTransactionStatus, name="financetransactionstatus", values_callable=_enum_values),
@@ -1082,6 +1083,7 @@ class FinanceTransaction(Base):
     to_account = relationship("FinanceAccount", foreign_keys=[to_account_id])
     target = relationship("FinanceTarget", foreign_keys=[target_id])
     article = relationship("FinanceArticle", foreign_keys=[article_id])
+    trip = relationship("Trip", foreign_keys=[trip_id], back_populates="transactions")
 
 
 class FinanceRecognitionMatchType(str, enum.Enum):
@@ -3417,3 +3419,39 @@ class AgileRoleAccess(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     updated_by = relationship("User", foreign_keys=[updated_by_id])
+
+
+# ── Travel Module ─────────────────────────────────────────────────────────────
+
+class TripStatus(str, enum.Enum):
+    PLANNED = "planned"
+    ACTIVE = "active"
+    COMPLETED = "completed"
+
+
+class Trip(Base):
+    """Поездка (Travel Module) — привязывается к owner, транзакции журнала ссылаются на неё через trip_id."""
+
+    __tablename__ = "trips"
+
+    id = Column(Integer, primary_key=True, index=True)
+    owner_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    title = Column(String(256), nullable=False)
+    country = Column(String(128), nullable=True)
+    city = Column(String(128), nullable=True)
+    start_date = Column(Date, nullable=False)
+    end_date = Column(Date, nullable=True)
+    base_currency = Column(String(3), nullable=False, default="RUB")
+    local_currency = Column(String(3), nullable=False, default="THB")
+    status = Column(
+        SQLEnum(TripStatus, name="tripstatus", values_callable=_enum_values),
+        nullable=False,
+        default=TripStatus.PLANNED,
+        index=True,
+    )
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    owner = relationship("User", foreign_keys=[owner_id])
+    transactions = relationship("FinanceTransaction", foreign_keys="FinanceTransaction.trip_id", back_populates="trip")

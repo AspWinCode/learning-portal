@@ -86,7 +86,9 @@ const TripDetailPage: React.FC = () => {
   const [expOpen, setExpOpen] = useState(false);
   const [expForm, setExpForm] = useState({
     category: 'food', description: '', amount_local: '', exchange_rate: '', occurred_at: '', notes: '',
+    photo_url: '', place_name: '', latitude: '', longitude: '',
   });
+  const [geoLoading, setGeoLoading] = useState(false);
   const [expSaving, setExpSaving] = useState(false);
   const [expError, setExpError] = useState('');
 
@@ -240,11 +242,15 @@ const TripDetailPage: React.FC = () => {
         exchange_rate: rate,
         occurred_at: expForm.occurred_at,
         notes: expForm.notes.trim() || undefined,
+        photo_url: expForm.photo_url.trim() || undefined,
+        place_name: expForm.place_name.trim() || undefined,
+        latitude: expForm.latitude ? parseFloat(expForm.latitude) : undefined,
+        longitude: expForm.longitude ? parseFloat(expForm.longitude) : undefined,
       });
       setExpenses(prev => [newExp, ...prev]);
       await refreshSummaries();
       setExpOpen(false);
-      setExpForm({ category: 'food', description: '', amount_local: '', exchange_rate: '', occurred_at: '', notes: '' });
+      setExpForm({ category: 'food', description: '', amount_local: '', exchange_rate: '', occurred_at: '', notes: '', photo_url: '', place_name: '', latitude: '', longitude: '' });
     } catch (e: any) {
       setExpError(e.response?.data?.detail || 'Ошибка при сохранении');
     } finally { setExpSaving(false); }
@@ -736,8 +742,31 @@ const TripDetailPage: React.FC = () => {
                       <TableRow key={e.id} hover>
                         <TableCell sx={{ whiteSpace: 'nowrap' }}>{e.occurred_at}</TableCell>
                         <TableCell>{CATEGORY_LABELS[e.category] || e.category}</TableCell>
-                        <TableCell sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {e.description || '—'}
+                        <TableCell sx={{ maxWidth: 220 }}>
+                          <Typography variant="body2" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {e.description || '—'}
+                          </Typography>
+                          {e.place_name && (
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
+                              <Place sx={{ fontSize: 12 }} />{e.place_name}
+                            </Typography>
+                          )}
+                          {e.photo_url && (
+                            <Box component="a" href={e.photo_url} target="_blank" rel="noopener"
+                              sx={{ display: 'inline-block', mt: 0.5 }}>
+                              <Box component="img" src={e.photo_url} alt=""
+                                sx={{ height: 36, borderRadius: 1, objectFit: 'cover', maxWidth: 60 }}
+                                onError={(ev: any) => { ev.target.style.display = 'none'; }} />
+                            </Box>
+                          )}
+                          {e.latitude && e.longitude && (
+                            <Box component="a"
+                              href={`https://maps.google.com/?q=${e.latitude},${e.longitude}`}
+                              target="_blank" rel="noopener"
+                              sx={{ fontSize: '0.68rem', color: 'primary.main', display: 'block' }}>
+                              📍 карта
+                            </Box>
+                          )}
                         </TableCell>
                         <TableCell align="right" sx={{ fontWeight: 600, color: 'error.main' }}>
                           {fmt(e.amount_local)}
@@ -1370,7 +1399,43 @@ const TripDetailPage: React.FC = () => {
             </Grid>
           </Grid>
           <TextField fullWidth label="Заметки" multiline minRows={1} value={expForm.notes}
-            onChange={e => setExpForm(p => ({ ...p, notes: e.target.value }))} />
+            onChange={e => setExpForm(p => ({ ...p, notes: e.target.value }))} sx={{ mb: 2 }} />
+          <Divider sx={{ mb: 2 }}><Typography variant="caption" color="text.secondary">Опционально</Typography></Divider>
+          <TextField fullWidth label="Название места" value={expForm.place_name}
+            onChange={e => setExpForm(p => ({ ...p, place_name: e.target.value }))}
+            placeholder="Ресторан Thai Garden, рынок Chatuchak..." sx={{ mb: 2 }} />
+          <Box sx={{ display: 'flex', gap: 1, mb: 2, alignItems: 'flex-start' }}>
+            <TextField label="Широта" type="number" value={expForm.latitude} size="small"
+              onChange={e => setExpForm(p => ({ ...p, latitude: e.target.value }))}
+              inputProps={{ step: 'any' }} sx={{ flex: 1 }} />
+            <TextField label="Долгота" type="number" value={expForm.longitude} size="small"
+              onChange={e => setExpForm(p => ({ ...p, longitude: e.target.value }))}
+              inputProps={{ step: 'any' }} sx={{ flex: 1 }} />
+            <Tooltip title="Определить моё местоположение">
+              <span>
+                <IconButton size="small" disabled={geoLoading} onClick={() => {
+                  if (!navigator.geolocation) return;
+                  setGeoLoading(true);
+                  navigator.geolocation.getCurrentPosition(
+                    pos => {
+                      setExpForm(p => ({
+                        ...p,
+                        latitude: String(pos.coords.latitude.toFixed(6)),
+                        longitude: String(pos.coords.longitude.toFixed(6)),
+                      }));
+                      setGeoLoading(false);
+                    },
+                    () => setGeoLoading(false)
+                  );
+                }}>
+                  <Place fontSize="small" />
+                </IconButton>
+              </span>
+            </Tooltip>
+          </Box>
+          <TextField fullWidth label="Фото (URL)" value={expForm.photo_url}
+            onChange={e => setExpForm(p => ({ ...p, photo_url: e.target.value }))}
+            placeholder="https://..." />
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setExpOpen(false)} disabled={expSaving}>Отмена</Button>

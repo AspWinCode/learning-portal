@@ -4386,6 +4386,10 @@ export const tripsApi = {
     exchange_rate: number;
     occurred_at: string;
     notes?: string;
+    latitude?: number;
+    longitude?: number;
+    photo_url?: string;
+    place_name?: string;
   }): Promise<any> => {
     const res = await api.post(`/trips/${tripId}/expenses`, payload);
     return res.data;

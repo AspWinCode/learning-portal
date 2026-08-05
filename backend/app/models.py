@@ -3478,6 +3478,10 @@ class TripExpense(Base):
     base_currency = Column(String(3), nullable=False)
     occurred_at = Column(Date, nullable=False)
     notes = Column(Text, nullable=True)
+    latitude = Column(Float, nullable=True)
+    longitude = Column(Float, nullable=True)
+    photo_url = Column(String(1024), nullable=True)
+    place_name = Column(String(256), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     trip = relationship("Trip", back_populates="expenses")

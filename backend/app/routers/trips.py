@@ -292,6 +292,10 @@ class ExpenseCreate(BaseModel):
     exchange_rate: float
     occurred_at: date
     notes: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    photo_url: Optional[str] = None
+    place_name: Optional[str] = None
 
 
 class ExpenseUpdate(BaseModel):
@@ -301,6 +305,10 @@ class ExpenseUpdate(BaseModel):
     exchange_rate: Optional[float] = None
     occurred_at: Optional[date] = None
     notes: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    photo_url: Optional[str] = None
+    place_name: Optional[str] = None
 
 
 def _serialize_expense(e: TripExpense) -> dict:
@@ -316,6 +324,10 @@ def _serialize_expense(e: TripExpense) -> dict:
         "base_currency": e.base_currency,
         "occurred_at": e.occurred_at.isoformat() if e.occurred_at else None,
         "notes": e.notes,
+        "latitude": e.latitude,
+        "longitude": e.longitude,
+        "photo_url": e.photo_url,
+        "place_name": e.place_name,
         "created_at": e.created_at.isoformat() if e.created_at else None,
     }
 
@@ -360,6 +372,10 @@ async def create_expense(
         base_currency=trip.base_currency,
         occurred_at=payload.occurred_at,
         notes=payload.notes,
+        latitude=payload.latitude,
+        longitude=payload.longitude,
+        photo_url=payload.photo_url,
+        place_name=payload.place_name,
     )
     db.add(expense)
     db.commit()
@@ -396,6 +412,14 @@ async def update_expense(
         if payload.exchange_rate <= 0:
             raise HTTPException(status_code=400, detail="Курс обмена должен быть больше нуля")
         expense.exchange_rate = payload.exchange_rate
+    if payload.latitude is not None:
+        expense.latitude = payload.latitude
+    if payload.longitude is not None:
+        expense.longitude = payload.longitude
+    if payload.photo_url is not None:
+        expense.photo_url = payload.photo_url
+    if payload.place_name is not None:
+        expense.place_name = payload.place_name
     expense.amount_base = round(expense.amount_local / expense.exchange_rate, 2)
     db.commit()
     db.refresh(expense)

@@ -103,6 +103,7 @@ const AgileProjectsPage = React.lazy(() => import('./pages/AgileProjectsPage'));
 const AgileProjectPage = React.lazy(() => import('./pages/AgileProjectPage'));
 const TravelPage = React.lazy(() => import('./pages/TravelPage'));
 const TripDetailPage = React.lazy(() => import('./pages/TripDetailPage'));
+const TravelComparePage = React.lazy(() => import('./pages/TravelComparePage'));
 
 const DefaultRedirect: React.FC = () => {
   const { user } = useAuth();
@@ -967,6 +968,16 @@ function App() {
                 <PrivateRoute>
                   <SectionBoundary>
                     <TripDetailPage />
+                  </SectionBoundary>
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/travel/compare"
+              element={
+                <PrivateRoute>
+                  <SectionBoundary>
+                    <TravelComparePage />
                   </SectionBoundary>
                 </PrivateRoute>
               }

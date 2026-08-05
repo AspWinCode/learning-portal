@@ -124,6 +124,55 @@ async def list_trips(
     return [_serialize_trip(t, db) for t in trips]
 
 
+@router.get("/compare")
+async def compare_trips(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """Return per-trip aggregate stats for comparison view."""
+    _require_owner(current_user)
+    trips = db.query(Trip).filter(Trip.owner_id == current_user.id).order_by(Trip.start_date.desc()).all()
+    result = []
+    for trip in trips:
+        expenses = db.query(TripExpense).filter(TripExpense.trip_id == trip.id).all()
+        exchanges = db.query(TripCashExchange).filter(TripCashExchange.trip_id == trip.id).all()
+        budgets = db.query(TripBudget).filter(TripBudget.trip_id == trip.id).all()
+        total_spent_local = round(sum(e.amount_local for e in expenses), 2)
+        total_spent_base = round(sum(e.amount_base for e in expenses), 2)
+        total_exchanged = round(sum(ex.amount_local for ex in exchanges), 2)
+        budget_map = {b.category: b.amount_local for b in budgets}
+        total_plan = budget_map.get("total")
+        days_total = None
+        daily_avg = None
+        if trip.start_date and trip.end_date:
+            days_total = max(1, (trip.end_date - trip.start_date).days + 1)
+            daily_avg = round(total_spent_local / days_total, 2) if days_total else None
+        by_cat: Dict[str, float] = {}
+        for e in expenses:
+            by_cat[e.category] = round(by_cat.get(e.category, 0) + e.amount_local, 2)
+        result.append({
+            "id": trip.id,
+            "title": trip.title,
+            "country": trip.country,
+            "city": trip.city,
+            "start_date": trip.start_date.isoformat() if trip.start_date else None,
+            "end_date": trip.end_date.isoformat() if trip.end_date else None,
+            "status": trip.status.value if hasattr(trip.status, "value") else trip.status,
+            "local_currency": trip.local_currency,
+            "base_currency": trip.base_currency,
+            "days_total": days_total,
+            "total_spent_local": total_spent_local,
+            "total_spent_base": total_spent_base,
+            "total_exchanged_local": total_exchanged,
+            "total_plan": total_plan,
+            "budget_used_pct": round(total_spent_local / total_plan * 100, 1) if total_plan and total_plan > 0 else None,
+            "daily_avg": daily_avg,
+            "expense_count": len(expenses),
+            "by_category": by_cat,
+        })
+    return result
+
+
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_trip(
     payload: TripCreate,

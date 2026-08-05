@@ -107,9 +107,14 @@ const TravelPage: React.FC = () => {
           <FlightTakeoff sx={{ color: 'primary.main', fontSize: 28 }} />
           <Typography variant="h5" fontWeight={700}>Путешествия</Typography>
         </Box>
-        <Button variant="contained" startIcon={<Add />} onClick={handleOpen}>
-          Новая поездка
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button variant="outlined" size="small" onClick={() => navigate('/travel/compare')}>
+            Сравнить
+          </Button>
+          <Button variant="contained" startIcon={<Add />} onClick={handleOpen}>
+            Новая поездка
+          </Button>
+        </Box>
       </Box>
 
       <Box sx={{ display: 'flex', gap: 1.5, mb: 3, flexWrap: 'wrap', alignItems: 'center' }}>

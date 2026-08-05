@@ -4483,6 +4483,10 @@ export const tripsApi = {
     const res = await api.get(`/trips/${id}/dashboard`);
     return res.data;
   },
+  compareTrips: async (): Promise<any[]> => {
+    const res = await api.get('/trips/compare');
+    return res.data;
+  },
   listChecklist: async (id: number): Promise<any> => {
     const res = await api.get(`/trips/${id}/checklist`);
     return res.data;

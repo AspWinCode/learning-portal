@@ -4353,6 +4353,7 @@ export const tripsApi = {
     local_currency: string;
     status: string;
     notes: string;
+    cash_alert_threshold: number;
   }>): Promise<any> => {
     const res = await api.patch(`/trips/${id}`, payload);
     return res.data;

@@ -202,6 +202,7 @@ const TripDetailPage: React.FC = () => {
       start_date: trip.start_date || '', end_date: trip.end_date || '',
       base_currency: trip.base_currency, local_currency: trip.local_currency,
       status: trip.status, notes: trip.notes || '',
+      cash_alert_threshold: trip.cash_alert_threshold != null ? String(trip.cash_alert_threshold) : '',
     });
     setEditError('');
     setEditOpen(true);
@@ -220,6 +221,7 @@ const TripDetailPage: React.FC = () => {
         local_currency: editForm.local_currency,
         status: editForm.status,
         notes: editForm.notes.trim() || undefined,
+        cash_alert_threshold: editForm.cash_alert_threshold ? parseFloat(editForm.cash_alert_threshold) : undefined,
       });
       setTrip(updated);
       setEditOpen(false);
@@ -585,6 +587,11 @@ const TripDetailPage: React.FC = () => {
         {/* ── Tab 0: Dashboard ── */}
         {tab === 0 && (
           <Box sx={{ p: 2.5 }}>
+            {dashboard?.cash_alert_triggered && (
+              <Alert severity="warning" sx={{ mb: 2 }}>
+                ⚠️ Мало наличных! Осталось <strong>{fmt(dashboard.cash_on_hand)} {dashboard.local_currency}</strong> — меньше установленного порога ({fmt(dashboard.cash_alert_threshold)} {dashboard.local_currency}). Пора менять ещё.
+              </Alert>
+            )}
             {dashboard ? (
               <>
                 {/* Row 1: key metrics */}
@@ -1361,7 +1368,13 @@ const TripDetailPage: React.FC = () => {
             </Select>
           </FormControl>
           <TextField fullWidth label="Заметки" multiline minRows={2} value={editForm.notes || ''}
-            onChange={e => setEditForm((p: any) => ({ ...p, notes: e.target.value }))} />
+            onChange={e => setEditForm((p: any) => ({ ...p, notes: e.target.value }))} sx={{ mb: 2 }} />
+          <TextField fullWidth
+            label={`Алерт "мало нала" (${trip?.local_currency}) — 0 = выкл`}
+            type="number" inputProps={{ min: 0, step: 'any' }}
+            value={editForm.cash_alert_threshold || ''}
+            onChange={e => setEditForm((p: any) => ({ ...p, cash_alert_threshold: e.target.value }))}
+            helperText="Когда наличных меньше этой суммы — появится предупреждение в дашборде" />
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setEditOpen(false)} disabled={editSaving}>Отмена</Button>

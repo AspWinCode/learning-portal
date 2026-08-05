@@ -28,6 +28,7 @@ class TripCreate(BaseModel):
     local_currency: str = "THB"
     status: str = "planned"
     notes: Optional[str] = None
+    cash_alert_threshold: Optional[float] = None
 
 
 class TripUpdate(BaseModel):
@@ -40,6 +41,7 @@ class TripUpdate(BaseModel):
     local_currency: Optional[str] = None
     status: Optional[str] = None
     notes: Optional[str] = None
+    cash_alert_threshold: Optional[float] = None
 
 
 class TripResponse(BaseModel):
@@ -103,6 +105,7 @@ def _serialize_trip(trip: Trip, db: Session) -> dict:
         "local_currency": trip.local_currency,
         "status": trip.status.value if hasattr(trip.status, "value") else trip.status,
         "notes": trip.notes,
+        "cash_alert_threshold": trip.cash_alert_threshold,
         "created_at": trip.created_at.isoformat() if trip.created_at else None,
         "transaction_count": count,
     }
@@ -195,6 +198,7 @@ async def create_trip(
         local_currency=payload.local_currency,
         status=trip_status,
         notes=payload.notes,
+        cash_alert_threshold=payload.cash_alert_threshold,
     )
     db.add(trip)
     db.commit()
@@ -243,6 +247,8 @@ async def update_trip(
             pass
     if payload.notes is not None:
         trip.notes = payload.notes
+    if payload.cash_alert_threshold is not None:
+        trip.cash_alert_threshold = payload.cash_alert_threshold if payload.cash_alert_threshold > 0 else None
     db.commit()
     db.refresh(trip)
     return _serialize_trip(trip, db)
@@ -1044,6 +1050,11 @@ async def get_dashboard(
         "category_breakdown": category_breakdown,
         # Upcoming itinerary
         "upcoming_items": [_serialize_item(i) for i in upcoming],
+        # Cash alert
+        "cash_alert_threshold": trip.cash_alert_threshold,
+        "cash_alert_triggered": (
+            trip.cash_alert_threshold is not None and cash_on_hand < trip.cash_alert_threshold
+        ),
     }
 
 

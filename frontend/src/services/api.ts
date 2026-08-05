@@ -4420,6 +4420,18 @@ export const tripsApi = {
   deleteCashExchange: async (tripId: number, exchangeId: number): Promise<void> => {
     await api.delete(`/trips/${tripId}/cash-exchanges/${exchangeId}`);
   },
+  getBudget: async (id: number): Promise<Record<string, { amount_local: number; id: number }>> => {
+    const res = await api.get(`/trips/${id}/budget`);
+    return res.data;
+  },
+  setBudget: async (id: number, budgets: Record<string, number>): Promise<any> => {
+    const res = await api.put(`/trips/${id}/budget`, { budgets });
+    return res.data;
+  },
+  getBudgetSummary: async (id: number): Promise<any> => {
+    const res = await api.get(`/trips/${id}/budget-summary`);
+    return res.data;
+  },
 };
 
 export default api;

@@ -8,7 +8,7 @@ import {
 } from '@mui/material';
 import {
   ArrowBack, CalendarToday, Delete, Edit, FlightTakeoff, LinkOff,
-  Place, Add, CurrencyExchange, Receipt, Dashboard,
+  Place, Add, CurrencyExchange, Receipt, Dashboard, Savings,
 } from '@mui/icons-material';
 import { useNavigate, useParams } from 'react-router-dom';
 import { tripsApi } from '../services/api';
@@ -98,22 +98,37 @@ const TripDetailPage: React.FC = () => {
   const [exSaving, setExSaving] = useState(false);
   const [exError, setExError] = useState('');
 
+  // Budget state
+  const [budgetSummary, setBudgetSummary] = useState<any>(null);
+  const [budgetEdit, setBudgetEdit] = useState<Record<string, string>>({});
+  const [budgetSaving, setBudgetSaving] = useState(false);
+  const [budgetMsg, setBudgetMsg] = useState('');
+
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const [t, sm, exp, exch, txns] = await Promise.all([
+      const [t, sm, exp, exch, txns, bs] = await Promise.all([
         tripsApi.get(tripId),
         tripsApi.getSummary(tripId),
         tripsApi.listExpenses(tripId),
         tripsApi.listCashExchanges(tripId),
         tripsApi.getTransactions(tripId),
+        tripsApi.getBudgetSummary(tripId),
       ]);
       setTrip(t);
       setSummary(sm);
       setExpenses(exp);
       setExchanges(exch);
       setTransactions(txns);
+      setBudgetSummary(bs);
+      // Pre-fill budget edit form
+      const initEdit: Record<string, string> = {};
+      if (bs.total_plan != null) initEdit['total'] = String(bs.total_plan);
+      Object.entries(bs.by_category || {}).forEach(([cat, data]: any) => {
+        if (data.plan != null) initEdit[cat] = String(data.plan);
+      });
+      setBudgetEdit(initEdit);
     } catch {
       setError('Не удалось загрузить поездку');
     } finally {
@@ -243,6 +258,27 @@ const TripDetailPage: React.FC = () => {
     } catch { /* silent */ }
   };
 
+  const handleBudgetSave = async () => {
+    setBudgetSaving(true);
+    setBudgetMsg('');
+    try {
+      const budgets: Record<string, number> = {};
+      Object.entries(budgetEdit).forEach(([cat, val]) => {
+        const n = parseFloat(val);
+        budgets[cat] = isNaN(n) || val === '' ? 0 : n;
+      });
+      await tripsApi.setBudget(tripId, budgets);
+      const bs = await tripsApi.getBudgetSummary(tripId);
+      setBudgetSummary(bs);
+      setBudgetMsg('Бюджет сохранён');
+      setTimeout(() => setBudgetMsg(''), 2500);
+    } catch {
+      setBudgetMsg('Ошибка при сохранении бюджета');
+    } finally {
+      setBudgetSaving(false);
+    }
+  };
+
   // Derived for exchange preview
   const expLocalPreview = (() => {
     const al = parseFloat(expForm.amount_local);
@@ -311,6 +347,7 @@ const TripDetailPage: React.FC = () => {
             sx={{ minHeight: 48, fontSize: '0.84rem' }} />
           <Tab label={`Журнал${transactions.length ? ` (${transactions.length})` : ''}`}
             sx={{ minHeight: 48, fontSize: '0.84rem' }} />
+          <Tab label="Бюджет" sx={{ minHeight: 48, fontSize: '0.84rem' }} />
         </Tabs>
 
         {/* ── Tab 0: Overview ── */}
@@ -608,6 +645,189 @@ const TripDetailPage: React.FC = () => {
                   </TableBody>
                 </Table>
               </TableContainer>
+            )}
+          </Box>
+        )}
+        {/* ── Tab 4: Budget ── */}
+        {tab === 4 && (
+          <Box sx={{ p: 2.5 }}>
+            {budgetSummary ? (
+              <>
+                {/* Total budget status */}
+                {budgetSummary.total_plan != null && (
+                  <Paper
+                    variant="outlined"
+                    sx={{
+                      p: 2, mb: 3, borderRadius: 2,
+                      borderColor: budgetSummary.total_over ? 'error.main' : 'divider',
+                      bgcolor: budgetSummary.total_over ? 'error.50' : 'background.paper',
+                    }}
+                  >
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
+                      <Box>
+                        <Typography variant="subtitle2" fontWeight={700}>
+                          {budgetSummary.total_over ? '⚠️ Бюджет превышен!' : '💰 Общий бюджет'}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Потрачено {fmt(budgetSummary.total_actual)} из {fmt(budgetSummary.total_plan)} {budgetSummary.local_currency}
+                        </Typography>
+                      </Box>
+                      <Box sx={{ textAlign: 'right' }}>
+                        <Typography
+                          variant="h6" fontWeight={700}
+                          color={budgetSummary.total_over ? 'error.main' : 'success.main'}
+                        >
+                          {budgetSummary.total_remaining != null
+                            ? `${budgetSummary.total_over ? '−' : '+'}${fmt(Math.abs(budgetSummary.total_remaining))} ${budgetSummary.local_currency}`
+                            : '—'}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {budgetSummary.total_pct != null ? `${budgetSummary.total_pct}% использовано` : ''}
+                        </Typography>
+                      </Box>
+                    </Box>
+                    {budgetSummary.total_plan > 0 && (
+                      <LinearProgress
+                        variant="determinate"
+                        value={Math.min(100, budgetSummary.total_pct || 0)}
+                        color={budgetSummary.total_over ? 'error' : budgetSummary.total_pct > 80 ? 'warning' : 'success'}
+                        sx={{ height: 10, borderRadius: 5 }}
+                      />
+                    )}
+                  </Paper>
+                )}
+
+                {/* Forecast */}
+                {budgetSummary.daily_avg != null && (
+                  <Grid container spacing={2} sx={{ mb: 3 }}>
+                    <Grid item xs={6} sm={3}>
+                      <SummaryCard label="Дней прошло" value={String(budgetSummary.days_elapsed ?? '—')} />
+                    </Grid>
+                    <Grid item xs={6} sm={3}>
+                      <SummaryCard label="Дней осталось" value={String(budgetSummary.days_remaining ?? '—')}
+                        color={budgetSummary.days_remaining === 0 ? 'error.main' : undefined} />
+                    </Grid>
+                    <Grid item xs={6} sm={3}>
+                      <SummaryCard
+                        label={`В день, ${budgetSummary.local_currency}`}
+                        value={fmt(budgetSummary.daily_avg)}
+                        subtitle="средний расход"
+                      />
+                    </Grid>
+                    <Grid item xs={6} sm={3}>
+                      <SummaryCard
+                        label={`Прогноз, ${budgetSummary.local_currency}`}
+                        value={fmt(budgetSummary.projected_total)}
+                        subtitle="при текущем темпе"
+                        color={
+                          budgetSummary.total_plan && budgetSummary.projected_total > budgetSummary.total_plan
+                            ? 'error.main' : 'text.primary'
+                        }
+                      />
+                    </Grid>
+                  </Grid>
+                )}
+
+                {/* Category plan vs actual */}
+                {Object.keys(budgetSummary.by_category).length > 0 && (
+                  <>
+                    <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1.5 }}>
+                      По категориям: план vs факт
+                    </Typography>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mb: 3 }}>
+                      {Object.entries(budgetSummary.by_category)
+                        .sort((a: any, b: any) => (b[1].actual || 0) - (a[1].actual || 0))
+                        .map(([cat, data]: any) => (
+                          <Box key={cat}>
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                                <Typography variant="body2" fontWeight={500}>
+                                  {CATEGORY_LABELS[cat] || cat}
+                                </Typography>
+                                {data.over && (
+                                  <Chip size="small" label="Превышен" color="error"
+                                    sx={{ height: 18, fontSize: '0.65rem' }} />
+                                )}
+                              </Box>
+                              <Box sx={{ textAlign: 'right' }}>
+                                <Typography variant="body2" fontWeight={600}
+                                  color={data.over ? 'error.main' : 'text.primary'}>
+                                  {fmt(data.actual)} {data.plan != null ? `/ ${fmt(data.plan)}` : ''} {budgetSummary.local_currency}
+                                </Typography>
+                                {data.remaining != null && (
+                                  <Typography variant="caption"
+                                    color={data.over ? 'error.main' : 'text.secondary'}>
+                                    {data.over ? `перерасход ${fmt(Math.abs(data.remaining))}` : `осталось ${fmt(data.remaining)}`}
+                                  </Typography>
+                                )}
+                              </Box>
+                            </Box>
+                            {data.plan != null && data.plan > 0 && (
+                              <LinearProgress
+                                variant="determinate"
+                                value={Math.min(100, data.pct || 0)}
+                                color={data.over ? 'error' : data.pct > 80 ? 'warning' : 'success'}
+                                sx={{ height: 6, borderRadius: 3 }}
+                              />
+                            )}
+                          </Box>
+                        ))}
+                    </Box>
+                  </>
+                )}
+
+                <Divider sx={{ mb: 2.5 }} />
+
+                {/* Budget editor */}
+                <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1.5 }}>
+                  Установить бюджет ({trip?.local_currency})
+                </Typography>
+                {budgetMsg && (
+                  <Alert
+                    severity={budgetMsg.includes('Ошибка') ? 'error' : 'success'}
+                    sx={{ mb: 2, py: 0.5 }}
+                  >
+                    {budgetMsg}
+                  </Alert>
+                )}
+                <Grid container spacing={2} sx={{ mb: 2 }}>
+                  <Grid item xs={12} sm={6} md={4}>
+                    <TextField
+                      fullWidth label={`Общий бюджет (${trip?.local_currency})`}
+                      type="number" inputProps={{ min: 0, step: 'any' }}
+                      value={budgetEdit['total'] || ''}
+                      onChange={e => setBudgetEdit(p => ({ ...p, total: e.target.value }))}
+                      InputProps={{
+                        startAdornment: <InputAdornment position="start">💰</InputAdornment>,
+                      }}
+                      helperText="Общий лимит на всю поездку"
+                    />
+                  </Grid>
+                </Grid>
+                <Grid container spacing={2} sx={{ mb: 2.5 }}>
+                  {Object.entries(CATEGORY_LABELS).map(([cat, label]) => (
+                    <Grid item xs={12} sm={6} md={4} key={cat}>
+                      <TextField
+                        fullWidth label={label} type="number"
+                        inputProps={{ min: 0, step: 'any' }}
+                        value={budgetEdit[cat] || ''}
+                        placeholder="без лимита"
+                        onChange={e => setBudgetEdit(p => ({ ...p, [cat]: e.target.value }))}
+                      />
+                    </Grid>
+                  ))}
+                </Grid>
+                <Button
+                  variant="contained" onClick={handleBudgetSave} disabled={budgetSaving}
+                  startIcon={<Savings />}
+                >
+                  {budgetSaving ? 'Сохранение...' : 'Сохранить бюджет'}
+                </Button>
+              </>
+            ) : (
+              <Box sx={{ display: 'flex', justifyContent: 'center', pt: 4 }}>
+                <CircularProgress size={24} />
+              </Box>
             )}
           </Box>
         )}

@@ -3457,6 +3457,7 @@ class Trip(Base):
     transactions = relationship("FinanceTransaction", foreign_keys="FinanceTransaction.trip_id", back_populates="trip")
     expenses = relationship("TripExpense", back_populates="trip", cascade="all, delete-orphan")
     cash_exchanges = relationship("TripCashExchange", back_populates="trip", cascade="all, delete-orphan")
+    budgets = relationship("TripBudget", back_populates="trip", cascade="all, delete-orphan")
 
 
 class TripExpense(Base):
@@ -3497,3 +3498,21 @@ class TripCashExchange(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     trip = relationship("Trip", back_populates="cash_exchanges")
+
+
+class TripBudget(Base):
+    """Бюджет поездки по категории (или общий при category='total')."""
+
+    __tablename__ = "trip_budgets"
+    __table_args__ = (
+        UniqueConstraint("trip_id", "category", name="uq_trip_budgets_trip_category"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    trip_id = Column(Integer, ForeignKey("trips.id", ondelete="CASCADE"), nullable=False, index=True)
+    category = Column(String(50), nullable=False, default="total")
+    amount_local = Column(Float, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    trip = relationship("Trip", back_populates="budgets")

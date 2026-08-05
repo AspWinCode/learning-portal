@@ -1,13 +1,17 @@
-from datetime import date
-from typing import List, Optional
+from datetime import date, datetime, timezone
+from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from datetime import date, datetime, timezone
+from typing import Dict
+
 from app import auth
 from app.database import get_db
-from app.models import FinanceTransaction, Trip, TripCashExchange, TripExpense, TripStatus, User
+from app.models import FinanceTransaction, Trip, TripBudget, TripCashExchange, TripExpense, TripStatus, User
+
 
 router = APIRouter()
 
@@ -557,4 +561,117 @@ async def get_trip_summary(
         "expense_count": len(expenses),
         "exchange_count": len(exchanges),
         "by_category": by_category,
+    }
+
+
+# ── Budget ────────────────────────────────────────────────────────────────────
+
+class BudgetSetRequest(BaseModel):
+    budgets: Dict[str, float]
+
+
+@router.get("/{trip_id}/budget")
+async def get_budget(
+    trip_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    _require_owner(current_user)
+    _get_trip_or_404(db, trip_id, current_user)
+    rows = db.query(TripBudget).filter(TripBudget.trip_id == trip_id).all()
+    return {r.category: {"amount_local": r.amount_local, "id": r.id} for r in rows}
+
+
+@router.put("/{trip_id}/budget")
+async def set_budget(
+    trip_id: int,
+    payload: BudgetSetRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """Upsert budget entries. Pass {category: amount_local}. Use amount_local=0 to clear."""
+    _require_owner(current_user)
+    _get_trip_or_404(db, trip_id, current_user)
+    for category, amount in payload.budgets.items():
+        if amount < 0:
+            continue
+        existing = db.query(TripBudget).filter(
+            TripBudget.trip_id == trip_id, TripBudget.category == category
+        ).first()
+        if amount == 0:
+            if existing:
+                db.delete(existing)
+        elif existing:
+            existing.amount_local = amount
+        else:
+            db.add(TripBudget(trip_id=trip_id, category=category, amount_local=amount))
+    db.commit()
+    rows = db.query(TripBudget).filter(TripBudget.trip_id == trip_id).all()
+    return {r.category: {"amount_local": r.amount_local, "id": r.id} for r in rows}
+
+
+@router.get("/{trip_id}/budget-summary")
+async def get_budget_summary(
+    trip_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    _require_owner(current_user)
+    trip = _get_trip_or_404(db, trip_id, current_user)
+
+    expenses = db.query(TripExpense).filter(TripExpense.trip_id == trip_id).all()
+    budgets = db.query(TripBudget).filter(TripBudget.trip_id == trip_id).all()
+
+    budget_map: Dict[str, float] = {b.category: b.amount_local for b in budgets}
+    actual_map: Dict[str, float] = {}
+    for e in expenses:
+        actual_map[e.category] = round(actual_map.get(e.category, 0) + e.amount_local, 2)
+    total_actual = round(sum(actual_map.values()), 2)
+
+    # Forecast based on days elapsed / total days
+    days_elapsed: Optional[int] = None
+    days_remaining: Optional[int] = None
+    days_total: Optional[int] = None
+    daily_avg: Optional[float] = None
+    projected_total: Optional[float] = None
+
+    today = date.today()
+    if trip.start_date:
+        elapsed = (today - trip.start_date).days
+        days_elapsed = max(0, elapsed)
+        if trip.end_date:
+            days_total = max(1, (trip.end_date - trip.start_date).days + 1)
+            days_remaining = max(0, (trip.end_date - today).days)
+            if days_elapsed > 0:
+                daily_avg = round(total_actual / days_elapsed, 2)
+                projected_total = round(daily_avg * days_total, 2)
+
+    categories = sorted(set(list(budget_map.keys()) + list(actual_map.keys())))
+    by_cat = {}
+    for cat in categories:
+        plan = budget_map.get(cat)
+        actual = actual_map.get(cat, 0)
+        pct = round((actual / plan * 100), 1) if plan and plan > 0 else None
+        by_cat[cat] = {
+            "plan": plan,
+            "actual": actual,
+            "remaining": round(plan - actual, 2) if plan is not None else None,
+            "pct": pct,
+            "over": (actual > plan) if plan is not None else False,
+        }
+
+    total_plan = budget_map.get("total")
+    return {
+        "local_currency": trip.local_currency,
+        "total_plan": total_plan,
+        "total_actual": total_actual,
+        "total_remaining": round(total_plan - total_actual, 2) if total_plan is not None else None,
+        "total_pct": round(total_actual / total_plan * 100, 1) if total_plan and total_plan > 0 else None,
+        "total_over": (total_actual > total_plan) if total_plan is not None else False,
+        "days_elapsed": days_elapsed,
+        "days_remaining": days_remaining,
+        "days_total": days_total,
+        "daily_avg": daily_avg,
+        "projected_total": projected_total,
+        "by_category": by_cat,
     }

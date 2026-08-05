@@ -4483,6 +4483,17 @@ export const tripsApi = {
     const res = await api.get(`/trips/${id}/dashboard`);
     return res.data;
   },
+  listShares: async (tripId: number): Promise<any[]> => {
+    const res = await api.get(`/trips/${tripId}/shares`);
+    return res.data;
+  },
+  createShare: async (tripId: number, payload: { email: string; can_edit?: boolean }): Promise<any> => {
+    const res = await api.post(`/trips/${tripId}/shares`, payload);
+    return res.data;
+  },
+  deleteShare: async (tripId: number, shareId: number): Promise<void> => {
+    await api.delete(`/trips/${tripId}/shares/${shareId}`);
+  },
   compareTrips: async (): Promise<any[]> => {
     const res = await api.get('/trips/compare');
     return res.data;

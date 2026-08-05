@@ -133,11 +133,19 @@ const TripDetailPage: React.FC = () => {
   const [chkSaving, setChkSaving] = useState(false);
   const [chkError, setChkError] = useState('');
 
+  // Share state
+  const [shares, setShares] = useState<any[]>([]);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareEmail, setShareEmail] = useState('');
+  const [shareCanEdit, setShareCanEdit] = useState(false);
+  const [shareSaving, setShareSaving] = useState(false);
+  const [shareError, setShareError] = useState('');
+
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const [t, sm, exp, exch, txns, bs, itn, dash, chk] = await Promise.all([
+      const [t, sm, exp, exch, txns, bs, itn, dash, chk, sh] = await Promise.all([
         tripsApi.get(tripId),
         tripsApi.getSummary(tripId),
         tripsApi.listExpenses(tripId),
@@ -147,6 +155,7 @@ const TripDetailPage: React.FC = () => {
         tripsApi.listItinerary(tripId),
         tripsApi.getDashboard(tripId),
         tripsApi.listChecklist(tripId),
+        tripsApi.listShares(tripId),
       ]);
       setTrip(t);
       setSummary(sm);
@@ -154,6 +163,7 @@ const TripDetailPage: React.FC = () => {
       setChecklistByCategory(chk.by_category || {});
       setChecklistTotal(chk.total || 0);
       setChecklistDone(chk.done || 0);
+      setShares(sh);
       setExpenses(exp);
       setExchanges(exch);
       setTransactions(txns);
@@ -476,6 +486,27 @@ const TripDetailPage: React.FC = () => {
     }
   };
 
+  // Share handlers
+  const handleShareSave = async () => {
+    if (!shareEmail.trim()) { setShareError('Введите email'); return; }
+    setShareSaving(true); setShareError('');
+    try {
+      const s = await tripsApi.createShare(tripId, { email: shareEmail.trim(), can_edit: shareCanEdit });
+      setShares(prev => [...prev, s]);
+      setShareOpen(false);
+      setShareEmail(''); setShareCanEdit(false);
+    } catch (e: any) {
+      setShareError(e.response?.data?.detail || 'Ошибка при выдаче доступа');
+    } finally { setShareSaving(false); }
+  };
+
+  const handleShareDelete = async (shareId: number) => {
+    try {
+      await tripsApi.deleteShare(tripId, shareId);
+      setShares(prev => prev.filter(s => s.id !== shareId));
+    } catch { /* silent */ }
+  };
+
   // Derived for exchange preview
   const expLocalPreview = (() => {
     const al = parseFloat(expForm.amount_local);
@@ -514,6 +545,9 @@ const TripDetailPage: React.FC = () => {
         <FlightTakeoff sx={{ color: 'primary.main' }} />
         <Typography variant="h5" fontWeight={700} sx={{ flex: 1, minWidth: 0 }}>{trip.title}</Typography>
         <Chip label={STATUS_LABELS[trip.status] || trip.status} color={STATUS_COLORS[trip.status] || 'default'} />
+        <Tooltip title="Поделиться"><IconButton onClick={() => { setShareError(''); setShareOpen(true); }}>
+          <span style={{ fontSize: 18 }}>🔗</span>
+        </IconButton></Tooltip>
         <Tooltip title="Редактировать"><IconButton onClick={handleEditOpen}><Edit /></IconButton></Tooltip>
         <Tooltip title="Удалить"><IconButton color="error" onClick={() => setDeleteOpen(true)}><Delete /></IconButton></Tooltip>
       </Box>
@@ -1599,6 +1633,50 @@ const TripDetailPage: React.FC = () => {
           <Button onClick={() => setChkOpen(false)} disabled={chkSaving}>Отмена</Button>
           <Button variant="contained" onClick={handleChkSave} disabled={chkSaving}>
             {chkSaving ? 'Сохранение...' : 'Добавить'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Share Trip */}
+      <Dialog open={shareOpen} onClose={() => setShareOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Поделиться поездкой</DialogTitle>
+        <DialogContent sx={{ pt: 1 }}>
+          {shareError && <Alert severity="error" sx={{ mb: 2 }}>{shareError}</Alert>}
+          {shares.length > 0 && (
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1 }}>Текущий доступ:</Typography>
+              {shares.map(s => (
+                <Box key={s.id} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.75 }}>
+                  <Typography variant="body2" sx={{ flex: 1 }}>
+                    {s.shared_with_name || s.shared_with_email}
+                    <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 0.5 }}>
+                      ({s.shared_with_email}) — {s.can_edit ? 'редактирование' : 'просмотр'}
+                    </Typography>
+                  </Typography>
+                  <IconButton size="small" color="error" onClick={() => handleShareDelete(s.id)}>
+                    <Delete fontSize="small" />
+                  </IconButton>
+                </Box>
+              ))}
+              <Divider sx={{ my: 1.5 }} />
+            </Box>
+          )}
+          <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1.5 }}>Добавить доступ:</Typography>
+          <TextField fullWidth label="Email пользователя" type="email" value={shareEmail}
+            onChange={e => setShareEmail(e.target.value)} sx={{ mb: 2 }}
+            placeholder="partner@example.com" />
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <input type="checkbox" id="can-edit" checked={shareCanEdit}
+              onChange={e => setShareCanEdit(e.target.checked)} />
+            <label htmlFor="can-edit">
+              <Typography variant="body2">Разрешить редактирование</Typography>
+            </label>
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setShareOpen(false)} disabled={shareSaving}>Закрыть</Button>
+          <Button variant="contained" onClick={handleShareSave} disabled={shareSaving}>
+            {shareSaving ? 'Выдача...' : 'Выдать доступ'}
           </Button>
         </DialogActions>
       </Dialog>

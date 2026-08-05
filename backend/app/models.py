@@ -3460,6 +3460,7 @@ class Trip(Base):
     budgets = relationship("TripBudget", back_populates="trip", cascade="all, delete-orphan")
     itinerary_items = relationship("TripItineraryItem", back_populates="trip", cascade="all, delete-orphan")
     checklist_items = relationship("TripChecklistItem", back_populates="trip", cascade="all, delete-orphan")
+    shares = relationship("TripShare", back_populates="trip", cascade="all, delete-orphan", foreign_keys="TripShare.trip_id")
 
 
 class TripExpense(Base):
@@ -3562,3 +3563,19 @@ class TripChecklistItem(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     trip = relationship("Trip", back_populates="checklist_items")
+
+
+class TripShare(Base):
+    """Доступ к поездке для другого пользователя."""
+
+    __tablename__ = "trip_shares"
+
+    id = Column(Integer, primary_key=True, index=True)
+    trip_id = Column(Integer, ForeignKey("trips.id", ondelete="CASCADE"), nullable=False, index=True)
+    owner_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    shared_with_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    can_edit = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    trip = relationship("Trip", back_populates="shares")
+    shared_with = relationship("User", foreign_keys=[shared_with_id])

@@ -10,7 +10,7 @@ from typing import Dict
 
 from app import auth
 from app.database import get_db
-from app.models import FinanceTransaction, Trip, TripBudget, TripCashExchange, TripChecklistItem, TripExpense, TripItineraryItem, TripStatus, User
+from app.models import FinanceTransaction, Trip, TripBudget, TripCashExchange, TripChecklistItem, TripExpense, TripItineraryItem, TripShare, TripStatus, User
 
 
 router = APIRouter()
@@ -1204,4 +1204,87 @@ async def delete_checklist_item(
     if not item:
         raise HTTPException(status_code=404, detail="Пункт чеклиста не найден")
     db.delete(item)
+    db.commit()
+
+
+# ── Sharing ───────────────────────────────────────────────────────────────────
+
+class ShareCreate(BaseModel):
+    email: str
+    can_edit: bool = False
+
+
+def _serialize_share(s: TripShare) -> dict:
+    return {
+        "id": s.id,
+        "trip_id": s.trip_id,
+        "shared_with_id": s.shared_with_id,
+        "shared_with_email": s.shared_with.email if s.shared_with else None,
+        "shared_with_name": (
+            f"{s.shared_with.first_name or ''} {s.shared_with.last_name or ''}".strip()
+            if s.shared_with else None
+        ),
+        "can_edit": s.can_edit,
+        "created_at": s.created_at.isoformat() if s.created_at else None,
+    }
+
+
+@router.get("/{trip_id}/shares")
+async def list_shares(
+    trip_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    _require_owner(current_user)
+    _get_trip_or_404(db, trip_id, current_user)
+    shares = db.query(TripShare).filter(TripShare.trip_id == trip_id).all()
+    return [_serialize_share(s) for s in shares]
+
+
+@router.post("/{trip_id}/shares", status_code=status.HTTP_201_CREATED)
+async def create_share(
+    trip_id: int,
+    payload: ShareCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    _require_owner(current_user)
+    _get_trip_or_404(db, trip_id, current_user)
+    target = db.query(User).filter(User.email == payload.email.strip().lower()).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="Пользователь с таким email не найден")
+    if target.id == current_user.id:
+        raise HTTPException(status_code=400, detail="Нельзя поделиться поездкой с собой")
+    existing = db.query(TripShare).filter(
+        TripShare.trip_id == trip_id, TripShare.shared_with_id == target.id
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Доступ уже выдан этому пользователю")
+    share = TripShare(
+        trip_id=trip_id,
+        owner_id=current_user.id,
+        shared_with_id=target.id,
+        can_edit=payload.can_edit,
+    )
+    db.add(share)
+    db.commit()
+    db.refresh(share)
+    return _serialize_share(share)
+
+
+@router.delete("/{trip_id}/shares/{share_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_share(
+    trip_id: int,
+    share_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    _require_owner(current_user)
+    _get_trip_or_404(db, trip_id, current_user)
+    share = db.query(TripShare).filter(
+        TripShare.id == share_id, TripShare.trip_id == trip_id
+    ).first()
+    if not share:
+        raise HTTPException(status_code=404, detail="Запись шаринга не найдена")
+    db.delete(share)
     db.commit()

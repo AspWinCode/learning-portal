@@ -104,17 +104,33 @@ const TripDetailPage: React.FC = () => {
   const [budgetSaving, setBudgetSaving] = useState(false);
   const [budgetMsg, setBudgetMsg] = useState('');
 
+  // Itinerary state
+  const [itineraryDays, setItineraryDays] = useState<Record<string, any[]>>({});
+  const [itnOpen, setItnOpen] = useState(false);
+  const [itnForm, setItnForm] = useState({
+    day_date: '', time_of_day: '', title: '', description: '',
+    category: 'other', estimated_cost: '', notes: '',
+  });
+  const [itnSaving, setItnSaving] = useState(false);
+  const [itnError, setItnError] = useState('');
+  // Convert to expense dialog
+  const [convertItem, setConvertItem] = useState<any>(null);
+  const [convertForm, setConvertForm] = useState({ amount_local: '', exchange_rate: '', occurred_at: '' });
+  const [convertSaving, setConvertSaving] = useState(false);
+  const [convertError, setConvertError] = useState('');
+
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const [t, sm, exp, exch, txns, bs] = await Promise.all([
+      const [t, sm, exp, exch, txns, bs, itn] = await Promise.all([
         tripsApi.get(tripId),
         tripsApi.getSummary(tripId),
         tripsApi.listExpenses(tripId),
         tripsApi.listCashExchanges(tripId),
         tripsApi.getTransactions(tripId),
         tripsApi.getBudgetSummary(tripId),
+        tripsApi.listItinerary(tripId),
       ]);
       setTrip(t);
       setSummary(sm);
@@ -122,6 +138,7 @@ const TripDetailPage: React.FC = () => {
       setExchanges(exch);
       setTransactions(txns);
       setBudgetSummary(bs);
+      setItineraryDays(itn.days || {});
       // Pre-fill budget edit form
       const initEdit: Record<string, string> = {};
       if (bs.total_plan != null) initEdit['total'] = String(bs.total_plan);
@@ -279,6 +296,100 @@ const TripDetailPage: React.FC = () => {
     }
   };
 
+  // Itinerary handlers
+  const refreshItinerary = async () => {
+    const itn = await tripsApi.listItinerary(tripId);
+    setItineraryDays(itn.days || {});
+  };
+
+  const handleItnSave = async () => {
+    if (!itnForm.day_date || !itnForm.title.trim()) {
+      setItnError('Укажите дату и название'); return;
+    }
+    setItnSaving(true); setItnError('');
+    try {
+      await tripsApi.createItineraryItem(tripId, {
+        day_date: itnForm.day_date,
+        time_of_day: itnForm.time_of_day.trim() || undefined,
+        title: itnForm.title.trim(),
+        description: itnForm.description.trim() || undefined,
+        category: itnForm.category,
+        estimated_cost: itnForm.estimated_cost ? parseFloat(itnForm.estimated_cost) : undefined,
+        notes: itnForm.notes.trim() || undefined,
+      });
+      await refreshItinerary();
+      setItnOpen(false);
+      setItnForm({ day_date: '', time_of_day: '', title: '', description: '', category: 'other', estimated_cost: '', notes: '' });
+    } catch (e: any) {
+      setItnError(e.response?.data?.detail || 'Ошибка при сохранении');
+    } finally { setItnSaving(false); }
+  };
+
+  const handleItnStatus = async (item: any, newStatus: string) => {
+    if (newStatus === 'done' && !item.actual_expense_id) {
+      setConvertItem(item);
+      setConvertForm({ amount_local: item.estimated_cost ? String(item.estimated_cost) : '', exchange_rate: '', occurred_at: item.day_date });
+      setConvertError('');
+      return;
+    }
+    try {
+      const updated = await tripsApi.updateItineraryItem(tripId, item.id, { status: newStatus });
+      setItineraryDays(prev => {
+        const key = item.day_date;
+        return { ...prev, [key]: (prev[key] || []).map(i => i.id === item.id ? updated : i) };
+      });
+    } catch { /* silent */ }
+  };
+
+  const handleItnDelete = async (item: any) => {
+    try {
+      await tripsApi.deleteItineraryItem(tripId, item.id);
+      setItineraryDays(prev => {
+        const key = item.day_date;
+        const filtered = (prev[key] || []).filter(i => i.id !== item.id);
+        if (filtered.length === 0) {
+          const next = { ...prev };
+          delete next[key];
+          return next;
+        }
+        return { ...prev, [key]: filtered };
+      });
+    } catch { /* silent */ }
+  };
+
+  const handleConvertSave = async () => {
+    if (!convertItem) return;
+    const al = parseFloat(convertForm.amount_local);
+    const rate = parseFloat(convertForm.exchange_rate);
+    if (!convertForm.occurred_at || isNaN(al) || al <= 0 || isNaN(rate) || rate <= 0) {
+      setConvertError('Укажите дату, сумму и курс > 0'); return;
+    }
+    setConvertSaving(true); setConvertError('');
+    try {
+      const res = await tripsApi.convertItineraryToExpense(tripId, convertItem.id, {
+        amount_local: al,
+        exchange_rate: rate,
+        occurred_at: convertForm.occurred_at,
+        description: convertItem.title,
+      });
+      const updatedItem = res.item;
+      setItineraryDays(prev => {
+        const key = convertItem.day_date;
+        return { ...prev, [key]: (prev[key] || []).map(i => i.id === updatedItem.id ? updatedItem : i) };
+      });
+      setExpenses(prev => [res.expense, ...prev]);
+      const sm = await tripsApi.getSummary(tripId);
+      setSummary(sm);
+      const bs = await tripsApi.getBudgetSummary(tripId);
+      setBudgetSummary(bs);
+      setConvertItem(null);
+    } catch (e: any) {
+      setConvertError(e.response?.data?.detail || 'Ошибка при конвертации');
+    } finally { setConvertSaving(false); }
+  };
+
+  const totalItineraryItems = Object.values(itineraryDays).flat().length;
+
   // Derived for exchange preview
   const expLocalPreview = (() => {
     const al = parseFloat(expForm.amount_local);
@@ -348,6 +459,8 @@ const TripDetailPage: React.FC = () => {
           <Tab label={`Журнал${transactions.length ? ` (${transactions.length})` : ''}`}
             sx={{ minHeight: 48, fontSize: '0.84rem' }} />
           <Tab label="Бюджет" sx={{ minHeight: 48, fontSize: '0.84rem' }} />
+          <Tab label={`Маршрут${totalItineraryItems ? ` (${totalItineraryItems})` : ''}`}
+            sx={{ minHeight: 48, fontSize: '0.84rem' }} />
         </Tabs>
 
         {/* ── Tab 0: Overview ── */}
@@ -831,6 +944,88 @@ const TripDetailPage: React.FC = () => {
             )}
           </Box>
         )}
+
+        {/* ── Tab 5: Itinerary ── */}
+        {tab === 5 && (
+          <Box sx={{ p: 2.5 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Typography variant="h6">Маршрут по дням</Typography>
+              <Button variant="contained" size="small" onClick={() => { setItnOpen(true); setItnError(''); }}>
+                + Добавить пункт
+              </Button>
+            </Box>
+            {Object.keys(itineraryDays).length === 0 ? (
+              <Typography color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
+                Маршрут пуст — добавьте первый пункт
+              </Typography>
+            ) : (
+              Object.keys(itineraryDays).sort().map(dayDate => (
+                <Box key={dayDate} sx={{ mb: 3 }}>
+                  <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1 }}>
+                    {new Date(dayDate + 'T12:00:00').toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })}
+                  </Typography>
+                  {itineraryDays[dayDate].map((item: any) => (
+                    <Paper key={item.id} variant="outlined" sx={{ p: 1.5, mb: 1, display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                          {item.time_of_day && (
+                            <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>
+                              {item.time_of_day}
+                            </Typography>
+                          )}
+                          <Typography variant="body2" fontWeight={500}>{item.title}</Typography>
+                          <Chip
+                            size="small"
+                            label={item.status === 'done' ? 'выполнено' : item.status === 'skipped' ? 'пропущено' : 'план'}
+                            color={item.status === 'done' ? 'success' : item.status === 'skipped' ? 'default' : 'primary'}
+                            variant={item.status === 'planned' ? 'outlined' : 'filled'}
+                            sx={{ fontSize: '0.68rem', height: 20 }}
+                          />
+                          {item.category && item.category !== 'other' && (
+                            <Chip size="small" label={CATEGORY_LABELS[item.category] || item.category}
+                              variant="outlined" sx={{ fontSize: '0.68rem', height: 20 }} />
+                          )}
+                        </Box>
+                        {item.description && (
+                          <Typography variant="caption" color="text.secondary" display="block">
+                            {item.description}
+                          </Typography>
+                        )}
+                        {item.estimated_cost != null && (
+                          <Typography variant="caption" color="text.secondary">
+                            Ожидаемо: {fmt(item.estimated_cost)} {trip?.local_currency}
+                          </Typography>
+                        )}
+                        {item.notes && (
+                          <Typography variant="caption" color="text.secondary" display="block" sx={{ fontStyle: 'italic' }}>
+                            {item.notes}
+                          </Typography>
+                        )}
+                      </Box>
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, alignItems: 'flex-end' }}>
+                        {item.status === 'planned' && (
+                          <>
+                            <Button size="small" variant="outlined" color="success" sx={{ fontSize: '0.7rem', py: 0.2 }}
+                              onClick={() => handleItnStatus(item, 'done')}>
+                              Выполнено
+                            </Button>
+                            <Button size="small" variant="outlined" color="inherit" sx={{ fontSize: '0.7rem', py: 0.2 }}
+                              onClick={() => handleItnStatus(item, 'skipped')}>
+                              Пропустить
+                            </Button>
+                          </>
+                        )}
+                        <IconButton size="small" color="error" onClick={() => handleItnDelete(item)}>
+                          <Delete fontSize="small" />
+                        </IconButton>
+                      </Box>
+                    </Paper>
+                  ))}
+                </Box>
+              ))
+            )}
+          </Box>
+        )}
       </Paper>
 
       {/* ── Dialogs ── */}
@@ -1014,6 +1209,93 @@ const TripDetailPage: React.FC = () => {
           <Button onClick={() => setExOpen(false)} disabled={exSaving}>Отмена</Button>
           <Button variant="contained" onClick={handleExSave} disabled={exSaving}>
             {exSaving ? 'Сохранение...' : 'Записать'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Add Itinerary Item */}
+      <Dialog open={itnOpen} onClose={() => setItnOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Добавить пункт маршрута</DialogTitle>
+        <DialogContent sx={{ pt: 1 }}>
+          {itnError && <Alert severity="error" sx={{ mb: 2 }}>{itnError}</Alert>}
+          <Grid container spacing={2} sx={{ mt: 0.5, mb: 2 }}>
+            <Grid item xs={6}>
+              <TextField fullWidth label="Дата" type="date" required value={itnForm.day_date}
+                onChange={e => setItnForm(p => ({ ...p, day_date: e.target.value }))}
+                InputLabelProps={{ shrink: true }} />
+            </Grid>
+            <Grid item xs={6}>
+              <TextField fullWidth label="Время (напр. 10:00)" value={itnForm.time_of_day}
+                onChange={e => setItnForm(p => ({ ...p, time_of_day: e.target.value }))}
+                placeholder="09:00" />
+            </Grid>
+          </Grid>
+          <TextField fullWidth label="Название *" required value={itnForm.title}
+            onChange={e => setItnForm(p => ({ ...p, title: e.target.value }))} sx={{ mb: 2 }} />
+          <TextField fullWidth label="Описание" value={itnForm.description}
+            onChange={e => setItnForm(p => ({ ...p, description: e.target.value }))} sx={{ mb: 2 }} />
+          <Grid container spacing={2} sx={{ mb: 2 }}>
+            <Grid item xs={6}>
+              <FormControl fullWidth>
+                <InputLabel>Категория</InputLabel>
+                <Select value={itnForm.category} label="Категория"
+                  onChange={e => setItnForm(p => ({ ...p, category: e.target.value }))}>
+                  {Object.entries(CATEGORY_LABELS).map(([k, v]) => (
+                    <MenuItem key={k} value={k}>{v}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={6}>
+              <TextField fullWidth label={`Примерная стоимость (${trip?.local_currency})`}
+                type="number" inputProps={{ min: 0, step: 'any' }}
+                value={itnForm.estimated_cost}
+                onChange={e => setItnForm(p => ({ ...p, estimated_cost: e.target.value }))} />
+            </Grid>
+          </Grid>
+          <TextField fullWidth label="Заметки" multiline minRows={2} value={itnForm.notes}
+            onChange={e => setItnForm(p => ({ ...p, notes: e.target.value }))} />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setItnOpen(false)} disabled={itnSaving}>Отмена</Button>
+          <Button variant="contained" onClick={handleItnSave} disabled={itnSaving}>
+            {itnSaving ? 'Сохранение...' : 'Добавить'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Convert Itinerary → Expense */}
+      <Dialog open={!!convertItem} onClose={() => setConvertItem(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Отметить как выполнено</DialogTitle>
+        <DialogContent sx={{ pt: 1 }}>
+          {convertError && <Alert severity="error" sx={{ mb: 2 }}>{convertError}</Alert>}
+          {convertItem && (
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              «{convertItem.title}» — будет создана трата в категории «{CATEGORY_LABELS[convertItem.category] || convertItem.category}»
+            </Typography>
+          )}
+          <TextField fullWidth label={`Сумма (${trip?.local_currency})`} type="number"
+            required inputProps={{ min: 0, step: 'any' }}
+            value={convertForm.amount_local}
+            onChange={e => setConvertForm(p => ({ ...p, amount_local: e.target.value }))} sx={{ mb: 2 }} />
+          <TextField fullWidth
+            label={`Курс (1 ${trip?.base_currency} = ? ${trip?.local_currency})`}
+            type="number" required inputProps={{ min: 0, step: 'any' }}
+            value={convertForm.exchange_rate}
+            onChange={e => setConvertForm(p => ({ ...p, exchange_rate: e.target.value }))} sx={{ mb: 2 }}
+            helperText={
+              convertForm.amount_local && convertForm.exchange_rate && parseFloat(convertForm.exchange_rate) > 0
+                ? `≈ ${fmt(parseFloat(convertForm.amount_local) / parseFloat(convertForm.exchange_rate))} ${trip?.base_currency}`
+                : ' '
+            } />
+          <TextField fullWidth label="Дата" type="date" required value={convertForm.occurred_at}
+            onChange={e => setConvertForm(p => ({ ...p, occurred_at: e.target.value }))}
+            InputLabelProps={{ shrink: true }} />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setConvertItem(null)} disabled={convertSaving}>Отмена</Button>
+          <Button variant="contained" color="success" onClick={handleConvertSave} disabled={convertSaving}>
+            {convertSaving ? 'Сохранение...' : 'Записать трату'}
           </Button>
         </DialogActions>
       </Dialog>

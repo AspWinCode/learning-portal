@@ -10,7 +10,7 @@ from typing import Dict
 
 from app import auth
 from app.database import get_db
-from app.models import FinanceTransaction, Trip, TripBudget, TripCashExchange, TripExpense, TripStatus, User
+from app.models import FinanceTransaction, Trip, TripBudget, TripCashExchange, TripExpense, TripItineraryItem, TripStatus, User
 
 
 router = APIRouter()
@@ -675,3 +675,200 @@ async def get_budget_summary(
         "projected_total": projected_total,
         "by_category": by_cat,
     }
+
+
+# ── Itinerary ─────────────────────────────────────────────────────────────────
+
+ITINERARY_STATUSES = ("planned", "done", "skipped")
+
+
+class ItineraryItemCreate(BaseModel):
+    day_date: date
+    time_of_day: Optional[str] = None
+    title: str
+    description: Optional[str] = None
+    category: str = "other"
+    estimated_cost: Optional[float] = None
+    notes: Optional[str] = None
+    sort_order: int = 0
+
+
+class ItineraryItemUpdate(BaseModel):
+    day_date: Optional[date] = None
+    time_of_day: Optional[str] = None
+    title: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    estimated_cost: Optional[float] = None
+    status: Optional[str] = None
+    notes: Optional[str] = None
+    sort_order: Optional[int] = None
+
+
+class ItineraryConvertRequest(BaseModel):
+    amount_local: float
+    exchange_rate: float
+    occurred_at: date
+    description: Optional[str] = None
+
+
+def _serialize_item(item: TripItineraryItem) -> dict:
+    return {
+        "id": item.id,
+        "trip_id": item.trip_id,
+        "day_date": item.day_date.isoformat() if item.day_date else None,
+        "time_of_day": item.time_of_day,
+        "title": item.title,
+        "description": item.description,
+        "category": item.category,
+        "estimated_cost": item.estimated_cost,
+        "actual_expense_id": item.actual_expense_id,
+        "status": item.status,
+        "notes": item.notes,
+        "sort_order": item.sort_order,
+        "created_at": item.created_at.isoformat() if item.created_at else None,
+    }
+
+
+@router.get("/{trip_id}/itinerary")
+async def list_itinerary(
+    trip_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    _require_owner(current_user)
+    _get_trip_or_404(db, trip_id, current_user)
+    items = (
+        db.query(TripItineraryItem)
+        .filter(TripItineraryItem.trip_id == trip_id)
+        .order_by(TripItineraryItem.day_date, TripItineraryItem.sort_order, TripItineraryItem.time_of_day)
+        .all()
+    )
+    # Group by day
+    days: Dict[str, list] = {}
+    for item in items:
+        key = item.day_date.isoformat()
+        days.setdefault(key, []).append(_serialize_item(item))
+    return {"days": days, "items": [_serialize_item(i) for i in items]}
+
+
+@router.post("/{trip_id}/itinerary", status_code=status.HTTP_201_CREATED)
+async def create_itinerary_item(
+    trip_id: int,
+    payload: ItineraryItemCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    _require_owner(current_user)
+    _get_trip_or_404(db, trip_id, current_user)
+    item = TripItineraryItem(
+        trip_id=trip_id,
+        day_date=payload.day_date,
+        time_of_day=payload.time_of_day,
+        title=payload.title,
+        description=payload.description,
+        category=payload.category if payload.category in EXPENSE_CATEGORIES else "other",
+        estimated_cost=payload.estimated_cost,
+        notes=payload.notes,
+        sort_order=payload.sort_order,
+        status="planned",
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return _serialize_item(item)
+
+
+@router.patch("/{trip_id}/itinerary/{item_id}")
+async def update_itinerary_item(
+    trip_id: int,
+    item_id: int,
+    payload: ItineraryItemUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    _require_owner(current_user)
+    _get_trip_or_404(db, trip_id, current_user)
+    item = db.query(TripItineraryItem).filter(
+        TripItineraryItem.id == item_id, TripItineraryItem.trip_id == trip_id
+    ).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Пункт маршрута не найден")
+    if payload.day_date is not None:
+        item.day_date = payload.day_date
+    if payload.time_of_day is not None:
+        item.time_of_day = payload.time_of_day
+    if payload.title is not None:
+        item.title = payload.title
+    if payload.description is not None:
+        item.description = payload.description
+    if payload.category is not None:
+        item.category = payload.category if payload.category in EXPENSE_CATEGORIES else "other"
+    if payload.estimated_cost is not None:
+        item.estimated_cost = payload.estimated_cost
+    if payload.status is not None and payload.status in ITINERARY_STATUSES:
+        item.status = payload.status
+    if payload.notes is not None:
+        item.notes = payload.notes
+    if payload.sort_order is not None:
+        item.sort_order = payload.sort_order
+    db.commit()
+    db.refresh(item)
+    return _serialize_item(item)
+
+
+@router.delete("/{trip_id}/itinerary/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_itinerary_item(
+    trip_id: int,
+    item_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    _require_owner(current_user)
+    _get_trip_or_404(db, trip_id, current_user)
+    item = db.query(TripItineraryItem).filter(
+        TripItineraryItem.id == item_id, TripItineraryItem.trip_id == trip_id
+    ).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Пункт маршрута не найден")
+    db.delete(item)
+    db.commit()
+
+
+@router.post("/{trip_id}/itinerary/{item_id}/convert")
+async def convert_itinerary_to_expense(
+    trip_id: int,
+    item_id: int,
+    payload: ItineraryConvertRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """Mark itinerary item as done and create a TripExpense from it."""
+    _require_owner(current_user)
+    trip = _get_trip_or_404(db, trip_id, current_user)
+    item = db.query(TripItineraryItem).filter(
+        TripItineraryItem.id == item_id, TripItineraryItem.trip_id == trip_id
+    ).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Пункт маршрута не найден")
+    if payload.exchange_rate <= 0:
+        raise HTTPException(status_code=400, detail="Курс обмена должен быть больше нуля")
+    amount_base = round(payload.amount_local / payload.exchange_rate, 2)
+    expense = TripExpense(
+        trip_id=trip_id,
+        category=item.category,
+        description=payload.description or item.title,
+        amount_local=payload.amount_local,
+        local_currency=trip.local_currency,
+        exchange_rate=payload.exchange_rate,
+        amount_base=amount_base,
+        base_currency=trip.base_currency,
+        occurred_at=payload.occurred_at,
+    )
+    db.add(expense)
+    db.flush()
+    item.actual_expense_id = expense.id
+    item.status = "done"
+    db.commit()
+    db.refresh(item)
+    return {"item": _serialize_item(item), "expense": _serialize_expense(expense)}

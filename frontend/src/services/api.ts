@@ -4432,6 +4432,49 @@ export const tripsApi = {
     const res = await api.get(`/trips/${id}/budget-summary`);
     return res.data;
   },
+  listItinerary: async (id: number): Promise<any> => {
+    const res = await api.get(`/trips/${id}/itinerary`);
+    return res.data;
+  },
+  createItineraryItem: async (tripId: number, payload: {
+    day_date: string;
+    time_of_day?: string;
+    title: string;
+    description?: string;
+    category?: string;
+    estimated_cost?: number;
+    notes?: string;
+    sort_order?: number;
+  }): Promise<any> => {
+    const res = await api.post(`/trips/${tripId}/itinerary`, payload);
+    return res.data;
+  },
+  updateItineraryItem: async (tripId: number, itemId: number, payload: Partial<{
+    day_date: string;
+    time_of_day: string;
+    title: string;
+    description: string;
+    category: string;
+    estimated_cost: number;
+    status: string;
+    notes: string;
+    sort_order: number;
+  }>): Promise<any> => {
+    const res = await api.patch(`/trips/${tripId}/itinerary/${itemId}`, payload);
+    return res.data;
+  },
+  deleteItineraryItem: async (tripId: number, itemId: number): Promise<void> => {
+    await api.delete(`/trips/${tripId}/itinerary/${itemId}`);
+  },
+  convertItineraryToExpense: async (tripId: number, itemId: number, payload: {
+    amount_local: number;
+    exchange_rate: number;
+    occurred_at: string;
+    description?: string;
+  }): Promise<any> => {
+    const res = await api.post(`/trips/${tripId}/itinerary/${itemId}/convert`, payload);
+    return res.data;
+  },
 };
 
 export default api;

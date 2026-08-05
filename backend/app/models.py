@@ -3458,6 +3458,7 @@ class Trip(Base):
     expenses = relationship("TripExpense", back_populates="trip", cascade="all, delete-orphan")
     cash_exchanges = relationship("TripCashExchange", back_populates="trip", cascade="all, delete-orphan")
     budgets = relationship("TripBudget", back_populates="trip", cascade="all, delete-orphan")
+    itinerary_items = relationship("TripItineraryItem", back_populates="trip", cascade="all, delete-orphan")
 
 
 class TripExpense(Base):
@@ -3516,3 +3517,26 @@ class TripBudget(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     trip = relationship("Trip", back_populates="budgets")
+
+
+class TripItineraryItem(Base):
+    """Пункт плана дня в поездке. Может быть конвертирован в реальную трату."""
+
+    __tablename__ = "trip_itinerary_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    trip_id = Column(Integer, ForeignKey("trips.id", ondelete="CASCADE"), nullable=False, index=True)
+    day_date = Column(Date, nullable=False, index=True)
+    time_of_day = Column(String(10), nullable=True)
+    title = Column(String(256), nullable=False)
+    description = Column(Text, nullable=True)
+    category = Column(String(50), nullable=False, default="other")
+    estimated_cost = Column(Float, nullable=True)
+    actual_expense_id = Column(Integer, ForeignKey("trip_expenses.id", ondelete="SET NULL"), nullable=True)
+    status = Column(String(20), nullable=False, default="planned")
+    notes = Column(Text, nullable=True)
+    sort_order = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    trip = relationship("Trip", back_populates="itinerary_items")
+    actual_expense = relationship("TripExpense", foreign_keys=[actual_expense_id])

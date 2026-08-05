@@ -4479,6 +4479,25 @@ export const tripsApi = {
     const res = await api.get(`/trips/${id}/dashboard`);
     return res.data;
   },
+  listChecklist: async (id: number): Promise<any> => {
+    const res = await api.get(`/trips/${id}/checklist`);
+    return res.data;
+  },
+  seedChecklist: async (id: number): Promise<any> => {
+    const res = await api.post(`/trips/${id}/checklist/seed`);
+    return res.data;
+  },
+  createChecklistItem: async (tripId: number, payload: { category?: string; title: string; notes?: string; sort_order?: number }): Promise<any> => {
+    const res = await api.post(`/trips/${tripId}/checklist`, payload);
+    return res.data;
+  },
+  updateChecklistItem: async (tripId: number, itemId: number, payload: { is_done?: boolean; title?: string; category?: string; notes?: string }): Promise<any> => {
+    const res = await api.patch(`/trips/${tripId}/checklist/${itemId}`, payload);
+    return res.data;
+  },
+  deleteChecklistItem: async (tripId: number, itemId: number): Promise<void> => {
+    await api.delete(`/trips/${tripId}/checklist/${itemId}`);
+  },
 };
 
 export default api;

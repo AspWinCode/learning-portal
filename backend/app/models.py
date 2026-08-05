@@ -3459,6 +3459,7 @@ class Trip(Base):
     cash_exchanges = relationship("TripCashExchange", back_populates="trip", cascade="all, delete-orphan")
     budgets = relationship("TripBudget", back_populates="trip", cascade="all, delete-orphan")
     itinerary_items = relationship("TripItineraryItem", back_populates="trip", cascade="all, delete-orphan")
+    checklist_items = relationship("TripChecklistItem", back_populates="trip", cascade="all, delete-orphan")
 
 
 class TripExpense(Base):
@@ -3540,3 +3541,20 @@ class TripItineraryItem(Base):
 
     trip = relationship("Trip", back_populates="itinerary_items")
     actual_expense = relationship("TripExpense", foreign_keys=[actual_expense_id])
+
+
+class TripChecklistItem(Base):
+    """Пункт чеклиста документов/сборов для поездки."""
+
+    __tablename__ = "trip_checklist_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    trip_id = Column(Integer, ForeignKey("trips.id", ondelete="CASCADE"), nullable=False, index=True)
+    category = Column(String(50), nullable=False, default="other")
+    title = Column(String(256), nullable=False)
+    is_done = Column(Boolean, nullable=False, default=False)
+    sort_order = Column(Integer, nullable=False, default=0)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    trip = relationship("Trip", back_populates="checklist_items")

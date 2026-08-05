@@ -10,7 +10,7 @@ from typing import Dict
 
 from app import auth
 from app.database import get_db
-from app.models import FinanceTransaction, Trip, TripBudget, TripCashExchange, TripExpense, TripItineraryItem, TripStatus, User
+from app.models import FinanceTransaction, Trip, TripBudget, TripCashExchange, TripChecklistItem, TripExpense, TripItineraryItem, TripStatus, User
 
 
 router = APIRouter()
@@ -972,3 +972,163 @@ async def get_dashboard(
         # Upcoming itinerary
         "upcoming_items": [_serialize_item(i) for i in upcoming],
     }
+
+
+# ── Checklist ─────────────────────────────────────────────────────────────────
+
+CHECKLIST_CATEGORIES = ["documents", "clothes", "electronics", "health", "money", "other"]
+
+CHECKLIST_DEFAULTS = [
+    ("documents", "Загранпаспорт"),
+    ("documents", "Виза / разрешение на въезд"),
+    ("documents", "Страховка (медицинская)"),
+    ("documents", "Авиабилеты (распечатать или скачать)"),
+    ("documents", "Бронь отеля"),
+    ("money", "Наличная валюта"),
+    ("money", "Банковская карта (уведомить банк)"),
+    ("health", "Аптечка / базовые лекарства"),
+    ("health", "Солнцезащитный крем"),
+    ("electronics", "Зарядки / переходник"),
+    ("electronics", "Power bank"),
+    ("clothes", "Купальник / шорты"),
+    ("clothes", "Удобная обувь"),
+]
+
+
+def _serialize_checklist(item: TripChecklistItem) -> dict:
+    return {
+        "id": item.id,
+        "trip_id": item.trip_id,
+        "category": item.category,
+        "title": item.title,
+        "is_done": item.is_done,
+        "sort_order": item.sort_order,
+        "notes": item.notes,
+        "created_at": item.created_at.isoformat() if item.created_at else None,
+    }
+
+
+class ChecklistItemCreate(BaseModel):
+    category: str = "other"
+    title: str
+    notes: Optional[str] = None
+    sort_order: int = 0
+
+
+class ChecklistItemUpdate(BaseModel):
+    category: Optional[str] = None
+    title: Optional[str] = None
+    is_done: Optional[bool] = None
+    notes: Optional[str] = None
+    sort_order: Optional[int] = None
+
+
+@router.get("/{trip_id}/checklist")
+async def list_checklist(
+    trip_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    _require_owner(current_user)
+    _get_trip_or_404(db, trip_id, current_user)
+    items = (
+        db.query(TripChecklistItem)
+        .filter(TripChecklistItem.trip_id == trip_id)
+        .order_by(TripChecklistItem.category, TripChecklistItem.sort_order, TripChecklistItem.id)
+        .all()
+    )
+    by_cat: Dict[str, list] = {}
+    for item in items:
+        by_cat.setdefault(item.category, []).append(_serialize_checklist(item))
+    total = len(items)
+    done = sum(1 for i in items if i.is_done)
+    return {"by_category": by_cat, "items": [_serialize_checklist(i) for i in items], "total": total, "done": done}
+
+
+@router.post("/{trip_id}/checklist", status_code=status.HTTP_201_CREATED)
+async def create_checklist_item(
+    trip_id: int,
+    payload: ChecklistItemCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    _require_owner(current_user)
+    _get_trip_or_404(db, trip_id, current_user)
+    if not payload.title.strip():
+        raise HTTPException(status_code=400, detail="Название не может быть пустым")
+    cat = payload.category if payload.category in CHECKLIST_CATEGORIES else "other"
+    item = TripChecklistItem(
+        trip_id=trip_id, category=cat, title=payload.title.strip(),
+        notes=payload.notes, sort_order=payload.sort_order,
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return _serialize_checklist(item)
+
+
+@router.post("/{trip_id}/checklist/seed", status_code=status.HTTP_201_CREATED)
+async def seed_checklist(
+    trip_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """Заполнить чеклист стандартными пунктами (если список пуст)."""
+    _require_owner(current_user)
+    _get_trip_or_404(db, trip_id, current_user)
+    existing = db.query(TripChecklistItem).filter(TripChecklistItem.trip_id == trip_id).count()
+    if existing > 0:
+        raise HTTPException(status_code=400, detail="Чеклист уже содержит пункты")
+    for idx, (cat, title) in enumerate(CHECKLIST_DEFAULTS):
+        db.add(TripChecklistItem(trip_id=trip_id, category=cat, title=title, sort_order=idx))
+    db.commit()
+    items = db.query(TripChecklistItem).filter(TripChecklistItem.trip_id == trip_id).order_by(TripChecklistItem.sort_order).all()
+    return {"seeded": len(items), "items": [_serialize_checklist(i) for i in items]}
+
+
+@router.patch("/{trip_id}/checklist/{item_id}")
+async def update_checklist_item(
+    trip_id: int,
+    item_id: int,
+    payload: ChecklistItemUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    _require_owner(current_user)
+    _get_trip_or_404(db, trip_id, current_user)
+    item = db.query(TripChecklistItem).filter(
+        TripChecklistItem.id == item_id, TripChecklistItem.trip_id == trip_id
+    ).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Пункт чеклиста не найден")
+    if payload.category is not None:
+        item.category = payload.category if payload.category in CHECKLIST_CATEGORIES else "other"
+    if payload.title is not None:
+        item.title = payload.title.strip()
+    if payload.is_done is not None:
+        item.is_done = payload.is_done
+    if payload.notes is not None:
+        item.notes = payload.notes
+    if payload.sort_order is not None:
+        item.sort_order = payload.sort_order
+    db.commit()
+    db.refresh(item)
+    return _serialize_checklist(item)
+
+
+@router.delete("/{trip_id}/checklist/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_checklist_item(
+    trip_id: int,
+    item_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    _require_owner(current_user)
+    _get_trip_or_404(db, trip_id, current_user)
+    item = db.query(TripChecklistItem).filter(
+        TripChecklistItem.id == item_id, TripChecklistItem.trip_id == trip_id
+    ).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Пункт чеклиста не найден")
+    db.delete(item)
+    db.commit()

@@ -122,11 +122,20 @@ const TripDetailPage: React.FC = () => {
   const [convertSaving, setConvertSaving] = useState(false);
   const [convertError, setConvertError] = useState('');
 
+  // Checklist state
+  const [checklistByCategory, setChecklistByCategory] = useState<Record<string, any[]>>({});
+  const [checklistTotal, setChecklistTotal] = useState(0);
+  const [checklistDone, setChecklistDone] = useState(0);
+  const [chkOpen, setChkOpen] = useState(false);
+  const [chkForm, setChkForm] = useState({ category: 'documents', title: '', notes: '' });
+  const [chkSaving, setChkSaving] = useState(false);
+  const [chkError, setChkError] = useState('');
+
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const [t, sm, exp, exch, txns, bs, itn, dash] = await Promise.all([
+      const [t, sm, exp, exch, txns, bs, itn, dash, chk] = await Promise.all([
         tripsApi.get(tripId),
         tripsApi.getSummary(tripId),
         tripsApi.listExpenses(tripId),
@@ -135,10 +144,14 @@ const TripDetailPage: React.FC = () => {
         tripsApi.getBudgetSummary(tripId),
         tripsApi.listItinerary(tripId),
         tripsApi.getDashboard(tripId),
+        tripsApi.listChecklist(tripId),
       ]);
       setTrip(t);
       setSummary(sm);
       setDashboard(dash);
+      setChecklistByCategory(chk.by_category || {});
+      setChecklistTotal(chk.total || 0);
+      setChecklistDone(chk.done || 0);
       setExpenses(exp);
       setExchanges(exch);
       setTransactions(txns);
@@ -398,6 +411,65 @@ const TripDetailPage: React.FC = () => {
 
   const totalItineraryItems = Object.values(itineraryDays).flat().length;
 
+  // Checklist handlers
+  const refreshChecklist = async () => {
+    const chk = await tripsApi.listChecklist(tripId);
+    setChecklistByCategory(chk.by_category || {});
+    setChecklistTotal(chk.total || 0);
+    setChecklistDone(chk.done || 0);
+  };
+
+  const handleChkToggle = async (item: any) => {
+    try {
+      const updated = await tripsApi.updateChecklistItem(tripId, item.id, { is_done: !item.is_done });
+      setChecklistByCategory(prev => {
+        const cat = item.category;
+        return { ...prev, [cat]: (prev[cat] || []).map(i => i.id === item.id ? updated : i) };
+      });
+      setChecklistDone(prev => item.is_done ? prev - 1 : prev + 1);
+    } catch { /* silent */ }
+  };
+
+  const handleChkDelete = async (item: any) => {
+    try {
+      await tripsApi.deleteChecklistItem(tripId, item.id);
+      setChecklistByCategory(prev => {
+        const cat = item.category;
+        const filtered = (prev[cat] || []).filter(i => i.id !== item.id);
+        if (filtered.length === 0) { const n = { ...prev }; delete n[cat]; return n; }
+        return { ...prev, [cat]: filtered };
+      });
+      setChecklistTotal(prev => prev - 1);
+      if (item.is_done) setChecklistDone(prev => prev - 1);
+    } catch { /* silent */ }
+  };
+
+  const handleChkSave = async () => {
+    if (!chkForm.title.trim()) { setChkError('Введите название'); return; }
+    setChkSaving(true); setChkError('');
+    try {
+      await tripsApi.createChecklistItem(tripId, {
+        category: chkForm.category,
+        title: chkForm.title.trim(),
+        notes: chkForm.notes.trim() || undefined,
+      });
+      await refreshChecklist();
+      setChkOpen(false);
+      setChkForm({ category: 'documents', title: '', notes: '' });
+    } catch (e: any) {
+      setChkError(e.response?.data?.detail || 'Ошибка при сохранении');
+    } finally { setChkSaving(false); }
+  };
+
+  const handleChkSeed = async () => {
+    try {
+      await tripsApi.seedChecklist(tripId);
+      await refreshChecklist();
+    } catch (e: any) {
+      alert(e.response?.data?.detail || 'Ошибка');
+    }
+  };
+
   // Derived for exchange preview
   const expLocalPreview = (() => {
     const al = parseFloat(expForm.amount_local);
@@ -465,6 +537,8 @@ const TripDetailPage: React.FC = () => {
             sx={{ minHeight: 48, fontSize: '0.84rem' }} />
           <Tab label="Бюджет" sx={{ minHeight: 48, fontSize: '0.84rem' }} />
           <Tab label={`Маршрут${totalItineraryItems ? ` (${totalItineraryItems})` : ''}`}
+            sx={{ minHeight: 48, fontSize: '0.84rem' }} />
+          <Tab label={`Чеклист${checklistTotal ? ` (${checklistDone}/${checklistTotal})` : ''}`}
             sx={{ minHeight: 48, fontSize: '0.84rem' }} />
         </Tabs>
 
@@ -1070,6 +1144,97 @@ const TripDetailPage: React.FC = () => {
             )}
           </Box>
         )}
+
+        {/* ── Tab 6: Checklist ── */}
+        {tab === 6 && (
+          <Box sx={{ p: 2.5 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Box>
+                <Typography variant="h6" display="inline">Чеклист</Typography>
+                {checklistTotal > 0 && (
+                  <Typography variant="caption" color="text.secondary" sx={{ ml: 1.5 }}>
+                    {checklistDone} из {checklistTotal} готово
+                  </Typography>
+                )}
+              </Box>
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                {checklistTotal === 0 && (
+                  <Button size="small" variant="outlined" onClick={handleChkSeed}>
+                    Загрузить стандартный
+                  </Button>
+                )}
+                <Button size="small" variant="contained" onClick={() => { setChkError(''); setChkOpen(true); }}>
+                  + Добавить
+                </Button>
+              </Box>
+            </Box>
+
+            {checklistTotal > 0 && (
+              <Box sx={{ mb: 2 }}>
+                <LinearProgress
+                  variant="determinate"
+                  value={checklistTotal > 0 ? (checklistDone / checklistTotal) * 100 : 0}
+                  color={checklistDone === checklistTotal ? 'success' : 'primary'}
+                  sx={{ height: 8, borderRadius: 4 }}
+                />
+              </Box>
+            )}
+
+            {checklistTotal === 0 ? (
+              <Typography color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
+                Чеклист пуст. Нажмите «Загрузить стандартный» или добавьте пункты вручную.
+              </Typography>
+            ) : (
+              (() => {
+                const CAT_LABELS: Record<string, string> = {
+                  documents: '📄 Документы', clothes: '👕 Одежда',
+                  electronics: '🔋 Электроника', health: '💊 Здоровье',
+                  money: '💳 Деньги', other: '📦 Прочее',
+                };
+                const catOrder = ['documents', 'money', 'health', 'electronics', 'clothes', 'other'];
+                const sortedCats = [
+                  ...catOrder.filter(c => checklistByCategory[c]),
+                  ...Object.keys(checklistByCategory).filter(c => !catOrder.includes(c)),
+                ];
+                return sortedCats.map(cat => (
+                  <Box key={cat} sx={{ mb: 2.5 }}>
+                    <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>
+                      {CAT_LABELS[cat] || cat}
+                      <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                        {(checklistByCategory[cat] || []).filter((i: any) => i.is_done).length}/{(checklistByCategory[cat] || []).length}
+                      </Typography>
+                    </Typography>
+                    {(checklistByCategory[cat] || []).map((item: any) => (
+                      <Box key={item.id} sx={{
+                        display: 'flex', alignItems: 'center', gap: 1,
+                        py: 0.75, borderBottom: '1px solid', borderColor: 'divider',
+                        opacity: item.is_done ? 0.55 : 1,
+                      }}>
+                        <IconButton size="small" onClick={() => handleChkToggle(item)}
+                          color={item.is_done ? 'success' : 'default'} sx={{ p: 0.5 }}>
+                          {item.is_done
+                            ? <span style={{ fontSize: 20 }}>✅</span>
+                            : <span style={{ fontSize: 20, opacity: 0.4 }}>⬜</span>}
+                        </IconButton>
+                        <Box sx={{ flex: 1 }}>
+                          <Typography variant="body2" sx={{ textDecoration: item.is_done ? 'line-through' : 'none' }}>
+                            {item.title}
+                          </Typography>
+                          {item.notes && (
+                            <Typography variant="caption" color="text.secondary">{item.notes}</Typography>
+                          )}
+                        </Box>
+                        <IconButton size="small" color="error" onClick={() => handleChkDelete(item)}>
+                          <Delete fontSize="small" />
+                        </IconButton>
+                      </Box>
+                    ))}
+                  </Box>
+                ));
+              })()
+            )}
+          </Box>
+        )}
       </Paper>
 
       {/* ── Dialogs ── */}
@@ -1340,6 +1505,35 @@ const TripDetailPage: React.FC = () => {
           <Button onClick={() => setConvertItem(null)} disabled={convertSaving}>Отмена</Button>
           <Button variant="contained" color="success" onClick={handleConvertSave} disabled={convertSaving}>
             {convertSaving ? 'Сохранение...' : 'Записать трату'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Add Checklist Item */}
+      <Dialog open={chkOpen} onClose={() => setChkOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Добавить пункт чеклиста</DialogTitle>
+        <DialogContent sx={{ pt: 1 }}>
+          {chkError && <Alert severity="error" sx={{ mb: 2 }}>{chkError}</Alert>}
+          <FormControl fullWidth sx={{ mb: 2, mt: 1 }}>
+            <InputLabel>Категория</InputLabel>
+            <Select value={chkForm.category} label="Категория"
+              onChange={e => setChkForm(p => ({ ...p, category: e.target.value }))}>
+              {[
+                ['documents', '📄 Документы'], ['money', '💳 Деньги'],
+                ['health', '💊 Здоровье'], ['electronics', '🔋 Электроника'],
+                ['clothes', '👕 Одежда'], ['other', '📦 Прочее'],
+              ].map(([v, l]) => <MenuItem key={v} value={v}>{l}</MenuItem>)}
+            </Select>
+          </FormControl>
+          <TextField fullWidth label="Название *" required value={chkForm.title}
+            onChange={e => setChkForm(p => ({ ...p, title: e.target.value }))} sx={{ mb: 2 }} />
+          <TextField fullWidth label="Заметка" value={chkForm.notes}
+            onChange={e => setChkForm(p => ({ ...p, notes: e.target.value }))} />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setChkOpen(false)} disabled={chkSaving}>Отмена</Button>
+          <Button variant="contained" onClick={handleChkSave} disabled={chkSaving}>
+            {chkSaving ? 'Сохранение...' : 'Добавить'}
           </Button>
         </DialogActions>
       </Dialog>

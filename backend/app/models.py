@@ -3455,3 +3455,45 @@ class Trip(Base):
 
     owner = relationship("User", foreign_keys=[owner_id])
     transactions = relationship("FinanceTransaction", foreign_keys="FinanceTransaction.trip_id", back_populates="trip")
+    expenses = relationship("TripExpense", back_populates="trip", cascade="all, delete-orphan")
+    cash_exchanges = relationship("TripCashExchange", back_populates="trip", cascade="all, delete-orphan")
+
+
+class TripExpense(Base):
+    """Трата в поездке с учётом локальной валюты и курса обмена."""
+
+    __tablename__ = "trip_expenses"
+
+    id = Column(Integer, primary_key=True, index=True)
+    trip_id = Column(Integer, ForeignKey("trips.id", ondelete="CASCADE"), nullable=False, index=True)
+    category = Column(String(50), nullable=False, default="other")
+    description = Column(String(512), nullable=True)
+    amount_local = Column(Float, nullable=False)
+    local_currency = Column(String(3), nullable=False)
+    exchange_rate = Column(Float, nullable=False)
+    amount_base = Column(Float, nullable=False)
+    base_currency = Column(String(3), nullable=False)
+    occurred_at = Column(Date, nullable=False)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    trip = relationship("Trip", back_populates="expenses")
+
+
+class TripCashExchange(Base):
+    """Операция обмена наличных в поездке (базовая валюта → местная валюта)."""
+
+    __tablename__ = "trip_cash_exchanges"
+
+    id = Column(Integer, primary_key=True, index=True)
+    trip_id = Column(Integer, ForeignKey("trips.id", ondelete="CASCADE"), nullable=False, index=True)
+    amount_base = Column(Float, nullable=False)
+    base_currency = Column(String(3), nullable=False)
+    exchange_rate = Column(Float, nullable=False)
+    amount_local = Column(Float, nullable=False)
+    local_currency = Column(String(3), nullable=False)
+    occurred_at = Column(Date, nullable=False)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    trip = relationship("Trip", back_populates="cash_exchanges")

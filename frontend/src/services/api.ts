@@ -4370,6 +4370,56 @@ export const tripsApi = {
   unlinkTransaction: async (tripId: number, transactionId: number): Promise<void> => {
     await api.delete(`/trips/${tripId}/transactions/${transactionId}/link`);
   },
+  getSummary: async (id: number): Promise<any> => {
+    const res = await api.get(`/trips/${id}/summary`);
+    return res.data;
+  },
+  listExpenses: async (id: number): Promise<any[]> => {
+    const res = await api.get(`/trips/${id}/expenses`);
+    return res.data;
+  },
+  createExpense: async (tripId: number, payload: {
+    category?: string;
+    description?: string;
+    amount_local: number;
+    local_currency: string;
+    exchange_rate: number;
+    occurred_at: string;
+    notes?: string;
+  }): Promise<any> => {
+    const res = await api.post(`/trips/${tripId}/expenses`, payload);
+    return res.data;
+  },
+  updateExpense: async (tripId: number, expenseId: number, payload: Partial<{
+    category: string;
+    description: string;
+    amount_local: number;
+    exchange_rate: number;
+    occurred_at: string;
+    notes: string;
+  }>): Promise<any> => {
+    const res = await api.patch(`/trips/${tripId}/expenses/${expenseId}`, payload);
+    return res.data;
+  },
+  deleteExpense: async (tripId: number, expenseId: number): Promise<void> => {
+    await api.delete(`/trips/${tripId}/expenses/${expenseId}`);
+  },
+  listCashExchanges: async (id: number): Promise<any[]> => {
+    const res = await api.get(`/trips/${id}/cash-exchanges`);
+    return res.data;
+  },
+  createCashExchange: async (tripId: number, payload: {
+    amount_base: number;
+    exchange_rate: number;
+    occurred_at: string;
+    notes?: string;
+  }): Promise<any> => {
+    const res = await api.post(`/trips/${tripId}/cash-exchanges`, payload);
+    return res.data;
+  },
+  deleteCashExchange: async (tripId: number, exchangeId: number): Promise<void> => {
+    await api.delete(`/trips/${tripId}/cash-exchanges/${exchangeId}`);
+  },
 };
 
 export default api;

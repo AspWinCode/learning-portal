@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app import auth
 from app.database import get_db
-from app.models import FinanceTransaction, Trip, TripStatus, User
+from app.models import FinanceTransaction, Trip, TripCashExchange, TripExpense, TripStatus, User
 
 router = APIRouter()
 
@@ -270,3 +270,291 @@ async def unlink_transaction_from_trip(
         raise HTTPException(status_code=404, detail="Транзакция не найдена в этой поездке")
     txn.trip_id = None
     db.commit()
+
+
+# ── Trip Expenses ─────────────────────────────────────────────────────────────
+
+EXPENSE_CATEGORIES = [
+    "food", "transport", "excursion", "accommodation",
+    "shopping", "health", "visa", "entertainment", "other",
+]
+
+
+class ExpenseCreate(BaseModel):
+    category: str = "other"
+    description: Optional[str] = None
+    amount_local: float
+    local_currency: str
+    exchange_rate: float
+    occurred_at: date
+    notes: Optional[str] = None
+
+
+class ExpenseUpdate(BaseModel):
+    category: Optional[str] = None
+    description: Optional[str] = None
+    amount_local: Optional[float] = None
+    exchange_rate: Optional[float] = None
+    occurred_at: Optional[date] = None
+    notes: Optional[str] = None
+
+
+def _serialize_expense(e: TripExpense) -> dict:
+    return {
+        "id": e.id,
+        "trip_id": e.trip_id,
+        "category": e.category,
+        "description": e.description,
+        "amount_local": e.amount_local,
+        "local_currency": e.local_currency,
+        "exchange_rate": e.exchange_rate,
+        "amount_base": e.amount_base,
+        "base_currency": e.base_currency,
+        "occurred_at": e.occurred_at.isoformat() if e.occurred_at else None,
+        "notes": e.notes,
+        "created_at": e.created_at.isoformat() if e.created_at else None,
+    }
+
+
+@router.get("/{trip_id}/expenses")
+async def list_expenses(
+    trip_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    _require_owner(current_user)
+    _get_trip_or_404(db, trip_id, current_user)
+    expenses = (
+        db.query(TripExpense)
+        .filter(TripExpense.trip_id == trip_id)
+        .order_by(TripExpense.occurred_at.desc(), TripExpense.created_at.desc())
+        .all()
+    )
+    return [_serialize_expense(e) for e in expenses]
+
+
+@router.post("/{trip_id}/expenses", status_code=status.HTTP_201_CREATED)
+async def create_expense(
+    trip_id: int,
+    payload: ExpenseCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    _require_owner(current_user)
+    trip = _get_trip_or_404(db, trip_id, current_user)
+    if payload.exchange_rate <= 0:
+        raise HTTPException(status_code=400, detail="Курс обмена должен быть больше нуля")
+    amount_base = round(payload.amount_local / payload.exchange_rate, 2)
+    expense = TripExpense(
+        trip_id=trip_id,
+        category=payload.category if payload.category in EXPENSE_CATEGORIES else "other",
+        description=payload.description,
+        amount_local=payload.amount_local,
+        local_currency=trip.local_currency,
+        exchange_rate=payload.exchange_rate,
+        amount_base=amount_base,
+        base_currency=trip.base_currency,
+        occurred_at=payload.occurred_at,
+        notes=payload.notes,
+    )
+    db.add(expense)
+    db.commit()
+    db.refresh(expense)
+    return _serialize_expense(expense)
+
+
+@router.patch("/{trip_id}/expenses/{expense_id}")
+async def update_expense(
+    trip_id: int,
+    expense_id: int,
+    payload: ExpenseUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    _require_owner(current_user)
+    _get_trip_or_404(db, trip_id, current_user)
+    expense = db.query(TripExpense).filter(
+        TripExpense.id == expense_id, TripExpense.trip_id == trip_id
+    ).first()
+    if not expense:
+        raise HTTPException(status_code=404, detail="Трата не найдена")
+    if payload.category is not None:
+        expense.category = payload.category if payload.category in EXPENSE_CATEGORIES else "other"
+    if payload.description is not None:
+        expense.description = payload.description
+    if payload.occurred_at is not None:
+        expense.occurred_at = payload.occurred_at
+    if payload.notes is not None:
+        expense.notes = payload.notes
+    if payload.amount_local is not None:
+        expense.amount_local = payload.amount_local
+    if payload.exchange_rate is not None:
+        if payload.exchange_rate <= 0:
+            raise HTTPException(status_code=400, detail="Курс обмена должен быть больше нуля")
+        expense.exchange_rate = payload.exchange_rate
+    expense.amount_base = round(expense.amount_local / expense.exchange_rate, 2)
+    db.commit()
+    db.refresh(expense)
+    return _serialize_expense(expense)
+
+
+@router.delete("/{trip_id}/expenses/{expense_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_expense(
+    trip_id: int,
+    expense_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    _require_owner(current_user)
+    _get_trip_or_404(db, trip_id, current_user)
+    expense = db.query(TripExpense).filter(
+        TripExpense.id == expense_id, TripExpense.trip_id == trip_id
+    ).first()
+    if not expense:
+        raise HTTPException(status_code=404, detail="Трата не найдена")
+    db.delete(expense)
+    db.commit()
+
+
+# ── Cash Exchanges ────────────────────────────────────────────────────────────
+
+class CashExchangeCreate(BaseModel):
+    amount_base: float
+    exchange_rate: float
+    occurred_at: date
+    notes: Optional[str] = None
+
+
+class CashExchangeUpdate(BaseModel):
+    amount_base: Optional[float] = None
+    exchange_rate: Optional[float] = None
+    occurred_at: Optional[date] = None
+    notes: Optional[str] = None
+
+
+def _serialize_exchange(ex: TripCashExchange) -> dict:
+    return {
+        "id": ex.id,
+        "trip_id": ex.trip_id,
+        "amount_base": ex.amount_base,
+        "base_currency": ex.base_currency,
+        "exchange_rate": ex.exchange_rate,
+        "amount_local": ex.amount_local,
+        "local_currency": ex.local_currency,
+        "occurred_at": ex.occurred_at.isoformat() if ex.occurred_at else None,
+        "notes": ex.notes,
+        "created_at": ex.created_at.isoformat() if ex.created_at else None,
+    }
+
+
+@router.get("/{trip_id}/cash-exchanges")
+async def list_cash_exchanges(
+    trip_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    _require_owner(current_user)
+    _get_trip_or_404(db, trip_id, current_user)
+    exchanges = (
+        db.query(TripCashExchange)
+        .filter(TripCashExchange.trip_id == trip_id)
+        .order_by(TripCashExchange.occurred_at.desc(), TripCashExchange.created_at.desc())
+        .all()
+    )
+    return [_serialize_exchange(ex) for ex in exchanges]
+
+
+@router.post("/{trip_id}/cash-exchanges", status_code=status.HTTP_201_CREATED)
+async def create_cash_exchange(
+    trip_id: int,
+    payload: CashExchangeCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    _require_owner(current_user)
+    trip = _get_trip_or_404(db, trip_id, current_user)
+    if payload.exchange_rate <= 0:
+        raise HTTPException(status_code=400, detail="Курс обмена должен быть больше нуля")
+    amount_local = round(payload.amount_base * payload.exchange_rate, 2)
+    exchange = TripCashExchange(
+        trip_id=trip_id,
+        amount_base=payload.amount_base,
+        base_currency=trip.base_currency,
+        exchange_rate=payload.exchange_rate,
+        amount_local=amount_local,
+        local_currency=trip.local_currency,
+        occurred_at=payload.occurred_at,
+        notes=payload.notes,
+    )
+    db.add(exchange)
+    db.commit()
+    db.refresh(exchange)
+    return _serialize_exchange(exchange)
+
+
+@router.delete("/{trip_id}/cash-exchanges/{exchange_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_cash_exchange(
+    trip_id: int,
+    exchange_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    _require_owner(current_user)
+    _get_trip_or_404(db, trip_id, current_user)
+    exchange = db.query(TripCashExchange).filter(
+        TripCashExchange.id == exchange_id, TripCashExchange.trip_id == trip_id
+    ).first()
+    if not exchange:
+        raise HTTPException(status_code=404, detail="Операция обмена не найдена")
+    db.delete(exchange)
+    db.commit()
+
+
+# ── Trip Summary ──────────────────────────────────────────────────────────────
+
+@router.get("/{trip_id}/summary")
+async def get_trip_summary(
+    trip_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    _require_owner(current_user)
+    trip = _get_trip_or_404(db, trip_id, current_user)
+
+    expenses = db.query(TripExpense).filter(TripExpense.trip_id == trip_id).all()
+    exchanges = db.query(TripCashExchange).filter(TripCashExchange.trip_id == trip_id).all()
+
+    total_expense_local = sum(e.amount_local for e in expenses)
+    total_expense_base = sum(e.amount_base for e in expenses)
+    total_exchanged_local = sum(ex.amount_local for ex in exchanges)
+    total_exchanged_base = sum(ex.amount_base for ex in exchanges)
+    cash_balance_local = round(total_exchanged_local - total_expense_local, 2)
+
+    avg_rate = (
+        round(total_exchanged_local / total_exchanged_base, 4)
+        if total_exchanged_base > 0 else None
+    )
+
+    by_category: dict = {}
+    for e in expenses:
+        cat = e.category
+        if cat not in by_category:
+            by_category[cat] = {"local": 0.0, "base": 0.0, "count": 0}
+        by_category[cat]["local"] = round(by_category[cat]["local"] + e.amount_local, 2)
+        by_category[cat]["base"] = round(by_category[cat]["base"] + e.amount_base, 2)
+        by_category[cat]["count"] += 1
+
+    return {
+        "trip_id": trip_id,
+        "base_currency": trip.base_currency,
+        "local_currency": trip.local_currency,
+        "total_expense_local": round(total_expense_local, 2),
+        "total_expense_base": round(total_expense_base, 2),
+        "total_exchanged_local": round(total_exchanged_local, 2),
+        "total_exchanged_base": round(total_exchanged_base, 2),
+        "cash_balance_local": cash_balance_local,
+        "avg_exchange_rate": avg_rate,
+        "expense_count": len(expenses),
+        "exchange_count": len(exchanges),
+        "by_category": by_category,
+    }

@@ -889,6 +889,7 @@ export const financeApi = {
   listJournalTransactions: async (params?: {
     account_ids?: number[];
     target_ids?: number[];
+    model_ids?: number[];
     article_ids?: number[];
     direction?: string;
     status?: string[];
@@ -902,6 +903,7 @@ export const financeApi = {
       params: {
         account_ids: params?.account_ids,
         target_ids: params?.target_ids,
+        model_ids: params?.model_ids,
         article_ids: params?.article_ids,
         direction: params?.direction,
         status: params?.status,

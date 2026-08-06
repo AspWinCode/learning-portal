@@ -306,6 +306,7 @@ const FinanceOverviewPageContent: React.FC = () => {
       const rows = await financeApi.listJournalTransactions({
         unclassified_only: unclassifiedOnly,
         target_ids: effectiveTargetFilter ? [effectiveTargetFilter] : undefined,
+        model_ids: selectedModelId !== '' ? [Number(selectedModelId)] : undefined,
         include_unassigned_targets: Boolean(effectiveTargetFilter),
         account_ids: effectiveAccountFilter ? [effectiveAccountFilter] : undefined,
         direction: journalDirectionFilter === 'all' ? undefined : journalDirectionFilter,
@@ -377,7 +378,7 @@ const FinanceOverviewPageContent: React.FC = () => {
 
   useEffect(() => {
     loadJournal();
-  }, [journalFrom, journalTo, journalTargetFilter, journalDirectionFilter, journalAccountFilter, unclassifiedOnly]);
+  }, [journalFrom, journalTo, journalTargetFilter, journalDirectionFilter, journalAccountFilter, unclassifiedOnly, selectedModelId]);
 
   useEffect(() => {
     if (tab === 'unit') {
@@ -877,8 +878,6 @@ const FinanceOverviewPageContent: React.FC = () => {
 
   const handleJournalModelFilter = (value: number | '') => {
     setSelectedModelId(value);
-    const model = models.find((item) => item.id === value);
-    setJournalTargetFilter(model?.target_id ?? 'all');
   };
 
   const renderModelSelector = () => (

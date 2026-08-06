@@ -189,6 +189,7 @@ const FinanceOverviewPageContent: React.FC = () => {
   });
   const [journalTo, setJournalTo] = useState(today());
   const [journalTargetFilter, setJournalTargetFilter] = useState<'all' | number>('all');
+  const [journalModelFilter, setJournalModelFilter] = useState<number | ''>('');
   const [journalDirectionFilter, setJournalDirectionFilter] = useState<'all' | 'income' | 'expense' | 'transfer'>('all');
   const [journalAccountFilter, setJournalAccountFilter] = useState<'all' | number>('all');
   const [unclassifiedOnly, setUnclassifiedOnly] = useState(false);
@@ -754,14 +755,14 @@ const FinanceOverviewPageContent: React.FC = () => {
 
   const displayedJournalRows = useMemo(() => {
     let rows = needsAssignmentOnly ? sortedJournalRows.filter(needsAssignment) : sortedJournalRows;
-    if (selectedModelId !== '') {
-      const m = models.find((item) => item.id === Number(selectedModelId));
+    if (journalModelFilter !== '') {
+      const m = models.find((item) => item.id === Number(journalModelFilter));
       if (m?.target_id) {
         rows = rows.filter((row) => row.target_id === m.target_id);
       }
     }
     return rows;
-  }, [sortedJournalRows, needsAssignmentOnly, selectedModelId, models]);
+  }, [sortedJournalRows, needsAssignmentOnly, journalModelFilter, models]);
 
   const journalTotals = useMemo(() => {
     let income = 0, expense = 0, transfer = 0;
@@ -882,9 +883,7 @@ const FinanceOverviewPageContent: React.FC = () => {
   };
 
   const handleJournalModelFilter = (value: number | '') => {
-    setSelectedModelId(value);
-    const model = models.find((item) => item.id === value);
-    setJournalTargetFilter(model?.target_id ?? 'all');
+    setJournalModelFilter(value);
   };
 
   const renderModelSelector = () => (
@@ -1461,7 +1460,7 @@ const FinanceOverviewPageContent: React.FC = () => {
             <InputLabel>Финансовая модель</InputLabel>
             <Select
               label="Финансовая модель"
-              value={selectedModelId === '' ? '' : String(selectedModelId)}
+              value={journalModelFilter === '' ? '' : String(journalModelFilter)}
               onChange={(event) =>
                 handleJournalModelFilter(event.target.value === '' ? '' : Number(event.target.value))
               }
@@ -1927,8 +1926,8 @@ const FinanceOverviewPageContent: React.FC = () => {
                 </TableCell>
                 <TableCell sx={{ display: isJournalCompact ? 'none' : 'table-cell' }}>
                   <Typography variant="body2" color="text.secondary">
-                    {selectedModelId !== ''
-                      ? (models.find((m) => m.id === Number(selectedModelId))?.name || '—')
+                    {journalModelFilter !== ''
+                      ? (models.find((m) => m.id === Number(journalModelFilter))?.name || '—')
                       : (models.filter((m) => m.target_id === row.target_id).map((m) => m.name).join(', ') || '—')}
                   </Typography>
                 </TableCell>

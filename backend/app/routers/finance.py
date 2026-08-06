@@ -2968,10 +2968,6 @@ async def list_finance_transactions(
         None,
         description="Фильтр по проектам (finance_targets.id). Пусто = все.",
     ),
-    model_ids: Optional[List[int]] = Query(
-        None,
-        description="Фильтр по финансовым моделям (finance_models.id). Сужает target_ids до проектов выбранных моделей.",
-    ),
     include_unassigned_targets: bool = Query(
         False,
         description="Вместе с target_ids показывать операции без проекта (target_id IS NULL).",
@@ -3020,31 +3016,11 @@ async def list_finance_transactions(
 
     if account_ids:
         q = q.filter(FinanceTransaction.account_id.in_(account_ids))
-
-    # Resolve effective target_ids: model_ids narrows down to model's targets
-    effective_target_ids: Optional[List[int]] = None
-    if model_ids:
-        model_target_rows = (
-            db.query(FinanceModel.target_id)
-            .filter(FinanceModel.id.in_(model_ids), FinanceModel.target_id.isnot(None))
-            .all()
-        )
-        model_target_ids = [row[0] for row in model_target_rows]
-        if target_ids:
-            effective_target_ids = list(set(model_target_ids) & set(target_ids))
-        else:
-            effective_target_ids = model_target_ids
-    elif target_ids:
-        effective_target_ids = list(target_ids)
-
-    if effective_target_ids is not None:
-        if not effective_target_ids:
-            return []
-        target_filter = FinanceTransaction.target_id.in_(effective_target_ids)
+    if target_ids:
+        target_filter = FinanceTransaction.target_id.in_(target_ids)
         if include_unassigned_targets:
             target_filter = or_(target_filter, FinanceTransaction.target_id.is_(None))
         q = q.filter(target_filter)
-
     if article_ids:
         q = q.filter(FinanceTransaction.article_id.in_(article_ids))
     if direction:

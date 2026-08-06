@@ -752,10 +752,16 @@ const FinanceOverviewPageContent: React.FC = () => {
 
   const unassignedCount = useMemo(() => journalRows.filter(needsAssignment).length, [journalRows]);
 
-  const displayedJournalRows = useMemo(
-    () => (needsAssignmentOnly ? sortedJournalRows.filter(needsAssignment) : sortedJournalRows),
-    [sortedJournalRows, needsAssignmentOnly]
-  );
+  const displayedJournalRows = useMemo(() => {
+    let rows = needsAssignmentOnly ? sortedJournalRows.filter(needsAssignment) : sortedJournalRows;
+    if (selectedModelId !== '') {
+      const m = models.find((item) => item.id === Number(selectedModelId));
+      if (m?.target_id) {
+        rows = rows.filter((row) => row.target_id === m.target_id);
+      }
+    }
+    return rows;
+  }, [sortedJournalRows, needsAssignmentOnly, selectedModelId, models]);
 
   const journalTotals = useMemo(() => {
     let income = 0, expense = 0, transfer = 0;
@@ -1921,7 +1927,9 @@ const FinanceOverviewPageContent: React.FC = () => {
                 </TableCell>
                 <TableCell sx={{ display: isJournalCompact ? 'none' : 'table-cell' }}>
                   <Typography variant="body2" color="text.secondary">
-                    {models.filter((m) => m.target_id === row.target_id).map((m) => m.name).join(', ') || '—'}
+                    {selectedModelId !== ''
+                      ? (models.find((m) => m.id === Number(selectedModelId))?.name || '—')
+                      : (models.filter((m) => m.target_id === row.target_id).map((m) => m.name).join(', ') || '—')}
                   </Typography>
                 </TableCell>
                 <TableCell sx={{ display: isJournalCompact ? 'none' : 'table-cell' }}>

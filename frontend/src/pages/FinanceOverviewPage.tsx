@@ -1832,6 +1832,7 @@ const FinanceOverviewPageContent: React.FC = () => {
               </TableCell>
               <TableCell>Счет</TableCell>
               <TableCell sx={{ display: isJournalCompact ? 'none' : 'table-cell' }}>Проект</TableCell>
+              <TableCell sx={{ display: isJournalCompact ? 'none' : 'table-cell' }}>Фин. модель</TableCell>
               <TableCell sx={{ display: isJournalCompact ? 'none' : 'table-cell' }}>Статья</TableCell>
               <TableCell>Тип</TableCell>
               <TableCell sx={{ display: isJournalCompact ? 'none' : 'table-cell' }}>Статус</TableCell>
@@ -1917,6 +1918,11 @@ const FinanceOverviewPageContent: React.FC = () => {
                       ))}
                     </Select>
                   </FormControl>
+                </TableCell>
+                <TableCell sx={{ display: isJournalCompact ? 'none' : 'table-cell' }}>
+                  <Typography variant="body2" color="text.secondary">
+                    {models.filter((m) => m.target_id === row.target_id).map((m) => m.name).join(', ') || '—'}
+                  </Typography>
                 </TableCell>
                 <TableCell sx={{ display: isJournalCompact ? 'none' : 'table-cell' }}>
                   {row.direction === 'transfer' ? (

@@ -58,7 +58,7 @@ def create_category(
     db.add(cat)
     db.commit()
     db.refresh(cat)
-    log_action(db, current_user.id, "blog_category_create", {"id": cat.id, "slug": cat.slug})
+    log_action(db, current_user.id, "blog_category_create", "blog_category", cat.id, {"slug": cat.slug})
     return cat
 
 
@@ -82,7 +82,7 @@ def update_category(
         setattr(cat, k, v)
     db.commit()
     db.refresh(cat)
-    log_action(db, current_user.id, "blog_category_update", {"id": cat.id})
+    log_action(db, current_user.id, "blog_category_update", "blog_category", cat.id)
     return cat
 
 
@@ -97,7 +97,7 @@ def delete_category(
         raise HTTPException(status_code=404, detail="Категория не найдена")
     db.delete(cat)
     db.commit()
-    log_action(db, current_user.id, "blog_category_delete", {"id": cat_id})
+    log_action(db, current_user.id, "blog_category_delete", "blog_category", cat_id)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -125,7 +125,7 @@ def create_tag(
     db.add(tag)
     db.commit()
     db.refresh(tag)
-    log_action(db, current_user.id, "blog_tag_create", {"id": tag.id, "slug": tag.slug})
+    log_action(db, current_user.id, "blog_tag_create", "blog_tag", tag.id, {"slug": tag.slug})
     return tag
 
 
@@ -163,7 +163,7 @@ def delete_tag(
         raise HTTPException(status_code=404, detail="Тег не найден")
     db.delete(tag)
     db.commit()
-    log_action(db, current_user.id, "blog_tag_delete", {"id": tag_id})
+    log_action(db, current_user.id, "blog_tag_delete", "blog_tag", tag_id)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -239,7 +239,7 @@ def create_post(
 
     db.commit()
     db.refresh(post)
-    log_action(db, current_user.id, "blog_post_create", {"id": post.id, "slug": post.slug})
+    log_action(db, current_user.id, "blog_post_create", "blog_post", post.id, {"slug": post.slug})
     return _load_post(db, post.id)
 
 
@@ -269,7 +269,7 @@ def update_post(
         _apply_tags(db, post, payload.tag_ids)
 
     db.commit()
-    log_action(db, current_user.id, "blog_post_update", {"id": post_id, "fields": list(data.keys())})
+    log_action(db, current_user.id, "blog_post_update", "blog_post", post_id, {"fields": list(data.keys())})
     return _load_post(db, post_id)
 
 
@@ -284,4 +284,4 @@ def delete_post(
         raise HTTPException(status_code=404, detail="Пост не найден")
     db.delete(post)
     db.commit()
-    log_action(db, current_user.id, "blog_post_delete", {"id": post_id})
+    log_action(db, current_user.id, "blog_post_delete", "blog_post", post_id)

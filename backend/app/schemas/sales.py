@@ -429,9 +429,42 @@ class SalesSchoolUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
+class SalesSchoolContactCreate(BaseModel):
+    full_name: str
+    position: Optional[str] = None
+    phone: Optional[str] = None
+    phone_extra: Optional[str] = None
+    email: Optional[str] = None
+    note: Optional[str] = None
+
+
+class SalesSchoolContactUpdate(BaseModel):
+    full_name: Optional[str] = None
+    position: Optional[str] = None
+    phone: Optional[str] = None
+    phone_extra: Optional[str] = None
+    email: Optional[str] = None
+    note: Optional[str] = None
+
+
+class SalesSchoolContactResponse(BaseModel):
+    id: int
+    school_id: int
+    full_name: str
+    position: Optional[str] = None
+    phone: Optional[str] = None
+    phone_extra: Optional[str] = None
+    email: Optional[str] = None
+    note: Optional[str] = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class SalesSchoolResponse(SalesSchoolBase):
     id: int
     created_at: datetime
+    contacts: List["SalesSchoolContactResponse"] = []
 
     model_config = ConfigDict(from_attributes=True)
 

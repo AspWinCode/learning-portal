@@ -670,6 +670,24 @@ class SalesSchool(Base):
     is_active = Column(Boolean, default=True, nullable=False, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+    contacts = relationship("SalesSchoolContact", back_populates="school", cascade="all, delete-orphan", order_by="SalesSchoolContact.id")
+
+
+class SalesSchoolContact(Base):
+    __tablename__ = "sales_school_contacts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    school_id = Column(Integer, ForeignKey("sales_schools.id", ondelete="CASCADE"), nullable=False, index=True)
+    full_name = Column(String, nullable=False)
+    position = Column(String, nullable=True)
+    phone = Column(String(64), nullable=True)
+    phone_extra = Column(String(64), nullable=True)
+    email = Column(String, nullable=True)
+    note = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    school = relationship("SalesSchool", back_populates="contacts")
+
 
 class SalesClass(Base):
     """Справочник классов (для лидов: 1, 2, 3, … 7А, 10Б и т.д.)."""

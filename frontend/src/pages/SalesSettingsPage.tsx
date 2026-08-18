@@ -4,10 +4,12 @@ import {
   Box,
   Button,
   Chip,
+  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
+  Divider,
   FormControl,
   FormControlLabel,
   IconButton,
@@ -54,6 +56,7 @@ import {
   LeadTaskTemplate,
   SalesCity,
   SalesSchool,
+  SalesSchoolContact,
   SalesClass,
   CampaignDictionaryItem,
   CampaignSettings,
@@ -173,6 +176,12 @@ const SalesSettingsPage: React.FC = () => {
   } | null>(null);
   const [editSchoolSaving, setEditSchoolSaving] = useState(false);
   const [editSchoolError, setEditSchoolError] = useState('');
+  const [schoolContacts, setSchoolContacts] = useState<SalesSchoolContact[]>([]);
+  const [schoolContactsLoading, setSchoolContactsLoading] = useState(false);
+  const [contactForm, setContactForm] = useState<{ full_name: string; position: string; phone: string; phone_extra: string; email: string; note: string } | null>(null);
+  const [editingContact, setEditingContact] = useState<SalesSchoolContact | null>(null);
+  const [contactSaving, setContactSaving] = useState(false);
+  const [contactError, setContactError] = useState('');
   const [schoolImportResult, setSchoolImportResult] = useState<{
     created: number;
     updated: number;
@@ -461,8 +470,12 @@ const SalesSettingsPage: React.FC = () => {
     }
   };
 
-  const openEditSchool = (school: SalesSchool) => {
+  const openEditSchool = async (school: SalesSchool) => {
     setEditingSchool(school);
+    setSchoolContacts(school.contacts ?? []);
+    setContactForm(null);
+    setEditingContact(null);
+    setContactError('');
     setEditSchoolDraft({
       name: school.name,
       city: school.city || '',
@@ -501,6 +514,63 @@ const SalesSettingsPage: React.FC = () => {
       setEditSchoolError(extractApiError(err, 'Не удалось сохранить'));
     } finally {
       setEditSchoolSaving(false);
+    }
+  };
+
+  const emptyContactForm = () => ({ full_name: '', position: '', phone: '', phone_extra: '', email: '', note: '' });
+
+  const openAddContact = () => {
+    setEditingContact(null);
+    setContactForm(emptyContactForm());
+    setContactError('');
+  };
+
+  const openEditContact = (c: SalesSchoolContact) => {
+    setEditingContact(c);
+    setContactForm({ full_name: c.full_name, position: c.position || '', phone: c.phone || '', phone_extra: c.phone_extra || '', email: c.email || '', note: c.note || '' });
+    setContactError('');
+  };
+
+  const cancelContactForm = () => { setContactForm(null); setEditingContact(null); setContactError(''); };
+
+  const saveContact = async () => {
+    if (!editingSchool || !contactForm) return;
+    if (!contactForm.full_name.trim()) { setContactError('ФИО обязательно'); return; }
+    setContactSaving(true);
+    setContactError('');
+    try {
+      const payload = {
+        full_name: contactForm.full_name.trim(),
+        position: contactForm.position.trim() || null,
+        phone: contactForm.phone.trim() || null,
+        phone_extra: contactForm.phone_extra.trim() || null,
+        email: contactForm.email.trim() || null,
+        note: contactForm.note.trim() || null,
+      };
+      if (editingContact) {
+        const updated = await salesApi.updateSalesSchoolContact(editingSchool.id, editingContact.id, payload);
+        setSchoolContacts(prev => prev.map(c => c.id === updated.id ? updated : c));
+      } else {
+        const created = await salesApi.createSalesSchoolContact(editingSchool.id, payload);
+        setSchoolContacts(prev => [...prev, created]);
+      }
+      setContactForm(null);
+      setEditingContact(null);
+    } catch (err: any) {
+      setContactError(extractApiError(err, 'Не удалось сохранить контакт'));
+    } finally {
+      setContactSaving(false);
+    }
+  };
+
+  const deleteContact = async (contact: SalesSchoolContact) => {
+    if (!editingSchool) return;
+    if (!window.confirm(`Удалить контакт «${contact.full_name}»?`)) return;
+    try {
+      await salesApi.deleteSalesSchoolContact(editingSchool.id, contact.id);
+      setSchoolContacts(prev => prev.filter(c => c.id !== contact.id));
+    } catch (err: any) {
+      setContactError(extractApiError(err, 'Не удалось удалить контакт'));
     }
   };
 
@@ -1881,7 +1951,7 @@ const SalesSettingsPage: React.FC = () => {
       </Stack>
 
       {/* Edit school dialog */}
-      <Dialog open={!!editingSchool} onClose={() => !editSchoolSaving && setEditingSchool(null)} maxWidth="sm" fullWidth>
+      <Dialog open={!!editingSchool} onClose={() => !editSchoolSaving && !contactSaving && setEditingSchool(null)} maxWidth="md" fullWidth>
         <DialogTitle>Редактировать школу</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
@@ -1913,10 +1983,111 @@ const SalesSettingsPage: React.FC = () => {
               control={<Switch checked={editSchoolDraft?.is_active ?? true} disabled={editSchoolSaving}
                 onChange={(e) => setEditSchoolDraft((d) => d ? { ...d, is_active: e.target.checked } : d)} />}
               label="Активна" />
+
+            <Divider />
+
+            {/* Contacts section */}
+            <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Typography variant="subtitle2">Дополнительные контакты</Typography>
+              {!contactForm && (
+                <Button size="small" startIcon={<AddIcon />} onClick={openAddContact}>
+                  Добавить контакт
+                </Button>
+              )}
+            </Stack>
+
+            {schoolContactsLoading && <CircularProgress size={20} />}
+
+            {contactError && <Alert severity="error" onClose={() => setContactError('')}>{contactError}</Alert>}
+
+            {/* Contact form (add or edit) */}
+            {contactForm && (
+              <Paper variant="outlined" sx={{ p: 2 }}>
+                <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
+                  {editingContact ? 'Редактировать контакт' : 'Новый контакт'}
+                </Typography>
+                <Stack spacing={1.5}>
+                  <TextField size="small" label="ФИО *" fullWidth value={contactForm.full_name}
+                    onChange={(e) => setContactForm(f => f ? { ...f, full_name: e.target.value } : f)}
+                    disabled={contactSaving} />
+                  <TextField size="small" label="Должность" fullWidth value={contactForm.position}
+                    placeholder="Завуч, Учитель, Менеджер…"
+                    onChange={(e) => setContactForm(f => f ? { ...f, position: e.target.value } : f)}
+                    disabled={contactSaving} />
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                    <TextField size="small" label="Телефон" fullWidth value={contactForm.phone}
+                      onChange={(e) => setContactForm(f => f ? { ...f, phone: e.target.value } : f)}
+                      disabled={contactSaving} />
+                    <TextField size="small" label="Доп. номер" fullWidth value={contactForm.phone_extra}
+                      onChange={(e) => setContactForm(f => f ? { ...f, phone_extra: e.target.value } : f)}
+                      disabled={contactSaving} />
+                  </Stack>
+                  <TextField size="small" label="Почта" type="email" fullWidth value={contactForm.email}
+                    onChange={(e) => setContactForm(f => f ? { ...f, email: e.target.value } : f)}
+                    disabled={contactSaving} />
+                  <TextField size="small" label="Заметка" fullWidth multiline rows={2} value={contactForm.note}
+                    onChange={(e) => setContactForm(f => f ? { ...f, note: e.target.value } : f)}
+                    disabled={contactSaving} />
+                  <Stack direction="row" spacing={1} justifyContent="flex-end">
+                    <Button size="small" onClick={cancelContactForm} disabled={contactSaving}>Отмена</Button>
+                    <Button size="small" variant="contained" onClick={saveContact}
+                      disabled={contactSaving || !contactForm.full_name.trim()}>
+                      {contactSaving ? 'Сохраняем…' : 'Сохранить'}
+                    </Button>
+                  </Stack>
+                </Stack>
+              </Paper>
+            )}
+
+            {/* Contacts list */}
+            {schoolContacts.length > 0 && (
+              <Stack spacing={1}>
+                {schoolContacts.map((c) => (
+                  <Paper key={c.id} variant="outlined" sx={{ p: 1.5 }}>
+                    <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+                      <Box>
+                        <Typography variant="body2" fontWeight={500}>{c.full_name}</Typography>
+                        {c.position && (
+                          <Typography variant="caption" color="text.secondary">{c.position}</Typography>
+                        )}
+                        <Stack direction="row" spacing={2} sx={{ mt: 0.5 }} flexWrap="wrap">
+                          {c.phone && <Typography variant="caption">{c.phone}</Typography>}
+                          {c.phone_extra && <Typography variant="caption">{c.phone_extra}</Typography>}
+                          {c.email && <Typography variant="caption">{c.email}</Typography>}
+                        </Stack>
+                        {c.note && (
+                          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                            {c.note}
+                          </Typography>
+                        )}
+                      </Box>
+                      <Stack direction="row" spacing={0.5}>
+                        <Tooltip title="Редактировать">
+                          <IconButton size="small" onClick={() => openEditContact(c)} disabled={!!contactForm}>
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Удалить">
+                          <IconButton size="small" color="error" onClick={() => deleteContact(c)} disabled={!!contactForm || contactSaving}>
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </Stack>
+                    </Stack>
+                  </Paper>
+                ))}
+              </Stack>
+            )}
+
+            {schoolContacts.length === 0 && !contactForm && !schoolContactsLoading && (
+              <Typography variant="body2" color="text.secondary">
+                Контакты не добавлены. Нажмите «Добавить контакт» чтобы указать ответственных учителей, завучей и т.д.
+              </Typography>
+            )}
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setEditingSchool(null)} disabled={editSchoolSaving}>Отмена</Button>
+          <Button onClick={() => setEditingSchool(null)} disabled={editSchoolSaving || contactSaving}>Отмена</Button>
           <Button variant="contained" onClick={saveEditSchool} disabled={editSchoolSaving || !editSchoolDraft?.name.trim()}>
             {editSchoolSaving ? 'Сохраняем…' : 'Сохранить'}
           </Button>

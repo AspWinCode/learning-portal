@@ -28,6 +28,7 @@ from app.models import (
     SalesCity,
     SalesClass,
     SalesSchool,
+    SalesSchoolContact,
     User,
     UserRole,
 )
@@ -62,6 +63,9 @@ from app.schemas.sales import (
     SalesQueueRegistrationItem,
     SalesQueueTaskItem,
     SalesSchoolConversionItem,
+    SalesSchoolContactCreate,
+    SalesSchoolContactResponse,
+    SalesSchoolContactUpdate,
     SalesSchoolCreate,
     SalesSchoolResponse,
     SalesSchoolUpdate,
@@ -764,7 +768,7 @@ async def list_sales_schools(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_permission("sales.access")),
 ):
-    query = db.query(SalesSchool).order_by(SalesSchool.name.asc())
+    query = db.query(SalesSchool).options(joinedload(SalesSchool.contacts)).order_by(SalesSchool.name.asc())
     if active_only:
         query = query.filter(SalesSchool.is_active.is_(True))
     if search and search.strip():
@@ -928,6 +932,73 @@ async def delete_sales_school(
     db.delete(item)
     db.commit()
     log_action(db, current_user.id, "delete", "sales_school", school_id, {"name": name})
+
+
+# ── School contacts ────────────────────────────────────────────────────────────
+
+@router.get("/schools/{school_id}/contacts", response_model=List[SalesSchoolContactResponse])
+async def list_sales_school_contacts(
+    school_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
+):
+    school = db.query(SalesSchool).filter(SalesSchool.id == school_id).first()
+    if not school:
+        raise HTTPException(status_code=404, detail="School not found")
+    return school.contacts
+
+
+@router.post("/schools/{school_id}/contacts", response_model=SalesSchoolContactResponse, status_code=201)
+async def create_sales_school_contact(
+    school_id: int,
+    payload: SalesSchoolContactCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
+):
+    school = db.query(SalesSchool).filter(SalesSchool.id == school_id).first()
+    if not school:
+        raise HTTPException(status_code=404, detail="School not found")
+    contact = SalesSchoolContact(school_id=school_id, **payload.dict())
+    db.add(contact)
+    db.commit()
+    db.refresh(contact)
+    return contact
+
+
+@router.put("/schools/{school_id}/contacts/{contact_id}", response_model=SalesSchoolContactResponse)
+async def update_sales_school_contact(
+    school_id: int,
+    contact_id: int,
+    payload: SalesSchoolContactUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
+):
+    contact = db.query(SalesSchoolContact).filter(
+        SalesSchoolContact.id == contact_id, SalesSchoolContact.school_id == school_id
+    ).first()
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    for field, value in payload.dict(exclude_unset=True).items():
+        setattr(contact, field, value)
+    db.commit()
+    db.refresh(contact)
+    return contact
+
+
+@router.delete("/schools/{school_id}/contacts/{contact_id}", status_code=204)
+async def delete_sales_school_contact(
+    school_id: int,
+    contact_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
+):
+    contact = db.query(SalesSchoolContact).filter(
+        SalesSchoolContact.id == contact_id, SalesSchoolContact.school_id == school_id
+    ).first()
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    db.delete(contact)
+    db.commit()
 
 
 @router.get("/classes", response_model=List[SalesClassResponse])

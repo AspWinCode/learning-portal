@@ -630,6 +630,18 @@ export interface SalesCity {
   created_at: string;
 }
 
+export interface SalesSchoolContact {
+  id: number;
+  school_id: number;
+  full_name: string;
+  position?: string | null;
+  phone?: string | null;
+  phone_extra?: string | null;
+  email?: string | null;
+  note?: string | null;
+  created_at: string;
+}
+
 export interface SalesSchool {
   id: number;
   name: string;
@@ -641,6 +653,7 @@ export interface SalesSchool {
   phone?: string | null;
   is_active: boolean;
   created_at: string;
+  contacts?: SalesSchoolContact[];
 }
 
 export interface SalesClass {

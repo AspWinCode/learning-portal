@@ -23,6 +23,7 @@ import {
   LeadSource,
   SalesCity,
   SalesSchool,
+  SalesSchoolContact,
   SalesClass,
   AccountTemplate,
   LeadTaskTemplate,
@@ -2060,6 +2061,27 @@ export const salesApi = {
   },
   deleteSalesSchool: async (id: number): Promise<void> => {
     await api.delete(`/api/sales/schools/${id}`);
+  },
+  listSalesSchoolContacts: async (schoolId: number): Promise<SalesSchoolContact[]> => {
+    const response = await api.get(`/api/sales/schools/${schoolId}/contacts`);
+    return response.data;
+  },
+  createSalesSchoolContact: async (schoolId: number, payload: {
+    full_name: string; position?: string | null; phone?: string | null;
+    phone_extra?: string | null; email?: string | null; note?: string | null;
+  }): Promise<SalesSchoolContact> => {
+    const response = await api.post(`/api/sales/schools/${schoolId}/contacts`, payload);
+    return response.data;
+  },
+  updateSalesSchoolContact: async (schoolId: number, contactId: number, payload: {
+    full_name?: string; position?: string | null; phone?: string | null;
+    phone_extra?: string | null; email?: string | null; note?: string | null;
+  }): Promise<SalesSchoolContact> => {
+    const response = await api.put(`/api/sales/schools/${schoolId}/contacts/${contactId}`, payload);
+    return response.data;
+  },
+  deleteSalesSchoolContact: async (schoolId: number, contactId: number): Promise<void> => {
+    await api.delete(`/api/sales/schools/${schoolId}/contacts/${contactId}`);
   },
   importSalesSchools: async (file: File): Promise<{ created: number; updated: number; skipped: number; errors: string[] }> => {
     const form = new FormData();

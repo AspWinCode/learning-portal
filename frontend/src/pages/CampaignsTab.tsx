@@ -424,6 +424,7 @@ export const CampaignsTab: React.FC = () => {
   // --- view mode + table state ---
   const [viewMode, setViewMode] = useState<'table' | 'kanban'>('table');
   const [stageFilter, setStageFilter] = useState('');
+  const [cityFilter, setCityFilter] = useState('');
   const [tablePage, setTablePage] = useState(0);
   const TABLE_ROWS_PER_PAGE = 50;
 
@@ -591,7 +592,11 @@ export const CampaignsTab: React.FC = () => {
   }, [selectedCampaignId]);
 
   // Reset table page when search or filter changes
-  useEffect(() => { setTablePage(0); }, [kanbanSearch, stageFilter]);
+  useEffect(() => { setTablePage(0); }, [kanbanSearch, stageFilter, cityFilter]);
+
+  const uniqueCities = useMemo(() =>
+    Array.from(new Set(schoolCampaigns.map((sc) => sc.school_city).filter(Boolean) as string[])).sort((a, b) => a.localeCompare(b, 'ru')),
+  [schoolCampaigns]);
 
   // ---------------------------------------------------------------------------
   // DnD для обычного канбана
@@ -634,10 +639,11 @@ export const CampaignsTab: React.FC = () => {
     stages.map((s) => {
       const allItems = schoolCampaigns.filter((sc) =>
         sc.stage === s.key &&
-        (!kanbanSearchLower || (sc.school_name || '').toLowerCase().includes(kanbanSearchLower))
+        (!kanbanSearchLower || (sc.school_name || '').toLowerCase().includes(kanbanSearchLower)) &&
+        (!cityFilter || sc.school_city === cityFilter)
       );
       // При активном поиске — показываем все совпадения (их обычно мало)
-      const limit = kanbanSearchLower.length > 0 ? Infinity : (colLimits[s.key] ?? COLUMN_RENDER_LIMIT);
+      const limit = (kanbanSearchLower.length > 0 || cityFilter) ? Infinity : (colLimits[s.key] ?? COLUMN_RENDER_LIMIT);
       return {
         ...s,
         items: allItems.slice(0, limit),
@@ -645,7 +651,7 @@ export const CampaignsTab: React.FC = () => {
         hasMore: allItems.length > limit,
       };
     }),
-  [stages, schoolCampaigns, kanbanSearchLower, colLimits]);
+  [stages, schoolCampaigns, kanbanSearchLower, cityFilter, colLimits]);
 
   // ---------------------------------------------------------------------------
   // Actions
@@ -809,9 +815,10 @@ export const CampaignsTab: React.FC = () => {
     return schoolCampaigns.filter((sc) => {
       const matchSearch = !kanbanSearchLower || (sc.school_name || '').toLowerCase().includes(kanbanSearchLower);
       const matchStage = !stageFilter || sc.stage === stageFilter;
-      return matchSearch && matchStage;
+      const matchCity = !cityFilter || sc.school_city === cityFilter;
+      return matchSearch && matchStage && matchCity;
     });
-  }, [schoolCampaigns, kanbanSearchLower, stageFilter]);
+  }, [schoolCampaigns, kanbanSearchLower, stageFilter, cityFilter]);
 
   const paginatedSchools = useMemo(() =>
     filteredSchools.slice(tablePage * TABLE_ROWS_PER_PAGE, (tablePage + 1) * TABLE_ROWS_PER_PAGE),
@@ -882,6 +889,31 @@ export const CampaignsTab: React.FC = () => {
                       onChange={(e) => setKanbanSearch(e.target.value)}
                       sx={{ flex: '1 1 200px', maxWidth: 320 }}
                     />
+                    {uniqueCities.length > 0 && (
+                      <FormControl size="small" sx={{ minWidth: 150 }}>
+                        <Select
+                          value={cityFilter}
+                          onChange={(e) => setCityFilter(e.target.value)}
+                          displayEmpty
+                          renderValue={(v) => v || 'Все города'}
+                        >
+                          <MenuItem value="">Все города</MenuItem>
+                          {uniqueCities.map((city) => (
+                            <MenuItem key={city} value={city}>
+                              <Stack direction="row" alignItems="center" gap={1} sx={{ width: '100%' }}>
+                                <Typography variant="body2" sx={{ flex: 1 }}>{city}</Typography>
+                                <Chip
+                                  label={schoolCampaigns.filter((sc) => sc.school_city === city).length}
+                                  size="small"
+                                  variant="outlined"
+                                  sx={{ height: 18, fontSize: 11 }}
+                                />
+                              </Stack>
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    )}
                     <FormControl size="small" sx={{ minWidth: 160 }}>
                       <Select
                         value={stageFilter}

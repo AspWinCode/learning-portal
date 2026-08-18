@@ -1350,10 +1350,11 @@ export interface CampaignSettings {
 export interface SchoolCampaignLog {
   id: number;
   school_campaign_id: number;
-  type: 'call' | 'note' | 'meeting';
+  type: 'call' | 'note' | 'meeting' | 'email';
   result?: string | null;
   text?: string | null;
   follow_up_at?: string | null;
+  broadcast_id?: number | null;
   created_by_id?: number | null;
   created_by_name?: string | null;
   created_at?: string | null;

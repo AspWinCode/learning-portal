@@ -21,6 +21,7 @@ from app.models import (
     CampaignStage,
     EmailBroadcast,
     EmailBroadcastRecipient,
+    EmailTemplate,
     SchoolCampaign,
     SchoolCampaignEvent,
     SchoolCampaignLog,
@@ -30,6 +31,7 @@ from app.models import (
     User,
     UserRole,
 )
+from app.services.email_broadcast_service import create_recipients, send_broadcast
 from app.schemas.campaigns import (
     AddSchoolsBody,
     CampaignCreate,
@@ -58,6 +60,8 @@ from app.schemas.campaigns import (
     SchoolCampaignResponse,
     SchoolCampaignUpdate,
     SchoolsEventsMatrixResponse,
+    SendTemplateRequest,
+    SendTemplateResponse,
 )
 
 router = APIRouter()
@@ -1738,4 +1742,116 @@ def delete_school_campaign_log(
         raise HTTPException(status_code=404, detail="Log not found")
     db.delete(log)
     db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Отправка шаблона письма школе с трекингом
+# ---------------------------------------------------------------------------
+
+@router.post("/school-campaigns/{sc_id}/send-template", response_model=SendTemplateResponse)
+def send_template_to_school(
+    sc_id: int,
+    body: SendTemplateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_user),
+):
+    sc = db.query(SchoolCampaign).options(joinedload(SchoolCampaign.school)).filter(SchoolCampaign.id == sc_id).first()
+    if not sc:
+        raise HTTPException(status_code=404, detail="SchoolCampaign not found")
+
+    template = db.query(EmailTemplate).filter(EmailTemplate.id == body.template_id).first()
+    if not template:
+        raise HTTPException(status_code=404, detail="Шаблон не найден")
+
+    school = sc.school
+    if not school:
+        raise HTTPException(status_code=400, detail="Школа не найдена")
+
+    to_email = body.to_email or (school.email or "").strip()
+    if not to_email:
+        raise HTTPException(status_code=400, detail="У школы не указан email")
+
+    # Create a mini-broadcast from the template
+    broadcast = EmailBroadcast(
+        name=f"[Шаблон] {template.name} → {school.name or sc_id}",
+        subject=template.subject,
+        html_body=template.html_body,
+        plain_body=template.plain_body,
+        status="draft",
+        created_by_id=current_user.id,
+    )
+    db.add(broadcast)
+    db.flush()
+
+    # Override email on school temporarily if to_email differs
+    original_email = school.email
+    if to_email != (original_email or ""):
+        school.email = to_email
+        db.flush()
+
+    create_recipients(db, broadcast, [school.id])
+
+    if to_email != (original_email or ""):
+        school.email = original_email
+        db.flush()
+
+    # Send synchronously (single recipient — fast)
+    send_broadcast(db, broadcast.id)
+
+    recipient = (
+        db.query(EmailBroadcastRecipient)
+        .filter(EmailBroadcastRecipient.broadcast_id == broadcast.id)
+        .first()
+    )
+
+    log = SchoolCampaignLog(
+        school_campaign_id=sc_id,
+        type="email",
+        result=recipient.status if recipient else "failed",
+        text=f"{template.name} → {to_email}",
+        broadcast_id=broadcast.id,
+        created_by_id=current_user.id,
+    )
+    db.add(log)
+    db.commit()
+    db.refresh(log)
+
+    return SendTemplateResponse(
+        log_id=log.id,
+        broadcast_id=broadcast.id,
+        recipient_id=recipient.id if recipient else 0,
+        status=recipient.status if recipient else "failed",
+    )
+
+
+@router.get("/school-campaigns/{sc_id}/logs/{log_id}/email-status")
+def get_log_email_status(
+    sc_id: int,
+    log_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_user),
+):
+    log = (
+        db.query(SchoolCampaignLog)
+        .filter(SchoolCampaignLog.id == log_id, SchoolCampaignLog.school_campaign_id == sc_id)
+        .first()
+    )
+    if not log or not log.broadcast_id:
+        raise HTTPException(status_code=404, detail="No broadcast linked to this log")
+    recipient = (
+        db.query(EmailBroadcastRecipient)
+        .filter(EmailBroadcastRecipient.broadcast_id == log.broadcast_id)
+        .first()
+    )
+    if not recipient:
+        raise HTTPException(status_code=404, detail="Recipient not found")
+    return {
+        "status": recipient.status,
+        "sent_at": recipient.sent_at,
+        "opened_at": recipient.opened_at,
+        "open_count": recipient.open_count,
+        "clicked_at": recipient.clicked_at,
+        "click_count": recipient.click_count,
+        "error_message": recipient.error_message,
+    }
 

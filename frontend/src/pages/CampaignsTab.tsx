@@ -162,7 +162,7 @@ interface KanbanSchoolCardProps {
   onStageChange: (scId: number, stage: string) => void;
   onHistory: (scId: number) => void;
   onOpenSchool?: (b2bSchoolId: number) => void;
-  onSendEmail?: (b2bSchoolId: number, schoolName: string) => void;
+  onSendEmail?: (b2bSchoolId: number, schoolName: string, scId?: number) => void;
   onOpenCRM?: (scId: number, schoolName: string) => void;
 }
 
@@ -239,7 +239,7 @@ const KanbanSchoolCard: React.FC<KanbanSchoolCardProps> = ({
               )}
               {b2bSchoolId && onSendEmail && (
                 <Tooltip title="Отправить шаблон на почту">
-                  <IconButton size="small" onClick={(e) => { e.stopPropagation(); onSendEmail(b2bSchoolId, schoolName); }} sx={{ flexShrink: 0 }}>
+                  <IconButton size="small" onClick={(e) => { e.stopPropagation(); onSendEmail(b2bSchoolId, schoolName, scId); }} sx={{ flexShrink: 0 }}>
                     <Email sx={{ fontSize: 15 }} />
                   </IconButton>
                 </Tooltip>
@@ -261,7 +261,7 @@ const KanbanSchoolCard: React.FC<KanbanSchoolCardProps> = ({
 // CRM-диалог звонков и заметок
 // ---------------------------------------------------------------------------
 
-const LOG_TYPE_LABELS: Record<string, string> = { call: 'Звонок', note: 'Заметка', meeting: 'Встреча' };
+const LOG_TYPE_LABELS: Record<string, string> = { call: 'Звонок', note: 'Заметка', meeting: 'Встреча', email: 'Письмо' };
 const LOG_RESULT_OPTIONS = [
   { value: 'answered', label: 'Дозвонились' },
   { value: 'no_answer', label: 'Не берут трубку' },
@@ -435,13 +435,18 @@ const CRMDialog: React.FC<CRMDialogProps> = ({ open, scId, schoolName, onClose, 
                 sx={{
                   p: 1.5,
                   borderLeft: '3px solid',
-                  borderColor: log.type === 'call' ? 'primary.main' : log.type === 'meeting' ? 'success.main' : 'grey.400',
+                  borderColor: log.type === 'call' ? 'primary.main' : log.type === 'email' ? 'info.main' : log.type === 'meeting' ? 'success.main' : 'grey.400',
                 }}
               >
                 <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
                   <Stack direction="row" gap={1} alignItems="center" flexWrap="wrap">
-                    <Chip size="small" label={LOG_TYPE_LABELS[log.type] ?? log.type} variant="outlined" />
-                    {log.result && (
+                    <Chip size="small" label={LOG_TYPE_LABELS[log.type] ?? log.type} variant="outlined"
+                      color={log.type === 'email' ? 'info' : 'default'} />
+                    {log.type === 'email' && log.result && (() => {
+                      const sm = EMAIL_DELIVERY_STATUS[log.result] ?? { label: log.result, color: 'default' as const };
+                      return <Chip size="small" label={sm.label} color={sm.color} />;
+                    })()}
+                    {log.type !== 'email' && log.result && (
                       <Chip
                         size="small"
                         label={resultLabel(log.result)}
@@ -484,30 +489,48 @@ const CRMDialog: React.FC<CRMDialogProps> = ({ open, scId, schoolName, onClose, 
 // ---------------------------------------------------------------------------
 // Диалог отправки шаблона письма школе
 // ---------------------------------------------------------------------------
+const EMAIL_DELIVERY_STATUS: Record<string, { label: string; color: 'default' | 'info' | 'success' | 'warning' | 'error' }> = {
+  pending:  { label: 'Ожидает отправки', color: 'default' },
+  sending:  { label: 'Отправляется...', color: 'info' },
+  sent:     { label: 'Доставлено', color: 'success' },
+  failed:   { label: 'Ошибка доставки', color: 'error' },
+  opened:   { label: 'Прочитано ✓', color: 'success' },
+  clicked:  { label: 'Перешли по ссылке ✓', color: 'success' },
+};
+
 interface SendSchoolEmailDialogProps {
   open: boolean;
+  scId: number | null;
   b2bSchoolId: number | null;
   schoolName: string;
   onClose: () => void;
 }
 
-const SendSchoolEmailDialog: React.FC<SendSchoolEmailDialogProps> = ({ open, b2bSchoolId, schoolName, onClose }) => {
+const SendSchoolEmailDialog: React.FC<SendSchoolEmailDialogProps> = ({ open, scId, b2bSchoolId, schoolName, onClose }) => {
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
   const [selectedId, setSelectedId] = useState<number | ''>('');
   const [toEmail, setToEmail] = useState('');
-  const [directorName, setDirectorName] = useState('');
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
-  const [sent, setSent] = useState(false);
   const [error, setError] = useState('');
   const [showPreview, setShowPreview] = useState(false);
+  const [sentLogId, setSentLogId] = useState<number | null>(null);
+  const [deliveryStatus, setDeliveryStatus] = useState<null | {
+    status: string; sent_at: string | null; opened_at: string | null;
+    open_count: number; clicked_at: string | null; click_count: number; error_message: string | null;
+  }>(null);
+  const pollRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stopPolling = () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } };
 
   useEffect(() => {
     if (!open || !b2bSchoolId) return;
-    setSent(false);
+    setSentLogId(null);
+    setDeliveryStatus(null);
     setError('');
     setSelectedId('');
     setShowPreview(false);
+    stopPolling();
     setLoading(true);
     Promise.all([
       emailTemplatesApi.list(),
@@ -515,24 +538,43 @@ const SendSchoolEmailDialog: React.FC<SendSchoolEmailDialogProps> = ({ open, b2b
     ]).then(([tmps, school]) => {
       setTemplates(tmps);
       setToEmail(school.email ?? '');
-      setDirectorName(school.director ?? '');
     }).catch((e) => {
       setError(extractApiError(e, 'Не удалось загрузить данные'));
     }).finally(() => setLoading(false));
+    return stopPolling;
   }, [open, b2bSchoolId]);
 
+  useEffect(() => () => stopPolling(), []);
+
+  const startPolling = (logId: number) => {
+    stopPolling();
+    if (!scId) return;
+    const fetchStatus = async () => {
+      try {
+        const s = await campaignsApi.getLogEmailStatus(scId, logId);
+        setDeliveryStatus(s);
+        if (s.status === 'opened' || s.status === 'clicked' || s.status === 'failed' || s.status === 'sent') {
+          stopPolling();
+        }
+      } catch { /* ignore */ }
+    };
+    void fetchStatus();
+    pollRef.current = setInterval(fetchStatus, 5000);
+  };
+
   const handleSend = async () => {
-    if (!selectedId || !toEmail.trim()) return;
+    if (!selectedId || !toEmail.trim() || !scId) return;
     setSending(true);
     setError('');
     try {
-      await emailTemplatesApi.testSend(selectedId as number, {
+      const result = await campaignsApi.sendTemplateToSchool(scId, {
+        template_id: selectedId as number,
         to_email: toEmail.trim(),
-        school_name: schoolName,
-        director_name: directorName || undefined,
       });
-      setSent(true);
+      setSentLogId(result.log_id);
+      setDeliveryStatus({ status: result.status, sent_at: null, opened_at: null, open_count: 0, clicked_at: null, click_count: 0, error_message: null });
       setShowPreview(false);
+      startPolling(result.log_id);
     } catch (e: any) {
       setError(extractApiError(e, 'Не удалось отправить письмо'));
     } finally {
@@ -544,26 +586,20 @@ const SendSchoolEmailDialog: React.FC<SendSchoolEmailDialogProps> = ({ open, b2b
 
   const previewHtml = React.useMemo(() => {
     if (!selectedTemplate?.html_body) return '';
-    const vars: Record<string, string> = {
-      school_name: schoolName,
-      director_name: directorName || 'Директор',
-      recipient_email: toEmail,
-    };
+    const vars: Record<string, string> = { school_name: schoolName, recipient_email: toEmail };
     return selectedTemplate.html_body.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key) => vars[key] ?? `{{${key}}}`);
-  }, [selectedTemplate, schoolName, directorName, toEmail]);
+  }, [selectedTemplate, schoolName, toEmail]);
+
+  const statusMeta = deliveryStatus ? (EMAIL_DELIVERY_STATUS[deliveryStatus.status] ?? { label: deliveryStatus.status, color: 'default' as const }) : null;
+  const isFinalStatus = deliveryStatus && ['sent', 'opened', 'clicked', 'failed'].includes(deliveryStatus.status);
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth={showPreview ? 'lg' : 'sm'} fullWidth>
       <DialogTitle>
         <Stack direction="row" justifyContent="space-between" alignItems="center">
           <Typography variant="h6">Отправить письмо — {schoolName}</Typography>
-          {selectedTemplate && !sent && (
-            <Button
-              size="small"
-              variant={showPreview ? 'contained' : 'outlined'}
-              onClick={() => setShowPreview((v) => !v)}
-              sx={{ ml: 2, flexShrink: 0 }}
-            >
+          {selectedTemplate && !sentLogId && (
+            <Button size="small" variant={showPreview ? 'contained' : 'outlined'} onClick={() => setShowPreview((v) => !v)} sx={{ ml: 2, flexShrink: 0 }}>
               {showPreview ? 'Настройки' : 'Предпросмотр'}
             </Button>
           )}
@@ -571,22 +607,51 @@ const SendSchoolEmailDialog: React.FC<SendSchoolEmailDialogProps> = ({ open, b2b
       </DialogTitle>
       <DialogContent sx={{ p: showPreview ? 0 : undefined }}>
         {loading && <Typography color="text.secondary" sx={{ p: 2 }}>Загрузка...</Typography>}
-        {!loading && error && <Alert severity="error" sx={{ m: 2 }}>{error}</Alert>}
-        {!loading && sent && (
-          <Alert severity="success" sx={{ m: 2 }}>
-            Письмо успешно отправлено на {toEmail}
-          </Alert>
+        {!loading && error && <Alert severity="error" sx={{ m: showPreview ? 2 : 0, mb: 2 }}>{error}</Alert>}
+
+        {/* Статус доставки после отправки */}
+        {sentLogId && deliveryStatus && (
+          <Stack spacing={1.5} sx={{ mt: 1 }}>
+            <Paper variant="outlined" sx={{ p: 2 }}>
+              <Stack direction="row" alignItems="center" gap={1} mb={1}>
+                <Email sx={{ fontSize: 18, color: 'primary.main' }} />
+                <Typography variant="subtitle2">Статус отправки</Typography>
+                {!isFinalStatus && <CircularProgress size={14} sx={{ ml: 'auto' }} />}
+              </Stack>
+              <Stack direction="row" alignItems="center" gap={1} flexWrap="wrap">
+                <Chip size="small" label={statusMeta?.label} color={statusMeta?.color} />
+                {deliveryStatus.opened_at && (
+                  <Chip size="small" color="success" label={`Прочитано: ${new Date(deliveryStatus.opened_at).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}`} />
+                )}
+                {deliveryStatus.open_count > 1 && (
+                  <Chip size="small" color="info" label={`Открытий: ${deliveryStatus.open_count}`} />
+                )}
+                {deliveryStatus.clicked_at && (
+                  <Chip size="small" color="success" label={`Клик по ссылке`} />
+                )}
+              </Stack>
+              {deliveryStatus.error_message && (
+                <Typography variant="caption" color="error" sx={{ display: 'block', mt: 1 }}>{deliveryStatus.error_message}</Typography>
+              )}
+              {!isFinalStatus && (
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                  Статус обновляется каждые 5 секунд...
+                </Typography>
+              )}
+            </Paper>
+            <Typography variant="body2" color="text.secondary">
+              Письмо отправлено на <strong>{toEmail}</strong>. Когда получатель откроет его, статус изменится на «Прочитано».
+            </Typography>
+          </Stack>
         )}
-        {!loading && !sent && !showPreview && (
+
+        {/* Форма (до отправки) */}
+        {!loading && !sentLogId && !showPreview && (
           <Stack spacing={2} sx={{ mt: 1 }}>
             <FormControl fullWidth size="small">
               <InputLabel id="email-template-label">Шаблон письма</InputLabel>
-              <Select
-                labelId="email-template-label"
-                label="Шаблон письма"
-                value={selectedId}
-                onChange={(e) => { setSelectedId(e.target.value as number); setShowPreview(false); }}
-              >
+              <Select labelId="email-template-label" label="Шаблон письма" value={selectedId}
+                onChange={(e) => { setSelectedId(e.target.value as number); setShowPreview(false); }}>
                 {templates.map((t) => (
                   <MenuItem key={t.id} value={t.id}>
                     <Box>
@@ -599,26 +664,17 @@ const SendSchoolEmailDialog: React.FC<SendSchoolEmailDialogProps> = ({ open, b2b
             </FormControl>
             {selectedTemplate && (
               <Paper variant="outlined" sx={{ p: 1.5 }}>
-                <Typography variant="caption" color="text.secondary">Тема письма:</Typography>
-                <Typography variant="body2" fontWeight={600}>{selectedTemplate.subject}</Typography>
+                <Typography variant="caption" color="text.secondary">Тема письма: </Typography>
+                <Typography variant="caption" fontWeight={600}>{selectedTemplate.subject}</Typography>
               </Paper>
             )}
-            <TextField
-              size="small"
-              label="Email получателя"
-              value={toEmail}
-              onChange={(e) => setToEmail(e.target.value)}
-              helperText="Адрес из карточки школы, можно изменить"
-            />
-            <TextField
-              size="small"
-              label="Имя директора (для подстановки)"
-              value={directorName}
-              onChange={(e) => setDirectorName(e.target.value)}
-            />
+            <TextField size="small" label="Email получателя" value={toEmail}
+              onChange={(e) => setToEmail(e.target.value)} helperText="Адрес из карточки школы, можно изменить" />
           </Stack>
         )}
-        {!loading && !sent && showPreview && selectedTemplate && (
+
+        {/* Предпросмотр */}
+        {!loading && !sentLogId && showPreview && selectedTemplate && (
           <Box sx={{ display: 'flex', flexDirection: 'column', height: '75vh' }}>
             <Box sx={{ px: 2, py: 1, borderBottom: '1px solid', borderColor: 'divider', bgcolor: 'background.paper' }}>
               <Typography variant="caption" color="text.secondary">Кому: </Typography>
@@ -627,25 +683,17 @@ const SendSchoolEmailDialog: React.FC<SendSchoolEmailDialogProps> = ({ open, b2b
               <Typography variant="caption" fontWeight={600}>{selectedTemplate.subject}</Typography>
             </Box>
             <Box sx={{ flex: 1, overflow: 'hidden' }}>
-              <iframe
-                title="preview"
-                sandbox="allow-same-origin"
-                srcDoc={previewHtml}
-                style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
-              />
+              <iframe title="preview" sandbox="allow-same-origin" srcDoc={previewHtml}
+                style={{ width: '100%', height: '100%', border: 'none', display: 'block' }} />
             </Box>
           </Box>
         )}
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>{sent ? 'Закрыть' : 'Отмена'}</Button>
-        {!sent && (
-          <Button
-            variant="contained"
-            disabled={!selectedId || !toEmail.trim() || sending || loading}
-            onClick={handleSend}
-            startIcon={<Email sx={{ fontSize: 16 }} />}
-          >
+        <Button onClick={onClose}>{sentLogId ? 'Закрыть' : 'Отмена'}</Button>
+        {!sentLogId && (
+          <Button variant="contained" disabled={!selectedId || !toEmail.trim() || sending || loading || !scId}
+            onClick={handleSend} startIcon={<Email sx={{ fontSize: 16 }} />}>
             {sending ? 'Отправка...' : 'Отправить'}
           </Button>
         )}
@@ -885,12 +933,14 @@ export const CampaignsTab: React.FC = () => {
 
   // --- send email dialog ---
   const [sendEmailOpen, setSendEmailOpen] = useState(false);
+  const [sendEmailScId, setSendEmailScId] = useState<number | null>(null);
   const [sendEmailSchoolId, setSendEmailSchoolId] = useState<number | null>(null);
   const [sendEmailSchoolName, setSendEmailSchoolName] = useState('');
 
-  const openSendEmail = useCallback((b2bSchoolId: number, name: string) => {
+  const openSendEmail = useCallback((b2bSchoolId: number, name: string, scId?: number) => {
     setSendEmailSchoolId(b2bSchoolId);
     setSendEmailSchoolName(name);
+    setSendEmailScId(scId ?? null);
     setSendEmailOpen(true);
   }, []);
 
@@ -2057,6 +2107,7 @@ export const CampaignsTab: React.FC = () => {
       {/* ---- Отправка шаблона письма школе ---- */}
       <SendSchoolEmailDialog
         open={sendEmailOpen}
+        scId={sendEmailScId}
         b2bSchoolId={sendEmailSchoolId}
         schoolName={sendEmailSchoolName}
         onClose={() => setSendEmailOpen(false)}

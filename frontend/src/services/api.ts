@@ -3016,6 +3016,20 @@ export const campaignsApi = {
   deleteSchoolCampaignLog: async (scId: number, logId: number): Promise<void> => {
     await api.delete(`/api/school-campaigns/${scId}/logs/${logId}`);
   },
+  sendTemplateToSchool: async (
+    scId: number,
+    payload: { template_id: number; to_email?: string }
+  ): Promise<{ log_id: number; broadcast_id: number; recipient_id: number; status: string }> => {
+    const response = await api.post(`/api/school-campaigns/${scId}/send-template`, payload);
+    return response.data;
+  },
+  getLogEmailStatus: async (
+    scId: number,
+    logId: number
+  ): Promise<{ status: string; sent_at: string | null; opened_at: string | null; open_count: number; clicked_at: string | null; click_count: number; error_message: string | null }> => {
+    const response = await api.get(`/api/school-campaigns/${scId}/logs/${logId}/email-status`);
+    return response.data;
+  },
 };
 
 export const ownerFunnelsApi = {

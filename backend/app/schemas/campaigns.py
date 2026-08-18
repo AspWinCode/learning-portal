@@ -274,11 +274,24 @@ class SchoolCampaignLogResponse(BaseModel):
     result: Optional[str] = None
     text: Optional[str] = None
     follow_up_at: Optional[datetime] = None
+    broadcast_id: Optional[int] = None
     created_by_id: Optional[int] = None
     created_by_name: Optional[str] = None
     created_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class SendTemplateRequest(BaseModel):
+    template_id: int
+    to_email: Optional[str] = None  # override; if None use school.email
+
+
+class SendTemplateResponse(BaseModel):
+    log_id: int
+    broadcast_id: int
+    recipient_id: int
+    status: str
 
 
 class SchoolsEventsMatrixResponse(BaseModel):

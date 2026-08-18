@@ -2086,14 +2086,16 @@ class SchoolCampaignLog(Base):
     __tablename__ = "school_campaign_logs"
     id = Column(Integer, primary_key=True, index=True)
     school_campaign_id = Column(Integer, ForeignKey("school_campaigns.id", ondelete="CASCADE"), nullable=False, index=True)
-    type = Column(String(32), nullable=False, server_default="call")  # call | note | meeting
-    result = Column(String(64), nullable=True)  # answered | no_answer | callback | busy | refused | scheduled
+    type = Column(String(32), nullable=False, server_default="call")  # call | note | meeting | email
+    result = Column(String(64), nullable=True)
     text = Column(Text, nullable=True)
     follow_up_at = Column(DateTime(timezone=True), nullable=True)
+    broadcast_id = Column(Integer, ForeignKey("email_broadcasts.id", ondelete="SET NULL"), nullable=True, index=True)
     created_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     school_campaign = relationship("SchoolCampaign", back_populates="logs")
     created_by = relationship("User", foreign_keys=[created_by_id])
+    broadcast = relationship("EmailBroadcast", foreign_keys=[broadcast_id])
 
 
 class CampaignEventStatus(str, enum.Enum):

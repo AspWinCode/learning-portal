@@ -64,7 +64,8 @@ import { b2bApi, campaignsApi, emailBroadcastsApi, settingsApi } from '../servic
 import type { EmailBroadcast as EmailBroadcastItem } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 import { hasPermission } from '../utils/permissions';
-import type { Campaign, CampaignSettings, CampaignStage, SchoolCampaign } from '../types';
+import type { B2BSchool, Campaign, CampaignSettings, CampaignStage, SchoolCampaign } from '../types';
+import SchoolCardDialog from '../components/SchoolCardDialog';
 import {
   CAMPAIGN_TYPES,
   CAMPAIGN_FORMATS,
@@ -152,12 +153,14 @@ interface KanbanSchoolCardProps {
   stages: { key: string; label: string }[];
   currentStage: string;
   canManage: boolean;
+  b2bSchoolId?: number | null;
   onStageChange: (scId: number, stage: string) => void;
   onHistory: (scId: number) => void;
+  onOpenSchool?: (b2bSchoolId: number) => void;
 }
 
 const KanbanSchoolCard: React.FC<KanbanSchoolCardProps> = ({
-  scId, schoolName, schoolCity, countLabel, stages, currentStage, canManage, onStageChange, onHistory,
+  scId, schoolName, schoolCity, countLabel, stages, currentStage, canManage, b2bSchoolId, onStageChange, onHistory, onOpenSchool,
 }) => {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: String(scId) });
   return (
@@ -185,7 +188,11 @@ const KanbanSchoolCard: React.FC<KanbanSchoolCardProps> = ({
               variant="body2"
               fontWeight={600}
               title={schoolName}
-              sx={{ lineHeight: 1.3, mb: 0.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 13 }}
+              onClick={b2bSchoolId && onOpenSchool ? (e) => { e.stopPropagation(); onOpenSchool(b2bSchoolId); } : undefined}
+              sx={{
+                lineHeight: 1.3, mb: 0.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 13,
+                ...(b2bSchoolId && onOpenSchool ? { cursor: 'pointer', color: 'primary.main', '&:hover': { textDecoration: 'underline' } } : {}),
+              }}
             >
               {schoolName}
             </Typography>
@@ -427,6 +434,23 @@ export const CampaignsTab: React.FC = () => {
   const [stageFilter, setStageFilter] = useState('');
   const [cityFilter, setCityFilter] = useState('');
   const [tablePage, setTablePage] = useState(0);
+
+  // --- school card dialog ---
+  const [schoolCardOpen, setSchoolCardOpen] = useState(false);
+  const [schoolCardData, setSchoolCardData] = useState<B2BSchool | null>(null);
+  const [schoolCardLoading, setSchoolCardLoading] = useState(false);
+
+  const openSchoolCard = useCallback(async (b2bSchoolId: number) => {
+    setSchoolCardOpen(true);
+    setSchoolCardData(null);
+    setSchoolCardLoading(true);
+    try {
+      const school = await b2bApi.getSchool(b2bSchoolId);
+      setSchoolCardData(school);
+    } finally {
+      setSchoolCardLoading(false);
+    }
+  }, []);
   const TABLE_ROWS_PER_PAGE = 50;
 
   // --- broadcasts ---
@@ -1080,8 +1104,10 @@ export const CampaignsTab: React.FC = () => {
                                         stages={stages}
                                         currentStage={sc.stage}
                                         canManage={canManageCampaigns}
+                                        b2bSchoolId={sc.b2b_school_id}
                                         onStageChange={handleStageChange}
                                         onHistory={openHistoryDialog}
+                                        onOpenSchool={openSchoolCard}
                                       />
                                     );
                                   })}
@@ -1555,6 +1581,14 @@ export const CampaignsTab: React.FC = () => {
           onChanged={setStages}
         />
       )}
+
+      {/* ---- Карточка школы (открывается по клику с канбана) ---- */}
+      <SchoolCardDialog
+        open={schoolCardOpen}
+        school={schoolCardLoading ? null : schoolCardData}
+        onClose={() => { setSchoolCardOpen(false); setSchoolCardData(null); }}
+        onSaved={(updated) => setSchoolCardData(updated)}
+      />
     </>
   );
 };

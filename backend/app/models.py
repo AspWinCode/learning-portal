@@ -2079,6 +2079,21 @@ class SchoolCampaign(Base):
     school = relationship("B2BSchool", back_populates="school_campaigns")
     campaign = relationship("Campaign", back_populates="school_campaigns")
     school_campaign_events = relationship("SchoolCampaignEvent", back_populates="school_campaign", cascade="all, delete-orphan")
+    logs = relationship("SchoolCampaignLog", back_populates="school_campaign", cascade="all, delete-orphan", order_by="SchoolCampaignLog.created_at.desc()")
+
+
+class SchoolCampaignLog(Base):
+    __tablename__ = "school_campaign_logs"
+    id = Column(Integer, primary_key=True, index=True)
+    school_campaign_id = Column(Integer, ForeignKey("school_campaigns.id", ondelete="CASCADE"), nullable=False, index=True)
+    type = Column(String(32), nullable=False, server_default="call")  # call | note | meeting
+    result = Column(String(64), nullable=True)  # answered | no_answer | callback | busy | refused | scheduled
+    text = Column(Text, nullable=True)
+    follow_up_at = Column(DateTime(timezone=True), nullable=True)
+    created_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    school_campaign = relationship("SchoolCampaign", back_populates="logs")
+    created_by = relationship("User", foreign_keys=[created_by_id])
 
 
 class CampaignEventStatus(str, enum.Enum):

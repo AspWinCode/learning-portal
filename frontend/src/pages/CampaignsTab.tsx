@@ -2,11 +2,13 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Autocomplete,
+  Badge,
   Box,
   Button,
   Card,
   CardContent,
   Chip,
+  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -41,6 +43,7 @@ import DeleteOutline from '@mui/icons-material/DeleteOutline';
 import DragIndicator from '@mui/icons-material/DragIndicator';
 import DriveFileRenameOutline from '@mui/icons-material/DriveFileRenameOutline';
 import Edit from '@mui/icons-material/Edit';
+import Phone from '@mui/icons-material/Phone';
 import TableRowsIcon from '@mui/icons-material/TableRows';
 import ViewKanban from '@mui/icons-material/ViewKanban';
 import {
@@ -64,7 +67,7 @@ import { b2bApi, campaignsApi, emailBroadcastsApi, emailTemplatesApi, settingsAp
 import type { EmailBroadcast as EmailBroadcastItem, EmailTemplate } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 import { hasPermission } from '../utils/permissions';
-import type { B2BSchool, Campaign, CampaignSettings, CampaignStage, SchoolCampaign } from '../types';
+import type { B2BSchool, Campaign, CampaignSettings, CampaignStage, SchoolCampaign, SchoolCampaignLog } from '../types';
 import SchoolCardDialog from '../components/SchoolCardDialog';
 import {
   CAMPAIGN_TYPES,
@@ -154,14 +157,18 @@ interface KanbanSchoolCardProps {
   currentStage: string;
   canManage: boolean;
   b2bSchoolId?: number | null;
+  hasFollowUp?: boolean;
+  followUpOverdue?: boolean;
   onStageChange: (scId: number, stage: string) => void;
   onHistory: (scId: number) => void;
   onOpenSchool?: (b2bSchoolId: number) => void;
   onSendEmail?: (b2bSchoolId: number, schoolName: string) => void;
+  onOpenCRM?: (scId: number, schoolName: string) => void;
 }
 
 const KanbanSchoolCard: React.FC<KanbanSchoolCardProps> = ({
-  scId, schoolName, schoolCity, countLabel, stages, currentStage, canManage, b2bSchoolId, onStageChange, onHistory, onOpenSchool, onSendEmail,
+  scId, schoolName, schoolCity, countLabel, stages, currentStage, canManage, b2bSchoolId,
+  hasFollowUp, followUpOverdue, onStageChange, onHistory, onOpenSchool, onSendEmail, onOpenCRM,
 }) => {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: String(scId) });
   return (
@@ -217,6 +224,19 @@ const KanbanSchoolCard: React.FC<KanbanSchoolCardProps> = ({
                   {stages.map((s) => <MenuItem key={s.key} value={s.key} sx={{ fontSize: 12 }}>{s.label}</MenuItem>)}
                 </Select>
               </FormControl>
+              {onOpenCRM && (
+                <Tooltip title={followUpOverdue ? 'CRM (просрочен перезвон!)' : hasFollowUp ? 'CRM (есть запланированный перезвон)' : 'CRM — звонки и заметки'}>
+                  <IconButton size="small" onClick={(e) => { e.stopPropagation(); onOpenCRM(scId, schoolName); }} sx={{ flexShrink: 0 }}>
+                    <Badge
+                      variant="dot"
+                      color={followUpOverdue ? 'error' : 'warning'}
+                      invisible={!hasFollowUp && !followUpOverdue}
+                    >
+                      <Phone sx={{ fontSize: 15 }} />
+                    </Badge>
+                  </IconButton>
+                </Tooltip>
+              )}
               {b2bSchoolId && onSendEmail && (
                 <Tooltip title="Отправить шаблон на почту">
                   <IconButton size="small" onClick={(e) => { e.stopPropagation(); onSendEmail(b2bSchoolId, schoolName); }} sx={{ flexShrink: 0 }}>
@@ -234,6 +254,230 @@ const KanbanSchoolCard: React.FC<KanbanSchoolCardProps> = ({
         </Stack>
       </CardContent>
     </Card>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// CRM-диалог звонков и заметок
+// ---------------------------------------------------------------------------
+
+const LOG_TYPE_LABELS: Record<string, string> = { call: 'Звонок', note: 'Заметка', meeting: 'Встреча' };
+const LOG_RESULT_OPTIONS = [
+  { value: 'answered', label: 'Дозвонились' },
+  { value: 'no_answer', label: 'Не берут трубку' },
+  { value: 'callback', label: 'Просят перезвонить' },
+  { value: 'busy', label: 'Занято' },
+  { value: 'refused', label: 'Отказались' },
+  { value: 'scheduled', label: 'Договорились о встрече' },
+  { value: 'wrong_number', label: 'Неверный номер' },
+];
+
+interface CRMDialogProps {
+  open: boolean;
+  scId: number | null;
+  schoolName: string;
+  onClose: () => void;
+  onLogsChanged?: (scId: number, logs: SchoolCampaignLog[]) => void;
+}
+
+const CRMDialog: React.FC<CRMDialogProps> = ({ open, scId, schoolName, onClose, onLogsChanged }) => {
+  const [logs, setLogs] = useState<SchoolCampaignLog[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [form, setForm] = useState({ type: 'call', result: '', text: '', follow_up_at: '' });
+
+  const loadLogs = useCallback(async () => {
+    if (!scId) return;
+    setLoading(true);
+    try {
+      const data = await campaignsApi.listSchoolCampaignLogs(scId);
+      setLogs(data);
+      if (onLogsChanged) onLogsChanged(scId, data);
+    } catch (e: any) {
+      setError(extractApiError(e, 'Не удалось загрузить историю'));
+    } finally {
+      setLoading(false);
+    }
+  }, [scId]);
+
+  useEffect(() => {
+    if (open && scId) {
+      setForm({ type: 'call', result: '', text: '', follow_up_at: '' });
+      setError('');
+      void loadLogs();
+    }
+  }, [open, scId, loadLogs]);
+
+  const handleSave = async () => {
+    if (!scId || (!form.text.trim() && !form.result)) return;
+    setSaving(true);
+    setError('');
+    try {
+      const created = await campaignsApi.createSchoolCampaignLog(scId, {
+        type: form.type,
+        result: form.result || null,
+        text: form.text.trim() || null,
+        follow_up_at: form.follow_up_at ? new Date(form.follow_up_at).toISOString() : null,
+      });
+      setLogs((prev) => {
+        const next = [created, ...prev];
+        if (onLogsChanged && scId) onLogsChanged(scId, next);
+        return next;
+      });
+      setForm({ type: 'call', result: '', text: '', follow_up_at: '' });
+    } catch (e: any) {
+      setError(extractApiError(e, 'Не удалось сохранить запись'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (logId: number) => {
+    if (!scId) return;
+    try {
+      await campaignsApi.deleteSchoolCampaignLog(scId, logId);
+      setLogs((prev) => {
+        const next = prev.filter((l) => l.id !== logId);
+        if (onLogsChanged && scId) onLogsChanged(scId, next);
+        return next;
+      });
+    } catch (e: any) {
+      setError(extractApiError(e, 'Не удалось удалить запись'));
+    }
+  };
+
+  const formatDateTime = (val?: string | null) =>
+    val ? new Date(val).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
+
+  const resultLabel = (r?: string | null) => LOG_RESULT_OPTIONS.find((o) => o.value === r)?.label ?? r ?? '';
+
+  const followUpOverdue = (log: SchoolCampaignLog) =>
+    log.follow_up_at && new Date(log.follow_up_at) < new Date();
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>
+        <Stack direction="row" alignItems="center" gap={1}>
+          <Phone sx={{ fontSize: 20, color: 'primary.main' }} />
+          <Typography variant="h6">CRM — {schoolName}</Typography>
+        </Stack>
+      </DialogTitle>
+      <DialogContent>
+        {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+
+        {/* Форма добавления */}
+        <Paper variant="outlined" sx={{ p: 1.5, mb: 2 }}>
+          <Typography variant="subtitle2" mb={1}>Новая запись</Typography>
+          <Stack spacing={1.5}>
+            <Stack direction="row" gap={1}>
+              <FormControl size="small" sx={{ minWidth: 130 }}>
+                <InputLabel id="crm-type-label">Тип</InputLabel>
+                <Select labelId="crm-type-label" label="Тип" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
+                  <MenuItem value="call">Звонок</MenuItem>
+                  <MenuItem value="note">Заметка</MenuItem>
+                  <MenuItem value="meeting">Встреча</MenuItem>
+                </Select>
+              </FormControl>
+              {form.type === 'call' && (
+                <FormControl size="small" sx={{ flex: 1 }}>
+                  <InputLabel id="crm-result-label">Результат звонка</InputLabel>
+                  <Select labelId="crm-result-label" label="Результат звонка" value={form.result} onChange={(e) => setForm({ ...form, result: e.target.value })}>
+                    <MenuItem value=""><em>Не указан</em></MenuItem>
+                    {LOG_RESULT_OPTIONS.map((o) => <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>)}
+                  </Select>
+                </FormControl>
+              )}
+            </Stack>
+            <TextField
+              size="small"
+              multiline
+              minRows={2}
+              label="Заметка"
+              value={form.text}
+              onChange={(e) => setForm({ ...form, text: e.target.value })}
+              placeholder="Что сказали, договорённости, детали..."
+            />
+            <TextField
+              size="small"
+              type="datetime-local"
+              label="Перезвонить / напомнить"
+              value={form.follow_up_at}
+              onChange={(e) => setForm({ ...form, follow_up_at: e.target.value })}
+              InputLabelProps={{ shrink: true }}
+            />
+            <Button
+              variant="contained"
+              disabled={saving || (!form.text.trim() && !form.result)}
+              onClick={handleSave}
+              size="small"
+            >
+              {saving ? 'Сохранение...' : 'Добавить запись'}
+            </Button>
+          </Stack>
+        </Paper>
+
+        {/* Лента активностей */}
+        {loading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+            <CircularProgress size={28} />
+          </Box>
+        ) : logs.length === 0 ? (
+          <Typography color="text.secondary" variant="body2" align="center" sx={{ py: 2 }}>
+            Записей ещё нет
+          </Typography>
+        ) : (
+          <Stack spacing={1}>
+            {logs.map((log) => (
+              <Paper
+                key={log.id}
+                variant="outlined"
+                sx={{
+                  p: 1.5,
+                  borderLeft: '3px solid',
+                  borderColor: log.type === 'call' ? 'primary.main' : log.type === 'meeting' ? 'success.main' : 'grey.400',
+                }}
+              >
+                <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+                  <Stack direction="row" gap={1} alignItems="center" flexWrap="wrap">
+                    <Chip size="small" label={LOG_TYPE_LABELS[log.type] ?? log.type} variant="outlined" />
+                    {log.result && (
+                      <Chip
+                        size="small"
+                        label={resultLabel(log.result)}
+                        color={log.result === 'answered' || log.result === 'scheduled' ? 'success' : log.result === 'refused' ? 'error' : 'default'}
+                      />
+                    )}
+                  </Stack>
+                  <Tooltip title="Удалить">
+                    <IconButton size="small" onClick={() => handleDelete(log.id)}>
+                      <DeleteOutline sx={{ fontSize: 15 }} />
+                    </IconButton>
+                  </Tooltip>
+                </Stack>
+                {log.text && (
+                  <Typography variant="body2" sx={{ mt: 0.75, whiteSpace: 'pre-wrap' }}>{log.text}</Typography>
+                )}
+                {log.follow_up_at && (
+                  <Typography
+                    variant="caption"
+                    sx={{ mt: 0.5, display: 'block', color: followUpOverdue(log) ? 'error.main' : 'warning.main', fontWeight: 600 }}
+                  >
+                    {followUpOverdue(log) ? '⚠ Просрочено:' : '🔔 Перезвонить:'} {formatDateTime(log.follow_up_at)}
+                  </Typography>
+                )}
+                <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mt: 0.25 }}>
+                  {log.created_by_name ?? 'Вы'} · {formatDateTime(log.created_at)}
+                </Typography>
+              </Paper>
+            ))}
+          </Stack>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Закрыть</Button>
+      </DialogActions>
+    </Dialog>
   );
 };
 
@@ -615,6 +859,29 @@ export const CampaignsTab: React.FC = () => {
   const [stageFilter, setStageFilter] = useState('');
   const [cityFilter, setCityFilter] = useState('');
   const [tablePage, setTablePage] = useState(0);
+
+  // --- CRM dialog ---
+  const [crmOpen, setCrmOpen] = useState(false);
+  const [crmScId, setCrmScId] = useState<number | null>(null);
+  const [crmSchoolName, setCrmSchoolName] = useState('');
+  // follow-up indicators: map scId → { hasFollowUp, followUpOverdue }
+  const [followUpMap, setFollowUpMap] = useState<Record<number, { hasFollowUp: boolean; followUpOverdue: boolean }>>({});
+
+  const openCRM = useCallback((scId: number, name: string) => {
+    setCrmScId(scId);
+    setCrmSchoolName(name);
+    setCrmOpen(true);
+  }, []);
+
+  const handleCrmLogsChanged = useCallback((scId: number, logs: SchoolCampaignLog[]) => {
+    const now = new Date();
+    const withFollowUp = logs.filter((l) => l.follow_up_at);
+    const overdue = withFollowUp.some((l) => new Date(l.follow_up_at!) < now);
+    setFollowUpMap((prev) => ({
+      ...prev,
+      [scId]: { hasFollowUp: withFollowUp.length > 0, followUpOverdue: overdue },
+    }));
+  }, []);
 
   // --- send email dialog ---
   const [sendEmailOpen, setSendEmailOpen] = useState(false);
@@ -1297,10 +1564,13 @@ export const CampaignsTab: React.FC = () => {
                                         currentStage={sc.stage}
                                         canManage={canManageCampaigns}
                                         b2bSchoolId={sc.b2b_school_id}
+                                        hasFollowUp={followUpMap[sc.id]?.hasFollowUp}
+                                        followUpOverdue={followUpMap[sc.id]?.followUpOverdue}
                                         onStageChange={handleStageChange}
                                         onHistory={openHistoryDialog}
                                         onOpenSchool={openSchoolCard}
                                         onSendEmail={openSendEmail}
+                                        onOpenCRM={openCRM}
                                       />
                                     );
                                   })}
@@ -1774,6 +2044,15 @@ export const CampaignsTab: React.FC = () => {
           onChanged={setStages}
         />
       )}
+
+      {/* ---- CRM: звонки и заметки ---- */}
+      <CRMDialog
+        open={crmOpen}
+        scId={crmScId}
+        schoolName={crmSchoolName}
+        onClose={() => setCrmOpen(false)}
+        onLogsChanged={handleCrmLogsChanged}
+      />
 
       {/* ---- Отправка шаблона письма школе ---- */}
       <SendSchoolEmailDialog

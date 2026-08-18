@@ -1347,6 +1347,18 @@ export interface CampaignSettings {
   regions: string[];
 }
 
+export interface SchoolCampaignLog {
+  id: number;
+  school_campaign_id: number;
+  type: 'call' | 'note' | 'meeting';
+  result?: string | null;
+  text?: string | null;
+  follow_up_at?: string | null;
+  created_by_id?: number | null;
+  created_by_name?: string | null;
+  created_at?: string | null;
+}
+
 export interface SchoolCampaign {
   id: number;
   b2b_school_id: number;

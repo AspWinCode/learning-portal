@@ -3002,6 +3002,20 @@ export const campaignsApi = {
     const response = await api.post(`/api/campaigns/${campaignId}/broadcasts/${broadcastId}/sync`);
     return response.data;
   },
+  listSchoolCampaignLogs: async (scId: number): Promise<import('../types').SchoolCampaignLog[]> => {
+    const response = await api.get(`/api/school-campaigns/${scId}/logs`);
+    return response.data;
+  },
+  createSchoolCampaignLog: async (
+    scId: number,
+    payload: { type: string; result?: string | null; text?: string | null; follow_up_at?: string | null }
+  ): Promise<import('../types').SchoolCampaignLog> => {
+    const response = await api.post(`/api/school-campaigns/${scId}/logs`, payload);
+    return response.data;
+  },
+  deleteSchoolCampaignLog: async (scId: number, logId: number): Promise<void> => {
+    await api.delete(`/api/school-campaigns/${scId}/logs/${logId}`);
+  },
 };
 
 export const ownerFunnelsApi = {

@@ -260,6 +260,27 @@ class AddSchoolsBody(BaseModel):
     create_contact_task: bool = True
 
 
+class SchoolCampaignLogCreate(BaseModel):
+    type: str = "call"
+    result: Optional[str] = None
+    text: Optional[str] = None
+    follow_up_at: Optional[datetime] = None
+
+
+class SchoolCampaignLogResponse(BaseModel):
+    id: int
+    school_campaign_id: int
+    type: str
+    result: Optional[str] = None
+    text: Optional[str] = None
+    follow_up_at: Optional[datetime] = None
+    created_by_id: Optional[int] = None
+    created_by_name: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class SchoolsEventsMatrixResponse(BaseModel):
     schools: List[Dict[str, Any]]
     events: List[CampaignEventResponse]

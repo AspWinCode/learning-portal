@@ -23,6 +23,7 @@ from app.models import (
     EmailBroadcastRecipient,
     SchoolCampaign,
     SchoolCampaignEvent,
+    SchoolCampaignLog,
     SalesCity,
     Task,
     TaskStatus,
@@ -52,6 +53,8 @@ from app.schemas.campaigns import (
     SchoolCampaignEventBulkUpdate,
     SchoolCampaignEventResponse,
     SchoolCampaignEventUpdate,
+    SchoolCampaignLogCreate,
+    SchoolCampaignLogResponse,
     SchoolCampaignResponse,
     SchoolCampaignUpdate,
     SchoolsEventsMatrixResponse,
@@ -1655,3 +1658,84 @@ async def sync_broadcast_campaign_stages(
     broadcast.opened_count = actual_opened
     db.commit()
     return {"advanced_sent": advanced_sent, "advanced_opened": advanced_opened}
+
+
+# ---------------------------------------------------------------------------
+# CRM-лог звонков и заметок по школе в кампании
+# ---------------------------------------------------------------------------
+
+def _log_to_response(log: SchoolCampaignLog) -> SchoolCampaignLogResponse:
+    return SchoolCampaignLogResponse(
+        id=log.id,
+        school_campaign_id=log.school_campaign_id,
+        type=log.type,
+        result=log.result,
+        text=log.text,
+        follow_up_at=log.follow_up_at,
+        created_by_id=log.created_by_id,
+        created_by_name=log.created_by.full_name if log.created_by else None,
+        created_at=log.created_at,
+    )
+
+
+@router.get("/school-campaigns/{sc_id}/logs", response_model=List[SchoolCampaignLogResponse])
+def list_school_campaign_logs(
+    sc_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_user),
+):
+    sc = db.query(SchoolCampaign).filter(SchoolCampaign.id == sc_id).first()
+    if not sc:
+        raise HTTPException(status_code=404, detail="SchoolCampaign not found")
+    logs = (
+        db.query(SchoolCampaignLog)
+        .options(joinedload(SchoolCampaignLog.created_by))
+        .filter(SchoolCampaignLog.school_campaign_id == sc_id)
+        .order_by(SchoolCampaignLog.created_at.desc())
+        .all()
+    )
+    return [_log_to_response(log) for log in logs]
+
+
+@router.post("/school-campaigns/{sc_id}/logs", response_model=SchoolCampaignLogResponse)
+def create_school_campaign_log(
+    sc_id: int,
+    body: SchoolCampaignLogCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_user),
+):
+    sc = db.query(SchoolCampaign).filter(SchoolCampaign.id == sc_id).first()
+    if not sc:
+        raise HTTPException(status_code=404, detail="SchoolCampaign not found")
+    log = SchoolCampaignLog(
+        school_campaign_id=sc_id,
+        type=body.type,
+        result=body.result,
+        text=body.text,
+        follow_up_at=body.follow_up_at,
+        created_by_id=current_user.id,
+    )
+    db.add(log)
+    db.commit()
+    db.refresh(log)
+    db.refresh(log, attribute_names=["created_by"])
+    return _log_to_response(log)
+
+
+@router.delete("/school-campaigns/{sc_id}/logs/{log_id}", status_code=204)
+def delete_school_campaign_log(
+    sc_id: int,
+    log_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_user),
+):
+    log = (
+        db.query(SchoolCampaignLog)
+        .filter(SchoolCampaignLog.id == log_id, SchoolCampaignLog.school_campaign_id == sc_id)
+        .first()
+    )
+    if not log:
+        raise HTTPException(status_code=404, detail="Log not found")
+    db.delete(log)
+    db.commit()
+

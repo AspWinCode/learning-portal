@@ -684,6 +684,7 @@ class SalesSchoolContact(Base):
     phone_extra = Column(String(64), nullable=True)
     email = Column(String, nullable=True)
     note = Column(Text, nullable=True)
+    owner_workspace_contact_id = Column(Integer, ForeignKey("owner_workspace_contacts.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     school = relationship("SalesSchool", back_populates="contacts")

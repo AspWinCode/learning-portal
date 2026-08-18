@@ -25,6 +25,7 @@ from app.models import (
     LeadTaskStatusOption as LeadTaskStatusOptionModel,
     LeadTaskTemplate,
     B2BSchool,
+    OwnerWorkspaceContact,
     SalesCity,
     SalesClass,
     SalesSchool,
@@ -936,6 +937,46 @@ async def delete_sales_school(
 
 # ── School contacts ────────────────────────────────────────────────────────────
 
+def _build_ow_comment(phone_extra: Optional[str], note: Optional[str]) -> Optional[str]:
+    parts = []
+    if phone_extra:
+        parts.append(f"Доп. номер: {phone_extra}")
+    if note:
+        parts.append(note)
+    return "\n".join(parts) if parts else None
+
+
+def _sync_contact_to_ow(db: Session, contact: SalesSchoolContact, school_name: str) -> None:
+    """Create or update the mirrored OwnerWorkspaceContact."""
+    comment = _build_ow_comment(contact.phone_extra, contact.note)
+    if contact.owner_workspace_contact_id:
+        ow = db.query(OwnerWorkspaceContact).filter(
+            OwnerWorkspaceContact.id == contact.owner_workspace_contact_id
+        ).first()
+        if ow:
+            ow.full_name = contact.full_name
+            ow.position = contact.position
+            ow.phone = contact.phone
+            ow.email = contact.email
+            ow.company = school_name
+            ow.comment = comment
+            return
+    # No linked OW contact — create one
+    ow = OwnerWorkspaceContact(
+        type="individual",
+        full_name=contact.full_name,
+        position=contact.position,
+        phone=contact.phone,
+        email=contact.email,
+        company=school_name,
+        comment=comment,
+        source="sales_school",
+    )
+    db.add(ow)
+    db.flush()
+    contact.owner_workspace_contact_id = ow.id
+
+
 @router.get("/schools/{school_id}/contacts", response_model=List[SalesSchoolContactResponse])
 async def list_sales_school_contacts(
     school_id: int,
@@ -960,6 +1001,8 @@ async def create_sales_school_contact(
         raise HTTPException(status_code=404, detail="School not found")
     contact = SalesSchoolContact(school_id=school_id, **payload.dict())
     db.add(contact)
+    db.flush()
+    _sync_contact_to_ow(db, contact, school.name)
     db.commit()
     db.refresh(contact)
     return contact
@@ -978,8 +1021,10 @@ async def update_sales_school_contact(
     ).first()
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found")
+    school = db.query(SalesSchool).filter(SalesSchool.id == school_id).first()
     for field, value in payload.dict(exclude_unset=True).items():
         setattr(contact, field, value)
+    _sync_contact_to_ow(db, contact, school.name if school else "")
     db.commit()
     db.refresh(contact)
     return contact
@@ -997,7 +1042,13 @@ async def delete_sales_school_contact(
     ).first()
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found")
+    ow_id = contact.owner_workspace_contact_id
     db.delete(contact)
+    db.flush()
+    if ow_id:
+        ow = db.query(OwnerWorkspaceContact).filter(OwnerWorkspaceContact.id == ow_id).first()
+        if ow and ow.source == "sales_school":
+            db.delete(ow)
     db.commit()
 
 

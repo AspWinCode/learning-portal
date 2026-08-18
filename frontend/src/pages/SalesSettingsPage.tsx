@@ -42,6 +42,7 @@ import { ProgramMakeupContent } from './SalesProgramMakeupPage';
 import { abonementsApi, campaignsApi, financeApi, maxApi, salesApi, settingsApi, studentPortalAdminApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 import { hasPermission } from '../utils/permissions';
+import { applyPhoneMask, isValidPhone } from '../utils/phoneMask';
 import { transliterate } from '../utils/transliterate';
 import {
   Abonement,
@@ -536,6 +537,8 @@ const SalesSettingsPage: React.FC = () => {
   const saveContact = async () => {
     if (!editingSchool || !contactForm) return;
     if (!contactForm.full_name.trim()) { setContactError('ФИО обязательно'); return; }
+    if (contactForm.phone.trim() && !isValidPhone(contactForm.phone)) { setContactError('Некорректный телефон'); return; }
+    if (contactForm.phone_extra.trim() && !isValidPhone(contactForm.phone_extra)) { setContactError('Некорректный доп. номер'); return; }
     setContactSaving(true);
     setContactError('');
     try {
@@ -2016,10 +2019,18 @@ const SalesSettingsPage: React.FC = () => {
                     disabled={contactSaving} />
                   <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
                     <TextField size="small" label="Телефон" fullWidth value={contactForm.phone}
-                      onChange={(e) => setContactForm(f => f ? { ...f, phone: e.target.value } : f)}
+                      placeholder="+7(999) 123-45-67"
+                      error={contactForm.phone.length > 0 && !isValidPhone(contactForm.phone)}
+                      helperText={contactForm.phone.length > 0 && !isValidPhone(contactForm.phone) ? 'Введите 10 цифр номера' : ''}
+                      onChange={(e) => setContactForm(f => f ? { ...f, phone: applyPhoneMask(e.target.value) } : f)}
+                      onBlur={(e) => setContactForm(f => f ? { ...f, phone: applyPhoneMask(e.target.value) } : f)}
                       disabled={contactSaving} />
                     <TextField size="small" label="Доп. номер" fullWidth value={contactForm.phone_extra}
-                      onChange={(e) => setContactForm(f => f ? { ...f, phone_extra: e.target.value } : f)}
+                      placeholder="+7(999) 123-45-67"
+                      error={contactForm.phone_extra.length > 0 && !isValidPhone(contactForm.phone_extra)}
+                      helperText={contactForm.phone_extra.length > 0 && !isValidPhone(contactForm.phone_extra) ? 'Введите 10 цифр номера' : ''}
+                      onChange={(e) => setContactForm(f => f ? { ...f, phone_extra: applyPhoneMask(e.target.value) } : f)}
+                      onBlur={(e) => setContactForm(f => f ? { ...f, phone_extra: applyPhoneMask(e.target.value) } : f)}
                       disabled={contactSaving} />
                   </Stack>
                   <TextField size="small" label="Почта" type="email" fullWidth value={contactForm.email}

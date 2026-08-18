@@ -184,6 +184,7 @@ const KanbanSchoolCard: React.FC<KanbanSchoolCardProps> = ({
             <Typography
               variant="body2"
               fontWeight={600}
+              title={schoolName}
               sx={{ lineHeight: 1.3, mb: 0.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 13 }}
             >
               {schoolName}

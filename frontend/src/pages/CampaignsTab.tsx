@@ -256,12 +256,14 @@ const SendSchoolEmailDialog: React.FC<SendSchoolEmailDialogProps> = ({ open, b2b
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState('');
+  const [showPreview, setShowPreview] = useState(false);
 
   useEffect(() => {
     if (!open || !b2bSchoolId) return;
     setSent(false);
     setError('');
     setSelectedId('');
+    setShowPreview(false);
     setLoading(true);
     Promise.all([
       emailTemplatesApi.list(),
@@ -286,6 +288,7 @@ const SendSchoolEmailDialog: React.FC<SendSchoolEmailDialogProps> = ({ open, b2b
         director_name: directorName || undefined,
       });
       setSent(true);
+      setShowPreview(false);
     } catch (e: any) {
       setError(extractApiError(e, 'Не удалось отправить письмо'));
     } finally {
@@ -295,18 +298,42 @@ const SendSchoolEmailDialog: React.FC<SendSchoolEmailDialogProps> = ({ open, b2b
 
   const selectedTemplate = templates.find((t) => t.id === selectedId);
 
+  const previewHtml = React.useMemo(() => {
+    if (!selectedTemplate?.html_body) return '';
+    const vars: Record<string, string> = {
+      school_name: schoolName,
+      director_name: directorName || 'Директор',
+      recipient_email: toEmail,
+    };
+    return selectedTemplate.html_body.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key) => vars[key] ?? `{{${key}}}`);
+  }, [selectedTemplate, schoolName, directorName, toEmail]);
+
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Отправить письмо — {schoolName}</DialogTitle>
-      <DialogContent>
-        {loading && <Typography color="text.secondary">Загрузка...</Typography>}
-        {!loading && error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+    <Dialog open={open} onClose={onClose} maxWidth={showPreview ? 'lg' : 'sm'} fullWidth>
+      <DialogTitle>
+        <Stack direction="row" justifyContent="space-between" alignItems="center">
+          <Typography variant="h6">Отправить письмо — {schoolName}</Typography>
+          {selectedTemplate && !sent && (
+            <Button
+              size="small"
+              variant={showPreview ? 'contained' : 'outlined'}
+              onClick={() => setShowPreview((v) => !v)}
+              sx={{ ml: 2, flexShrink: 0 }}
+            >
+              {showPreview ? 'Настройки' : 'Предпросмотр'}
+            </Button>
+          )}
+        </Stack>
+      </DialogTitle>
+      <DialogContent sx={{ p: showPreview ? 0 : undefined }}>
+        {loading && <Typography color="text.secondary" sx={{ p: 2 }}>Загрузка...</Typography>}
+        {!loading && error && <Alert severity="error" sx={{ m: 2 }}>{error}</Alert>}
         {!loading && sent && (
-          <Alert severity="success" sx={{ mb: 2 }}>
+          <Alert severity="success" sx={{ m: 2 }}>
             Письмо успешно отправлено на {toEmail}
           </Alert>
         )}
-        {!loading && !sent && (
+        {!loading && !sent && !showPreview && (
           <Stack spacing={2} sx={{ mt: 1 }}>
             <FormControl fullWidth size="small">
               <InputLabel id="email-template-label">Шаблон письма</InputLabel>
@@ -314,7 +341,7 @@ const SendSchoolEmailDialog: React.FC<SendSchoolEmailDialogProps> = ({ open, b2b
                 labelId="email-template-label"
                 label="Шаблон письма"
                 value={selectedId}
-                onChange={(e) => setSelectedId(e.target.value as number)}
+                onChange={(e) => { setSelectedId(e.target.value as number); setShowPreview(false); }}
               >
                 {templates.map((t) => (
                   <MenuItem key={t.id} value={t.id}>
@@ -346,6 +373,24 @@ const SendSchoolEmailDialog: React.FC<SendSchoolEmailDialogProps> = ({ open, b2b
               onChange={(e) => setDirectorName(e.target.value)}
             />
           </Stack>
+        )}
+        {!loading && !sent && showPreview && selectedTemplate && (
+          <Box sx={{ display: 'flex', flexDirection: 'column', height: '75vh' }}>
+            <Box sx={{ px: 2, py: 1, borderBottom: '1px solid', borderColor: 'divider', bgcolor: 'background.paper' }}>
+              <Typography variant="caption" color="text.secondary">Кому: </Typography>
+              <Typography variant="caption" fontWeight={600}>{toEmail || '—'}</Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ ml: 2 }}>Тема: </Typography>
+              <Typography variant="caption" fontWeight={600}>{selectedTemplate.subject}</Typography>
+            </Box>
+            <Box sx={{ flex: 1, overflow: 'hidden' }}>
+              <iframe
+                title="preview"
+                sandbox="allow-same-origin"
+                srcDoc={previewHtml}
+                style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
+              />
+            </Box>
+          </Box>
         )}
       </DialogContent>
       <DialogActions>

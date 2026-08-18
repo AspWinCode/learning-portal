@@ -464,7 +464,7 @@ class SalesSchoolContactResponse(BaseModel):
 class SalesSchoolResponse(SalesSchoolBase):
     id: int
     created_at: datetime
-    contacts: List["SalesSchoolContactResponse"] = []
+    contacts: List[SalesSchoolContactResponse] = []
 
     model_config = ConfigDict(from_attributes=True)
 

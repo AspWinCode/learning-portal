@@ -60,8 +60,8 @@ import Email from '@mui/icons-material/Email';
 import LinkOff from '@mui/icons-material/LinkOff';
 import Sync from '@mui/icons-material/Sync';
 import { useAuth } from '../contexts/AuthContext';
-import { b2bApi, campaignsApi, emailBroadcastsApi, settingsApi } from '../services/api';
-import type { EmailBroadcast as EmailBroadcastItem } from '../services/api';
+import { b2bApi, campaignsApi, emailBroadcastsApi, emailTemplatesApi, settingsApi } from '../services/api';
+import type { EmailBroadcast as EmailBroadcastItem, EmailTemplate } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 import { hasPermission } from '../utils/permissions';
 import type { B2BSchool, Campaign, CampaignSettings, CampaignStage, SchoolCampaign } from '../types';
@@ -157,10 +157,11 @@ interface KanbanSchoolCardProps {
   onStageChange: (scId: number, stage: string) => void;
   onHistory: (scId: number) => void;
   onOpenSchool?: (b2bSchoolId: number) => void;
+  onSendEmail?: (b2bSchoolId: number, schoolName: string) => void;
 }
 
 const KanbanSchoolCard: React.FC<KanbanSchoolCardProps> = ({
-  scId, schoolName, schoolCity, countLabel, stages, currentStage, canManage, b2bSchoolId, onStageChange, onHistory, onOpenSchool,
+  scId, schoolName, schoolCity, countLabel, stages, currentStage, canManage, b2bSchoolId, onStageChange, onHistory, onOpenSchool, onSendEmail,
 }) => {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: String(scId) });
   return (
@@ -216,6 +217,13 @@ const KanbanSchoolCard: React.FC<KanbanSchoolCardProps> = ({
                   {stages.map((s) => <MenuItem key={s.key} value={s.key} sx={{ fontSize: 12 }}>{s.label}</MenuItem>)}
                 </Select>
               </FormControl>
+              {b2bSchoolId && onSendEmail && (
+                <Tooltip title="Отправить шаблон на почту">
+                  <IconButton size="small" onClick={(e) => { e.stopPropagation(); onSendEmail(b2bSchoolId, schoolName); }} sx={{ flexShrink: 0 }}>
+                    <Email sx={{ fontSize: 15 }} />
+                  </IconButton>
+                </Tooltip>
+              )}
               <Tooltip title="История активностей">
                 <IconButton size="small" onClick={() => onHistory(scId)} sx={{ flexShrink: 0 }}>
                   <History sx={{ fontSize: 15 }} />
@@ -226,6 +234,134 @@ const KanbanSchoolCard: React.FC<KanbanSchoolCardProps> = ({
         </Stack>
       </CardContent>
     </Card>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// Диалог отправки шаблона письма школе
+// ---------------------------------------------------------------------------
+interface SendSchoolEmailDialogProps {
+  open: boolean;
+  b2bSchoolId: number | null;
+  schoolName: string;
+  onClose: () => void;
+}
+
+const SendSchoolEmailDialog: React.FC<SendSchoolEmailDialogProps> = ({ open, b2bSchoolId, schoolName, onClose }) => {
+  const [templates, setTemplates] = useState<EmailTemplate[]>([]);
+  const [selectedId, setSelectedId] = useState<number | ''>('');
+  const [toEmail, setToEmail] = useState('');
+  const [directorName, setDirectorName] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!open || !b2bSchoolId) return;
+    setSent(false);
+    setError('');
+    setSelectedId('');
+    setLoading(true);
+    Promise.all([
+      emailTemplatesApi.list(),
+      b2bApi.getSchool(b2bSchoolId),
+    ]).then(([tmps, school]) => {
+      setTemplates(tmps);
+      setToEmail(school.email ?? '');
+      setDirectorName(school.director ?? '');
+    }).catch((e) => {
+      setError(extractApiError(e, 'Не удалось загрузить данные'));
+    }).finally(() => setLoading(false));
+  }, [open, b2bSchoolId]);
+
+  const handleSend = async () => {
+    if (!selectedId || !toEmail.trim()) return;
+    setSending(true);
+    setError('');
+    try {
+      await emailTemplatesApi.testSend(selectedId as number, {
+        to_email: toEmail.trim(),
+        school_name: schoolName,
+        director_name: directorName || undefined,
+      });
+      setSent(true);
+    } catch (e: any) {
+      setError(extractApiError(e, 'Не удалось отправить письмо'));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const selectedTemplate = templates.find((t) => t.id === selectedId);
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>Отправить письмо — {schoolName}</DialogTitle>
+      <DialogContent>
+        {loading && <Typography color="text.secondary">Загрузка...</Typography>}
+        {!loading && error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+        {!loading && sent && (
+          <Alert severity="success" sx={{ mb: 2 }}>
+            Письмо успешно отправлено на {toEmail}
+          </Alert>
+        )}
+        {!loading && !sent && (
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <FormControl fullWidth size="small">
+              <InputLabel id="email-template-label">Шаблон письма</InputLabel>
+              <Select
+                labelId="email-template-label"
+                label="Шаблон письма"
+                value={selectedId}
+                onChange={(e) => setSelectedId(e.target.value as number)}
+              >
+                {templates.map((t) => (
+                  <MenuItem key={t.id} value={t.id}>
+                    <Box>
+                      <Typography variant="body2" fontWeight={600}>{t.name}</Typography>
+                      <Typography variant="caption" color="text.secondary">{t.subject}</Typography>
+                    </Box>
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            {selectedTemplate && (
+              <Paper variant="outlined" sx={{ p: 1.5 }}>
+                <Typography variant="caption" color="text.secondary">Тема письма:</Typography>
+                <Typography variant="body2" fontWeight={600}>{selectedTemplate.subject}</Typography>
+              </Paper>
+            )}
+            <TextField
+              size="small"
+              label="Email получателя"
+              value={toEmail}
+              onChange={(e) => setToEmail(e.target.value)}
+              helperText="Адрес из карточки школы, можно изменить"
+            />
+            <TextField
+              size="small"
+              label="Имя директора (для подстановки)"
+              value={directorName}
+              onChange={(e) => setDirectorName(e.target.value)}
+            />
+          </Stack>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>{sent ? 'Закрыть' : 'Отмена'}</Button>
+        {!sent && (
+          <Button
+            variant="contained"
+            disabled={!selectedId || !toEmail.trim() || sending || loading}
+            onClick={handleSend}
+            startIcon={<Email sx={{ fontSize: 16 }} />}
+          >
+            {sending ? 'Отправка...' : 'Отправить'}
+          </Button>
+        )}
+      </DialogActions>
+    </Dialog>
   );
 };
 
@@ -434,6 +570,17 @@ export const CampaignsTab: React.FC = () => {
   const [stageFilter, setStageFilter] = useState('');
   const [cityFilter, setCityFilter] = useState('');
   const [tablePage, setTablePage] = useState(0);
+
+  // --- send email dialog ---
+  const [sendEmailOpen, setSendEmailOpen] = useState(false);
+  const [sendEmailSchoolId, setSendEmailSchoolId] = useState<number | null>(null);
+  const [sendEmailSchoolName, setSendEmailSchoolName] = useState('');
+
+  const openSendEmail = useCallback((b2bSchoolId: number, name: string) => {
+    setSendEmailSchoolId(b2bSchoolId);
+    setSendEmailSchoolName(name);
+    setSendEmailOpen(true);
+  }, []);
 
   // --- school card dialog ---
   const [schoolCardOpen, setSchoolCardOpen] = useState(false);
@@ -1108,6 +1255,7 @@ export const CampaignsTab: React.FC = () => {
                                         onStageChange={handleStageChange}
                                         onHistory={openHistoryDialog}
                                         onOpenSchool={openSchoolCard}
+                                        onSendEmail={openSendEmail}
                                       />
                                     );
                                   })}
@@ -1581,6 +1729,14 @@ export const CampaignsTab: React.FC = () => {
           onChanged={setStages}
         />
       )}
+
+      {/* ---- Отправка шаблона письма школе ---- */}
+      <SendSchoolEmailDialog
+        open={sendEmailOpen}
+        b2bSchoolId={sendEmailSchoolId}
+        schoolName={sendEmailSchoolName}
+        onClose={() => setSendEmailOpen(false)}
+      />
 
       {/* ---- Карточка школы (открывается по клику с канбана) ---- */}
       <SchoolCardDialog

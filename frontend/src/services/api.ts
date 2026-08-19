@@ -2041,6 +2041,7 @@ export const salesApi = {
     email?: string | null;
     address?: string | null;
     phone?: string | null;
+    website?: string | null;
   }): Promise<SalesSchool> => {
     const body = typeof payload === 'string' ? { name: payload } : payload;
     const response = await api.post('/api/sales/schools', body);
@@ -2054,6 +2055,7 @@ export const salesApi = {
     email?: string | null;
     address?: string | null;
     phone?: string | null;
+    website?: string | null;
     is_active?: boolean;
   }): Promise<SalesSchool> => {
     const response = await api.put(`/api/sales/schools/${id}`, payload);
@@ -2554,6 +2556,7 @@ export const b2bApi = {
     name: string;
     director?: string;
     email?: string | null;
+    website?: string | null;
     city?: string;
     address?: string;
     district?: string;
@@ -2583,6 +2586,7 @@ export const b2bApi = {
       name: string;
       director: string;
       email: string | null;
+      website: string | null;
       city: string;
       address: string;
       district: string;

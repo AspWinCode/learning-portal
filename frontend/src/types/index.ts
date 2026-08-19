@@ -651,6 +651,7 @@ export interface SalesSchool {
   email?: string | null;
   address?: string | null;
   phone?: string | null;
+  website?: string | null;
   is_active: boolean;
   created_at: string;
   contacts?: SalesSchoolContact[];
@@ -1254,6 +1255,7 @@ export interface B2BSchool {
   name: string;
   director?: string | null;
   email?: string | null;
+  website?: string | null;
   city?: string | null;
   address?: string | null;
   district?: string | null;

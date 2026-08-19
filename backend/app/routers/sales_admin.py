@@ -104,6 +104,7 @@ def _sync_sales_school_to_b2b(db: Session, school: SalesSchool) -> B2BSchool:
     b2b.city = getattr(school, "city", None)
     b2b.director = getattr(school, "director", None)
     b2b.email = getattr(school, "email", None)
+    b2b.website = getattr(school, "website", None)
     b2b.address = getattr(school, "address", None)
     b2b.phone_school = getattr(school, "phone", None)
     return b2b
@@ -128,6 +129,7 @@ def _school_payload_from_row(row: Dict[str, object]) -> Dict[str, Optional[str]]
         "email": pick("почта", "email", "e-mail"),
         "address": pick("адрес", "address"),
         "phone": pick("телефон", "phone"),
+        "website": pick("сайт", "website", "site"),
     }
 
 
@@ -789,7 +791,7 @@ async def export_sales_schools(
 ):
     output = StringIO()
     writer = csv.writer(output, delimiter=";")
-    writer.writerow(["Название", "Город", "Район", "Директор/ИО директора", "Почта", "Адрес", "Телефон", "Активна"])
+    writer.writerow(["Название", "Город", "Район", "Директор/ИО директора", "Почта", "Адрес", "Телефон", "Сайт", "Активна"])
     for school in db.query(SalesSchool).order_by(SalesSchool.name.asc()).all():
         writer.writerow([
             school.name,
@@ -799,6 +801,7 @@ async def export_sales_schools(
             getattr(school, "email", None) or "",
             getattr(school, "address", None) or "",
             getattr(school, "phone", None) or "",
+            getattr(school, "website", None) or "",
             "1" if school.is_active else "0",
         ])
     content = "\ufeff" + output.getvalue()
@@ -852,6 +855,7 @@ async def import_sales_schools(
         school.email = email
         school.address = _clean_optional_text(row.get("address"))
         school.phone = _clean_optional_text(row.get("phone"))
+        school.website = _clean_optional_text(row.get("website"))
         _sync_sales_school_to_b2b(db, school)
 
     db.commit()
@@ -879,6 +883,7 @@ async def create_sales_school(
         email=str(payload.email) if payload.email else None,
         address=_clean_optional_text(payload.address),
         phone=_clean_optional_text(payload.phone),
+        website=_clean_optional_text(payload.website),
         is_active=True,
     )
     db.add(item)
@@ -906,7 +911,7 @@ async def update_sales_school(
         if not name:
             raise HTTPException(status_code=400, detail="School name is required")
         item.name = name
-    for field in ("city", "district", "director", "address", "phone"):
+    for field in ("city", "district", "director", "address", "phone", "website"):
         if field in data:
             setattr(item, field, _clean_optional_text(data[field]))
     if "email" in data:

@@ -616,6 +616,20 @@ const OwnerFunnelsPage: React.FC = () => {
                         <Typography variant="body2">{cardDetailSchool.director}</Typography>
                       </Box>
                     )}
+                    {cardDetailSchool.website && (
+                      <Box>
+                        <Typography variant="caption" color="text.secondary">Сайт</Typography>
+                        <Typography variant="body2">
+                          <a
+                            href={/^https?:\/\//.test(cardDetailSchool.website) ? cardDetailSchool.website : `https://${cardDetailSchool.website}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            {cardDetailSchool.website}
+                          </a>
+                        </Typography>
+                      </Box>
+                    )}
                     {cardDetailSchool.city && (
                       <Box>
                         <Typography variant="caption" color="text.secondary">Город</Typography>

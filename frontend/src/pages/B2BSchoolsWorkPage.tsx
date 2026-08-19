@@ -78,6 +78,7 @@ type SchoolForm = {
   city: string;
   director: string;
   email: string;
+  website: string;
   address: string;
   phone_school: string;
   friendship_degree: string;
@@ -90,6 +91,7 @@ const formFromSchool = (school: B2BSchool): SchoolForm => ({
   city: school.city ?? '',
   director: school.director ?? '',
   email: school.email ?? '',
+  website: school.website ?? '',
   address: school.address ?? '',
   phone_school: school.phone_school ?? '',
   friendship_degree: school.friendship_degree ?? 'unknown',
@@ -190,6 +192,7 @@ const SchoolCardDialog: React.FC<SchoolCardDialogProps> = ({ school, open, onClo
         city: form.city.trim() || undefined,
         director: form.director.trim() || undefined,
         email: form.email.trim() || null,
+        website: form.website.trim() || null,
         address: form.address.trim() || undefined,
         phone_school: form.phone_school.trim() || null,
         friendship_degree: form.friendship_degree,
@@ -346,6 +349,7 @@ const SchoolCardDialog: React.FC<SchoolCardDialogProps> = ({ school, open, onClo
                 <TextField size="small" label="Директор/ИО" value={form.director} onChange={(e) => setForm({ ...form, director: e.target.value })} />
                 <TextField size="small" label="Почта" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
                 <TextField size="small" label="Телефон" value={form.phone_school} onChange={(e) => setForm({ ...form, phone_school: e.target.value })} />
+                <TextField size="small" label="Сайт" value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} />
                 <FormControl size="small" sx={{ minWidth: 220 }}>
                   <InputLabel id="school-status-label">Статус со школой</InputLabel>
                   <Select
@@ -625,6 +629,7 @@ const B2BSchoolsDirectoryTab: React.FC = () => {
             <TableCell>Почта</TableCell>
             <TableCell>Адрес</TableCell>
             <TableCell>Телефон</TableCell>
+            <TableCell>Сайт</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
@@ -668,6 +673,18 @@ const B2BSchoolsDirectoryTab: React.FC = () => {
                 <TableCell>{school.email || '—'}</TableCell>
                 <TableCell>{school.address || '—'}</TableCell>
                 <TableCell>{school.phone_school || '—'}</TableCell>
+                <TableCell>
+                  {school.website ? (
+                    <a
+                      href={/^https?:\/\//.test(school.website) ? school.website : `https://${school.website}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {school.website}
+                    </a>
+                  ) : '—'}
+                </TableCell>
               </TableRow>
             );
           })}

@@ -86,12 +86,12 @@ const isEmailValid = (email: string) =>
 
 type NewSchoolData = {
   name: string; city: string; district: string;
-  director: string; email: string; address: string; phone: string;
+  director: string; email: string; address: string; phone: string; website: string;
 };
 
 const NewSchoolForm: React.FC<{ onAdd: (data: NewSchoolData) => Promise<void> }> = ({ onAdd }) => {
   const [form, setForm] = React.useState<NewSchoolData>(
-    { name: '', city: '', district: '', director: '', email: '', address: '', phone: '' }
+    { name: '', city: '', district: '', director: '', email: '', address: '', phone: '', website: '' }
   );
   const set = (field: keyof NewSchoolData) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm(prev => ({ ...prev, [field]: e.target.value }));
@@ -100,7 +100,7 @@ const NewSchoolForm: React.FC<{ onAdd: (data: NewSchoolData) => Promise<void> }>
     if (!form.name.trim()) return;
     if (!isEmailValid(form.email)) return;
     await onAdd(form);
-    setForm({ name: '', city: '', district: '', director: '', email: '', address: '', phone: '' });
+    setForm({ name: '', city: '', district: '', director: '', email: '', address: '', phone: '', website: '' });
   };
 
   return (
@@ -112,6 +112,7 @@ const NewSchoolForm: React.FC<{ onAdd: (data: NewSchoolData) => Promise<void> }>
       <TextField size="small" label="Почта" type="email" value={form.email} error={!isEmailValid(form.email)} onChange={set('email')} />
       <TextField size="small" label="Адрес" value={form.address} onChange={set('address')} />
       <TextField size="small" label="Телефон" value={form.phone} onChange={set('phone')} />
+      <TextField size="small" label="Сайт" value={form.website} onChange={set('website')} />
       <Button variant="contained" onClick={handleAdd} disabled={!form.name.trim() || !isEmailValid(form.email)}>
         Добавить
       </Button>
@@ -173,7 +174,7 @@ const SalesSettingsPage: React.FC = () => {
   const [schoolImportFile, setSchoolImportFile] = useState<File | null>(null);
   const [editingSchool, setEditingSchool] = useState<SalesSchool | null>(null);
   const [editSchoolDraft, setEditSchoolDraft] = useState<{
-    name: string; city: string; district: string; director: string; email: string; address: string; phone: string; is_active: boolean;
+    name: string; city: string; district: string; director: string; email: string; address: string; phone: string; website: string; is_active: boolean;
   } | null>(null);
   const [editSchoolSaving, setEditSchoolSaving] = useState(false);
   const [editSchoolError, setEditSchoolError] = useState('');
@@ -485,6 +486,7 @@ const SalesSettingsPage: React.FC = () => {
       email: school.email || '',
       address: school.address || '',
       phone: school.phone || '',
+      website: school.website || '',
       is_active: school.is_active,
     });
     setEditSchoolError('');
@@ -507,6 +509,7 @@ const SalesSettingsPage: React.FC = () => {
         email: editSchoolDraft.email.trim() || null,
         address: editSchoolDraft.address.trim() || null,
         phone: editSchoolDraft.phone.trim() || null,
+        website: editSchoolDraft.website.trim() || null,
         is_active: editSchoolDraft.is_active,
       });
       setEditingSchool(null);
@@ -856,6 +859,7 @@ const SalesSettingsPage: React.FC = () => {
                 email: data.email.trim() || null,
                 address: data.address.trim() || null,
                 phone: data.phone.trim() || null,
+                website: data.website.trim() || null,
               });
               setSchoolImportResult(null);
               await loadSchools(schoolSearch, schoolPage);
@@ -915,6 +919,7 @@ const SalesSettingsPage: React.FC = () => {
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>Почта</TableCell>
                   <TableCell sx={{ minWidth: 120, maxWidth: 180 }}>Адрес</TableCell>
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>Телефон</TableCell>
+                  <TableCell sx={{ minWidth: 130, maxWidth: 180 }}>Сайт</TableCell>
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>Активна</TableCell>
                   <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>Действия</TableCell>
                 </TableRow>
@@ -929,6 +934,13 @@ const SalesSettingsPage: React.FC = () => {
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>{s.email || '—'}</TableCell>
                     <TableCell sx={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={s.address || ''}>{s.address || '—'}</TableCell>
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>{s.phone || '—'}</TableCell>
+                    <TableCell sx={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={s.website || ''}>
+                      {s.website ? (
+                        <a href={/^https?:\/\//.test(s.website) ? s.website : `https://${s.website}`} target="_blank" rel="noopener noreferrer">
+                          {s.website}
+                        </a>
+                      ) : '—'}
+                    </TableCell>
                     <TableCell>
                       <Switch
                         checked={s.is_active}
@@ -1982,6 +1994,9 @@ const SalesSettingsPage: React.FC = () => {
             <TextField size="small" label="Телефон" fullWidth
               value={editSchoolDraft?.phone ?? ''} disabled={editSchoolSaving}
               onChange={(e) => setEditSchoolDraft((d) => d ? { ...d, phone: e.target.value } : d)} />
+            <TextField size="small" label="Сайт" fullWidth
+              value={editSchoolDraft?.website ?? ''} disabled={editSchoolSaving}
+              onChange={(e) => setEditSchoolDraft((d) => d ? { ...d, website: e.target.value } : d)} />
             <FormControlLabel
               control={<Switch checked={editSchoolDraft?.is_active ?? true} disabled={editSchoolSaving}
                 onChange={(e) => setEditSchoolDraft((d) => d ? { ...d, is_active: e.target.checked } : d)} />}

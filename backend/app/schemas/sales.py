@@ -405,6 +405,7 @@ class SalesSchoolBase(BaseModel):
     email: Optional[str] = None
     address: Optional[str] = None
     phone: Optional[str] = None
+    website: Optional[str] = None
     is_active: bool = True
 
 
@@ -416,6 +417,7 @@ class SalesSchoolCreate(BaseModel):
     email: Optional[EmailStr] = None
     address: Optional[str] = None
     phone: Optional[str] = None
+    website: Optional[str] = None
 
 
 class SalesSchoolUpdate(BaseModel):
@@ -426,6 +428,7 @@ class SalesSchoolUpdate(BaseModel):
     email: Optional[EmailStr] = None
     address: Optional[str] = None
     phone: Optional[str] = None
+    website: Optional[str] = None
     is_active: Optional[bool] = None
 
 

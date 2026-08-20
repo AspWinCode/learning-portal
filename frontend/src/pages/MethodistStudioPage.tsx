@@ -397,7 +397,7 @@ function MethodistHub({ onEnterDirection }: { onEnterDirection: (id: string) => 
 export default function MethodistStudioPage() {
   const navigate = useNavigate();
   const [ready, setReady] = useState(false);
-  const [view, setView] = useState<'hub' | 'kodex' | 'courses'>('hub');
+  const [view, setView] = useState<'hub' | 'kodex-menu' | 'kodex' | 'courses'>('hub');
 
   useEffect(() => {
     const token = localStorage.getItem(METHODIST_STUDIO_TOKEN_KEY);
@@ -439,12 +439,100 @@ export default function MethodistStudioPage() {
     </Box>
   );
 
+  if (view === 'kodex-menu') {
+    return (
+      <ThemeProvider theme={hubTheme}>
+        <Box sx={{ height: '100vh', bgcolor: K.void, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          {/* Top bar */}
+          <Box sx={{ height: 52, flexShrink: 0, display: 'flex', alignItems: 'center', px: 3, gap: 2, borderBottom: `1px solid ${K.border}`, bgcolor: K.surface }}>
+            <ShieldIcon sx={{ color: K.neon, fontSize: 18 }} />
+            <Box>
+              <Typography sx={{ fontFamily: K.mono, fontWeight: 700, letterSpacing: '0.18em', color: K.text, fontSize: 13, lineHeight: 1.1 }}>
+                КОДЭКС
+              </Typography>
+              <Typography sx={{ fontSize: 9, color: K.textFaint, letterSpacing: '0.3em' }}>ВЫБЕРИТЕ ТИП КОНТЕНТА</Typography>
+            </Box>
+            <Box sx={{ flex: 1 }} />
+            <Tooltip title="Выйти из студии">
+              <IconButton onClick={handleLogout} size="small" sx={{ color: K.textFaint, '&:hover': { color: K.danger } }}>
+                <LogoutIcon sx={{ fontSize: 18 }} />
+              </IconButton>
+            </Tooltip>
+          </Box>
+
+          {/* Selection cards */}
+          <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Box sx={{ display: 'flex', gap: 3, maxWidth: 600 }}>
+              {/* Tasks */}
+              <Box
+                onClick={() => setView('kodex')}
+                sx={{
+                  flex: 1, border: `1px solid ${K.border}`, borderRadius: 2, p: 4,
+                  cursor: 'pointer', bgcolor: K.surface, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+                  transition: 'all 0.15s',
+                  '&:hover': { borderColor: K.neon, bgcolor: 'rgba(0,255,171,0.06)' },
+                }}
+              >
+                <Box sx={{ width: 56, height: 56, borderRadius: 2, bgcolor: 'rgba(0,255,171,0.1)', border: `1px solid rgba(0,255,171,0.2)`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <ShieldIcon sx={{ fontSize: 28, color: K.neon }} />
+                </Box>
+                <Box sx={{ textAlign: 'center' }}>
+                  <Typography sx={{ fontFamily: K.mono, fontSize: 16, fontWeight: 700, color: K.text, mb: 0.75 }}>Задачи</Typography>
+                  <Typography sx={{ fontSize: 12, color: K.textDim, lineHeight: 1.5 }}>
+                    Детективные дела на программирование.<br />Брифинг, улики, финал.
+                  </Typography>
+                </Box>
+              </Box>
+
+              {/* Theory */}
+              <Box
+                onClick={() => setView('courses')}
+                sx={{
+                  flex: 1, border: `1px solid rgba(167,139,250,0.2)`, borderRadius: 2, p: 4,
+                  cursor: 'pointer', bgcolor: K.surface, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+                  transition: 'all 0.15s',
+                  '&:hover': { borderColor: '#a78bfa', bgcolor: 'rgba(167,139,250,0.06)' },
+                }}
+              >
+                <Box sx={{ width: 56, height: 56, borderRadius: 2, bgcolor: 'rgba(167,139,250,0.1)', border: `1px solid rgba(167,139,250,0.2)`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <span style={{ fontFamily: K.mono, fontSize: 28, color: '#a78bfa', lineHeight: 1 }}>◈</span>
+                </Box>
+                <Box sx={{ textAlign: 'center' }}>
+                  <Typography sx={{ fontFamily: K.mono, fontSize: 16, fontWeight: 700, color: K.text, mb: 0.75 }}>Теория</Typography>
+                  <Typography sx={{ fontSize: 12, color: K.textDim, lineHeight: 1.5 }}>
+                    Учебные курсы, лекции<br />и домашние задания.
+                  </Typography>
+                </Box>
+              </Box>
+            </Box>
+          </Box>
+
+          {backButton}
+        </Box>
+      </ThemeProvider>
+    );
+  }
+
   if (view === 'kodex') {
     return (
       <ThemeProvider theme={hubTheme}>
         <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column', bgcolor: K.void, overflow: 'hidden' }}>
           <KodexStudioPage api={methodistKodexApi} />
-          {backButton}
+          <Box sx={{ position: 'fixed', bottom: 20, left: 20, zIndex: 9999 }}>
+            <Tooltip title="Назад к выбору">
+              <Button
+                onClick={() => setView('kodex-menu')}
+                startIcon={<BackIcon sx={{ fontSize: 15 }} />}
+                sx={{
+                  bgcolor: K.surfaceUp, color: K.textDim, fontSize: 11,
+                  border: `1px solid ${K.border}`, height: 32, px: 1.5,
+                  '&:hover': { bgcolor: K.surface, color: K.text, borderColor: 'rgba(0,201,138,0.4)' },
+                }}
+              >
+                Кодэкс
+              </Button>
+            </Tooltip>
+          </Box>
         </Box>
       </ThemeProvider>
     );
@@ -484,7 +572,7 @@ export default function MethodistStudioPage() {
 
         {/* Hub content */}
         <MethodistHub onEnterDirection={(id) => {
-          if (id === 'kodex') setView('kodex');
+          if (id === 'kodex') setView('kodex-menu');
           else if (id === 'courses') setView('courses');
         }} />
 

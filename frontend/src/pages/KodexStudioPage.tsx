@@ -299,6 +299,65 @@ const FinaleEditor: React.FC<{ items: any[]; onChange: (v: any[]) => void }> = (
   );
 };
 
+// ─── Tests editor ─────────────────────────────────────────────────────────────
+const TestsEditor: React.FC<{ tests: any[]; onChange: (v: any[]) => void }> = ({ tests, onChange }) => {
+  const upd = (i: number, field: 'args' | 'expected' | 'desc', raw: string) => {
+    onChange(tests.map((t, j) => {
+      if (j !== i) return t;
+      if (field === 'desc') return { ...t, desc: raw };
+      try { return { ...t, [field]: JSON.parse(raw) }; } catch { return t; }
+    }));
+  };
+  const addTest = () => onChange([...tests, { args: [], expected: null }]);
+  const removeTest = (i: number) => onChange(tests.filter((_, j) => j !== i));
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+        <Typography sx={{ fontSize: 10, letterSpacing: '0.18em', color: K.textFaint, textTransform: 'uppercase', fontFamily: K.mono }}>
+          ТЕСТЫ ({tests.length})
+        </Typography>
+        <Box sx={{ flex: 1 }} />
+        <Button size="small" startIcon={<AddIcon sx={{ fontSize: 12 }} />} onClick={addTest}
+          sx={{ color: K.neon, fontSize: 10, px: 1 }}>Добавить тест</Button>
+      </Box>
+      {tests.length === 0 && (
+        <Typography sx={{ fontSize: 11, color: K.textFaint, fontStyle: 'italic', py: 0.5 }}>Тесты не добавлены</Typography>
+      )}
+      {tests.map((t, i) => (
+        <Box key={i} sx={{ display: 'flex', gap: 1, alignItems: 'flex-start', mb: 1, p: 1.25, borderRadius: 1, border: `1px solid ${K.border}`, bgcolor: 'rgba(255,255,255,0.02)' }}>
+          <Typography sx={{ fontFamily: K.mono, fontSize: 10, color: K.textFaint, minWidth: 20, pt: 1.2 }}>#{i + 1}</Typography>
+          <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 1 }}>
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <TextField label="args (JSON массив)" size="small" sx={{ flex: 1 }}
+                defaultValue={JSON.stringify(t.args ?? [])}
+                key={JSON.stringify(t.args ?? [])}
+                onBlur={(e) => upd(i, 'args', e.target.value)}
+                inputProps={{ style: { fontFamily: K.mono, fontSize: 11 } }}
+                helperText="Аргументы функции: [1, 2]"
+              />
+              <TextField label="expected (JSON)" size="small" sx={{ flex: 1 }}
+                defaultValue={JSON.stringify(t.expected ?? null)}
+                key={'exp-' + JSON.stringify(t.expected ?? null)}
+                onBlur={(e) => upd(i, 'expected', e.target.value)}
+                inputProps={{ style: { fontFamily: K.mono, fontSize: 11 } }}
+                helperText="Ожидаемый результат"
+              />
+            </Box>
+            <TextField label="Описание (необязательно)" size="small" fullWidth
+              value={t.desc ?? ''}
+              onChange={(e) => upd(i, 'desc', e.target.value)}
+              inputProps={{ style: { fontSize: 11 } }}
+            />
+          </Box>
+          <IconButton size="small" onClick={() => removeTest(i)} sx={{ color: K.danger, mt: 0.5, p: 0.5 }}>
+            <DeleteIcon sx={{ fontSize: 15 }} />
+          </IconButton>
+        </Box>
+      ))}
+    </Box>
+  );
+};
+
 // ─── Evidence editor ──────────────────────────────────────────────────────────
 const EvidenceEditor: React.FC<{ items: any[]; onChange: (v: any[]) => void }> = ({ items, onChange }) => {
   const [open, setOpen] = useState<number | null>(null);
@@ -358,7 +417,7 @@ const EvidenceEditor: React.FC<{ items: any[]; onChange: (v: any[]) => void }> =
                   multiline minRows={3} maxRows={10} size="small" fullWidth
                   inputProps={{ style: { fontFamily: K.mono, fontSize: 12 } }}
                   helperText="Шаблон, который видит студент" />
-                <JsonField label="Тесты" value={item.tests ?? []} onChange={(v) => upd(i, 'tests', v)} minRows={3} />
+                <TestsEditor tests={item.tests ?? []} onChange={(v) => upd(i, 'tests', v)} />
               </Box>
             )}
           </Paper>

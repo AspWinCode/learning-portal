@@ -43,7 +43,7 @@ const DIRECTIONS: Direction[] = [
     icon: <ShieldIcon />,
     status: 'live',
     color: 'primary',
-    route: '/kodex',
+    route: '/kodex-menu',
   },
   {
     id: 'game',
@@ -66,8 +66,9 @@ const DIRECTIONS: Direction[] = [
     name: 'Учебные курсы',
     desc: 'Уроки, теория, домашние задания по программам обучения.',
     icon: <BookIcon />,
-    status: 'soon',
+    status: 'live',
     color: 'secondary',
+    route: '/course-studio',
   },
   {
     id: 'new',

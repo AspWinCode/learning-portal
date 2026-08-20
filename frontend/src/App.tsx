@@ -95,6 +95,8 @@ const DiskPage = React.lazy(() => import('./pages/DiskPage'));
 const PasswordsPage = React.lazy(() => import('./pages/PasswordsPage'));
 const NotesPage = React.lazy(() => import('./pages/NotesPage'));
 const KodexStudioPage = React.lazy(() => import('./pages/KodexStudioPage'));
+const KodexMenuPage = React.lazy(() => import('./pages/KodexMenuPage'));
+const CourseStudioPage = React.lazy(() => import('./pages/CourseStudioPage'));
 const MethodistHubPage = React.lazy(() => import('./pages/MethodistHubPage'));
 const MethodistStudioLoginPage = React.lazy(() => import('./pages/MethodistStudioLoginPage'));
 const MethodistStudioPage = React.lazy(() => import('./pages/MethodistStudioPage'));
@@ -849,6 +851,26 @@ function App() {
                 <PrivateRoute requiredPermission="kodex.access">
                   <SectionBoundary>
                     <KodexStudioPage />
+                  </SectionBoundary>
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/kodex-menu"
+              element={
+                <PrivateRoute requiredPermission="kodex.access">
+                  <SectionBoundary>
+                    <KodexMenuPage />
+                  </SectionBoundary>
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/course-studio"
+              element={
+                <PrivateRoute requiredPermission="kodex.manage">
+                  <SectionBoundary>
+                    <CourseStudioPage />
                   </SectionBoundary>
                 </PrivateRoute>
               }

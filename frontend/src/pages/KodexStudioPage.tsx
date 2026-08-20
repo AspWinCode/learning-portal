@@ -402,7 +402,7 @@ const CaseCard: React.FC<{ c: KodexExternalSummary; selected: boolean; onClick: 
 // ─── Main page ────────────────────────────────────────────────────────────────
 const SIDEBAR_W = 268;
 
-const KodexStudioPage: React.FC<{ api?: KodexApiClient }> = ({ api: apiClient = kodexExternalApi }) => {
+const KodexStudioPage: React.FC<{ api?: KodexApiClient; embedded?: boolean }> = ({ api: apiClient = kodexExternalApi, embedded = false }) => {
   const [cases, setCases] = useState<KodexExternalSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -476,11 +476,11 @@ const KodexStudioPage: React.FC<{ api?: KodexApiClient }> = ({ api: apiClient = 
     (c.num || '').toLowerCase().includes(search.toLowerCase())
   );
 
-  return (
-    <ThemeProvider theme={kodexTheme}>
-      <Box sx={{ height: '100vh', bgcolor: K.void, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+  const inner = (
+    <Box sx={{ height: embedded ? '100%' : '100vh', bgcolor: K.void, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-        {/* ── Top bar ── */}
+      {/* ── Top bar (hidden in embedded mode) ── */}
+      {!embedded && (
         <Box sx={{ height: 52, flexShrink: 0, display: 'flex', alignItems: 'center', borderBottom: `1px solid ${K.border}`, bgcolor: K.surface }}>
           {/* Logo */}
           <Box sx={{ width: SIDEBAR_W, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 1.5, px: 2 }}>
@@ -528,8 +528,9 @@ const KodexStudioPage: React.FC<{ api?: KodexApiClient }> = ({ api: apiClient = 
             )}
           </Box>
         </Box>
+      )}
 
-        {/* ── Sub bar: search + tabs ── */}
+      {/* ── Sub bar: search + tabs ── */}
         <Box sx={{ height: 44, flexShrink: 0, display: 'flex', alignItems: 'center', borderBottom: `1px solid ${K.border}`, bgcolor: K.surface }}>
           <Box sx={{ width: SIDEBAR_W, flexShrink: 0, px: 1.5 }}>
             <TextField size="small" fullWidth placeholder="Поиск..." value={search} onChange={(e) => setSearch(e.target.value)}
@@ -764,8 +765,9 @@ const KodexStudioPage: React.FC<{ api?: KodexApiClient }> = ({ api: apiClient = 
         </Snackbar>
 
       </Box>
-    </ThemeProvider>
   );
+
+  return <ThemeProvider theme={kodexTheme}>{inner}</ThemeProvider>;
 };
 
 // ─── AI draft dialog ──────────────────────────────────────────────────────────

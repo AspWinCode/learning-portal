@@ -29,6 +29,7 @@ import {
 } from '@mui/material';
 import {
   Add as AddIcon,
+  AutoAwesome as AiIcon,
   CheckCircle as CheckIcon,
   Delete as DeleteIcon,
   ExpandLess as ExpandLessIcon,
@@ -627,6 +628,88 @@ const CaseListItem: React.FC<{ c: KodexExternalSummary; selected: boolean; onCli
   );
 };
 
+// ─── AI черновик ─────────────────────────────────────────────────────────────
+const AiDraftDialog: React.FC<{ open: boolean; onClose: () => void; onDraft: (p: Partial<KodexExternalFull>) => void }> = ({ open, onClose, onDraft }) => {
+  const [idea, setIdea] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [preview, setPreview] = useState<Partial<KodexExternalFull> | null>(null);
+  const [err, setErr] = useState('');
+
+  useEffect(() => { if (open) { setIdea(''); setPreview(null); setErr(''); setLoading(false); } }, [open]);
+
+  const generate = async () => {
+    if (!idea.trim()) return;
+    setLoading(true); setErr(''); setPreview(null);
+    try { setPreview(await kodexExternalApi.aiDraft(idea.trim())); }
+    catch (e: any) { setErr(e?.response?.data?.detail || 'Ошибка генерации'); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <AiIcon color="info" /> AI Черновик дела
+      </DialogTitle>
+      <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, pt: 2 }}>
+        <TextField
+          label="Опишите идею дела"
+          multiline rows={4} fullWidth
+          value={idea} onChange={(e) => setIdea(e.target.value)}
+          placeholder="Например: Дело о пропавшей переменной. Студент должен написать функцию, которая находит неиспользуемые переменные. Сложность — Агент."
+          helperText="Опишите тему, задачу, сложность — AI сгенерирует полную структуру дела"
+        />
+        {err && <Alert severity="error">{err}</Alert>}
+        {preview && (
+          <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
+            <Box sx={{ px: 2, py: 1.25, bgcolor: 'action.selected', borderBottom: 1, borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <AiIcon color="info" sx={{ fontSize: 16 }} />
+              <Typography variant="body2" color="text.secondary">Черновик сгенерирован</Typography>
+              <Box sx={{ flex: 1 }} />
+              <Chip label={preview.num || preview.slug} size="small" />
+            </Box>
+            <Box sx={{ px: 2, py: 2, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+              <Typography variant="subtitle1" fontWeight={600}>{preview.title}</Typography>
+              {preview.anno && <Typography variant="body2" color="text.secondary">{preview.anno}</Typography>}
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                {preview.difficulty != null && <Chip label={DIFFICULTY_LABELS[preview.difficulty]?.label || `Сложность ${preview.difficulty}`} size="small" color={DIFFICULTY_LABELS[preview.difficulty]?.color} />}
+                {preview.curator && <Chip label={`Куратор: ${preview.curator}`} size="small" />}
+                {Array.isArray(preview.briefing) && preview.briefing.length > 0 && <Chip label={`Брифинг: ${preview.briefing.length} блок(а)`} size="small" />}
+                {Array.isArray(preview.evidence) && preview.evidence.length > 0 && <Chip label={`Улики: ${preview.evidence.length}`} size="small" />}
+              </Box>
+              {preview.task && (
+                <Box sx={{ borderLeft: 3, borderColor: 'primary.main', pl: 1.5 }}>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5, textTransform: 'uppercase', letterSpacing: '0.1em' }}>Задание</Typography>
+                  <Typography variant="body2">{preview.task}</Typography>
+                </Box>
+              )}
+            </Box>
+          </Paper>
+        )}
+      </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2, gap: 1 }}>
+        <Button onClick={onClose}>Отмена</Button>
+        {!preview ? (
+          <Button onClick={generate} variant="contained" color="info" disabled={loading || !idea.trim()}
+            startIcon={loading ? <CircularProgress size={14} color="inherit" /> : <AiIcon sx={{ fontSize: 16 }} />}>
+            {loading ? 'Генерирую...' : 'Сгенерировать'}
+          </Button>
+        ) : (
+          <>
+            <Button onClick={generate} disabled={loading} color="info"
+              startIcon={loading ? <CircularProgress size={13} color="inherit" /> : <AiIcon sx={{ fontSize: 14 }} />}>
+              Перегенерировать
+            </Button>
+            <Button onClick={() => { if (preview) onDraft(preview); }} variant="contained"
+              startIcon={<SaveIcon sx={{ fontSize: 16 }} />}>
+              Создать дело
+            </Button>
+          </>
+        )}
+      </DialogActions>
+    </Dialog>
+  );
+};
+
 // ─── Диалог создания дела ─────────────────────────────────────────────────────
 const NewCaseDialog: React.FC<{ open: boolean; onClose: () => void; onCreate: (p: Partial<KodexExternalFull>) => void }> = ({ open, onClose, onCreate }) => {
   const [form, setForm] = useState({ slug: '', num: '', title: '', curator: '', difficulty: 1 });
@@ -673,6 +756,7 @@ export default function KodexCasesPage() {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ msg: string; sev: 'success' | 'error' } | null>(null);
   const [newDialog, setNewDialog] = useState(false);
+  const [aiDialog, setAiDialog] = useState(false);
   const [delConfirm, setDelConfirm] = useState<string | null>(null);
   const [search, setSearch] = useState('');
 
@@ -764,7 +848,10 @@ export default function KodexCasesPage() {
               </React.Fragment>
             ))}
           </Box>
-          <Box sx={{ p: 1.5, borderTop: 1, borderColor: 'divider' }}>
+          <Box sx={{ p: 1.5, borderTop: 1, borderColor: 'divider', display: 'flex', flexDirection: 'column', gap: 1 }}>
+            <Button fullWidth variant="outlined" color="info" startIcon={<AiIcon />} onClick={() => setAiDialog(true)}>
+              AI Черновик
+            </Button>
             <Button fullWidth variant="contained" startIcon={<AddIcon />} onClick={() => setNewDialog(true)}>
               Новое дело
             </Button>
@@ -920,6 +1007,7 @@ export default function KodexCasesPage() {
         </Box>
       </Box>
 
+      <AiDraftDialog open={aiDialog} onClose={() => setAiDialog(false)} onDraft={createCase} />
       <NewCaseDialog open={newDialog} onClose={() => setNewDialog(false)} onCreate={createCase} />
 
       <Dialog open={delConfirm !== null} onClose={() => setDelConfirm(null)} maxWidth="xs" fullWidth>

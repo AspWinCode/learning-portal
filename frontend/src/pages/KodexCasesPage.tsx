@@ -628,6 +628,175 @@ const CaseListItem: React.FC<{ c: KodexExternalSummary; selected: boolean; onCli
   );
 };
 
+// ─── Промт для AI-генерации дела ─────────────────────────────────────────────
+const CASE_PROMPT = `Сгенерируй дело для платформы Кодэкс — детективной игры на программирование (Python).
+Верни ТОЛЬКО валидный JSON без пояснений, строго по следующей схеме:
+
+{
+  "slug": "case-xxx",          // уникальный ID: только a-z, 0-9, дефис (например: case-b07)
+  "num": "ДЕЛО-007",           // отображаемый номер
+  "title": "Название дела",
+  "curator": "viktor",         // имя куратора-персонажа
+  "anno": "Краткое описание для карточки студента (1-2 предложения)",
+  "difficulty": 1,             // 1 = Новичок, 2 = Агент, 3 = Эксперт
+  "rank": 1,
+  "reward_credits": 30,
+  "reward_rep": 20,
+  "playable": false,
+  "goal": "Цель расследования",
+  "suspects": "Подозреваемые или участники событий",
+  "task": "Подробное задание для студента",
+  "fn_name": "solve",          // имя функции Python, которую пишет студент
+  "starter": "def solve(...):\\n    pass",
+  "briefing": [
+    {
+      "curator": "viktor",
+      "body": [
+        "Текстовый параграф брифинга",
+        { "code": "# Пример кода если нужен" }
+      ]
+    }
+  ],
+  "materials": [
+    { "title": "Название ресурса", "url": "https://docs.python.org/..." }
+  ],
+  "evidence": [
+    {
+      "id": "1",
+      "title": "Название улики",
+      "fnName": "solve",
+      "starter": "def solve(x):\\n    pass",
+      "tests": [
+        { "args": [1, 2], "expected": 3 },
+        { "args": [0, 0], "expected": 0 }
+      ]
+    }
+  ],
+  "versions": [
+    { "id": "1", "text": "Неверный вариант закрытия", "correct": false },
+    { "id": "2", "text": "Правильный вариант закрытия", "correct": true }
+  ],
+  "hints": {
+    "1": {
+      "1": "Первая подсказка для улики 1",
+      "2": "Вторая подсказка для улики 1"
+    }
+  },
+  "finale": [
+    { "curator": "viktor", "text": "Отличная работа, агент! Дело закрыто." }
+  ]
+}
+
+Правила:
+- slug должен быть уникальным, формат: case-[буквы/цифры/дефис]
+- difficulty: только 1, 2 или 3
+- briefing.body — массив: строки = текст, объекты { "code": "..." } = блоки кода
+- evidence.tests — реальные тесты для автопроверки функции
+- versions — минимум 2 варианта, ровно один с correct: true
+- Весь JSON должен быть на русском языке (кроме кода и slug)`;
+
+// ─── Диалог импорта JSON ──────────────────────────────────────────────────────
+const ImportJsonDialog: React.FC<{ open: boolean; onClose: () => void; onImport: (p: Partial<KodexExternalFull>) => void }> = ({ open, onClose, onImport }) => {
+  const [activeTab, setActiveTab] = useState(0);
+  const [jsonText, setJsonText] = useState('');
+  const [err, setErr] = useState('');
+  const [parsed, setParsed] = useState<Partial<KodexExternalFull> | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => { if (open) { setJsonText(''); setErr(''); setParsed(null); setActiveTab(0); } }, [open]);
+
+  const handleJson = (text: string) => {
+    setJsonText(text);
+    setErr('');
+    setParsed(null);
+    if (!text.trim()) return;
+    try {
+      const data = JSON.parse(text);
+      if (!data.slug) { setErr('Поле slug обязательно'); return; }
+      if (!data.title) { setErr('Поле title обязательно'); return; }
+      setParsed(data);
+    } catch {
+      setErr('Некорректный JSON — проверьте структуру');
+    }
+  };
+
+  const copyPrompt = () => {
+    navigator.clipboard.writeText(CASE_PROMPT).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle>Импорт дела из JSON</DialogTitle>
+      <Box sx={{ borderBottom: 1, borderColor: 'divider', px: 3 }}>
+        <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)}>
+          <Tab label="1. Промт для ИИ" />
+          <Tab label="2. Вставить JSON" />
+        </Tabs>
+      </Box>
+      <DialogContent sx={{ pt: 2.5, minHeight: 340 }}>
+        {activeTab === 0 && (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Alert severity="info" icon={<AiIcon />}>
+              Скопируйте промт, вставьте в ChatGPT или Claude, добавьте свою тему дела — и вернитесь со сгенерированным JSON.
+            </Alert>
+            <Box sx={{ position: 'relative' }}>
+              <TextField
+                multiline rows={16} fullWidth
+                value={CASE_PROMPT}
+                InputProps={{ readOnly: true, sx: { fontFamily: MONO, fontSize: 11 } }}
+              />
+            </Box>
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button variant="contained" color="info" startIcon={<AiIcon />} onClick={copyPrompt} sx={{ minWidth: 180 }}>
+                {copied ? 'Скопировано ✓' : 'Скопировать промт'}
+              </Button>
+              <Button variant="outlined" onClick={() => setActiveTab(1)}>
+                У меня уже есть JSON →
+              </Button>
+            </Box>
+          </Box>
+        )}
+        {activeTab === 1 && (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Typography variant="body2" color="text.secondary">
+              Вставьте JSON, сгенерированный ИИ. Все поля заполнятся автоматически.
+            </Typography>
+            <TextField
+              label="JSON дела"
+              multiline rows={14} fullWidth
+              value={jsonText}
+              onChange={(e) => handleJson(e.target.value)}
+              error={!!err}
+              helperText={err || (parsed ? `✓ Дело «${parsed.title}» готово к импорту` : 'Вставьте JSON сюда')}
+              inputProps={{ style: { fontFamily: MONO, fontSize: 12 } }}
+              placeholder={'{\n  "slug": "case-b01",\n  "title": "Название дела",\n  ...\n}'}
+            />
+            {parsed && (
+              <Paper variant="outlined" sx={{ p: 2 }}>
+                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <Typography variant="subtitle2">{parsed.num || parsed.slug} — {parsed.title}</Typography>
+                  {parsed.difficulty != null && <Chip label={DIFFICULTY_LABELS[parsed.difficulty]?.label} size="small" color={DIFFICULTY_LABELS[parsed.difficulty]?.color} />}
+                  {Array.isArray(parsed.briefing) && parsed.briefing.length > 0 && <Chip label={`Брифинг: ${parsed.briefing.length} блок(а)`} size="small" variant="outlined" />}
+                  {Array.isArray(parsed.evidence) && parsed.evidence.length > 0 && <Chip label={`Улики: ${parsed.evidence.length}`} size="small" variant="outlined" />}
+                  {Array.isArray(parsed.versions) && parsed.versions.length > 0 && <Chip label={`Версий: ${parsed.versions.length}`} size="small" variant="outlined" />}
+                </Box>
+              </Paper>
+            )}
+          </Box>
+        )}
+      </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2 }}>
+        <Button onClick={onClose}>Отмена</Button>
+        {activeTab === 1 && (
+          <Button variant="contained" disabled={!parsed} onClick={() => { if (parsed) onImport(parsed); }}>
+            Импортировать и открыть
+          </Button>
+        )}
+      </DialogActions>
+    </Dialog>
+  );
+};
+
 // ─── AI черновик ─────────────────────────────────────────────────────────────
 const AiDraftDialog: React.FC<{ open: boolean; onClose: () => void; onDraft: (p: Partial<KodexExternalFull>) => void }> = ({ open, onClose, onDraft }) => {
   const [idea, setIdea] = useState('');
@@ -757,6 +926,7 @@ export default function KodexCasesPage() {
   const [toast, setToast] = useState<{ msg: string; sev: 'success' | 'error' } | null>(null);
   const [newDialog, setNewDialog] = useState(false);
   const [aiDialog, setAiDialog] = useState(false);
+  const [importDialog, setImportDialog] = useState(false);
   const [delConfirm, setDelConfirm] = useState<string | null>(null);
   const [search, setSearch] = useState('');
 
@@ -851,6 +1021,9 @@ export default function KodexCasesPage() {
           <Box sx={{ p: 1.5, borderTop: 1, borderColor: 'divider', display: 'flex', flexDirection: 'column', gap: 1 }}>
             <Button fullWidth variant="outlined" color="info" startIcon={<AiIcon />} onClick={() => setAiDialog(true)}>
               AI Черновик
+            </Button>
+            <Button fullWidth variant="outlined" onClick={() => setImportDialog(true)}>
+              Импорт JSON
             </Button>
             <Button fullWidth variant="contained" startIcon={<AddIcon />} onClick={() => setNewDialog(true)}>
               Новое дело
@@ -1008,6 +1181,7 @@ export default function KodexCasesPage() {
       </Box>
 
       <AiDraftDialog open={aiDialog} onClose={() => setAiDialog(false)} onDraft={createCase} />
+      <ImportJsonDialog open={importDialog} onClose={() => setImportDialog(false)} onImport={createCase} />
       <NewCaseDialog open={newDialog} onClose={() => setNewDialog(false)} onCreate={createCase} />
 
       <Dialog open={delConfirm !== null} onClose={() => setDelConfirm(null)} maxWidth="xs" fullWidth>

@@ -363,6 +363,47 @@ class StudentCourseProgress(Base):
     catalog_item = relationship("CourseCatalogItem", back_populates="progress_records")
 
 
+class CourseContent(Base):
+    """Учебный курс, создаётся методистом в Студии методиста."""
+
+    __tablename__ = "course_contents"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(256), nullable=False)
+    description = Column(Text, nullable=True)
+    is_published = Column(Boolean, nullable=False, default=False)
+    sort_order = Column(Integer, nullable=False, default=0)
+    author_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    lessons = relationship(
+        "CourseLesson",
+        back_populates="course",
+        cascade="all, delete-orphan",
+        order_by="CourseLesson.sort_order",
+    )
+    author = relationship("User", foreign_keys=[author_id])
+
+
+class CourseLesson(Base):
+    """Урок внутри учебного курса: теория (лекция) и домашнее задание."""
+
+    __tablename__ = "course_lessons"
+
+    id = Column(Integer, primary_key=True, index=True)
+    course_id = Column(Integer, ForeignKey("course_contents.id", ondelete="CASCADE"), nullable=False, index=True)
+    title = Column(String(256), nullable=False)
+    theory_md = Column(Text, nullable=True)
+    homework_md = Column(Text, nullable=True)
+    sort_order = Column(Integer, nullable=False, default=0)
+    is_published = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    course = relationship("CourseContent", back_populates="lessons")
+
+
 class StudentAccountTransactionKind(str, enum.Enum):
     PAYMENT = "payment"
     LESSON_DEDUCTION = "lesson_deduction"

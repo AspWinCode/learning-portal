@@ -22,6 +22,7 @@ import { METHODIST_STUDIO_TOKEN_KEY } from '../services/methodistStudioClient';
 import { methodistKodexApi } from '../services/methodistKodexApi';
 import { KodexExternalSummary } from '../services/kodexApi';
 import KodexStudioPage from './KodexStudioPage';
+import CourseStudioPage from './CourseStudioPage';
 
 // ─── Brand ───────────────────────────────────────────────────────────────────
 const K = {
@@ -102,7 +103,7 @@ const DIRECTIONS: Direction[] = [
     name: 'Учебные курсы',
     desc: 'Уроки, теория, домашние задания по программам обучения.',
     icon: <span style={{ fontFamily: K.mono, fontSize: 18, lineHeight: 1 }}>◈</span>,
-    status: 'soon',
+    status: 'live',
     accentBg: 'rgba(167,139,250,0.08)',
     accentColor: '#a78bfa',
   },
@@ -396,7 +397,7 @@ function MethodistHub({ onEnterDirection }: { onEnterDirection: (id: string) => 
 export default function MethodistStudioPage() {
   const navigate = useNavigate();
   const [ready, setReady] = useState(false);
-  const [view, setView] = useState<'hub' | 'kodex'>('hub');
+  const [view, setView] = useState<'hub' | 'kodex' | 'courses'>('hub');
 
   useEffect(() => {
     const token = localStorage.getItem(METHODIST_STUDIO_TOKEN_KEY);
@@ -420,27 +421,41 @@ export default function MethodistStudioPage() {
     );
   }
 
+  const backButton = (
+    <Box sx={{ position: 'fixed', bottom: 20, left: 20, zIndex: 9999 }}>
+      <Tooltip title="Вернуться в хаб">
+        <Button
+          onClick={() => setView('hub')}
+          startIcon={<BackIcon sx={{ fontSize: 15 }} />}
+          sx={{
+            bgcolor: K.surfaceUp, color: K.textDim, fontSize: 11,
+            border: `1px solid ${K.border}`, height: 32, px: 1.5,
+            '&:hover': { bgcolor: K.surface, color: K.text, borderColor: 'rgba(0,201,138,0.4)' },
+          }}
+        >
+          Студия методиста
+        </Button>
+      </Tooltip>
+    </Box>
+  );
+
   if (view === 'kodex') {
     return (
       <ThemeProvider theme={hubTheme}>
         <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column', bgcolor: K.void, overflow: 'hidden' }}>
           <KodexStudioPage api={methodistKodexApi} />
-          {/* Back button injected via floating overlay */}
-          <Box sx={{ position: 'fixed', bottom: 20, left: 20, zIndex: 9999 }}>
-            <Tooltip title="Вернуться в хаб">
-              <Button
-                onClick={() => setView('hub')}
-                startIcon={<BackIcon sx={{ fontSize: 15 }} />}
-                sx={{
-                  bgcolor: K.surfaceUp, color: K.textDim, fontSize: 11,
-                  border: `1px solid ${K.border}`, height: 32, px: 1.5,
-                  '&:hover': { bgcolor: K.surface, color: K.text, borderColor: 'rgba(0,201,138,0.4)' },
-                }}
-              >
-                Студия методиста
-              </Button>
-            </Tooltip>
-          </Box>
+          {backButton}
+        </Box>
+      </ThemeProvider>
+    );
+  }
+
+  if (view === 'courses') {
+    return (
+      <ThemeProvider theme={hubTheme}>
+        <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column', bgcolor: K.void, overflow: 'hidden' }}>
+          <CourseStudioPage />
+          {backButton}
         </Box>
       </ThemeProvider>
     );
@@ -468,7 +483,10 @@ export default function MethodistStudioPage() {
         </Box>
 
         {/* Hub content */}
-        <MethodistHub onEnterDirection={(id) => { if (id === 'kodex') setView('kodex'); }} />
+        <MethodistHub onEnterDirection={(id) => {
+          if (id === 'kodex') setView('kodex');
+          else if (id === 'courses') setView('courses');
+        }} />
 
       </Box>
     </ThemeProvider>

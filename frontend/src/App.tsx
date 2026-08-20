@@ -97,6 +97,7 @@ const NotesPage = React.lazy(() => import('./pages/NotesPage'));
 const KodexStudioPage = React.lazy(() => import('./pages/KodexStudioPage'));
 const KodexPortalPage = React.lazy(() => import('./pages/KodexPortalPage'));
 const KodexMenuPage = React.lazy(() => import('./pages/KodexMenuPage'));
+const KodexCasesPage = React.lazy(() => import('./pages/KodexCasesPage'));
 const CourseStudioPage = React.lazy(() => import('./pages/CourseStudioPage'));
 const MethodistHubPage = React.lazy(() => import('./pages/MethodistHubPage'));
 const MethodistStudioLoginPage = React.lazy(() => import('./pages/MethodistStudioLoginPage'));
@@ -851,7 +852,7 @@ function App() {
               element={
                 <PrivateRoute requiredPermission="kodex.access">
                   <SectionBoundary>
-                    <KodexPortalPage />
+                    <KodexCasesPage />
                   </SectionBoundary>
                 </PrivateRoute>
               }

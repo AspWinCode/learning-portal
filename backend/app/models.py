@@ -22,6 +22,7 @@ class UserRole(str, enum.Enum):
     SEO_MANAGER = "seo_manager"
     METHODIST = "methodist"
     DEVELOPER = "developer"
+    MANAGER = "manager"
 
 
 class SeoPageStatus(str, enum.Enum):

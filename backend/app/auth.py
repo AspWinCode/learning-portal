@@ -96,6 +96,10 @@ DEFAULT_ROLE_PERMISSIONS: Dict[str, Set[str]] = {
         "projects.access",
         "owner_workspace.access",
     },
+    UserRole.MANAGER.value: {
+        "students.access",
+        "student_portal.manage",
+    },
 }
 
 # Роли с постоянным agile-доступом (admin/owner имеют '*', поэтому не нужны здесь явно)

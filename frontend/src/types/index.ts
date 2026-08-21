@@ -955,6 +955,17 @@ export interface ParentDashboardNearestLesson {
   trainer_name?: string | null;
 }
 
+export interface ParentDashboardCourseProgress {
+  course_code: string;
+  course_name: string;
+  cases_solved: number;
+  cases_total: number;
+  rank_name: string | null;
+  badges_count: number;
+  last_badge_name: string | null;
+  updated_at: string | null;
+}
+
 export interface ParentDashboardStudentSummary {
   student_id: number;
   student_name: string;
@@ -963,6 +974,7 @@ export interface ParentDashboardStudentSummary {
   payment_link?: string | null;
   nearest_lesson?: ParentDashboardNearestLesson | null;
   ai_insight?: StudentLearningAIInsight | null;
+  course_progress?: ParentDashboardCourseProgress[];
 }
 
 export interface ParentDashboardSummary {
@@ -2398,9 +2410,21 @@ export interface StudentCourseAccessOut {
   granted_at?: string | null;
 }
 
+export interface StudentCourseProgressOut {
+  course_code: string;
+  course_name: string;
+  cases_solved: number;
+  cases_total: number;
+  rank_name: string | null;
+  badges_count: number;
+  last_badge_name: string | null;
+  updated_at: string | null;
+}
+
 export interface StudentPortalAdminView {
   credential: StudentCredentialOut | null;
   access_grants: StudentCourseAccessOut[];
+  course_progress: StudentCourseProgressOut[];
 }
 
 export interface PLReportRow {

@@ -48,6 +48,7 @@ from app.schemas.student_portal import (
     StudentGradeOut,
     StudentLoginRequest,
     StudentLoginResponse,
+    StudentCourseProgressOut,
     StudentPortalAdminView,
     StudentProfileOut,
     UpcomingLessonOut,
@@ -502,9 +503,28 @@ async def admin_get_student_portal_view(
         raise HTTPException(status_code=404, detail="Ученик не найден")
     credential = db.query(StudentCredential).filter(StudentCredential.student_id == student_id).first()
     grants = db.query(StudentCourseAccess).filter(StudentCourseAccess.student_id == student_id).all()
+    progress_rows = (
+        db.query(StudentCourseProgress, CourseCatalogItem)
+        .join(CourseCatalogItem, CourseCatalogItem.id == StudentCourseProgress.catalog_item_id)
+        .filter(StudentCourseProgress.student_id == student_id)
+        .all()
+    )
     return StudentPortalAdminView(
         credential=StudentCredentialOut.model_validate(credential) if credential else None,
         access_grants=[StudentCourseAccessOut.model_validate(g) for g in grants],
+        course_progress=[
+            StudentCourseProgressOut(
+                course_code=ci.code,
+                course_name=ci.name,
+                cases_solved=p.cases_solved,
+                cases_total=p.cases_total,
+                rank_name=p.rank_name,
+                badges_count=p.badges_count,
+                last_badge_name=p.last_badge_name,
+                updated_at=p.updated_at,
+            )
+            for p, ci in progress_rows
+        ],
     )
 
 

@@ -118,10 +118,22 @@ class StudentCourseAccessOut(BaseModel):
     granted_at: Optional[datetime] = None
 
 
+class StudentCourseProgressOut(BaseModel):
+    course_code: str
+    course_name: str
+    cases_solved: int
+    cases_total: int
+    rank_name: Optional[str] = None
+    badges_count: int
+    last_badge_name: Optional[str] = None
+    updated_at: Optional[datetime] = None
+
+
 class StudentPortalAdminView(BaseModel):
     """Сводка по кабинету конкретного ученика — для карточки ученика в админке."""
     credential: Optional[StudentCredentialOut] = None
     access_grants: List[StudentCourseAccessOut] = []
+    course_progress: List[StudentCourseProgressOut] = []
 
 
 class StudentGradeOut(BaseModel):

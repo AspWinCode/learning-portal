@@ -460,6 +460,31 @@ const ParentDashboardPage: React.FC = () => {
                     </Typography>
                   </Paper>
                 ) : null}
+                {(summaryByStudentId[student.id]?.course_progress?.length ?? 0) > 0 ? (
+                  <Paper variant="outlined" sx={{ p: 1.5, mt: 1.5 }}>
+                    <Typography variant="subtitle2" gutterBottom>Прогресс на платформах</Typography>
+                    <Stack spacing={1}>
+                      {summaryByStudentId[student.id].course_progress!.map((cp) => (
+                        <Box key={cp.course_code}>
+                          <Stack direction="row" justifyContent="space-between" alignItems="center">
+                            <Typography variant="body2" fontWeight={500}>{cp.course_name}</Typography>
+                            {cp.rank_name ? <Chip size="small" label={cp.rank_name} variant="outlined" /> : null}
+                          </Stack>
+                          <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 0.5 }}>
+                            <Typography variant="caption" color="text.secondary">
+                              Решено: {cp.cases_solved}{cp.cases_total > 0 ? ` / ${cp.cases_total}` : ''}
+                            </Typography>
+                            {cp.badges_count > 0 ? (
+                              <Typography variant="caption" color="text.secondary">
+                                Значков: {cp.badges_count}{cp.last_badge_name ? ` (последний: ${cp.last_badge_name})` : ''}
+                              </Typography>
+                            ) : null}
+                          </Stack>
+                        </Box>
+                      ))}
+                    </Stack>
+                  </Paper>
+                ) : null}
                 </>
               ) : null}
               {progress[student.id]?.program_id && (

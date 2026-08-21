@@ -124,6 +124,7 @@ const DefaultRedirect: React.FC = () => {
   if (effectiveRole === 'seo_manager') return <Navigate to="/seo/pages" replace />;
   if (effectiveRole === 'methodist') return <Navigate to="/methodist-hub" replace />;
   if (effectiveRole === 'trainer') return <Navigate to="/trainer-cockpit" replace />;
+  if (effectiveRole === 'manager') return <Navigate to="/students" replace />;
   return <Navigate to="/dashboard" replace />;
 };
 

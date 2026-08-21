@@ -1263,6 +1263,32 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
                         </Typography>
                       )}
                     </Box>
+
+                    {(portalView?.course_progress?.length ?? 0) > 0 && (
+                      <Box>
+                        <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>Прогресс на платформах</Typography>
+                        <Stack spacing={1}>
+                          {portalView!.course_progress.map((cp) => (
+                            <Box key={cp.course_code} sx={{ p: 1, border: '1px solid', borderColor: 'divider', borderRadius: 1.5 }}>
+                              <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                <Typography variant="body2" fontWeight={500}>{cp.course_name}</Typography>
+                                {cp.rank_name && <Chip size="small" label={cp.rank_name} variant="outlined" />}
+                              </Stack>
+                              <Stack direction="row" spacing={2} sx={{ mt: 0.5 }}>
+                                <Typography variant="caption" color="text.secondary">
+                                  Задач: {cp.cases_solved}{cp.cases_total > 0 ? ` / ${cp.cases_total}` : ''}
+                                </Typography>
+                                {cp.badges_count > 0 && (
+                                  <Typography variant="caption" color="text.secondary">
+                                    Значков: {cp.badges_count}{cp.last_badge_name ? ` (${cp.last_badge_name})` : ''}
+                                  </Typography>
+                                )}
+                              </Stack>
+                            </Box>
+                          ))}
+                        </Stack>
+                      </Box>
+                    )}
                   </Stack>
                 )}
               </Paper>

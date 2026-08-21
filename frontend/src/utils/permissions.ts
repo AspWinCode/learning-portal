@@ -10,6 +10,7 @@ const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
   seo_manager: ['seo.access', 'seo.manage'],
   methodist: ['kodex.access', 'kodex.manage'],
   developer: ['agile.access', 'agile.manage', 'tasks.access', 'projects.access', 'owner_workspace.access'],
+  manager: ['students.access', 'student_portal.manage'],
 };
 
 export const getEffectiveRole = (user: User | null | undefined): string | null => {

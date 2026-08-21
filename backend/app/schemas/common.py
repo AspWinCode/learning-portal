@@ -10,6 +10,8 @@ class UserRole(str, Enum):
     SALES = "sales"
     SEO_MANAGER = "seo_manager"
     METHODIST = "methodist"
+    DEVELOPER = "developer"
+    MANAGER = "manager"
 
 
 class SeoPageStatus(str, Enum):

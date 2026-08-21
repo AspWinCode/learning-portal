@@ -43,7 +43,8 @@ import {
   Shield as ShieldIcon,
 } from '@mui/icons-material';
 import Layout from '../components/Layout';
-import { kodexExternalApi, KodexExternalFull, KodexExternalSummary } from '../services/kodexApi';
+import { kodexExternalApi, KodexExternalFull, KodexExternalSummary, kodexModuleTheoryApi, KodexModuleTheory } from '../services/kodexApi';
+import MenuBookIcon from '@mui/icons-material/MenuBook';
 
 const MONO = '"JetBrains Mono","SFMono-Regular",Consolas,monospace';
 
@@ -159,7 +160,22 @@ const BodyBlocks: React.FC<{ blocks: any[]; onChange: (v: any[]) => void }> = ({
 };
 
 // ─── Тесты — редактор ─────────────────────────────────────────────────────────
-const TestsEditor: React.FC<{ tests: any[]; onChange: (v: any[]) => void }> = ({ tests, onChange }) => {
+// Формат теста зависит от режима дела (см. runner harness.py):
+//  - function-режим (задано case-level fnName): {args: [...], expect: ...} — вызов функции.
+//  - script-режим (fnName пустой): {vars: {...}, expect: ...} — переменные подставляются
+//    в код перед выполнением, expect сравнивается с тем, что напечатал print().
+// Поле результата всегда называется expect (не expected!) — так его читает harness.py.
+function varsToRows(vars: any): { key: string; value: any }[] {
+  if (!vars || typeof vars !== 'object') return [];
+  return Object.entries(vars).map(([key, value]) => ({ key, value }));
+}
+function rowsToVars(rows: { key: string; value: any }[]): Record<string, any> {
+  const result: Record<string, any> = {};
+  for (const r of rows) if (r.key) result[r.key] = r.value;
+  return result;
+}
+
+const TestsEditor: React.FC<{ tests: any[]; onChange: (v: any[]) => void; mode: 'function' | 'script' }> = ({ tests, onChange, mode }) => {
   const updArg = (ti: number, ai: number, val: string) => {
     onChange(tests.map((t, j) => {
       if (j !== ti) return t;
@@ -174,8 +190,30 @@ const TestsEditor: React.FC<{ tests: any[]; onChange: (v: any[]) => void }> = ({
   const removeArg = (ti: number, ai: number) => {
     onChange(tests.map((t, j) => j !== ti ? t : { ...t, args: (t.args ?? []).filter((_: any, k: number) => k !== ai) }));
   };
-  const updExpected = (ti: number, val: string) => {
-    onChange(tests.map((t, j) => j !== ti ? t : { ...t, expected: smartParse(val) }));
+  const updVarRow = (ti: number, ri: number, field: 'key' | 'value', val: string) => {
+    onChange(tests.map((t, j) => {
+      if (j !== ti) return t;
+      const rows = varsToRows(t.vars);
+      rows[ri] = { ...rows[ri], [field]: field === 'value' ? smartParse(val) : val };
+      return { ...t, vars: rowsToVars(rows) };
+    }));
+  };
+  const addVarRow = (ti: number) => {
+    onChange(tests.map((t, j) => {
+      if (j !== ti) return t;
+      const rows = [...varsToRows(t.vars), { key: '', value: '' }];
+      return { ...t, vars: rowsToVars(rows) };
+    }));
+  };
+  const removeVarRow = (ti: number, ri: number) => {
+    onChange(tests.map((t, j) => {
+      if (j !== ti) return t;
+      const rows = varsToRows(t.vars).filter((_, k) => k !== ri);
+      return { ...t, vars: rowsToVars(rows) };
+    }));
+  };
+  const updExpect = (ti: number, val: string) => {
+    onChange(tests.map((t, j) => j !== ti ? t : { ...t, expect: smartParse(val) }));
   };
   const updDesc = (ti: number, val: string) => {
     onChange(tests.map((t, j) => j !== ti ? t : { ...t, desc: val }));
@@ -190,7 +228,7 @@ const TestsEditor: React.FC<{ tests: any[]; onChange: (v: any[]) => void }> = ({
         </Typography>
         <Box sx={{ flex: 1 }} />
         <Button size="small" startIcon={<AddIcon sx={{ fontSize: 13 }} />}
-          onClick={() => onChange([...tests, { args: [''], expected: '' }])}>
+          onClick={() => onChange([...tests, mode === 'function' ? { args: [''], expect: '' } : { vars: {}, expect: '' }])}>
           Добавить тест
         </Button>
       </Box>
@@ -210,46 +248,80 @@ const TestsEditor: React.FC<{ tests: any[]; onChange: (v: any[]) => void }> = ({
             </IconButton>
           </Box>
           <Box sx={{ display: 'flex', gap: 2 }}>
-            {/* Arguments */}
-            <Box sx={{ flex: 1 }}>
-              <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
-                Входные данные (аргументы)
-              </Typography>
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                {(t.args ?? []).map((arg: any, ai: number) => (
-                  <Box key={ai} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                    <Typography variant="caption" color="text.disabled" sx={{ minWidth: 68 }}>
-                      Аргумент {ai + 1}
-                    </Typography>
-                    <TextField size="small" sx={{ flex: 1 }}
-                      defaultValue={smartDisplay(arg)}
-                      key={`${ti}-${ai}-${JSON.stringify(arg)}`}
-                      onBlur={(e) => updArg(ti, ai, e.target.value)}
-                      placeholder="42 или «текст» или [1, 2, 3]"
-                    />
-                    <IconButton size="small" color="error" onClick={() => removeArg(ti, ai)} sx={{ p: 0.5 }}>
-                      <DeleteIcon sx={{ fontSize: 14 }} />
-                    </IconButton>
-                  </Box>
-                ))}
-                <Button size="small" startIcon={<AddIcon sx={{ fontSize: 12 }} />} onClick={() => addArg(ti)}
-                  sx={{ alignSelf: 'flex-start', mt: 0.5 }}>
-                  Добавить аргумент
-                </Button>
+            {mode === 'function' ? (
+              <Box sx={{ flex: 1 }}>
+                <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
+                  Входные данные (аргументы функции)
+                </Typography>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  {(t.args ?? []).map((arg: any, ai: number) => (
+                    <Box key={ai} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                      <Typography variant="caption" color="text.disabled" sx={{ minWidth: 68 }}>
+                        Аргумент {ai + 1}
+                      </Typography>
+                      <TextField size="small" sx={{ flex: 1 }}
+                        defaultValue={smartDisplay(arg)}
+                        key={`${ti}-${ai}-${JSON.stringify(arg)}`}
+                        onBlur={(e) => updArg(ti, ai, e.target.value)}
+                        placeholder="42 или «текст» или [1, 2, 3]"
+                      />
+                      <IconButton size="small" color="error" onClick={() => removeArg(ti, ai)} sx={{ p: 0.5 }}>
+                        <DeleteIcon sx={{ fontSize: 14 }} />
+                      </IconButton>
+                    </Box>
+                  ))}
+                  <Button size="small" startIcon={<AddIcon sx={{ fontSize: 12 }} />} onClick={() => addArg(ti)}
+                    sx={{ alignSelf: 'flex-start', mt: 0.5 }}>
+                    Добавить аргумент
+                  </Button>
+                </Box>
               </Box>
-            </Box>
+            ) : (
+              <Box sx={{ flex: 1 }}>
+                <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
+                  Переменные, подставляемые в код перед запуском
+                </Typography>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  {varsToRows(t.vars).map((row, ri) => (
+                    <Box key={ri} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                      <TextField size="small" sx={{ width: 110 }}
+                        defaultValue={row.key}
+                        key={`k-${ti}-${ri}`}
+                        onBlur={(e) => updVarRow(ti, ri, 'key', e.target.value)}
+                        placeholder="имя_переменной"
+                        inputProps={{ style: { fontFamily: MONO, fontSize: 12 } }}
+                      />
+                      <Typography color="text.disabled">=</Typography>
+                      <TextField size="small" sx={{ flex: 1 }}
+                        defaultValue={smartDisplay(row.value)}
+                        key={`v-${ti}-${ri}-${JSON.stringify(row.value)}`}
+                        onBlur={(e) => updVarRow(ti, ri, 'value', e.target.value)}
+                        placeholder="42 или «текст» или [1, 2, 3]"
+                      />
+                      <IconButton size="small" color="error" onClick={() => removeVarRow(ti, ri)} sx={{ p: 0.5 }}>
+                        <DeleteIcon sx={{ fontSize: 14 }} />
+                      </IconButton>
+                    </Box>
+                  ))}
+                  <Button size="small" startIcon={<AddIcon sx={{ fontSize: 12 }} />} onClick={() => addVarRow(ti)}
+                    sx={{ alignSelf: 'flex-start', mt: 0.5 }}>
+                    Добавить переменную
+                  </Button>
+                </Box>
+              </Box>
+            )}
             <Divider orientation="vertical" flexItem />
-            {/* Expected */}
+            {/* Expect */}
             <Box sx={{ flex: 1 }}>
               <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
-                Ожидаемый результат
+                {mode === 'function' ? 'Ожидаемый результат (return)' : 'Ожидаемый вывод (print)'}
               </Typography>
               <TextField size="small" fullWidth
-                defaultValue={smartDisplay(t.expected)}
-                key={`exp-${ti}-${JSON.stringify(t.expected)}`}
-                onBlur={(e) => updExpected(ti, e.target.value)}
+                defaultValue={smartDisplay(t.expect)}
+                key={`exp-${ti}-${JSON.stringify(t.expect)}`}
+                onBlur={(e) => updExpect(ti, e.target.value)}
                 placeholder="42 или «текст» или [1, 2, 3]"
-                helperText="Введите то, что должна вернуть функция"
+                helperText={mode === 'function' ? 'То, что должна вернуть функция' : 'То, что должно быть напечатано на экране'}
               />
             </Box>
           </Box>
@@ -430,7 +502,10 @@ const HintsEditor: React.FC<{ hints: any; evidenceIds: string[]; onChange: (v: a
 };
 
 // ─── Улики ────────────────────────────────────────────────────────────────────
-const EvidenceEditor: React.FC<{ items: any[]; onChange: (v: any[]) => void }> = ({ items, onChange }) => {
+// Реальная схема улики (движок Player) — ровно три поля: id, name, tests.
+// Имя функции и стартовый код общие на всё дело (см. поля fnName/starter выше,
+// в разделе «Код») — у отдельной улики их нет, поэтому здесь не редактируются.
+const EvidenceEditor: React.FC<{ items: any[]; onChange: (v: any[]) => void; testMode: 'function' | 'script' }> = ({ items, onChange, testMode }) => {
   const [open, setOpen] = useState<number | null>(null);
   const upd = (i: number, f: string, v: any) => onChange(items.map((it, j) => j === i ? { ...it, [f]: v } : it));
   return (
@@ -440,7 +515,7 @@ const EvidenceEditor: React.FC<{ items: any[]; onChange: (v: any[]) => void }> =
         <Box sx={{ flex: 1 }} />
         <Button size="small" startIcon={<AddIcon sx={{ fontSize: 13 }} />}
           onClick={() => {
-            const next = [...items, { id: String(items.length + 1), title: '', fnName: '', starter: '', tests: [] }];
+            const next = [...items, { id: String(items.length + 1), name: '', tests: [] }];
             onChange(next);
             setOpen(next.length - 1);
           }}>
@@ -459,12 +534,9 @@ const EvidenceEditor: React.FC<{ items: any[]; onChange: (v: any[]) => void }> =
             <Box sx={{ display: 'flex', alignItems: 'center', px: 2, py: 1.25, cursor: 'pointer', userSelect: 'none', bgcolor: isOpen ? 'action.selected' : 'background.paper' }}
               onClick={() => setOpen(isOpen ? null : i)}>
               <Chip label={`#${item.id || i + 1}`} size="small" color="primary" variant="outlined" sx={{ mr: 1.5, fontFamily: MONO, fontSize: 11, height: 20 }} />
-              <Typography sx={{ flex: 1, fontSize: 13, color: item.title ? 'text.primary' : 'text.disabled', fontStyle: item.title ? 'normal' : 'italic' }}>
-                {item.title || '— без названия —'}
+              <Typography sx={{ flex: 1, fontSize: 13, color: item.name ? 'text.primary' : 'text.disabled', fontStyle: item.name ? 'normal' : 'italic' }}>
+                {item.name || '— без названия —'}
               </Typography>
-              {item.fnName && (
-                <Typography sx={{ fontFamily: MONO, fontSize: 11, color: 'info.main', mr: 1 }}>{item.fnName}()</Typography>
-              )}
               {Array.isArray(item.tests) && item.tests.length > 0 && (
                 <Chip label={`${item.tests.length} тест${item.tests.length === 1 ? '' : 'а'}`} size="small" sx={{ mr: 1, height: 18, fontSize: 10 }} />
               )}
@@ -479,30 +551,11 @@ const EvidenceEditor: React.FC<{ items: any[]; onChange: (v: any[]) => void }> =
                 <Box sx={{ display: 'flex', gap: 2 }}>
                   <TextField label="ID улики" value={item.id ?? ''} onChange={(e) => upd(i, 'id', e.target.value)}
                     size="small" sx={{ width: 90 }} />
-                  <TextField label="Название улики" value={item.title ?? ''} onChange={(e) => upd(i, 'title', e.target.value)}
+                  <TextField label="Название улики" value={item.name ?? ''} onChange={(e) => upd(i, 'name', e.target.value)}
                     size="small" sx={{ flex: 1 }} placeholder="Зашифрованный файл" />
-                  <TextField label="Имя функции" value={item.fnName ?? ''} onChange={(e) => upd(i, 'fnName', e.target.value)}
-                    size="small" sx={{ width: 190 }} inputProps={{ style: { fontFamily: MONO } }} placeholder="solve"
-                    helperText="Название функции в коде" />
                 </Box>
-                {Array.isArray(item.body) ? (
-                  <Box>
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-                      Описание задачи
-                    </Typography>
-                    <BodyBlocks blocks={item.body} onChange={(v) => upd(i, 'body', v)} />
-                  </Box>
-                ) : typeof item.description === 'string' ? (
-                  <TextField label="Описание задачи" value={item.description}
-                    onChange={(e) => upd(i, 'description', e.target.value)}
-                    multiline minRows={2} size="small" fullWidth />
-                ) : null}
-                <TextField label="Стартовый код" value={item.starter ?? ''} onChange={(e) => upd(i, 'starter', e.target.value)}
-                  multiline minRows={3} maxRows={10} size="small" fullWidth
-                  inputProps={{ style: { fontFamily: MONO, fontSize: 12 } }}
-                  helperText="Шаблон кода — то, что студент видит в начале задачи" />
                 <Divider />
-                <TestsEditor tests={item.tests ?? []} onChange={(v) => upd(i, 'tests', v)} />
+                <TestsEditor tests={item.tests ?? []} onChange={(v) => upd(i, 'tests', v)} mode={testMode} />
               </Box>
             )}
           </Paper>
@@ -662,13 +715,11 @@ const CASE_PROMPT = `Сгенерируй дело для платформы К�
   ],
   "evidence": [
     {
-      "id": "1",
-      "title": "Название улики",
-      "fnName": "solve",
-      "starter": "def solve(x):\\n    pass",
+      "id": "e1",
+      "name": "Название улики",
       "tests": [
-        { "args": [1, 2], "expected": 3 },
-        { "args": [0, 0], "expected": 0 }
+        { "args": [1, 2], "expect": 3 },
+        { "args": [0, 0], "expect": 0 }
       ]
     }
   ],
@@ -691,7 +742,13 @@ const CASE_PROMPT = `Сгенерируй дело для платформы К�
 - slug должен быть уникальным, формат: case-[буквы/цифры/дефис]
 - difficulty: только 1, 2 или 3
 - briefing.body — массив: строки = текст, объекты { "code": "..." } = блоки кода
-- evidence.tests — реальные тесты для автопроверки функции
+- у улики (evidence) ровно три поля: id, name, tests — имя функции и стартовый
+  код общие на всё дело (fn_name/starter выше), у отдельной улики их нет
+- evidence.tests — реальные тесты для автопроверки, поле результата всегда
+  называется expect (не expected!)
+- если fn_name задан (function-режим) — тесты вызывают функцию: { "args": [1, 2], "expect": 3 }
+- если fn_name пустой (script-режим, код выполняется как скрипт, сверяется
+  вывод print) — тесты подставляют переменные: { "vars": { "x": 1 }, "expect": "результат print" }
 - versions — минимум 2 варианта, ровно один с correct: true
 - Весь JSON должен быть на русском языке (кроме кода и slug)`;
 
@@ -913,6 +970,113 @@ const NewCaseDialog: React.FC<{ open: boolean; onClose: () => void; onCreate: (p
   );
 };
 
+// ─── Теория по модулям ──────────────────────────────────────────────────────
+// Один текст на модуль (1-9, то же поле, что и у дел) — попадает в материалы
+// каждого дела модуля в Kodex Player. Форматирование — просто текст с блоками
+// кода в ```тройных бэктиках```, без markdown-разметки (см. серверную сторону).
+const MODULE_NUMBERS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+
+const ModuleTheoryPanel: React.FC = () => {
+  const [items, setItems] = useState<Record<number, KodexModuleTheory>>({});
+  const [loading, setLoading] = useState(true);
+  const [open, setOpen] = useState<number | null>(null);
+  const [drafts, setDrafts] = useState<Record<number, { title: string; content_md: string }>>({});
+  const [saving, setSaving] = useState<number | null>(null);
+  const [toast, setToast] = useState<{ msg: string; sev: 'success' | 'error' | 'warning' } | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const list = await kodexModuleTheoryApi.list();
+      const byModule: Record<number, KodexModuleTheory> = {};
+      list.forEach((t) => { byModule[t.module] = t; });
+      setItems(byModule);
+    } catch {
+      setToast({ msg: 'Ошибка загрузки теории', sev: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const draftFor = (module: number) => drafts[module] ?? { title: items[module]?.title ?? '', content_md: items[module]?.content_md ?? '' };
+
+  const openModule = (module: number) => {
+    if (open === module) { setOpen(null); return; }
+    setOpen(module);
+    setDrafts((prev) => prev[module] ? prev : { ...prev, [module]: { title: items[module]?.title ?? '', content_md: items[module]?.content_md ?? '' } });
+  };
+
+  const updDraft = (module: number, field: 'title' | 'content_md', value: string) => {
+    setDrafts((prev) => ({ ...prev, [module]: { ...draftFor(module), [field]: value } }));
+  };
+
+  const save = async (module: number) => {
+    setSaving(module);
+    try {
+      const result = await kodexModuleTheoryApi.save(module, draftFor(module));
+      setItems((prev) => ({ ...prev, [module]: result }));
+      setToast(result.synced === false
+        ? { msg: 'Сохранено, но не отправлено на Кодэкс — попробуйте ещё раз позже', sev: 'warning' }
+        : { msg: 'Сохранено и отправлено на Кодэкс', sev: 'success' });
+    } catch {
+      setToast({ msg: 'Ошибка сохранения', sev: 'error' });
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  if (loading) {
+    return <Box sx={{ display: 'flex', justifyContent: 'center', pt: 8 }}><CircularProgress size={28} /></Box>;
+  }
+
+  return (
+    <Box sx={{ flex: 1, overflowY: 'auto', p: 3 }}>
+      <Typography variant="h6" sx={{ mb: 0.5 }}>Теория по модулям</Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+        Один конспект на учебный модуль — появится в материалах каждого дела этого модуля в Кодэкс.
+        Форматирование: пустая строка — новый абзац, ``` тройные бэктики ``` — блок кода.
+      </Typography>
+      {MODULE_NUMBERS.map((module) => {
+        const isOpen = open === module;
+        const item = items[module];
+        const draft = draftFor(module);
+        return (
+          <Paper key={module} variant="outlined" sx={{ mb: 1.5, overflow: 'hidden', borderColor: isOpen ? 'primary.main' : 'divider' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', px: 2, py: 1.25, cursor: 'pointer', userSelect: 'none', bgcolor: isOpen ? 'action.selected' : 'background.paper' }}
+              onClick={() => openModule(module)}>
+              <Chip label={`Модуль ${module}`} size="small" color="primary" variant="outlined" sx={{ mr: 1.5 }} />
+              <Typography sx={{ flex: 1, fontSize: 13, color: item?.title ? 'text.primary' : 'text.disabled', fontStyle: item?.title ? 'normal' : 'italic' }}>
+                {item?.title || '— теория не заполнена —'}
+              </Typography>
+              {isOpen ? <ExpandLessIcon color="action" sx={{ fontSize: 18 }} /> : <ExpandMoreIcon color="action" sx={{ fontSize: 18 }} />}
+            </Box>
+            {isOpen && (
+              <Box sx={{ px: 2, pb: 2.5, pt: 2, borderTop: 1, borderColor: 'divider', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <TextField label="Заголовок" value={draft.title} onChange={(e) => updDraft(module, 'title', e.target.value)}
+                  size="small" fullWidth placeholder="Например: Переменные и вывод на экран" />
+                <TextField label="Текст теории" value={draft.content_md} onChange={(e) => updDraft(module, 'content_md', e.target.value)}
+                  multiline minRows={8} maxRows={20} fullWidth
+                  helperText="Пустая строка разделяет абзацы. Блок кода — в ```тройных бэктиках```." />
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <Button variant="contained" startIcon={<SaveIcon />} disabled={saving === module} onClick={() => save(module)}>
+                    {saving === module ? 'Сохранение...' : 'Сохранить'}
+                  </Button>
+                </Box>
+              </Box>
+            )}
+          </Paper>
+        );
+      })}
+      <Snackbar open={!!toast} autoHideDuration={4000} onClose={() => setToast(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
+        {toast ? <Alert severity={toast.sev} onClose={() => setToast(null)}>{toast.msg}</Alert> : undefined}
+      </Snackbar>
+    </Box>
+  );
+};
+
 // ─── Главная страница ─────────────────────────────────────────────────────────
 const SIDEBAR_W = 280;
 
@@ -929,6 +1093,7 @@ export default function KodexCasesPage() {
   const [importDialog, setImportDialog] = useState(false);
   const [delConfirm, setDelConfirm] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [viewMode, setViewMode] = useState<'cases' | 'theory'>('cases');
 
   const loadCases = useCallback(async () => {
     setLoading(true);
@@ -940,6 +1105,7 @@ export default function KodexCasesPage() {
   useEffect(() => { loadCases(); }, [loadCases]);
 
   const openCase = async (slug: string) => {
+    setViewMode('cases');
     setSelectedId(slug);
     setTab(0);
     try { setEditing({ ...await kodexExternalApi.get(slug) }); }
@@ -1019,6 +1185,10 @@ export default function KodexCasesPage() {
             ))}
           </Box>
           <Box sx={{ p: 1.5, borderTop: 1, borderColor: 'divider', display: 'flex', flexDirection: 'column', gap: 1 }}>
+            <Button fullWidth variant={viewMode === 'theory' ? 'contained' : 'outlined'} color="secondary"
+              startIcon={<MenuBookIcon />} onClick={() => setViewMode(viewMode === 'theory' ? 'cases' : 'theory')}>
+              Теория по модулям
+            </Button>
             <Button fullWidth variant="outlined" color="info" startIcon={<AiIcon />} onClick={() => setAiDialog(true)}>
               AI Черновик
             </Button>
@@ -1033,7 +1203,9 @@ export default function KodexCasesPage() {
 
         {/* ── Правая панель: редактор ── */}
         <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', bgcolor: 'background.default' }}>
-          {!editing ? (
+          {viewMode === 'theory' ? (
+            <ModuleTheoryPanel />
+          ) : !editing ? (
             <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 2, opacity: 0.4 }}>
               <ShieldIcon sx={{ fontSize: 56, color: 'text.disabled' }} />
               <Typography color="text.disabled">Выберите дело из списка</Typography>
@@ -1160,7 +1332,8 @@ export default function KodexCasesPage() {
                   {/* ── Улики ── */}
                   {tab === 2 && (
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      <EvidenceEditor items={editing.evidence || []} onChange={(v) => patch('evidence', v)} />
+                      <EvidenceEditor items={editing.evidence || []} onChange={(v) => patch('evidence', v)}
+                        testMode={(editing.fn_name || '').trim() ? 'function' : 'script'} />
                       <Divider />
                       <VersionsEditor versions={editing.versions || []} onChange={(v) => patch('versions', v)} />
                       <Divider />

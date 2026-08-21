@@ -1,4 +1,4 @@
-import { methodistStudioClient } from './methodistStudioClient';
+import { api } from './api/client';
 
 export interface CourseSummary {
   id: number;
@@ -45,31 +45,31 @@ const BASE = '/course-studio';
 
 export const courseStudioApi = {
   listCourses: (): Promise<CourseSummary[]> =>
-    methodistStudioClient.get(`${BASE}/courses`).then((r) => r.data),
+    api.get(`${BASE}/courses`).then((r) => r.data),
 
   getCourse: (id: number): Promise<CourseFull> =>
-    methodistStudioClient.get(`${BASE}/courses/${id}`).then((r) => r.data),
+    api.get(`${BASE}/courses/${id}`).then((r) => r.data),
 
   createCourse: (body: CourseIn): Promise<CourseFull> =>
-    methodistStudioClient.post(`${BASE}/courses`, body).then((r) => r.data),
+    api.post(`${BASE}/courses`, body).then((r) => r.data),
 
   updateCourse: (id: number, body: CourseIn): Promise<CourseFull> =>
-    methodistStudioClient.put(`${BASE}/courses/${id}`, body).then((r) => r.data),
+    api.put(`${BASE}/courses/${id}`, body).then((r) => r.data),
 
   deleteCourse: (id: number): Promise<void> =>
-    methodistStudioClient.delete(`${BASE}/courses/${id}`).then(() => undefined),
+    api.delete(`${BASE}/courses/${id}`).then(() => undefined),
 
   createLesson: (courseId: number, body: LessonIn): Promise<CourseLesson> =>
-    methodistStudioClient.post(`${BASE}/courses/${courseId}/lessons`, body).then((r) => r.data),
+    api.post(`${BASE}/courses/${courseId}/lessons`, body).then((r) => r.data),
 
   updateLesson: (courseId: number, lessonId: number, body: LessonIn): Promise<CourseLesson> =>
-    methodistStudioClient.put(`${BASE}/courses/${courseId}/lessons/${lessonId}`, body).then((r) => r.data),
+    api.put(`${BASE}/courses/${courseId}/lessons/${lessonId}`, body).then((r) => r.data),
 
   deleteLesson: (courseId: number, lessonId: number): Promise<void> =>
-    methodistStudioClient.delete(`${BASE}/courses/${courseId}/lessons/${lessonId}`).then(() => undefined),
+    api.delete(`${BASE}/courses/${courseId}/lessons/${lessonId}`).then(() => undefined),
 
   moveLesson: (courseId: number, lessonId: number, direction: 'up' | 'down'): Promise<CourseLesson[]> =>
-    methodistStudioClient
+    api
       .post(`${BASE}/courses/${courseId}/lessons/${lessonId}/move?direction=${direction}`)
       .then((r) => r.data),
 };

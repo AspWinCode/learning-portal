@@ -29,6 +29,7 @@ import {
   Tab,
   Checkbox,
   FormControlLabel,
+  Collapse,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import HistoryIcon from '@mui/icons-material/History';
@@ -38,12 +39,21 @@ import EventBusyIcon from '@mui/icons-material/EventBusy';
 import PaymentsIcon from '@mui/icons-material/Payments';
 import StarIcon from '@mui/icons-material/Star';
 import DescriptionIcon from '@mui/icons-material/Description';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import { format, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { studentsApi, salesApi, studentCardsApi, studentAccountsApi, abonementsApi, financeApi, studentPortalAdminApi } from '../services/api';
+import { getStudentKodexDetail, KodexStudentDetail } from '../services/kodexApi';
 import { Student, Abonement, AbsenceFollowUp, AbsenceFollowUpStage, StudentAccount, StudentAccountTransaction, StudentCard, StudentTimelineEvent, CourseCatalogItemOut, StudentPortalAdminView } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { getEffectiveRole, hasPermission } from '../utils/permissions';
+
+const KODEX_CASE_STATUS_LABELS: Record<string, string> = {
+  solved: 'Решено',
+  active: 'В работе',
+  available: 'Доступно',
+};
 
 const ABSENCE_STAGES: { value: AbsenceFollowUpStage | 'link_sent'; label: string }[] = [
   { value: 'missed', label: 'Пропустил' },
@@ -153,6 +163,12 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
   const canRecordPayments = hasPermission(user, 'student_accounts.payment');
   const canInviteParent = hasPermission(user, 'students.manage') && !!student?.parent_id;
   const canManageStudentPortal = hasPermission(user, 'student_portal.manage');
+  const canViewKodexDetail = hasPermission(user, 'kodex.access');
+  const [kodexDetail, setKodexDetail] = useState<KodexStudentDetail | null>(null);
+  const [kodexDetailOpen, setKodexDetailOpen] = useState(false);
+  const [kodexDetailLoading, setKodexDetailLoading] = useState(false);
+  const [kodexDetailError, setKodexDetailError] = useState<string | null>(null);
+  const [expandedKodexCase, setExpandedKodexCase] = useState<string | null>(null);
   const [portalView, setPortalView] = useState<StudentPortalAdminView | null>(null);
   const [catalog, setCatalog] = useState<CourseCatalogItemOut[]>([]);
   const [portalLoading, setPortalLoading] = useState(false);
@@ -209,6 +225,10 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
     setDiscountPeriodStart(getLocalDateInputValue());
     setDiscountError(null);
     setFinanceAccounts([]);
+    setKodexDetail(null);
+    setKodexDetailOpen(false);
+    setKodexDetailError(null);
+    setExpandedKodexCase(null);
     const promises: Promise<any>[] = [
       studentsApi.getById(studentId),
       studentsApi.getAttendances(studentId),
@@ -363,6 +383,25 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
       setPortalError(err.response?.data?.detail || err.message || 'Не удалось отозвать доступ');
     } finally {
       setAccessBusyId(null);
+    }
+  };
+
+  const handleToggleKodexDetail = async () => {
+    if (kodexDetailOpen) {
+      setKodexDetailOpen(false);
+      return;
+    }
+    setKodexDetailOpen(true);
+    if (!studentId || kodexDetail) return;
+    setKodexDetailLoading(true);
+    setKodexDetailError(null);
+    try {
+      const detail = await getStudentKodexDetail(studentId);
+      setKodexDetail(detail);
+    } catch (err: any) {
+      setKodexDetailError(err.response?.data?.detail || err.message || 'Не удалось загрузить решения из Кодэкс');
+    } finally {
+      setKodexDetailLoading(false);
     }
   };
 
@@ -1287,6 +1326,107 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
                             </Box>
                           ))}
                         </Stack>
+                      </Box>
+                    )}
+
+                    {canViewKodexDetail && (
+                      <Box>
+                        <Stack
+                          direction="row"
+                          justifyContent="space-between"
+                          alignItems="center"
+                          sx={{ cursor: 'pointer' }}
+                          onClick={handleToggleKodexDetail}
+                        >
+                          <Typography variant="body2" fontWeight={600}>Решения по делам (Кодэкс)</Typography>
+                          <IconButton size="small">
+                            {kodexDetailOpen ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
+                          </IconButton>
+                        </Stack>
+                        <Collapse in={kodexDetailOpen}>
+                          <Box sx={{ mt: 1 }}>
+                            {kodexDetailLoading && (
+                              <Stack direction="row" justifyContent="center" sx={{ py: 2 }}>
+                                <CircularProgress size={20} />
+                              </Stack>
+                            )}
+                            {kodexDetailError && (
+                              <Alert severity="error" sx={{ mb: 1 }}>{kodexDetailError}</Alert>
+                            )}
+                            {!kodexDetailLoading && !kodexDetailError && kodexDetail && kodexDetail.cases.length === 0 && (
+                              <Typography variant="caption" color="text.secondary">
+                                Ученик ещё не решал дела в Кодэкс.
+                              </Typography>
+                            )}
+                            {!kodexDetailLoading && kodexDetail && kodexDetail.cases.length > 0 && (
+                              <Stack spacing={1}>
+                                {kodexDetail.cases.map((kc) => (
+                                  <Box key={kc.id} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1.5 }}>
+                                    <Stack
+                                      direction="row"
+                                      justifyContent="space-between"
+                                      alignItems="center"
+                                      sx={{ p: 1, cursor: 'pointer' }}
+                                      onClick={() => setExpandedKodexCase(expandedKodexCase === kc.id ? null : kc.id)}
+                                    >
+                                      <Stack direction="row" spacing={1} alignItems="center">
+                                        <Typography variant="body2" fontWeight={500}>
+                                          {kc.num ? `${kc.num} — ` : ''}{kc.title}
+                                        </Typography>
+                                        {kc.status && (
+                                          <Chip
+                                            size="small"
+                                            label={KODEX_CASE_STATUS_LABELS[kc.status] || kc.status}
+                                            color={kc.status === 'solved' ? 'success' : 'default'}
+                                            variant="outlined"
+                                          />
+                                        )}
+                                      </Stack>
+                                      <IconButton size="small">
+                                        {expandedKodexCase === kc.id ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
+                                      </IconButton>
+                                    </Stack>
+                                    <Collapse in={expandedKodexCase === kc.id}>
+                                      <Box sx={{ px: 1, pb: 1 }}>
+                                        <Stack direction="row" spacing={2} sx={{ mb: 1 }}>
+                                          <Typography variant="caption" color="text.secondary">Попыток: {kc.tries}</Typography>
+                                          <Typography variant="caption" color="text.secondary">Подряд неудач: {kc.fail_streak}</Typography>
+                                          {kc.hints_used.length > 0 && (
+                                            <Typography variant="caption" color="text.secondary">Подсказок: {kc.hints_used.length}</Typography>
+                                          )}
+                                          {kc.solved_at && (
+                                            <Typography variant="caption" color="text.secondary">
+                                              Решено: {format(parseISO(kc.solved_at), 'd MMMM yyyy, HH:mm', { locale: ru })}
+                                            </Typography>
+                                          )}
+                                        </Stack>
+                                        {kc.code ? (
+                                          <Box
+                                            component="pre"
+                                            sx={{
+                                              m: 0,
+                                              p: 1.5,
+                                              bgcolor: 'action.hover',
+                                              borderRadius: 1,
+                                              fontSize: '0.8rem',
+                                              fontFamily: 'monospace',
+                                              overflowX: 'auto',
+                                              whiteSpace: 'pre',
+                                            }}
+                                          >
+                                            {kc.code}
+                                          </Box>
+                                        ) : (
+                                          <Typography variant="caption" color="text.secondary">Код ещё не отправлен.</Typography>
+                                        )}
+                                      </Box>
+                                    </Collapse>
+                                  </Box>
+                                ))}
+                              </Stack>
+                            )}
+                          </Box>
+                        </Collapse>
                       </Box>
                     )}
                   </Stack>

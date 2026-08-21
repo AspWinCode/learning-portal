@@ -81,6 +81,49 @@ class KodexCaseResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class KodexCaseDetail(BaseModel):
+    id: str
+    title: str
+    num: Optional[str]
+    status: Optional[str]
+    stage: Optional[str]
+    code: Optional[str]
+    attempts: Optional[int]
+    tries: int
+    fail_streak: int
+    hints_used: List[Any]
+    studied: List[Any]
+    solved_at: Optional[str]
+    claimed: bool
+
+
+class KodexStudentAgent(BaseModel):
+    reputation: int
+    credits: int
+    badges: List[Any]
+    streak: int
+
+
+class KodexStudentDetailResponse(BaseModel):
+    agent: Optional[KodexStudentAgent] = None
+    cases: List[KodexCaseDetail] = []
+
+
+class KodexModuleTheoryUpdate(BaseModel):
+    title: str = Field('', max_length=512)
+    content_md: str = ''
+
+
+class KodexModuleTheoryOut(BaseModel):
+    module: int
+    title: str
+    content_md: str
+    updated_at: Optional[datetime]
+    synced: Optional[bool] = None
+
+    model_config = {"from_attributes": True}
+
+
 class KodexCaseSummary(BaseModel):
     id: int
     slug: str

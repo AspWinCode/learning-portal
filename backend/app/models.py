@@ -3345,6 +3345,22 @@ class KodexCase(Base):
     created_by = relationship("User", foreign_keys=[created_by_id])
 
 
+class KodexModuleTheory(Base):
+    """Теория (конспект) методиста, привязанная к учебному модулю дел Кодэкс
+    (module 1..9 у KodexCase на внешней платформе) — попадает в материалы
+    каждого дела этого модуля в Kodex Player."""
+    __tablename__ = "kodex_module_theory"
+
+    id = Column(Integer, primary_key=True, index=True)
+    module = Column(Integer, nullable=False, unique=True, index=True)
+    title = Column(String(512), nullable=False, default="")
+    content_md = Column(Text, nullable=False, default="")
+    updated_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
+
+    updated_by = relationship("User", foreign_keys=[updated_by_id])
+
+
 # ─────────────────────────────────────────────
 # Agile-трекер IT-проектов
 # ─────────────────────────────────────────────

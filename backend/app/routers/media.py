@@ -1,6 +1,6 @@
 """
-Media router — image upload for CMS pages.
-Upload requires seo.manage; serving files is public (no auth).
+Media router — image upload for CMS pages and rich-text editors (notes, Kodex theory).
+Upload requires seo.manage or kodex.manage; serving files is public (no auth).
 Files stored under DISK_STORAGE_ROOT/media/.
 """
 import os
@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from app.auth import require_permission
+from app.auth import require_any_permission
 from app.models import User
 
 router = APIRouter()
@@ -33,7 +33,7 @@ class MediaUploadOut(BaseModel):
 @router.post("/upload", response_model=MediaUploadOut)
 async def upload_media(
     file: UploadFile = File(...),
-    current_user: User = Depends(require_permission("seo.manage")),
+    current_user: User = Depends(require_any_permission("seo.manage", "kodex.manage")),
 ):
     if file.content_type not in ALLOWED_TYPES:
         raise HTTPException(status_code=415, detail=f"Неподдерживаемый тип файла: {file.content_type}. Разрешены: JPEG, PNG, WebP, GIF, SVG")

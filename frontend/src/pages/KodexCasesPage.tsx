@@ -44,6 +44,8 @@ import {
 } from '@mui/icons-material';
 import Layout from '../components/Layout';
 import { kodexExternalApi, KodexExternalFull, KodexExternalSummary, kodexModuleTheoryApi, KodexModuleTheory } from '../services/kodexApi';
+import { mediaApi } from '../services/api';
+import NotesEditor from '../components/NotesEditor';
 import MenuBookIcon from '@mui/icons-material/MenuBook';
 
 const MONO = '"JetBrains Mono","SFMono-Regular",Consolas,monospace';
@@ -1036,7 +1038,8 @@ const ModuleTheoryPanel: React.FC = () => {
       <Typography variant="h6" sx={{ mb: 0.5 }}>Теория по модулям</Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
         Один конспект на учебный модуль — появится в материалах каждого дела этого модуля в Кодэкс.
-        Форматирование: пустая строка — новый абзац, ``` тройные бэктики ``` — блок кода.
+        Изображения можно вставить через Ctrl+V или кнопкой на панели инструментов — в Кодэксе
+        покажутся текст, код и картинки; таблицы, цвет и шрифт там не отображаются.
       </Typography>
       {MODULE_NUMBERS.map((module) => {
         const isOpen = open === module;
@@ -1056,9 +1059,14 @@ const ModuleTheoryPanel: React.FC = () => {
               <Box sx={{ px: 2, pb: 2.5, pt: 2, borderTop: 1, borderColor: 'divider', display: 'flex', flexDirection: 'column', gap: 2 }}>
                 <TextField label="Заголовок" value={draft.title} onChange={(e) => updDraft(module, 'title', e.target.value)}
                   size="small" fullWidth placeholder="Например: Переменные и вывод на экран" />
-                <TextField label="Текст теории" value={draft.content_md} onChange={(e) => updDraft(module, 'content_md', e.target.value)}
-                  multiline minRows={8} maxRows={20} fullWidth
-                  helperText="Пустая строка разделяет абзацы. Блок кода — в ```тройных бэктиках```." />
+                <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 1 }}>
+                  <NotesEditor
+                    value={draft.content_md}
+                    onChange={(html) => updDraft(module, 'content_md', html)}
+                    placeholder="Текст теории — вставьте конспект с картинками (Ctrl+V) или начните писать..."
+                    onUploadImage={(file) => mediaApi.uploadImage(file).then((r) => r.url)}
+                  />
+                </Box>
                 <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
                   <Button variant="contained" startIcon={<SaveIcon />} disabled={saving === module} onClick={() => save(module)}>
                     {saving === module ? 'Сохранение...' : 'Сохранить'}

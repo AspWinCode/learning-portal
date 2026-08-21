@@ -408,3 +408,17 @@ def require_permission(permission: str):
         return current_user
 
     return permission_checker
+
+
+def require_any_permission(*permissions: str):
+    """Пропускает, если у пользователя есть хотя бы одно из перечисленных прав —
+    для ресурсов, общих для нескольких модулей (например загрузка медиа)."""
+    async def permission_checker(current_user: User = Depends(get_current_active_user)):
+        if not any(has_permission(current_user, p) for p in permissions):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not enough permissions",
+            )
+        return current_user
+
+    return permission_checker

@@ -258,6 +258,27 @@ const NotesEditor: React.FC<NotesEditorProps> = ({
         if (event.key === 'Escape') { setSlashMenu(null); return true; }
         return false;
       },
+      handlePaste: (_view, event) => {
+        const files = Array.from(event.clipboardData?.files ?? []).filter((f) => f.type.startsWith('image/'));
+        if (files.length === 0 || !onUploadImage) return false;
+        event.preventDefault();
+        // Последовательно, не параллельно — иначе несколько картинок из одной
+        // вставки будут спорить за одно и то же место курсора (chain() всегда
+        // читает актуальное состояние редактора на момент вызова).
+        files.reduce((chain, file) => chain.then(() =>
+          onUploadImage(file).then((url) => { editorRef.current?.chain().focus().setImage({ src: url }).run(); })
+        ), Promise.resolve()).catch(() => {});
+        return true;
+      },
+      handleDrop: (_view, event) => {
+        const files = Array.from(event.dataTransfer?.files ?? []).filter((f) => f.type.startsWith('image/'));
+        if (files.length === 0 || !onUploadImage) return false;
+        event.preventDefault();
+        files.reduce((chain, file) => chain.then(() =>
+          onUploadImage(file).then((url) => { editorRef.current?.chain().focus().setImage({ src: url }).run(); })
+        ), Promise.resolve()).catch(() => {});
+        return true;
+      },
     },
   });
 

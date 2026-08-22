@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Box, Card, CardActionArea, CardContent, Typography } from '@mui/material';
-import { Shield as ShieldIcon, MenuBook as BookIcon } from '@mui/icons-material';
+import { Shield as ShieldIcon } from '@mui/icons-material';
 import Layout from '../components/Layout';
 
 const OPTIONS = [
@@ -13,15 +13,6 @@ const OPTIONS = [
     icon: <ShieldIcon sx={{ fontSize: 32 }} />,
     color: 'primary.main',
     bg: 'primary.50',
-  },
-  {
-    id: 'theory',
-    route: '/course-studio',
-    label: 'Теория',
-    desc: 'Учебные курсы, лекции и домашние задания по программам.',
-    icon: <BookIcon sx={{ fontSize: 32 }} />,
-    color: 'secondary.main',
-    bg: 'secondary.50',
   },
 ];
 

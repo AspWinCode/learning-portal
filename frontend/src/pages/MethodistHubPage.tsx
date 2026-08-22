@@ -15,7 +15,6 @@ import {
   Shield as ShieldIcon,
   SportsEsports as GameIcon,
   School as SchoolIcon,
-  MenuBook as BookIcon,
   Add as AddIcon,
   CheckCircleOutline as CheckIcon,
   RateReview as ReviewIcon,
@@ -60,15 +59,6 @@ const DIRECTIONS: Direction[] = [
     icon: <SchoolIcon />,
     status: 'soon',
     color: 'info',
-  },
-  {
-    id: 'courses',
-    name: 'Учебные курсы',
-    desc: 'Уроки, теория, домашние задания по программам обучения.',
-    icon: <BookIcon />,
-    status: 'live',
-    color: 'secondary',
-    route: '/course-studio',
   },
   {
     id: 'new',

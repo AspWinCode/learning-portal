@@ -10,15 +10,13 @@ from sqlalchemy.orm import Session
 
 from app import auth
 from app.database import get_db
-from app.models import KodexCase, KodexModuleTheory, Student, User
+from app.models import KodexCase, Student, User
 from app.routers.action_log import log_action
 from app.schemas.kodex import (
     KodexCaseCreate,
     KodexCaseResponse,
     KodexCaseSummary,
     KodexCaseUpdate,
-    KodexModuleTheoryOut,
-    KodexModuleTheoryUpdate,
     KodexStudentDetailResponse,
 )
 from app.services.kodex_sso import fetch_student_kodex_detail
@@ -362,55 +360,6 @@ async def get_student_kodex_detail(
     if not detail:
         return KodexStudentDetailResponse()
     return KodexStudentDetailResponse(**detail)
-
-
-@router.get("/module-theory", response_model=List[KodexModuleTheoryOut])
-async def list_module_theory(
-    current_user: User = Depends(auth.require_permission("kodex.access")),
-    db: Session = Depends(get_db),
-) -> list:
-    rows = db.query(KodexModuleTheory).order_by(KodexModuleTheory.module).all()
-    return [KodexModuleTheoryOut.model_validate(r) for r in rows]
-
-
-@router.put("/module-theory/{module}", response_model=KodexModuleTheoryOut)
-async def upsert_module_theory(
-    module: int,
-    body: KodexModuleTheoryUpdate,
-    current_user: User = Depends(auth.require_permission("kodex.manage")),
-    db: Session = Depends(get_db),
-) -> KodexModuleTheoryOut:
-    if not 1 <= module <= 9:
-        raise HTTPException(status_code=400, detail="Номер модуля должен быть от 1 до 9")
-
-    row = db.query(KodexModuleTheory).filter(KodexModuleTheory.module == module).first()
-    if not row:
-        row = KodexModuleTheory(module=module)
-        db.add(row)
-    row.title = body.title
-    row.content_md = body.content_md
-    row.updated_by_id = current_user.id
-    db.commit()
-    db.refresh(row)
-
-    synced = True
-    try:
-        async with httpx.AsyncClient(timeout=15) as client:
-            res = await client.put(
-                f"{KODEX_EXTERNAL_BASE}/api/module-theory/{module}",
-                json={
-                    "title": body.title,
-                    "content_md": body.content_md,
-                    "author": current_user.full_name or "Методист",
-                },
-            )
-            res.raise_for_status()
-    except Exception:
-        synced = False
-
-    out = KodexModuleTheoryOut.model_validate(row)
-    out.synced = synced
-    return out
 
 
 @router.put("/external/{slug}")

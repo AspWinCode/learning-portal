@@ -43,10 +43,10 @@ import {
   Shield as ShieldIcon,
 } from '@mui/icons-material';
 import Layout from '../components/Layout';
-import { kodexExternalApi, KodexExternalFull, KodexExternalSummary, kodexModuleTheoryApi, KodexModuleTheory } from '../services/kodexApi';
+import { kodexExternalApi, KodexExternalFull, KodexExternalSummary } from '../services/kodexApi';
 import { mediaApi } from '../services/api';
 import NotesEditor from '../components/NotesEditor';
-import MenuBookIcon from '@mui/icons-material/MenuBook';
+import { useAuth } from '../contexts/AuthContext';
 
 const MONO = '"JetBrains Mono","SFMono-Regular",Consolas,monospace';
 
@@ -375,48 +375,133 @@ const VersionsEditor: React.FC<{ versions: any[]; onChange: (v: any[]) => void }
 };
 
 // ─── Материалы дела ───────────────────────────────────────────────────────────
-const MaterialsEditor: React.FC<{ materials: any[]; onChange: (v: any[]) => void }> = ({ materials, onChange }) => {
-  const norm = (m: any): { title: string; url: string; type: string } => {
-    if (typeof m === 'string') return { title: m, url: '', type: 'text' };
-    return { title: m.title ?? m.name ?? '', url: m.url ?? m.link ?? '', type: m.type ?? (m.url ? 'link' : 'text') };
-  };
-  const upd = (i: number, f: string, v: string) => {
-    const updated = materials.map((m, j) => {
-      if (j !== i) return m;
-      const n = norm(m);
-      return { ...n, [f]: v };
+// Реальная схема материала (движок Player, см. openDocOverlay в
+// apps/player/js/screens.js): {id, type, title, key, x, y,
+// meta:{source,author}, body:[...]}, body — те же text/{code}/{image}
+// блоки, что и в брифинге. x/y — координаты узла на карте расследования
+// (0-100%), раскладываем автоматически сеткой — методисту не нужно их
+// подбирать вручную.
+//
+// bodyHtml хранится рядом с body — это лишнее поле для схемы Player (он его
+// просто игнорирует), но оно даёт точный HTML без потерь при повторном
+// открытии материала для правки; body всегда пересчитывается из bodyHtml
+// при изменении через htmlToBodyBlocks (TS-версия конвертера из
+// kodex_player/packages/game-data/merge.js — тот же DOMParser-обход).
+function htmlToBodyBlocks(html: string): any[] {
+  const blocks: any[] = [];
+  const root = new DOMParser().parseFromString(String(html || ''), 'text/html').body;
+
+  const walk = (node: Node) => {
+    Array.from(node.childNodes).forEach((child) => {
+      if (child.nodeType === Node.TEXT_NODE) {
+        const text = (child.textContent || '').trim();
+        if (text) blocks.push(text);
+        return;
+      }
+      if (child.nodeType !== Node.ELEMENT_NODE) return;
+      const el = child as Element;
+      const tag = el.tagName.toLowerCase();
+      if (tag === 'img') {
+        const src = el.getAttribute('src');
+        if (src) blocks.push({ image: src, alt: el.getAttribute('alt') || '' });
+      } else if (tag === 'pre') {
+        const code = (el.textContent || '').replace(/\n+$/, '');
+        if (code.trim()) blocks.push({ code });
+      } else if (['p', 'li', 'h1', 'h2', 'h3', 'blockquote'].includes(tag)) {
+        const text = (el.textContent || '').trim();
+        if (text) blocks.push(text);
+      } else {
+        walk(el);
+      }
     });
-    onChange(updated);
   };
-  const add = () => onChange([...materials, { title: '', url: '', type: 'link' }]);
+  walk(root);
+  return blocks;
+}
+
+function bodyBlocksToHtml(body: any[]): string {
+  return (body || []).map((b) => {
+    if (typeof b === 'string') return `<p>${b.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</p>`;
+    if (b && b.image) return `<img src="${b.image}" alt="${b.alt || ''}">`;
+    if (b && b.code) return `<pre><code>${b.code.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</code></pre>`;
+    return '';
+  }).join('');
+}
+
+function newMaterial(index: number, authorName: string) {
+  return {
+    id: `m${index + 1}`,
+    type: 'материал',
+    title: '',
+    key: false,
+    x: 15 + (index % 3) * 30,
+    y: 15 + Math.floor(index / 3) * 30,
+    meta: { source: 'Методист', author: authorName },
+    body: [] as any[],
+    bodyHtml: '',
+  };
+}
+
+const MaterialsEditor: React.FC<{ materials: any[]; onChange: (v: any[]) => void; authorName: string }> = ({ materials, onChange, authorName }) => {
+  const [open, setOpen] = useState<number | null>(null);
+  const upd = (i: number, f: string, v: any) => onChange(materials.map((m, j) => j === i ? { ...m, [f]: v } : m));
+  const updBody = (i: number, html: string) => onChange(materials.map((m, j) => j === i ? { ...m, bodyHtml: html, body: htmlToBodyBlocks(html) } : m));
+
   return (
     <Box>
       <Box sx={{ display: 'flex', alignItems: 'center', mb: 1.5 }}>
-        <SectionTitle>Материалы для студента</SectionTitle>
+        <SectionTitle>Материалы дела</SectionTitle>
         <Box sx={{ flex: 1 }} />
-        <Button size="small" startIcon={<AddIcon sx={{ fontSize: 13 }} />} onClick={add}>
+        <Button size="small" startIcon={<AddIcon sx={{ fontSize: 13 }} />}
+          onClick={() => {
+            const next = [...materials, newMaterial(materials.length, authorName)];
+            onChange(next);
+            setOpen(next.length - 1);
+          }}>
           Добавить материал
         </Button>
       </Box>
       {materials.length === 0 && (
         <Typography variant="body2" color="text.disabled" sx={{ fontStyle: 'italic', py: 1 }}>
-          Материалы не добавлены
+          Материалы не добавлены — можно добавить несколько порций теории/справки, ученик увидит их в вкладке «Материалы» дела
         </Typography>
       )}
       {materials.map((m, i) => {
-        const n = norm(m);
+        const isOpen = open === i;
+        const bodyHtml = m.bodyHtml ?? bodyBlocksToHtml(m.body);
         return (
-          <Paper key={i} variant="outlined" sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, px: 2, py: 1.5, mb: 1 }}>
-            <LinkIcon color="action" sx={{ mt: 1.2, flexShrink: 0, fontSize: 18 }} />
-            <Box sx={{ flex: 1, display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
-              <TextField label="Название" value={n.title} onChange={(e) => upd(i, 'title', e.target.value)}
-                size="small" sx={{ flex: 2, minWidth: 160 }} placeholder="Документация Python" />
-              <TextField label="Ссылка (URL)" value={n.url} onChange={(e) => upd(i, 'url', e.target.value)}
-                size="small" sx={{ flex: 3, minWidth: 200 }} placeholder="https://..." />
+          <Paper key={i} variant="outlined" sx={{ mb: 1.5, overflow: 'hidden', borderColor: isOpen ? 'primary.main' : 'divider' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', px: 2, py: 1.25, cursor: 'pointer', userSelect: 'none', bgcolor: isOpen ? 'action.selected' : 'background.paper' }}
+              onClick={() => setOpen(isOpen ? null : i)}>
+              <LinkIcon color="action" sx={{ mr: 1.5, fontSize: 18, flexShrink: 0 }} />
+              <Typography sx={{ flex: 1, fontSize: 13, color: m.title ? 'text.primary' : 'text.disabled', fontStyle: m.title ? 'normal' : 'italic' }}>
+                {m.title || '— без названия —'}
+              </Typography>
+              {m.key && <Chip label="ключевой" size="small" color="primary" variant="outlined" sx={{ mr: 1, height: 18, fontSize: 10 }} />}
+              <IconButton size="small" color="error" onClick={(e) => { e.stopPropagation(); onChange(materials.filter((_, j) => j !== i)); setOpen(null); }}>
+                <DeleteIcon sx={{ fontSize: 16 }} />
+              </IconButton>
+              {isOpen ? <ExpandLessIcon color="action" sx={{ fontSize: 18, ml: 0.5 }} /> : <ExpandMoreIcon color="action" sx={{ fontSize: 18, ml: 0.5 }} />}
             </Box>
-            <IconButton size="small" color="error" onClick={() => onChange(materials.filter((_, j) => j !== i))}>
-              <DeleteIcon sx={{ fontSize: 16 }} />
-            </IconButton>
+            {isOpen && (
+              <Box sx={{ px: 2, pb: 2.5, pt: 2, borderTop: 1, borderColor: 'divider', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                  <TextField label="Название материала" value={m.title ?? ''} onChange={(e) => upd(i, 'title', e.target.value)}
+                    size="small" sx={{ flex: 1 }} placeholder="Например: Как работает print()" />
+                  <FormControlLabel
+                    control={<Switch checked={!!m.key} onChange={(e) => upd(i, 'key', e.target.checked)} />}
+                    label="Ключевой" sx={{ flexShrink: 0, mr: 0 }} />
+                </Box>
+                <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 1 }}>
+                  <NotesEditor
+                    value={bodyHtml}
+                    onChange={(html) => updBody(i, html)}
+                    placeholder="Текст материала — вставьте конспект с картинками (Ctrl+V) или начните писать..."
+                    onUploadImage={(file) => mediaApi.uploadImage(file).then((r) => r.url)}
+                  />
+                </Box>
+              </Box>
+            )}
           </Paper>
         );
       })}
@@ -972,123 +1057,11 @@ const NewCaseDialog: React.FC<{ open: boolean; onClose: () => void; onCreate: (p
   );
 };
 
-// ─── Теория по модулям ──────────────────────────────────────────────────────
-// Один текст на модуль (1-9, то же поле, что и у дел) — попадает в материалы
-// каждого дела модуля в Kodex Player. Форматирование — просто текст с блоками
-// кода в ```тройных бэктиках```, без markdown-разметки (см. серверную сторону).
-const MODULE_NUMBERS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
-
-const ModuleTheoryPanel: React.FC = () => {
-  const [items, setItems] = useState<Record<number, KodexModuleTheory>>({});
-  const [loading, setLoading] = useState(true);
-  const [open, setOpen] = useState<number | null>(null);
-  const [drafts, setDrafts] = useState<Record<number, { title: string; content_md: string }>>({});
-  const [saving, setSaving] = useState<number | null>(null);
-  const [toast, setToast] = useState<{ msg: string; sev: 'success' | 'error' | 'warning' } | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const list = await kodexModuleTheoryApi.list();
-      const byModule: Record<number, KodexModuleTheory> = {};
-      list.forEach((t) => { byModule[t.module] = t; });
-      setItems(byModule);
-    } catch {
-      setToast({ msg: 'Ошибка загрузки теории', sev: 'error' });
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
-
-  const draftFor = (module: number) => drafts[module] ?? { title: items[module]?.title ?? '', content_md: items[module]?.content_md ?? '' };
-
-  const openModule = (module: number) => {
-    if (open === module) { setOpen(null); return; }
-    setOpen(module);
-    setDrafts((prev) => prev[module] ? prev : { ...prev, [module]: { title: items[module]?.title ?? '', content_md: items[module]?.content_md ?? '' } });
-  };
-
-  const updDraft = (module: number, field: 'title' | 'content_md', value: string) => {
-    setDrafts((prev) => ({ ...prev, [module]: { ...draftFor(module), [field]: value } }));
-  };
-
-  const save = async (module: number) => {
-    setSaving(module);
-    try {
-      const result = await kodexModuleTheoryApi.save(module, draftFor(module));
-      setItems((prev) => ({ ...prev, [module]: result }));
-      setToast(result.synced === false
-        ? { msg: 'Сохранено, но не отправлено на Кодэкс — попробуйте ещё раз позже', sev: 'warning' }
-        : { msg: 'Сохранено и отправлено на Кодэкс', sev: 'success' });
-    } catch {
-      setToast({ msg: 'Ошибка сохранения', sev: 'error' });
-    } finally {
-      setSaving(null);
-    }
-  };
-
-  if (loading) {
-    return <Box sx={{ display: 'flex', justifyContent: 'center', pt: 8 }}><CircularProgress size={28} /></Box>;
-  }
-
-  return (
-    <Box sx={{ flex: 1, overflowY: 'auto', p: 3 }}>
-      <Typography variant="h6" sx={{ mb: 0.5 }}>Теория по модулям</Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Один конспект на учебный модуль — появится в материалах каждого дела этого модуля в Кодэкс.
-        Изображения можно вставить через Ctrl+V или кнопкой на панели инструментов — в Кодэксе
-        покажутся текст, код и картинки; таблицы, цвет и шрифт там не отображаются.
-      </Typography>
-      {MODULE_NUMBERS.map((module) => {
-        const isOpen = open === module;
-        const item = items[module];
-        const draft = draftFor(module);
-        return (
-          <Paper key={module} variant="outlined" sx={{ mb: 1.5, overflow: 'hidden', borderColor: isOpen ? 'primary.main' : 'divider' }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', px: 2, py: 1.25, cursor: 'pointer', userSelect: 'none', bgcolor: isOpen ? 'action.selected' : 'background.paper' }}
-              onClick={() => openModule(module)}>
-              <Chip label={`Модуль ${module}`} size="small" color="primary" variant="outlined" sx={{ mr: 1.5 }} />
-              <Typography sx={{ flex: 1, fontSize: 13, color: item?.title ? 'text.primary' : 'text.disabled', fontStyle: item?.title ? 'normal' : 'italic' }}>
-                {item?.title || '— теория не заполнена —'}
-              </Typography>
-              {isOpen ? <ExpandLessIcon color="action" sx={{ fontSize: 18 }} /> : <ExpandMoreIcon color="action" sx={{ fontSize: 18 }} />}
-            </Box>
-            {isOpen && (
-              <Box sx={{ px: 2, pb: 2.5, pt: 2, borderTop: 1, borderColor: 'divider', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <TextField label="Заголовок" value={draft.title} onChange={(e) => updDraft(module, 'title', e.target.value)}
-                  size="small" fullWidth placeholder="Например: Переменные и вывод на экран" />
-                <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 1 }}>
-                  <NotesEditor
-                    value={draft.content_md}
-                    onChange={(html) => updDraft(module, 'content_md', html)}
-                    placeholder="Текст теории — вставьте конспект с картинками (Ctrl+V) или начните писать..."
-                    onUploadImage={(file) => mediaApi.uploadImage(file).then((r) => r.url)}
-                  />
-                </Box>
-                <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-                  <Button variant="contained" startIcon={<SaveIcon />} disabled={saving === module} onClick={() => save(module)}>
-                    {saving === module ? 'Сохранение...' : 'Сохранить'}
-                  </Button>
-                </Box>
-              </Box>
-            )}
-          </Paper>
-        );
-      })}
-      <Snackbar open={!!toast} autoHideDuration={4000} onClose={() => setToast(null)}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
-        {toast ? <Alert severity={toast.sev} onClose={() => setToast(null)}>{toast.msg}</Alert> : undefined}
-      </Snackbar>
-    </Box>
-  );
-};
-
 // ─── Главная страница ─────────────────────────────────────────────────────────
 const SIDEBAR_W = 280;
 
 export default function KodexCasesPage() {
+  const { user } = useAuth();
   const [cases, setCases] = useState<KodexExternalSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -1101,7 +1074,6 @@ export default function KodexCasesPage() {
   const [importDialog, setImportDialog] = useState(false);
   const [delConfirm, setDelConfirm] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [viewMode, setViewMode] = useState<'cases' | 'theory'>('cases');
 
   const loadCases = useCallback(async () => {
     setLoading(true);
@@ -1113,7 +1085,6 @@ export default function KodexCasesPage() {
   useEffect(() => { loadCases(); }, [loadCases]);
 
   const openCase = async (slug: string) => {
-    setViewMode('cases');
     setSelectedId(slug);
     setTab(0);
     try { setEditing({ ...await kodexExternalApi.get(slug) }); }
@@ -1193,10 +1164,6 @@ export default function KodexCasesPage() {
             ))}
           </Box>
           <Box sx={{ p: 1.5, borderTop: 1, borderColor: 'divider', display: 'flex', flexDirection: 'column', gap: 1 }}>
-            <Button fullWidth variant={viewMode === 'theory' ? 'contained' : 'outlined'} color="secondary"
-              startIcon={<MenuBookIcon />} onClick={() => setViewMode(viewMode === 'theory' ? 'cases' : 'theory')}>
-              Теория по модулям
-            </Button>
             <Button fullWidth variant="outlined" color="info" startIcon={<AiIcon />} onClick={() => setAiDialog(true)}>
               AI Черновик
             </Button>
@@ -1211,9 +1178,7 @@ export default function KodexCasesPage() {
 
         {/* ── Правая панель: редактор ── */}
         <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', bgcolor: 'background.default' }}>
-          {viewMode === 'theory' ? (
-            <ModuleTheoryPanel />
-          ) : !editing ? (
+          {!editing ? (
             <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 2, opacity: 0.4 }}>
               <ShieldIcon sx={{ fontSize: 56, color: 'text.disabled' }} />
               <Typography color="text.disabled">Выберите дело из списка</Typography>
@@ -1333,7 +1298,8 @@ export default function KodexCasesPage() {
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                       <BriefingEditor items={editing.briefing || []} onChange={(v) => patch('briefing', v)} />
                       <Divider />
-                      <MaterialsEditor materials={editing.materials || []} onChange={(v) => patch('materials', v)} />
+                      <MaterialsEditor materials={editing.materials || []} onChange={(v) => patch('materials', v)}
+                        authorName={user?.full_name || 'Методист'} />
                     </Box>
                   )}
 

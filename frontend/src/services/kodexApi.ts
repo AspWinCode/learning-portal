@@ -128,21 +128,3 @@ export interface KodexStudentDetail {
 
 export const getStudentKodexDetail = (studentId: number): Promise<KodexStudentDetail> =>
   api.get(`/kodex/cases/students/${studentId}/detail`).then((r) => r.data);
-
-// ─── Теория по модулям ────────────────────────────────────────────────────
-
-export interface KodexModuleTheory {
-  module: number;
-  title: string;
-  content_md: string;
-  updated_at: string | null;
-  synced?: boolean | null;
-}
-
-export const kodexModuleTheoryApi = {
-  list: (): Promise<KodexModuleTheory[]> =>
-    api.get('/kodex/cases/module-theory').then((r) => r.data),
-
-  save: (module: number, payload: { title: string; content_md: string }): Promise<KodexModuleTheory> =>
-    api.put(`/kodex/cases/module-theory/${module}`, payload).then((r) => r.data),
-};

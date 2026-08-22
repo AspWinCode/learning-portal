@@ -109,21 +109,6 @@ class KodexStudentDetailResponse(BaseModel):
     cases: List[KodexCaseDetail] = []
 
 
-class KodexModuleTheoryUpdate(BaseModel):
-    title: str = Field('', max_length=512)
-    content_md: str = ''
-
-
-class KodexModuleTheoryOut(BaseModel):
-    module: int
-    title: str
-    content_md: str
-    updated_at: Optional[datetime]
-    synced: Optional[bool] = None
-
-    model_config = {"from_attributes": True}
-
-
 class KodexCaseSummary(BaseModel):
     id: int
     slug: str

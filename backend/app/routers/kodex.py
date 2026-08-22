@@ -370,29 +370,49 @@ async def upsert_external_case(
 ) -> dict:
     external = _to_external({**body, "slug": slug})
     author = urllib.parse.quote(current_user.full_name or "Методист")
+    slug_q = urllib.parse.quote(slug, safe="")
+    headers = {"Content-Type": "application/json", "X-Studio-Author": author}
 
     async with httpx.AsyncClient(timeout=15) as client:
         res = await client.put(
-            f"{KODEX_EXTERNAL_BASE}/api/content/{urllib.parse.quote(slug, safe='')}",
+            f"{KODEX_EXTERNAL_BASE}/api/content/{slug_q}",
             json=external,
-            headers={"Content-Type": "application/json", "X-Studio-Author": author},
+            headers=headers,
         )
 
-    if res.status_code == 409:
-        raise HTTPException(status_code=409, detail=res.json())
-    if not res.is_success:
-        err_body: dict = {}
+        if res.status_code == 409:
+            raise HTTPException(status_code=409, detail=res.json())
+        if not res.is_success:
+            err_body: dict = {}
+            try:
+                err_body = res.json()
+            except Exception:
+                pass
+            raise HTTPException(
+                status_code=res.status_code if res.status_code < 500 else 502,
+                detail=err_body or {"error": f"HTTP {res.status_code}"},
+            )
+
+        # Kodex Player сохраняет правку в статусе draft (свой workflow ревью —
+        # черновик/на проверке/одобрено), а ученикам показываются только
+        # одобренные правки. У LMS нет отдельной роли рецензента — методист,
+        # сохраняющий здесь, публикует сразу (submit + review-approve одним
+        # действием), иначе сохранённое молча не долетает до учеников.
+        published = True
         try:
-            err_body = res.json()
+            await client.post(f"{KODEX_EXTERNAL_BASE}/api/content/{slug_q}/submit", headers=headers)
+            approve_res = await client.post(
+                f"{KODEX_EXTERNAL_BASE}/api/content/{slug_q}/review",
+                json={"decision": "approved"},
+                headers=headers,
+            )
+            if not approve_res.is_success:
+                published = False
         except Exception:
-            pass
-        raise HTTPException(
-            status_code=res.status_code if res.status_code < 500 else 502,
-            detail=err_body or {"error": f"HTTP {res.status_code}"},
-        )
+            published = False
 
     _invalidate_cases_cache()
-    return {**body, "slug": slug, "is_override": True, "is_seed": body.get("is_seed", True)}
+    return {**body, "slug": slug, "is_override": True, "is_seed": body.get("is_seed", True), "published": published}
 
 
 @router.delete("/external/{slug}", status_code=status.HTTP_204_NO_CONTENT)

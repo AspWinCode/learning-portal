@@ -65,6 +65,7 @@ from app.routers import (
     student_portal,
     students,
     tasks,
+    technolab,
     telegram,
     trainer_cockpit,
     trainer_lessons,
@@ -462,6 +463,7 @@ app.include_router(student_portal.router, prefix="/api/v1/student-portal", tags=
 app.include_router(transcription.router, prefix="/api/v1/transcription", tags=["transcription"])
 app.include_router(notes.router, prefix="/api/v1/notes", tags=["notes"])
 app.include_router(kodex.router, prefix="/api/v1/kodex/cases", tags=["kodex"])
+app.include_router(technolab.router, prefix="/api/v1/technolab", tags=["technolab"])
 app.include_router(methodist_studio.router, prefix="/api/v1/methodist-studio", tags=["methodist-studio"])
 app.include_router(course_studio.router, prefix="/api/v1/course-studio", tags=["course-studio"])
 app.include_router(seo_pages.router, prefix="/api/v1/seo/pages", tags=["seo"])

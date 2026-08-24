@@ -88,6 +88,8 @@ DEFAULT_ROLE_PERMISSIONS: Dict[str, Set[str]] = {
     UserRole.METHODIST.value: {
         "kodex.access",
         "kodex.manage",
+        "technolab.access",
+        "technolab.manage",
     },
     UserRole.DEVELOPER.value: {
         "agile.access",

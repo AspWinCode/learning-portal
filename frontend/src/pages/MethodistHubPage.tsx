@@ -15,6 +15,7 @@ import {
   Shield as ShieldIcon,
   SportsEsports as GameIcon,
   School as SchoolIcon,
+  Science as ScienceIcon,
   Add as AddIcon,
   CheckCircleOutline as CheckIcon,
   RateReview as ReviewIcon,
@@ -43,6 +44,15 @@ const DIRECTIONS: Direction[] = [
     status: 'live',
     color: 'primary',
     route: '/kodex-menu',
+  },
+  {
+    id: 'technolab',
+    name: 'ТехноЛаб',
+    desc: 'Задачи на автопроверку кода (Python/SQL/C++/JS) и лекции.',
+    icon: <ScienceIcon />,
+    status: 'live',
+    color: 'secondary',
+    route: '/technolab',
   },
   {
     id: 'game',
@@ -110,7 +120,7 @@ export default function MethodistHubPage() {
   const stats = [
     {
       label: 'Направлений',
-      value: '1 / 5',
+      value: '2 / 5',
       sub: 'подключено',
       icon: <CheckIcon fontSize="small" color="success" />,
     },

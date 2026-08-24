@@ -770,9 +770,9 @@ class SpecialistQuestionnaireResponse(BaseModel):
 class EgeTrialQuestionnaireRequest(BaseModel):
     full_name: str = Field(..., min_length=1)
     phone: str = Field(..., min_length=1)
-    school_name: Optional[str] = None
+    school_name: str = Field(..., min_length=1)
     city: str = Field(..., min_length=1)
-    source: Optional[str] = None
+    source: str = Field(..., min_length=1)
 
 
 class EgeTrialQuestionnaireResponse(BaseModel):

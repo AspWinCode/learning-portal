@@ -2348,8 +2348,8 @@ export const salesApi = {
     full_name: string;
     phone: string;
     city: string;
-    school_name?: string;
-    source?: string;
+    school_name: string;
+    source: string;
   }): Promise<{ lead_id: number }> => {
     const response = await api.post('/api/sales/public/leads/ege-trial-questionnaire', payload);
     return response.data;

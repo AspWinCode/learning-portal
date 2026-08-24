@@ -32,8 +32,10 @@ const EgeTrialQuestionnairePage: React.FC = () => {
 
     const fullName = form.full_name.trim();
     const city = form.city.trim();
+    const schoolName = form.school_name.trim();
+    const source = form.source.trim();
 
-    if (!fullName || !city || !form.phone) {
+    if (!fullName || !city || !form.phone || !schoolName || !source) {
       setError('Пожалуйста, заполните все обязательные поля.');
       return;
     }
@@ -49,8 +51,8 @@ const EgeTrialQuestionnairePage: React.FC = () => {
         full_name: fullName,
         phone: phoneToApiValue(form.phone),
         city,
-        school_name: form.school_name.trim() || undefined,
-        source: form.source.trim() || undefined,
+        school_name: schoolName,
+        source,
       });
       setSuccess(true);
     } catch (err: any) {
@@ -114,6 +116,7 @@ const EgeTrialQuestionnairePage: React.FC = () => {
               label="Образовательное учреждение"
               value={form.school_name}
               onChange={handleChange('school_name')}
+              required
               fullWidth
             />
             <TextField
@@ -127,6 +130,7 @@ const EgeTrialQuestionnairePage: React.FC = () => {
               label="Откуда о нас узнали"
               value={form.source}
               onChange={handleChange('source')}
+              required
               fullWidth
             />
           </Stack>

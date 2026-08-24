@@ -767,6 +767,18 @@ class SpecialistQuestionnaireResponse(BaseModel):
     lead_id: int
 
 
+class EgeTrialQuestionnaireRequest(BaseModel):
+    full_name: str = Field(..., min_length=1)
+    phone: str = Field(..., min_length=1)
+    school_name: Optional[str] = None
+    city: str = Field(..., min_length=1)
+    source: Optional[str] = None
+
+
+class EgeTrialQuestionnaireResponse(BaseModel):
+    lead_id: int
+
+
 class TildaLeadRequest(BaseModel):
     parent_full_name: str = Field(..., min_length=1, description="ФИО родителя")
     parent_phone: str = Field(..., min_length=1, description="Контактный телефон родителя")

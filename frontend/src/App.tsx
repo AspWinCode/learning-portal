@@ -1,10 +1,10 @@
 import React, { Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
-import Box from '@mui/material/Box';
-import CircularProgress from '@mui/material/CircularProgress';
 import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
+import Box from '@mui/material/Box';
+import CircularProgress from '@mui/material/CircularProgress';
 import { AuthProvider } from './contexts/AuthContext';
 import PrivateRoute from './components/PrivateRoute';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -74,6 +74,7 @@ const SeoVisualEditorPage = React.lazy(() => import('./pages/seo/SeoVisualEditor
 const LeadCardPage = React.lazy(() => import('./pages/LeadCardPage'));
 const ManualLessonsPage = React.lazy(() => import('./pages/ManualLessonsPage'));
 const SpecialistQuestionnairePage = React.lazy(() => import('./pages/SpecialistQuestionnairePage'));
+const EgeTrialQuestionnairePage = React.lazy(() => import('./pages/EgeTrialQuestionnairePage'));
 const PublicStudentQuestionnairePage = React.lazy(() => import('./pages/PublicStudentQuestionnairePage'));
 const TildaLeadPage = React.lazy(() => import('./pages/TildaLeadPage'));
 const StartLeadPage = React.lazy(() => import('./pages/StartLeadPage'));
@@ -267,6 +268,7 @@ function App() {
               }
             />
             <Route path="/anketa/specialist" element={<SpecialistQuestionnairePage />} />
+            <Route path="/anketa/ege-trial" element={<EgeTrialQuestionnairePage />} />
             <Route path="/anketa/student/:questionnaireId" element={<PublicStudentQuestionnairePage />} />
             <Route
               path="/anketa/tilda_lead"

@@ -43,6 +43,8 @@ from app.schemas.sales import (
     LeadUpdate,
     SpecialistQuestionnaireRequest,
     SpecialistQuestionnaireResponse,
+    EgeTrialQuestionnaireRequest,
+    EgeTrialQuestionnaireResponse,
     TildaLeadRequest,
     TildaLeadResponse,
 )
@@ -558,6 +560,61 @@ async def submit_specialist_questionnaire(
     db.commit()
     db.refresh(lead)
     return SpecialistQuestionnaireResponse(lead_id=lead.id)
+
+
+@router.post("/public/leads/ege-trial-questionnaire", response_model=EgeTrialQuestionnaireResponse, status_code=status.HTTP_201_CREATED)
+async def submit_ege_trial_questionnaire(
+    payload: EgeTrialQuestionnaireRequest,
+    db: Session = Depends(get_db),
+):
+    owner = (
+        db.query(User)
+        .filter(User.role.in_([UserRole.SALES, UserRole.OWNER, UserRole.ADMIN]))
+        .order_by(User.id)
+        .first()
+    )
+    if not owner:
+        raise HTTPException(status_code=500, detail="No sales/owner/admin user configured")
+
+    card = StudentCard(
+        student_full_name=payload.full_name,
+        phone_normalized=normalize_phone(payload.phone or "") or None,
+        city=payload.city,
+        school=payload.school_name,
+        parent_full_name=payload.full_name,
+        parent_phone=payload.phone,
+        source=payload.source or "Анкета Пробное ЕГЭ",
+        discount_type=DiscountType.NONE,
+        discount_value=0.0,
+        anketa_status="filled",
+    )
+
+    questionnaire_data = payload.model_dump(mode="json")
+    lead = Lead(
+        owner_id=owner.id,
+        contact_name=payload.full_name,
+        phone=payload.phone,
+        phone_normalized=normalize_phone(payload.phone or "") or None,
+        parent_full_name=payload.full_name,
+        child_full_name=payload.full_name,
+        parent_phone=payload.phone,
+        city=payload.city,
+        school_name=payload.school_name,
+        source=payload.source or "Анкета Пробное ЕГЭ",
+        tags=["direction:ege-trial"],
+        status=LeadStatus.NEW,
+        questionnaire_filled=True,
+        questionnaire_data=questionnaire_data,
+    )
+    db.add(card)
+    db.add(lead)
+    db.flush()
+    sync_student_card_person(db, card)
+    lead.student_card_id = card.id
+    sync_lead_person(db, lead)
+    db.commit()
+    db.refresh(lead)
+    return EgeTrialQuestionnaireResponse(lead_id=lead.id)
 
 
 @router.post("/public/leads/tilda-lead", response_model=TildaLeadResponse, status_code=status.HTTP_201_CREATED)

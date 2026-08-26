@@ -201,7 +201,9 @@ async def get_task(task_id: int) -> dict:
 
 
 async def update_task(task_id: int, payload: dict) -> dict:
-    return await _request("PATCH", f"/api/tasks/{task_id}", json=payload)
+    # ТехноЛаб принимает PUT для обновления задачи (не PATCH, вопреки остальным
+    # ресурсам вроде nodes/tests/lectures) — подтверждено пробой на живом API.
+    return await _request("PUT", f"/api/tasks/{task_id}", json=payload)
 
 
 async def delete_task(task_id: int) -> None:

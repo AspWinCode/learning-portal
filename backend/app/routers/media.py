@@ -1,7 +1,7 @@
 """
-Media router — image upload for CMS pages and rich-text editors (notes, Kodex theory).
-Upload requires seo.manage or kodex.manage; serving files is public (no auth).
-Files stored under DISK_STORAGE_ROOT/media/.
+Media router — image/audio upload for CMS pages, rich-text editors (notes, Kodex theory)
+and ТехноЛаб lecture attachments. Upload requires seo.manage, kodex.manage or
+technolab.manage; serving files is public (no auth). Files stored under DISK_STORAGE_ROOT/media/.
 """
 import os
 from pathlib import Path
@@ -19,8 +19,19 @@ router = APIRouter()
 _DISK_ROOT = Path(os.getenv("DISK_STORAGE_ROOT", "/app/storage/disk")).resolve()
 MEDIA_ROOT = _DISK_ROOT / "media"
 MAX_IMAGE_BYTES = 10 * 1024 * 1024  # 10 MB
-ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif", "image/svg+xml"}
-EXT_MAP = {"jpeg": "jpg", "jpg": "jpg", "png": "png", "webp": "webp", "gif": "gif", "svg": "svg"}
+MAX_AUDIO_BYTES = 60 * 1024 * 1024  # 60 MB
+IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif", "image/svg+xml"}
+AUDIO_TYPES = {"audio/wav", "audio/x-wav", "audio/mpeg", "audio/mp3", "audio/ogg"}
+ALLOWED_TYPES = IMAGE_TYPES | AUDIO_TYPES
+EXT_MAP = {
+    "jpeg": "jpg", "jpg": "jpg", "png": "png", "webp": "webp", "gif": "gif", "svg": "svg",
+    "wav": "wav", "mp3": "mp3", "ogg": "ogg",
+}
+CONTENT_TYPE_MAP = {
+    "jpg": "image/jpeg", "png": "image/png", "webp": "image/webp",
+    "gif": "image/gif", "svg": "image/svg+xml",
+    "wav": "audio/wav", "mp3": "audio/mpeg", "ogg": "audio/ogg",
+}
 
 PORTAL_BASE_URL = os.getenv("PORTAL_BASE_URL", "https://tirskix.space")
 
@@ -33,16 +44,17 @@ class MediaUploadOut(BaseModel):
 @router.post("/upload", response_model=MediaUploadOut)
 async def upload_media(
     file: UploadFile = File(...),
-    current_user: User = Depends(require_any_permission("seo.manage", "kodex.manage")),
+    current_user: User = Depends(require_any_permission("seo.manage", "kodex.manage", "technolab.manage")),
 ):
     if file.content_type not in ALLOWED_TYPES:
-        raise HTTPException(status_code=415, detail=f"Неподдерживаемый тип файла: {file.content_type}. Разрешены: JPEG, PNG, WebP, GIF, SVG")
+        raise HTTPException(status_code=415, detail=f"Неподдерживаемый тип файла: {file.content_type}. Разрешены: JPEG, PNG, WebP, GIF, SVG, WAV, MP3, OGG")
 
-    data = await file.read(MAX_IMAGE_BYTES + 1)
+    max_bytes = MAX_AUDIO_BYTES if file.content_type in AUDIO_TYPES else MAX_IMAGE_BYTES
+    data = await file.read(max_bytes + 1)
     if not data:
         raise HTTPException(status_code=400, detail="Пустой файл")
-    if len(data) > MAX_IMAGE_BYTES:
-        raise HTTPException(status_code=413, detail="Файл слишком большой (макс. 10 МБ)")
+    if len(data) > max_bytes:
+        raise HTTPException(status_code=413, detail=f"Файл слишком большой (макс. {max_bytes // (1024 * 1024)} МБ)")
 
     MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
 
@@ -68,7 +80,6 @@ async def serve_media(key: str):
         raise HTTPException(status_code=404, detail="Файл не найден")
 
     ext = key.rsplit(".", 1)[-1].lower() if "." in key else ""
-    ct = {"jpg": "image/jpeg", "png": "image/png", "webp": "image/webp",
-          "gif": "image/gif", "svg": "image/svg+xml"}.get(ext, "application/octet-stream")
+    ct = CONTENT_TYPE_MAP.get(ext, "application/octet-stream")
 
     return FileResponse(path, media_type=ct, headers={"Cache-Control": "public, max-age=31536000, immutable"})

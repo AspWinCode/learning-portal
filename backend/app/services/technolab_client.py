@@ -168,8 +168,18 @@ async def reorder_nodes(payload: dict) -> Any:
     return await _request("POST", "/api/admin/courses/nodes/reorder", json=payload)
 
 
+async def get_node_content(node_id: int) -> Any:
+    # Публичный (студенческий) эндпоинт — но отдаёт то же самое, доступен и с
+    # админ-токеном; отдельного admin-listing для content нет.
+    return await _request("GET", f"/api/nodes/{node_id}/content")
+
+
 async def create_node_content(node_id: int, payload: dict) -> dict:
     return await _request("POST", f"/api/admin/courses/nodes/{node_id}/content", json=payload)
+
+
+async def update_node_content(node_id: int, content_id: int, payload: dict) -> dict:
+    return await _request("PATCH", f"/api/admin/courses/nodes/{node_id}/content/{content_id}", json=payload)
 
 
 async def delete_node_content(node_id: int, content_id: int) -> None:

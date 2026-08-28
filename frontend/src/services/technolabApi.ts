@@ -48,6 +48,14 @@ export interface TechnoLabNode {
   tasks?: TechnoLabNodeTask[];
 }
 
+export interface TechnoLabNodeContent {
+  id: number;
+  node_id: number;
+  title: string;
+  content: string;
+  sort_order: number;
+}
+
 export interface TechnoLabTaskTest {
   id: number;
   task_id: number;
@@ -104,6 +112,16 @@ export const technolabApi = {
   updateNode: (nodeId: number, payload: Partial<TechnoLabNode>): Promise<TechnoLabNode> =>
     api.patch(`${BASE}/nodes/${nodeId}`, payload).then((r) => r.data),
   deleteNode: (nodeId: number): Promise<void> => api.delete(`${BASE}/nodes/${nodeId}`).then(() => undefined),
+
+  // Node content (лекции/материалы уровня темы, не привязанные к конкретной задаче)
+  getNodeContent: (nodeId: number): Promise<TechnoLabNodeContent[]> =>
+    api.get(`${BASE}/nodes/${nodeId}/content`).then((r) => r.data),
+  createNodeContent: (nodeId: number, payload: { title: string; content: string; sort_order?: number }): Promise<TechnoLabNodeContent> =>
+    api.post(`${BASE}/nodes/${nodeId}/content`, payload).then((r) => r.data),
+  updateNodeContent: (nodeId: number, contentId: number, payload: Partial<TechnoLabNodeContent>): Promise<TechnoLabNodeContent> =>
+    api.patch(`${BASE}/nodes/${nodeId}/content/${contentId}`, payload).then((r) => r.data),
+  deleteNodeContent: (nodeId: number, contentId: number): Promise<void> =>
+    api.delete(`${BASE}/nodes/${nodeId}/content/${contentId}`).then(() => undefined),
 
   // Node ↔ task attachment (создание задачи методистом)
   createNodeTask: (

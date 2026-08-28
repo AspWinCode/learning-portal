@@ -37,6 +37,7 @@ import {
   technolabApi,
   TechnoLabCourse,
   TechnoLabNode,
+  TechnoLabNodeContent,
   TechnoLabNodeType,
   TechnoLabRunnerType,
   TechnoLabTask,
@@ -70,14 +71,16 @@ interface NodeTreeProps {
   nodes: TechnoLabNode[];
   depth: number;
   selectedTaskId: number | null;
+  selectedContentNodeId: number | null;
   onSelectTask: (nodeId: number, taskId: number) => void;
+  onSelectNode: (node: TechnoLabNode) => void;
   onAddChild: (node: TechnoLabNode) => void;
   onAddTask: (node: TechnoLabNode) => void;
   onDeleteNode: (node: TechnoLabNode) => void;
   onDeleteNodeTask: (node: TechnoLabNode, nodeTaskId: number) => void;
 }
 
-function NodeTree({ nodes, depth, selectedTaskId, onSelectTask, onAddChild, onAddTask, onDeleteNode, onDeleteNodeTask }: NodeTreeProps) {
+function NodeTree({ nodes, depth, selectedTaskId, selectedContentNodeId, onSelectTask, onSelectNode, onAddChild, onAddTask, onDeleteNode, onDeleteNodeTask }: NodeTreeProps) {
   return (
     <>
       {nodes.map((node) => (
@@ -86,7 +89,9 @@ function NodeTree({ nodes, depth, selectedTaskId, onSelectTask, onAddChild, onAd
           node={node}
           depth={depth}
           selectedTaskId={selectedTaskId}
+          selectedContentNodeId={selectedContentNodeId}
           onSelectTask={onSelectTask}
+          onSelectNode={onSelectNode}
           onAddChild={onAddChild}
           onAddTask={onAddTask}
           onDeleteNode={onDeleteNode}
@@ -101,48 +106,55 @@ interface NodeRowProps {
   node: TechnoLabNode;
   depth: number;
   selectedTaskId: number | null;
+  selectedContentNodeId: number | null;
   onSelectTask: (nodeId: number, taskId: number) => void;
+  onSelectNode: (node: TechnoLabNode) => void;
   onAddChild: (node: TechnoLabNode) => void;
   onAddTask: (node: TechnoLabNode) => void;
   onDeleteNode: (node: TechnoLabNode) => void;
   onDeleteNodeTask: (node: TechnoLabNode, nodeTaskId: number) => void;
 }
 
-function NodeRow({ node, depth, selectedTaskId, onSelectTask, onAddChild, onAddTask, onDeleteNode, onDeleteNodeTask }: NodeRowProps) {
+function NodeRow({ node, depth, selectedTaskId, selectedContentNodeId, onSelectTask, onSelectNode, onAddChild, onAddTask, onDeleteNode, onDeleteNodeTask }: NodeRowProps) {
   const [open, setOpen] = useState(true);
   const hasContent = (node.children && node.children.length > 0) || (node.tasks && node.tasks.length > 0);
+  const isSelected = selectedContentNodeId === node.id;
 
   return (
     <Box>
       <Box
+        onClick={() => onSelectNode(node)}
         sx={{
-          display: 'flex', alignItems: 'center', gap: 0.5, pl: 1 + depth * 2, pr: 1, py: 0.75,
+          display: 'flex', alignItems: 'center', gap: 0.5, pl: 1 + depth * 2, pr: 1, py: 0.75, cursor: 'pointer',
+          bgcolor: isSelected ? 'action.selected' : 'transparent',
+          borderLeft: '3px solid',
+          borderColor: isSelected ? 'primary.main' : 'transparent',
           '&:hover': { bgcolor: 'action.hover' },
         }}
       >
-        <IconButton size="small" onClick={() => setOpen((v) => !v)} sx={{ p: 0.25, visibility: hasContent ? 'visible' : 'hidden' }}>
+        <IconButton size="small" onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }} sx={{ p: 0.25, visibility: hasContent ? 'visible' : 'hidden' }}>
           {open ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />}
         </IconButton>
         <Chip label={NODE_TYPE_LABEL[node.type]} size="small" variant="outlined" sx={{ fontSize: 10, height: 18 }} />
-        <Typography variant="body2" sx={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <Typography variant="body2" color={isSelected ? 'primary' : 'text.primary'} sx={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {node.title}
         </Typography>
         {node.can_attach_tasks && (
           <Tooltip title="Добавить задачу">
-            <IconButton size="small" color="primary" onClick={() => onAddTask(node)} sx={{ p: 0.4 }}>
+            <IconButton size="small" color="primary" onClick={(e) => { e.stopPropagation(); onAddTask(node); }} sx={{ p: 0.4 }}>
               <TaskIcon sx={{ fontSize: 15 }} />
             </IconButton>
           </Tooltip>
         )}
         {node.can_create_children && CHILD_TYPE[node.type] && (
           <Tooltip title={`Добавить ${NODE_TYPE_LABEL[CHILD_TYPE[node.type] as TechnoLabNodeType].toLowerCase()}`}>
-            <IconButton size="small" color="primary" onClick={() => onAddChild(node)} sx={{ p: 0.4 }}>
+            <IconButton size="small" color="primary" onClick={(e) => { e.stopPropagation(); onAddChild(node); }} sx={{ p: 0.4 }}>
               <AddIcon sx={{ fontSize: 15 }} />
             </IconButton>
           </Tooltip>
         )}
         <Tooltip title="Удалить узел">
-          <IconButton size="small" onClick={() => onDeleteNode(node)} sx={{ p: 0.4, color: 'text.disabled', '&:hover': { color: 'error.main' } }}>
+          <IconButton size="small" onClick={(e) => { e.stopPropagation(); onDeleteNode(node); }} sx={{ p: 0.4, color: 'text.disabled', '&:hover': { color: 'error.main' } }}>
             <DeleteIcon sx={{ fontSize: 15 }} />
           </IconButton>
         </Tooltip>
@@ -153,7 +165,7 @@ function NodeRow({ node, depth, selectedTaskId, onSelectTask, onAddChild, onAddT
           {(node.tasks || []).map((nt) => (
             <Box
               key={nt.id}
-              onClick={() => onSelectTask(node.id, nt.task_id)}
+              onClick={(e) => { e.stopPropagation(); onSelectTask(node.id, nt.task_id); }}
               sx={{
                 display: 'flex', alignItems: 'center', gap: 1, pl: 1 + (depth + 1) * 2, pr: 1, py: 0.6, cursor: 'pointer',
                 bgcolor: selectedTaskId === nt.task_id ? 'action.selected' : 'transparent',
@@ -184,7 +196,9 @@ function NodeRow({ node, depth, selectedTaskId, onSelectTask, onAddChild, onAddT
               nodes={node.children}
               depth={depth + 1}
               selectedTaskId={selectedTaskId}
+              selectedContentNodeId={selectedContentNodeId}
               onSelectTask={onSelectTask}
+              onSelectNode={onSelectNode}
               onAddChild={onAddChild}
               onAddTask={onAddTask}
               onDeleteNode={onDeleteNode}
@@ -286,6 +300,124 @@ function LectureRow({ lecture, onUpdate, onDelete }: { lecture: TechnoLabTaskLec
           Удалить
         </Button>
       </Box>
+    </Box>
+  );
+}
+
+// ─── Node content row (материалы/лекции уровня темы) ──────────────────────────
+function NodeContentRow({ item, onUpdate, onDelete }: { item: TechnoLabNodeContent; onUpdate: (v: { title: string; content: string }) => void; onDelete: () => void }) {
+  const [title, setTitle] = useState(item.title);
+  const [html, setHtml] = useState(() => markdownToHtml(item.content));
+  const [dirty, setDirty] = useState(false);
+
+  useEffect(() => {
+    setTitle(item.title);
+    setHtml(markdownToHtml(item.content));
+    setDirty(false);
+  }, [item]);
+
+  const uploadImage = useCallback(async (file: File) => {
+    const res = await mediaApi.uploadImage(file);
+    return res.url;
+  }, []);
+
+  const save = () => {
+    onUpdate({ title, content: htmlToMarkdown(html) });
+    setDirty(false);
+  };
+
+  return (
+    <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 1.5, p: 1.5, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+      <TextField
+        label="Заголовок" value={title} size="small"
+        onChange={(e) => { setTitle(e.target.value); setDirty(true); }}
+      />
+      <NotesEditor
+        value={html}
+        onChange={(v) => { setHtml(v); setDirty(true); }}
+        onUploadImage={uploadImage}
+        placeholder="Текст материала… картинки — вставьте по Ctrl+V или кнопкой, видео — вставьте ссылку"
+      />
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+        <Button size="small" disabled={!dirty} onClick={save} startIcon={<SaveIcon fontSize="small" />}>
+          Сохранить
+        </Button>
+        <Button size="small" color="error" onClick={onDelete} startIcon={<DeleteIcon fontSize="small" />}>
+          Удалить
+        </Button>
+      </Box>
+    </Box>
+  );
+}
+
+// ─── Node content editor (материалы темы, не привязанные к задаче) ────────────
+function NodeContentEditor({ node, setToast }: { node: TechnoLabNode; setToast: (t: Toast) => void }) {
+  const [items, setItems] = useState<TechnoLabNodeContent[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const list = await technolabApi.getNodeContent(node.id);
+      setItems(Array.isArray(list) ? list : []);
+    } catch {
+      setToast({ msg: 'Не удалось загрузить материалы темы', err: true });
+    } finally {
+      setLoading(false);
+    }
+  }, [node.id]); // eslint-disable-line
+
+  useEffect(() => { load(); }, [load]);
+
+  const addItem = async () => {
+    try {
+      const created = await technolabApi.createNodeContent(node.id, { title: 'Новый материал', content: '', sort_order: items.length });
+      setItems((prev) => [...prev, created]);
+    } catch {
+      setToast({ msg: 'Ошибка добавления материала', err: true });
+    }
+  };
+
+  const updateItem = async (id: number, v: { title: string; content: string }) => {
+    try {
+      const saved = await technolabApi.updateNodeContent(node.id, id, v);
+      setItems((prev) => prev.map((it) => (it.id === id ? saved : it)));
+      setToast({ msg: 'Материал сохранён' });
+    } catch {
+      setToast({ msg: 'Ошибка сохранения материала', err: true });
+    }
+  };
+
+  const deleteItem = async (id: number) => {
+    try {
+      await technolabApi.deleteNodeContent(node.id, id);
+      setItems((prev) => prev.filter((it) => it.id !== id));
+      setToast({ msg: 'Материал удалён' });
+    } catch {
+      setToast({ msg: 'Ошибка удаления материала', err: true });
+    }
+  };
+
+  return (
+    <Box sx={{ flex: 1, overflowY: 'auto', p: 3, display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <Box>
+        <Typography variant="subtitle1">{node.title}</Typography>
+        <Typography variant="caption" color="text.secondary">
+          Материалы темы — тексты и лекции, которые ученик видит перед задачами этой темы.
+        </Typography>
+      </Box>
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress size={22} /></Box>
+      ) : (
+        <>
+          {items.map((it) => (
+            <NodeContentRow key={it.id} item={it} onUpdate={(v) => updateItem(it.id, v)} onDelete={() => deleteItem(it.id)} />
+          ))}
+          <Button size="small" variant="outlined" startIcon={<AddIcon fontSize="small" />} onClick={addItem} sx={{ alignSelf: 'flex-start' }}>
+            Добавить материал
+          </Button>
+        </>
+      )}
     </Box>
   );
 }
@@ -487,7 +619,7 @@ export default function TechnoLabStudioPage() {
   const [tree, setTree] = useState<TechnoLabNode[]>([]);
   const [treeLoading, setTreeLoading] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
-  const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
+  const [selectedContentNode, setSelectedContentNode] = useState<TechnoLabNode | null>(null);
   const [toast, setToast] = useState<Toast>(null);
 
   const [createCourseDialog, setCreateCourseDialog] = useState(false);
@@ -576,7 +708,7 @@ export default function TechnoLabStudioPage() {
       const nt = await technolabApi.createNodeTask(addTaskFor.id, { create_new_task: true, task_title: newTaskTitle.trim() });
       await loadTree(selectedCourseId);
       setAddTaskFor(null);
-      setSelectedNodeId(addTaskFor.id);
+      setSelectedContentNode(null);
       setSelectedTaskId(nt.task_id);
       setToast({ msg: 'Задача добавлена' });
     } catch {
@@ -632,7 +764,7 @@ export default function TechnoLabStudioPage() {
                 <React.Fragment key={c.id}>
                   {i > 0 && <Divider />}
                   <Box
-                    onClick={() => { setSelectedCourseId(c.id); setSelectedTaskId(null); }}
+                    onClick={() => { setSelectedCourseId(c.id); setSelectedTaskId(null); setSelectedContentNode(null); }}
                     sx={{
                       px: 2, py: 1.5, cursor: 'pointer',
                       bgcolor: selectedCourseId === c.id ? 'action.selected' : 'transparent',
@@ -683,7 +815,9 @@ export default function TechnoLabStudioPage() {
                 nodes={tree}
                 depth={0}
                 selectedTaskId={selectedTaskId}
-                onSelectTask={(nodeId, taskId) => { setSelectedNodeId(nodeId); setSelectedTaskId(taskId); }}
+                selectedContentNodeId={selectedContentNode?.id ?? null}
+                onSelectTask={(_nodeId, taskId) => { setSelectedContentNode(null); setSelectedTaskId(taskId); }}
+                onSelectNode={(node) => { setSelectedTaskId(null); setSelectedContentNode(node); }}
                 onAddChild={(node) => { setNewNodeTitle(''); setAddChildFor(node); }}
                 onAddTask={(node) => { setNewTaskTitle(''); setAddTaskFor(node); }}
                 onDeleteNode={deleteNode}
@@ -693,7 +827,7 @@ export default function TechnoLabStudioPage() {
           </Box>
         </Box>
 
-        {/* Right — task editor */}
+        {/* Right — task editor / node content editor */}
         {selectedTaskId ? (
           <TaskEditor
             key={selectedTaskId}
@@ -701,9 +835,11 @@ export default function TechnoLabStudioPage() {
             onDeleted={() => { setSelectedTaskId(null); if (selectedCourseId) loadTree(selectedCourseId); }}
             setToast={setToast}
           />
+        ) : selectedContentNode ? (
+          <NodeContentEditor key={selectedContentNode.id} node={selectedContentNode} setToast={setToast} />
         ) : (
           <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Typography variant="body2" color="text.secondary" fontStyle="italic">Выберите задачу или создайте новую в структуре курса</Typography>
+            <Typography variant="body2" color="text.secondary" fontStyle="italic">Выберите тему или задачу в структуре курса</Typography>
           </Box>
         )}
 

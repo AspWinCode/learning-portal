@@ -185,6 +185,17 @@ async def reorder_nodes(
         _raise(e)
 
 
+@router.get("/nodes/{node_id}/content")
+async def list_node_content(
+    node_id: int,
+    current_user: User = Depends(auth.require_permission("technolab.access")),
+):
+    try:
+        return await tl.get_node_content(node_id)
+    except TechnoLabError as e:
+        _raise(e)
+
+
 @router.post("/nodes/{node_id}/content", status_code=status.HTTP_201_CREATED)
 async def create_node_content(
     node_id: int,
@@ -193,6 +204,19 @@ async def create_node_content(
 ):
     try:
         return await tl.create_node_content(node_id, payload.model_dump())
+    except TechnoLabError as e:
+        _raise(e)
+
+
+@router.patch("/nodes/{node_id}/content/{content_id}")
+async def update_node_content(
+    node_id: int,
+    content_id: int,
+    payload: Dict[str, Any],
+    current_user: User = Depends(auth.require_permission("technolab.manage")),
+):
+    try:
+        return await tl.update_node_content(node_id, content_id, payload)
     except TechnoLabError as e:
         _raise(e)
 

@@ -30,6 +30,9 @@ import {
   Science as ScienceIcon,
 } from '@mui/icons-material';
 import Layout from '../components/Layout';
+import NotesEditor from '../components/NotesEditor';
+import { mediaApi } from '../services/api';
+import { markdownToHtml, htmlToMarkdown } from '../utils/markdownHtml';
 import {
   technolabApi,
   TechnoLabCourse,
@@ -264,26 +267,44 @@ function TestRow({ test, onUpdate, onDelete }: { test: TechnoLabTaskTest; onUpda
 
 // ─── Lecture row ──────────────────────────────────────────────────────────────
 function LectureRow({ lecture, onUpdate, onDelete }: { lecture: TechnoLabTaskLecture; onUpdate: (l: TechnoLabTaskLecture) => void; onDelete: () => void }) {
-  const [draft, setDraft] = useState(lecture);
+  const [unlockAttempts, setUnlockAttempts] = useState(lecture.unlock_attempts);
+  const [html, setHtml] = useState(() => markdownToHtml(lecture.content));
   const [dirty, setDirty] = useState(false);
 
-  useEffect(() => { setDraft(lecture); setDirty(false); }, [lecture]);
+  useEffect(() => {
+    setUnlockAttempts(lecture.unlock_attempts);
+    setHtml(markdownToHtml(lecture.content));
+    setDirty(false);
+  }, [lecture]);
+
+  const uploadImage = useCallback(async (file: File) => {
+    const res = await mediaApi.uploadImage(file);
+    return res.url;
+  }, []);
+
+  const save = () => {
+    onUpdate({ ...lecture, content: htmlToMarkdown(html), unlock_attempts: unlockAttempts });
+    setDirty(false);
+  };
 
   return (
     <Box sx={{ border: `1px solid ${K.border}`, borderRadius: 1.5, p: 1.5, display: 'flex', flexDirection: 'column', gap: 1, bgcolor: K.surface }}>
-      <TextField
-        label="Текст лекции (Markdown)" value={draft.content} multiline minRows={6}
-        onChange={(e) => { setDraft((d) => ({ ...d, content: e.target.value })); setDirty(true); }}
-        sx={{ ...textFieldSx, '& textarea': { fontFamily: K.mono, fontSize: 12, lineHeight: 1.6 } }}
-      />
+      <Box sx={{ bgcolor: '#fff', borderRadius: 1, p: 1.5 }}>
+        <NotesEditor
+          value={html}
+          onChange={(v) => { setHtml(v); setDirty(true); }}
+          onUploadImage={uploadImage}
+          placeholder="Текст лекции… картинки — вставьте по Ctrl+V или кнопкой, видео — вставьте ссылку"
+        />
+      </Box>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
         <TextField
-          label="Открыть после N попыток" type="number" value={draft.unlock_attempts}
-          onChange={(e) => { setDraft((d) => ({ ...d, unlock_attempts: Number(e.target.value) })); setDirty(true); }}
+          label="Открыть после N попыток" type="number" value={unlockAttempts}
+          onChange={(e) => { setUnlockAttempts(Number(e.target.value)); setDirty(true); }}
           size="small" sx={{ width: 220, ...textFieldSx }}
         />
         <Box sx={{ flex: 1 }} />
-        <Button size="small" disabled={!dirty} onClick={() => { onUpdate(draft); setDirty(false); }} startIcon={<SaveIcon sx={{ fontSize: 14 }} />}
+        <Button size="small" disabled={!dirty} onClick={save} startIcon={<SaveIcon sx={{ fontSize: 14 }} />}
           sx={{ fontFamily: K.mono, fontSize: 11, color: K.accent }}>
           Сохранить
         </Button>

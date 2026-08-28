@@ -113,6 +113,30 @@ class TechnoLabTaskCreate(BaseModel):
     lectures: List[TechnoLabTaskLectureCreate] = []
 
 
+class TechnoLabCourseProgress(BaseModel):
+    course_id: int
+    course_title: str
+    progress_percent: float
+    completed_tasks_count: int
+    total_tasks_count: int
+
+
+class TechnoLabSubmission(BaseModel):
+    id: int
+    task_id: int
+    task_title: str
+    verdict: Optional[str] = None
+    status: str
+    created_at: str
+
+
+class TechnoLabStudentProgress(BaseModel):
+    started: bool = True
+    wallet_balance: int = 0
+    courses: List[TechnoLabCourseProgress] = []
+    recent_submissions: List[TechnoLabSubmission] = []
+
+
 class TechnoLabTaskUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None

@@ -133,3 +133,32 @@ export const technolabApi = {
     api.patch(`${BASE}/lectures/${lectureId}`, payload).then((r) => r.data),
   deleteLecture: (lectureId: number): Promise<void> => api.delete(`${BASE}/lectures/${lectureId}`).then(() => undefined),
 };
+
+// ─── Прогресс ученика (методист/тренер/родитель) ──────────────────────────────
+
+export interface TechnoLabCourseProgress {
+  course_id: number;
+  course_title: string;
+  progress_percent: number;
+  completed_tasks_count: number;
+  total_tasks_count: number;
+}
+
+export interface TechnoLabSubmission {
+  id: number;
+  task_id: number;
+  task_title: string;
+  verdict: string | null;
+  status: string;
+  created_at: string;
+}
+
+export interface TechnoLabStudentProgress {
+  started: boolean;
+  wallet_balance: number;
+  courses: TechnoLabCourseProgress[];
+  recent_submissions: TechnoLabSubmission[];
+}
+
+export const getStudentTechnoLabProgress = (studentId: number): Promise<TechnoLabStudentProgress> =>
+  api.get(`${BASE}/students/${studentId}/progress`).then((r) => r.data);

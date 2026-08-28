@@ -69,6 +69,7 @@ DEFAULT_ROLE_PERMISSIONS: Dict[str, Set[str]] = {
         "telegram.link",
         "trainer_cockpit.access",
         "student_portal.manage",
+        "technolab.access",
     },
     UserRole.PARENT.value: {
         "programs.access",

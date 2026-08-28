@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app import auth
 from app.database import get_db
-from app.models import User
+from app.models import Student, StudentStatus, User
 from app.routers.action_log import log_action
 from app.schemas.technolab import (
     TechnoLabCourseCreate,
@@ -16,6 +16,7 @@ from app.schemas.technolab import (
     TechnoLabNodeMove,
     TechnoLabNodeTaskCreate,
     TechnoLabNodeUpdate,
+    TechnoLabStudentProgress,
     TechnoLabTaskHintCreate,
     TechnoLabTaskLectureCreate,
     TechnoLabTaskTestCreate,
@@ -392,3 +393,33 @@ async def delete_task_hint(hint_id: int, current_user: User = Depends(auth.requi
         await tl.delete_task_hint(hint_id)
     except TechnoLabError as e:
         _raise(e)
+
+
+# ─── Прогресс ученика (методист/тренер — детально; родитель — своих детей) ──
+
+@router.get("/students/{student_id}/progress", response_model=TechnoLabStudentProgress)
+async def get_student_progress(
+    student_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    is_staff = auth.has_permission(current_user, "technolab.access")
+    is_own_child = False
+    if not is_staff and auth.has_permission(current_user, "parent_dashboard.access"):
+        student = (
+            db.query(Student)
+            .filter(Student.id == student_id, Student.parent_id == current_user.id, Student.status == StudentStatus.ACTIVE)
+            .first()
+        )
+        is_own_child = student is not None
+    if not is_staff and not is_own_child:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions")
+
+    try:
+        overview = await tl.get_student_progress_overview(student_id)
+    except TechnoLabError as e:
+        _raise(e)
+        return
+    if overview is None:
+        return TechnoLabStudentProgress(started=False)
+    return TechnoLabStudentProgress(started=True, **overview)

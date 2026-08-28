@@ -246,3 +246,27 @@ async def update_task_hint(hint_id: int, payload: dict) -> dict:
 
 async def delete_task_hint(hint_id: int) -> None:
     await _request("DELETE", f"/api/tasks/hints/{hint_id}")
+
+
+# ─── Student progress (методист/тренер/родитель) ────────────────────────────
+
+async def find_user_by_login(login: str) -> Optional[dict]:
+    """Находит пользователя ТехноЛаб по точному логину (используем SSO external_ref
+    вида lp-student-{id}, см. app/services/kodex_sso.py — тот же формат для всех
+    внешних площадок)."""
+    users = await _request("GET", "/api/users", params={"login": login})
+    if not users:
+        return None
+    return users[0]
+
+
+async def get_student_progress_overview(student_id: int) -> Optional[dict]:
+    """Прогресс ученика на ТехноЛаб: курсы (% прохождения, решённые задачи),
+    баланс баллов, последние попытки. None — если ученик там ещё не был (аккаунт
+    создаётся только при первом SSO-переходе)."""
+    login = f"lp-student-{student_id}"
+    user = await find_user_by_login(login)
+    if not user:
+        return None
+    overview = await _request("GET", f"/api/users/{user['id']}/progress-overview")
+    return overview

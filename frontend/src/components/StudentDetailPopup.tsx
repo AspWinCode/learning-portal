@@ -45,6 +45,7 @@ import { format, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { studentsApi, salesApi, studentCardsApi, studentAccountsApi, abonementsApi, financeApi, studentPortalAdminApi } from '../services/api';
 import { getStudentKodexDetail, KodexStudentDetail } from '../services/kodexApi';
+import { getStudentTechnoLabProgress, TechnoLabStudentProgress } from '../services/technolabApi';
 import { Student, Abonement, AbsenceFollowUp, AbsenceFollowUpStage, StudentAccount, StudentAccountTransaction, StudentCard, StudentTimelineEvent, CourseCatalogItemOut, StudentPortalAdminView } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { getEffectiveRole, hasPermission } from '../utils/permissions';
@@ -169,6 +170,11 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
   const [kodexDetailLoading, setKodexDetailLoading] = useState(false);
   const [kodexDetailError, setKodexDetailError] = useState<string | null>(null);
   const [expandedKodexCase, setExpandedKodexCase] = useState<string | null>(null);
+  const canViewTechnoLabDetail = hasPermission(user, 'technolab.access');
+  const [technolabDetail, setTechnolabDetail] = useState<TechnoLabStudentProgress | null>(null);
+  const [technolabDetailOpen, setTechnolabDetailOpen] = useState(false);
+  const [technolabDetailLoading, setTechnolabDetailLoading] = useState(false);
+  const [technolabDetailError, setTechnolabDetailError] = useState<string | null>(null);
   const [portalView, setPortalView] = useState<StudentPortalAdminView | null>(null);
   const [catalog, setCatalog] = useState<CourseCatalogItemOut[]>([]);
   const [portalLoading, setPortalLoading] = useState(false);
@@ -229,6 +235,9 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
     setKodexDetailOpen(false);
     setKodexDetailError(null);
     setExpandedKodexCase(null);
+    setTechnolabDetail(null);
+    setTechnolabDetailOpen(false);
+    setTechnolabDetailError(null);
     const promises: Promise<any>[] = [
       studentsApi.getById(studentId),
       studentsApi.getAttendances(studentId),
@@ -402,6 +411,25 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
       setKodexDetailError(err.response?.data?.detail || err.message || 'Не удалось загрузить решения из Кодэкс');
     } finally {
       setKodexDetailLoading(false);
+    }
+  };
+
+  const handleToggleTechnoLabDetail = async () => {
+    if (technolabDetailOpen) {
+      setTechnolabDetailOpen(false);
+      return;
+    }
+    setTechnolabDetailOpen(true);
+    if (!studentId || technolabDetail) return;
+    setTechnolabDetailLoading(true);
+    setTechnolabDetailError(null);
+    try {
+      const detail = await getStudentTechnoLabProgress(studentId);
+      setTechnolabDetail(detail);
+    } catch (err: any) {
+      setTechnolabDetailError(err.response?.data?.detail || err.message || 'Не удалось загрузить прогресс из ТехноЛаб');
+    } finally {
+      setTechnolabDetailLoading(false);
     }
   };
 
@@ -1423,6 +1451,84 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
                                     </Collapse>
                                   </Box>
                                 ))}
+                              </Stack>
+                            )}
+                          </Box>
+                        </Collapse>
+                      </Box>
+                    )}
+
+                    {canViewTechnoLabDetail && (
+                      <Box>
+                        <Stack
+                          direction="row"
+                          justifyContent="space-between"
+                          alignItems="center"
+                          sx={{ cursor: 'pointer' }}
+                          onClick={handleToggleTechnoLabDetail}
+                        >
+                          <Typography variant="body2" fontWeight={600}>Прогресс по ТехноЛаб</Typography>
+                          <IconButton size="small">
+                            {technolabDetailOpen ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
+                          </IconButton>
+                        </Stack>
+                        <Collapse in={technolabDetailOpen}>
+                          <Box sx={{ mt: 1 }}>
+                            {technolabDetailLoading && (
+                              <Stack direction="row" justifyContent="center" sx={{ py: 2 }}>
+                                <CircularProgress size={20} />
+                              </Stack>
+                            )}
+                            {technolabDetailError && (
+                              <Alert severity="error" sx={{ mb: 1 }}>{technolabDetailError}</Alert>
+                            )}
+                            {!technolabDetailLoading && !technolabDetailError && technolabDetail && !technolabDetail.started && (
+                              <Typography variant="caption" color="text.secondary">
+                                Ученик ещё не заходил в ТехноЛаб.
+                              </Typography>
+                            )}
+                            {!technolabDetailLoading && technolabDetail?.started && (
+                              <Stack spacing={1.5}>
+                                <Typography variant="caption" color="text.secondary">
+                                  Баллов: {technolabDetail.wallet_balance}
+                                </Typography>
+                                {technolabDetail.courses.length === 0 ? (
+                                  <Typography variant="caption" color="text.secondary">Курсов ещё не открывал.</Typography>
+                                ) : (
+                                  <Stack spacing={1}>
+                                    {technolabDetail.courses.map((c) => (
+                                      <Box key={c.course_id} sx={{ p: 1, border: '1px solid', borderColor: 'divider', borderRadius: 1.5 }}>
+                                        <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                          <Typography variant="body2" fontWeight={500}>{c.course_title}</Typography>
+                                          <Chip size="small" label={`${Math.round(c.progress_percent)}%`} color={c.progress_percent >= 100 ? 'success' : 'default'} variant="outlined" />
+                                        </Stack>
+                                        <Typography variant="caption" color="text.secondary">
+                                          Решено задач: {c.completed_tasks_count} / {c.total_tasks_count}
+                                        </Typography>
+                                      </Box>
+                                    ))}
+                                  </Stack>
+                                )}
+                                {technolabDetail.recent_submissions.length > 0 && (
+                                  <Box>
+                                    <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                                      Последние попытки
+                                    </Typography>
+                                    <Stack spacing={0.5}>
+                                      {technolabDetail.recent_submissions.map((s) => (
+                                        <Stack key={s.id} direction="row" justifyContent="space-between" alignItems="center" sx={{ px: 1, py: 0.5, bgcolor: 'action.hover', borderRadius: 1 }}>
+                                          <Typography variant="caption">{s.task_title}</Typography>
+                                          <Chip
+                                            size="small"
+                                            label={s.verdict || s.status}
+                                            color={s.verdict === 'AC' ? 'success' : s.verdict ? 'error' : 'default'}
+                                            variant="outlined"
+                                          />
+                                        </Stack>
+                                      ))}
+                                    </Stack>
+                                  </Box>
+                                )}
                               </Stack>
                             )}
                           </Box>

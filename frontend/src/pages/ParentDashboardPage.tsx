@@ -56,6 +56,7 @@ import {
   OwnerWorkspaceWebPushStatus,
 } from '../types';
 import { extractApiError } from '../utils/extractApiError';
+import { getStudentTechnoLabProgress, TechnoLabStudentProgress } from '../services/technolabApi';
 
 type ComparisonResponse = {
   current: any | null;
@@ -97,6 +98,7 @@ const ParentDashboardPage: React.FC = () => {
   const [webPushStatus, setWebPushStatus] = useState<OwnerWorkspaceWebPushStatus | null>(null);
   const [webPushPermission, setWebPushPermission] = useState<'default' | 'denied' | 'granted'>('default');
   const [webPushBusy, setWebPushBusy] = useState(false);
+  const [technolabByStudentId, setTechnolabByStudentId] = useState<Record<number, TechnoLabStudentProgress>>({});
 
   useEffect(() => {
     loadData();
@@ -164,6 +166,13 @@ const ParentDashboardPage: React.FC = () => {
             setGradeDynamics((prev) => ({ ...prev, [student.id]: dyn }));
           } catch (err) {
             console.error(`Ошибка загрузки динамики оценок для ученика ${student.id}`, err);
+          }
+
+          try {
+            const tl = await getStudentTechnoLabProgress(student.id);
+            if (tl.started) setTechnolabByStudentId((prev) => ({ ...prev, [student.id]: tl }));
+          } catch (err) {
+            console.error(`Ошибка загрузки прогресса ТехноЛаб для ученика ${student.id}`, err);
           }
         })
       );
@@ -482,6 +491,32 @@ const ParentDashboardPage: React.FC = () => {
                           </Stack>
                         </Box>
                       ))}
+                    </Stack>
+                  </Paper>
+                ) : null}
+                {technolabByStudentId[student.id] ? (
+                  <Paper variant="outlined" sx={{ p: 1.5, mt: 1.5 }}>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                      <Typography variant="subtitle2">ТехноЛаб</Typography>
+                      <Chip size="small" label={`${technolabByStudentId[student.id].wallet_balance} баллов`} variant="outlined" />
+                    </Stack>
+                    <Stack spacing={1} sx={{ mt: 1 }}>
+                      {technolabByStudentId[student.id].courses.length === 0 ? (
+                        <Typography variant="caption" color="text.secondary">Курсов ещё не открывал.</Typography>
+                      ) : (
+                        technolabByStudentId[student.id].courses.map((c) => (
+                          <Box key={c.course_id}>
+                            <Stack direction="row" justifyContent="space-between" alignItems="center">
+                              <Typography variant="body2" fontWeight={500}>{c.course_title}</Typography>
+                              <Typography variant="caption" color="text.secondary">{Math.round(c.progress_percent)}%</Typography>
+                            </Stack>
+                            <LinearProgress variant="determinate" value={Math.min(c.progress_percent, 100)} sx={{ mt: 0.5, mb: 0.5, borderRadius: 1, height: 6 }} />
+                            <Typography variant="caption" color="text.secondary">
+                              Решено задач: {c.completed_tasks_count} / {c.total_tasks_count}
+                            </Typography>
+                          </Box>
+                        ))
+                      )}
                     </Stack>
                   </Paper>
                 ) : null}

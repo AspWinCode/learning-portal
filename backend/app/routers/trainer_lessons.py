@@ -61,8 +61,18 @@ def _ensure_lessons_access(current_user: User) -> UserRole:
     return _lessons_effective_role(current_user)
 
 
-def _ensure_lessons_manage(current_user: User) -> UserRole:
-    auth.ensure_permission(current_user, "lessons.manage")
+def _ensure_lessons_mark_attendance(current_user: User) -> UserRole:
+    auth.ensure_permission(current_user, "lessons.mark_attendance")
+    return _lessons_effective_role(current_user)
+
+
+def _ensure_lessons_manage_roster(current_user: User) -> UserRole:
+    auth.ensure_permission(current_user, "lessons.manage_roster")
+    return _lessons_effective_role(current_user)
+
+
+def _ensure_lessons_reassign_trainer(current_user: User) -> UserRole:
+    auth.ensure_permission(current_user, "lessons.reassign_trainer")
     return _lessons_effective_role(current_user)
 
 
@@ -588,7 +598,7 @@ async def save_attendance(
     group = db.query(Group).filter(Group.id == payload.group_id).first()
     if not group:
         raise HTTPException(status_code=404, detail="Group not found")
-    _ensure_lessons_manage(current_user)
+    _ensure_lessons_mark_attendance(current_user)
     _ensure_trainer_owns_group(current_user, group)
 
     if getattr(group, "start_date", None) and payload.lesson_date < group.start_date:
@@ -981,7 +991,7 @@ async def save_custom_lesson_attendance(
     current_user: User = Depends(auth.get_current_active_user),
 ):
     """Посещаемость по ручному уроку (без группы). Только для тренера этого урока."""
-    if _ensure_lessons_manage(current_user) != UserRole.TRAINER:
+    if _ensure_lessons_mark_attendance(current_user) != UserRole.TRAINER:
         raise HTTPException(status_code=403, detail="Только для тренеров")
 
     lesson = db.query(CustomLesson).filter(CustomLesson.id == payload.lesson_id).first()
@@ -1025,7 +1035,7 @@ async def add_student_to_lesson(
     group = db.query(Group).filter(Group.id == payload.group_id).first()
     if not group:
         raise HTTPException(status_code=404, detail="Group not found")
-    _ensure_lessons_manage(current_user)
+    _ensure_lessons_manage_roster(current_user)
     _ensure_trainer_owns_group(current_user, group)
 
     student = db.query(Student).filter(Student.id == payload.student_id).first()
@@ -1139,7 +1149,7 @@ async def create_lesson_slot(
             status_code=400,
             detail="Дата урока не может быть раньше начала группы",
         )
-    _ensure_lessons_manage(current_user)
+    _ensure_lessons_schedule_manage(current_user)
     _ensure_trainer_owns_group(current_user, group)
 
     try:
@@ -1437,7 +1447,7 @@ async def set_lesson_trainer(
     current_user: User = Depends(auth.get_current_active_user),
 ):
     """Подменить преподавателя на конкретный урок. Тренер — своя группа; admin/owner/sales — любая."""
-    _ensure_lessons_manage(current_user)
+    _ensure_lessons_reassign_trainer(current_user)
     try:
         start_t = datetime.strptime(payload.start_time.strip(), "%H:%M").time()
         end_t = datetime.strptime(payload.end_time.strip(), "%H:%M").time()

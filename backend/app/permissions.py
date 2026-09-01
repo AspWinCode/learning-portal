@@ -401,14 +401,32 @@ PERMISSION_CATALOG: List[Dict[str, str]] = [
     {
         "key": "lessons.manage",
         "module": "lessons",
-        "label": "Управление уроками",
-        "description": "Сохранение посещаемости, добавление учеников, создание слотов и подмена тренера.",
+        "label": "Управление уроками (всё)",
+        "description": "Полный доступ ко всем действиям ниже. Даёт то же самое, что все lessons.* права вместе.",
+    },
+    {
+        "key": "lessons.mark_attendance",
+        "module": "lessons",
+        "label": "Отметка посещаемости",
+        "description": "Сохранить посещаемость по занятию (в т.ч. по ручному уроку).",
+    },
+    {
+        "key": "lessons.manage_roster",
+        "module": "lessons",
+        "label": "Состав урока",
+        "description": "Добавить ученика на урок вручную.",
+    },
+    {
+        "key": "lessons.reassign_trainer",
+        "module": "lessons",
+        "label": "Подмена тренера",
+        "description": "Назначить другого тренера на конкретный урок.",
     },
     {
         "key": "lessons.schedule_manage",
         "module": "lessons",
         "label": "Управление расписанием уроков",
-        "description": "Перенос и отмена уроков, а также доступ к сценариям ручного добавления уроков.",
+        "description": "Создание слотов, перенос и отмена уроков.",
     },
     {
         "key": "lessons.override",

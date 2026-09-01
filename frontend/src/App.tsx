@@ -44,6 +44,7 @@ const B2BPlanForTodayPage = React.lazy(() => import('./pages/B2BPlanForTodayPage
 const OwnerFunnelsPage = React.lazy(() => import('./pages/OwnerFunnelsPage'));
 const OwnerUsefulLinksPage = React.lazy(() => import('./pages/OwnerUsefulLinksPage'));
 const TranscriptionPage = React.lazy(() => import('./pages/TranscriptionPage'));
+const AcademyAiPage = React.lazy(() => import('./pages/AcademyAiPage'));
 const ParentDashboardPage = React.lazy(() => import('./pages/ParentDashboardPage'));
 const TrainerCockpitPage = React.lazy(() => import('./pages/TrainerCockpitPage'));
 const TrainerGradesPage = React.lazy(() => import('./pages/TrainerGradesPage'));
@@ -788,6 +789,14 @@ function App() {
               element={
                 <PrivateRoute allowedRoles={['owner']} requiredPermission="transcription.access">
                   <TranscriptionPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/academy-ai"
+              element={
+                <PrivateRoute requiredPermission="academy_ai.access">
+                  <AcademyAiPage />
                 </PrivateRoute>
               }
             />

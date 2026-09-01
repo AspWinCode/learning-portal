@@ -602,6 +602,72 @@ PERMISSION_CATALOG: List[Dict[str, str]] = [
         "label": "Расшифровки аудио: управление",
         "description": "Загрузка новых аудиозаписей на расшифровку и удаление расшифровок.",
     },
+    {
+        "key": "pixelforge.access",
+        "module": "pixelforge",
+        "label": "PixelForge: просмотр",
+        "description": "Просмотр прогресса учеников на платформе PixelForge (GameDev).",
+    },
+    {
+        "key": "pixelforge.manage",
+        "module": "pixelforge",
+        "label": "PixelForge: управление",
+        "description": "Управление контентом и настройками интеграции PixelForge.",
+    },
+    {
+        "key": "academy_ai.access",
+        "module": "academy_ai",
+        "label": "ИИ-консультант: доступ",
+        "description": "Вход в модуль ИИ-консультанта академии и чат-консультации.",
+    },
+    {
+        "key": "academy_ai.audit",
+        "module": "academy_ai",
+        "label": "ИИ-консультант: аудит",
+        "description": "Прохождение и просмотр структурированного аудита бизнеса.",
+    },
+    {
+        "key": "academy_ai.knowledge_view",
+        "module": "academy_ai",
+        "label": "ИИ-консультант: база знаний (просмотр)",
+        "description": "Просмотр записей и материалов базы знаний академии.",
+    },
+    {
+        "key": "academy_ai.knowledge_manage",
+        "module": "academy_ai",
+        "label": "ИИ-консультант: база знаний (управление)",
+        "description": "Загрузка, редактирование и архивация материалов базы знаний (фото/видео/ссылки/документы/тексты).",
+    },
+    {
+        "key": "academy_ai.expertise_manage",
+        "module": "academy_ai",
+        "label": "ИИ-консультант: библиотека экспертизы",
+        "description": "Загрузка источников экспертизы, включение/отключение и модерация.",
+    },
+    {
+        "key": "academy_ai.generate",
+        "module": "academy_ai",
+        "label": "ИИ-консультант: генерация контента",
+        "description": "Генерация выжимок, постов, промптов и изображений; работа с очередью черновиков.",
+    },
+    {
+        "key": "academy_ai.scheduler_manage",
+        "module": "academy_ai",
+        "label": "ИИ-консультант: расписание постов",
+        "description": "Настройка правил регулярной генерации черновиков контента.",
+    },
+    {
+        "key": "academy_ai.finance_context",
+        "module": "academy_ai",
+        "label": "ИИ-консультант: финансовый контекст LMS",
+        "description": "Разрешить консультанту использовать реальные финансовые данные портала в ответах.",
+    },
+    {
+        "key": "academy_ai.settings",
+        "module": "academy_ai",
+        "label": "ИИ-консультант: настройки",
+        "description": "Настройки интеграции: модели AI Tunnel, ключи, параметры генерации.",
+    },
 ]
 
 VALID_PERMISSION_KEYS: Set[str] = {item["key"] for item in PERMISSION_CATALOG}

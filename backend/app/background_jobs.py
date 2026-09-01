@@ -155,3 +155,27 @@ def run_daily_task_digest() -> None:
 def run_transcription(transcription_id: int) -> None:
     from app.services.transcription_service import run_transcription_job
     _run_db_job("transcription", lambda db: run_transcription_job(db, transcription_id))
+
+
+def run_academy_scheduled_content() -> None:
+    """Планировщик регулярных постов ИИ-консультанта (модуль academy_ai).
+    Спит, пока ACADEMY_AI_ENABLED не включён."""
+    if not _env_enabled("ACADEMY_AI_ENABLED", "0"):
+        return
+    import asyncio
+
+    from app.services.academy_ai.scheduler import dispatch_due_rules
+
+    _run_db_job(
+        "academy_scheduled_content",
+        lambda db: asyncio.run(dispatch_due_rules(db)),
+    )
+
+
+def run_academy_proactivity_scan() -> None:
+    """Ежедневный скан проактивных подсказок консультанта (модуль academy_ai)."""
+    if not _env_enabled("ACADEMY_AI_ENABLED", "0"):
+        return
+    from app.services.academy_ai.proactivity import scan
+
+    _run_db_job("academy_proactivity_scan", scan)

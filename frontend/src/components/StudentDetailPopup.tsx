@@ -46,6 +46,7 @@ import { ru } from 'date-fns/locale';
 import { studentsApi, salesApi, studentCardsApi, studentAccountsApi, abonementsApi, financeApi, studentPortalAdminApi } from '../services/api';
 import { getStudentKodexDetail, KodexStudentDetail } from '../services/kodexApi';
 import { getStudentTechnoLabProgress, TechnoLabStudentProgress } from '../services/technolabApi';
+import { getStudentPixelForgeProgress, PixelForgeStudentProgress } from '../services/pixelforgeApi';
 import { Student, Abonement, AbsenceFollowUp, AbsenceFollowUpStage, StudentAccount, StudentAccountTransaction, StudentCard, StudentTimelineEvent, CourseCatalogItemOut, StudentPortalAdminView } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { getEffectiveRole, hasPermission } from '../utils/permissions';
@@ -175,6 +176,11 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
   const [technolabDetailOpen, setTechnolabDetailOpen] = useState(false);
   const [technolabDetailLoading, setTechnolabDetailLoading] = useState(false);
   const [technolabDetailError, setTechnolabDetailError] = useState<string | null>(null);
+  const canViewPixelForgeDetail = hasPermission(user, 'pixelforge.access');
+  const [pixelforgeDetail, setPixelforgeDetail] = useState<PixelForgeStudentProgress | null>(null);
+  const [pixelforgeDetailOpen, setPixelforgeDetailOpen] = useState(false);
+  const [pixelforgeDetailLoading, setPixelforgeDetailLoading] = useState(false);
+  const [pixelforgeDetailError, setPixelforgeDetailError] = useState<string | null>(null);
   const [portalView, setPortalView] = useState<StudentPortalAdminView | null>(null);
   const [catalog, setCatalog] = useState<CourseCatalogItemOut[]>([]);
   const [portalLoading, setPortalLoading] = useState(false);
@@ -238,6 +244,9 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
     setTechnolabDetail(null);
     setTechnolabDetailOpen(false);
     setTechnolabDetailError(null);
+    setPixelforgeDetail(null);
+    setPixelforgeDetailOpen(false);
+    setPixelforgeDetailError(null);
     const promises: Promise<any>[] = [
       studentsApi.getById(studentId),
       studentsApi.getAttendances(studentId),
@@ -430,6 +439,25 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
       setTechnolabDetailError(err.response?.data?.detail || err.message || 'Не удалось загрузить прогресс из ТехноЛаб');
     } finally {
       setTechnolabDetailLoading(false);
+    }
+  };
+
+  const handleTogglePixelForgeDetail = async () => {
+    if (pixelforgeDetailOpen) {
+      setPixelforgeDetailOpen(false);
+      return;
+    }
+    setPixelforgeDetailOpen(true);
+    if (!studentId || pixelforgeDetail) return;
+    setPixelforgeDetailLoading(true);
+    setPixelforgeDetailError(null);
+    try {
+      const detail = await getStudentPixelForgeProgress(studentId);
+      setPixelforgeDetail(detail);
+    } catch (err: any) {
+      setPixelforgeDetailError(err.response?.data?.detail || err.message || 'Не удалось загрузить прогресс из PixelForge');
+    } finally {
+      setPixelforgeDetailLoading(false);
     }
   };
 
@@ -1522,6 +1550,85 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
                                             size="small"
                                             label={s.verdict || s.status}
                                             color={s.verdict === 'AC' ? 'success' : s.verdict ? 'error' : 'default'}
+                                            variant="outlined"
+                                          />
+                                        </Stack>
+                                      ))}
+                                    </Stack>
+                                  </Box>
+                                )}
+                              </Stack>
+                            )}
+                          </Box>
+                        </Collapse>
+                      </Box>
+                    )}
+
+                    {canViewPixelForgeDetail && (
+                      <Box>
+                        <Stack
+                          direction="row"
+                          justifyContent="space-between"
+                          alignItems="center"
+                          sx={{ cursor: 'pointer' }}
+                          onClick={handleTogglePixelForgeDetail}
+                        >
+                          <Typography variant="body2" fontWeight={600}>Прогресс по PixelForge</Typography>
+                          <IconButton size="small">
+                            {pixelforgeDetailOpen ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
+                          </IconButton>
+                        </Stack>
+                        <Collapse in={pixelforgeDetailOpen}>
+                          <Box sx={{ mt: 1 }}>
+                            {pixelforgeDetailLoading && (
+                              <Stack direction="row" justifyContent="center" sx={{ py: 2 }}>
+                                <CircularProgress size={20} />
+                              </Stack>
+                            )}
+                            {pixelforgeDetailError && (
+                              <Alert severity="error" sx={{ mb: 1 }}>{pixelforgeDetailError}</Alert>
+                            )}
+                            {!pixelforgeDetailLoading && !pixelforgeDetailError && pixelforgeDetail && !pixelforgeDetail.started && (
+                              <Typography variant="caption" color="text.secondary">
+                                Ученик ещё не заходил в PixelForge.
+                              </Typography>
+                            )}
+                            {!pixelforgeDetailLoading && pixelforgeDetail?.started && (
+                              <Stack spacing={1.5}>
+                                <Typography variant="caption" color="text.secondary">
+                                  XP: {pixelforgeDetail.xp_total}
+                                  {pixelforgeDetail.level_name ? ` · ${pixelforgeDetail.level_name}` : ''}
+                                </Typography>
+                                {pixelforgeDetail.courses.length === 0 ? (
+                                  <Typography variant="caption" color="text.secondary">Курсов ещё не открывал.</Typography>
+                                ) : (
+                                  <Stack spacing={1}>
+                                    {pixelforgeDetail.courses.map((c) => (
+                                      <Box key={c.course_id} sx={{ p: 1, border: '1px solid', borderColor: 'divider', borderRadius: 1.5 }}>
+                                        <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                          <Typography variant="body2" fontWeight={500}>{c.course_title}</Typography>
+                                          <Chip size="small" label={`${Math.round(c.progress_percent)}%`} color={c.progress_percent >= 100 ? 'success' : 'default'} variant="outlined" />
+                                        </Stack>
+                                        <Typography variant="caption" color="text.secondary">
+                                          Пройдено уроков: {c.completed_lessons} / {c.total_lessons}
+                                        </Typography>
+                                      </Box>
+                                    ))}
+                                  </Stack>
+                                )}
+                                {pixelforgeDetail.recent_submissions.length > 0 && (
+                                  <Box>
+                                    <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                                      Последние сдачи проектов
+                                    </Typography>
+                                    <Stack spacing={0.5}>
+                                      {pixelforgeDetail.recent_submissions.map((s) => (
+                                        <Stack key={s.id} direction="row" justifyContent="space-between" alignItems="center" sx={{ px: 1, py: 0.5, bgcolor: 'action.hover', borderRadius: 1 }}>
+                                          <Typography variant="caption">{s.project_title}</Typography>
+                                          <Chip
+                                            size="small"
+                                            label={s.verdict || s.status}
+                                            color={s.verdict === 'approved' ? 'success' : s.verdict === 'rejected' ? 'error' : 'default'}
                                             variant="outlined"
                                           />
                                         </Stack>

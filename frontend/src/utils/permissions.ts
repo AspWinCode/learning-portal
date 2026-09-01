@@ -4,11 +4,11 @@ const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
   admin: ['*'],
   owner: ['*'],
   sales: ['sales.access', 'finance.access', 'tasks.access', 'projects.access', 'owner_workspace.access', 'students.access', 'students.manage', 'lessons.access', 'lessons.manage', 'lessons.schedule_manage', 'student_accounts.access', 'student_accounts.manage', 'student_accounts.payment', 'persons.access', 'persons.manage'],
-  trainer: ['tasks.access', 'projects.access', 'owner_workspace.access', 'groups.access', 'programs.access', 'students.access', 'grades.access', 'grades.manage', 'characteristics.access', 'characteristics.manage', 'lessons.access', 'lessons.manage', 'telegram.link', 'trainer_cockpit.access', 'technolab.access'],
+  trainer: ['tasks.access', 'projects.access', 'owner_workspace.access', 'groups.access', 'programs.access', 'students.access', 'grades.access', 'grades.manage', 'characteristics.access', 'characteristics.manage', 'lessons.access', 'lessons.manage', 'telegram.link', 'trainer_cockpit.access', 'technolab.access', 'pixelforge.access'],
   parent: ['programs.access', 'groups.access', 'grades.access', 'characteristics.access', 'student_accounts.access', 'student_accounts.payment', 'telegram.link', 'parent_dashboard.access'],
   guest: ['programs.access'],
   seo_manager: ['seo.access', 'seo.manage'],
-  methodist: ['kodex.access', 'kodex.manage', 'technolab.access', 'technolab.manage'],
+  methodist: ['kodex.access', 'kodex.manage', 'technolab.access', 'technolab.manage', 'pixelforge.access', 'pixelforge.manage'],
   developer: ['agile.access', 'agile.manage', 'tasks.access', 'projects.access', 'owner_workspace.access'],
   manager: ['students.access', 'student_portal.manage'],
 };

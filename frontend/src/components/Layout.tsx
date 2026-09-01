@@ -37,6 +37,7 @@ import {
   Grade,
   Description,
   Assessment,
+  AutoAwesome,
   AccountBalanceWallet,
   LocalOffer,
   Home,
@@ -421,6 +422,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const canAccessPasswords = hasPermission(user, 'passwords.access');
   const canAccessNotes = notesEnabledRoles.includes(role ?? '') || role === 'owner' || role === 'admin';
   const canAccessAgile = hasPermission(user, 'agile.access');
+  const canAccessAcademyAi = hasPermission(user, 'academy_ai.access');
 
   const effectiveMenuItems = (() => {
     if (role === 'developer')
@@ -514,6 +516,7 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
       items.push({ text: 'Полезные ссылки', icon: <Link />, path: '/owner-workspace/links' });
       items.push({ text: 'Диск', icon: <Folder />, path: '/disk' });
       if (role === 'owner') items.push({ text: 'Транскрибация', icon: <Mic />, path: '/transcription' });
+      if (canAccessAcademyAi) items.push({ text: 'ИИ-консультант', icon: <AutoAwesome />, path: '/academy-ai' });
       if (canAccessPasswords) items.push({ text: 'Пароли', icon: <Lock />, path: '/passwords' });
       if (canAccessNotes) items.push({ text: 'Заметки', icon: <EditNoteIcon />, path: '/notes' });
     }

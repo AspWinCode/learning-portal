@@ -78,6 +78,7 @@ DEFAULT_ROLE_PERMISSIONS: Dict[str, Set[str]] = {
         "trainer_cockpit.access",
         "student_portal.manage",
         "technolab.access",
+        "pixelforge.access",
     },
     UserRole.PARENT.value: {
         "programs.access",
@@ -99,6 +100,8 @@ DEFAULT_ROLE_PERMISSIONS: Dict[str, Set[str]] = {
         "kodex.manage",
         "technolab.access",
         "technolab.manage",
+        "pixelforge.access",
+        "pixelforge.manage",
     },
     UserRole.DEVELOPER.value: {
         "agile.access",

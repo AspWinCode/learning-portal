@@ -8,6 +8,7 @@ x-app-common-env: &app_common_env
   SSO_KODEX_TOKEN_TTL_SECONDS: ${SSO_KODEX_TOKEN_TTL_SECONDS:-60}
   TECHNOLAB_ADMIN_LOGIN: ${TECHNOLAB_ADMIN_LOGIN:-}
   TECHNOLAB_ADMIN_PASSWORD: ${TECHNOLAB_ADMIN_PASSWORD:-}
+  PIXELFORGE_BASE_URL: ${PIXELFORGE_BASE_URL:-https://pixelforge.tirskix.space}
   TOCHKA_CLIENT_ID: ${TOCHKA_CLIENT_ID:-}
   TOCHKA_CLIENT_SECRET: ${TOCHKA_CLIENT_SECRET:-}
   TOCHKA_JWT_TOKEN: ${TOCHKA_JWT_TOKEN:-}
@@ -18,6 +19,14 @@ x-app-common-env: &app_common_env
   RANVIK_MODEL: ${RANVIK_MODEL:-claude-haiku-4-5}
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
   ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-4-6}
+  # ИИ-консультант академии (модуль academy_ai) + AI Tunnel — единый шлюз к моделям
+  ACADEMY_AI_ENABLED: ${ACADEMY_AI_ENABLED:-1}
+  AI_TUNNEL_BASE_URL: ${AI_TUNNEL_BASE_URL:-}
+  AI_TUNNEL_API_KEY: ${AI_TUNNEL_API_KEY:-}
+  AI_TUNNEL_MODEL_TEXT: ${AI_TUNNEL_MODEL_TEXT:-}
+  AI_TUNNEL_MODEL_VISION: ${AI_TUNNEL_MODEL_VISION:-}
+  AI_TUNNEL_MODEL_IMAGE: ${AI_TUNNEL_MODEL_IMAGE:-}
+  AI_TUNNEL_MODEL_EMBED: ${AI_TUNNEL_MODEL_EMBED:-}
   SMS_GATEWAY_BASE_URL: ${SMS_GATEWAY_BASE_URL:-}
   SMS_GATEWAY_TOKEN: ${SMS_GATEWAY_TOKEN:-}
   SMS_GATEWAY_PROVIDER: ${SMS_GATEWAY_PROVIDER:-}
@@ -54,6 +63,10 @@ x-app-common-env: &app_common_env
 
 services:
   db:
+    # postgres:16-alpine. Модуль academy_ai работает на Postgres FTS.
+    # Для смыслового поиска по эмбеддингам образ меняется на
+    # pgvector/pgvector:pg16 отдельным окном обслуживания (миграция 0181
+    # добавляет vector-колонки только если расширение доступно).
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: learning_portal

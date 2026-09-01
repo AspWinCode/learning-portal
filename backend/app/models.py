@@ -3660,3 +3660,259 @@ class TripShare(Base):
 
     trip = relationship("Trip", back_populates="shares")
     shared_with = relationship("User", foreign_keys=[shared_with_id])
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ИИ-консультант академии (модуль academy_ai)
+# Аудит бизнеса + база знаний + библиотека экспертизы + консультации + генерация
+# контента. См. memory/academy_ai_service.md.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class AcademyKbEntryKind(str, enum.Enum):
+    FACT = "fact"
+    AUDIT_ANSWER = "audit_answer"
+    NOTE = "note"
+    LINK = "link"
+    MEDIA = "media"
+    DOCUMENT = "document"
+
+
+class AcademyKbEntry(Base):
+    """Запись базы знаний академии. Версионируется: при изменении факта создаётся
+    новая запись, старая помечается superseded_by_id (история «как менялась
+    академия во времени»)."""
+
+    __tablename__ = "academy_kb_entries"
+
+    id = Column(Integer, primary_key=True, index=True)
+    kind = Column(String(32), nullable=False, default=AcademyKbEntryKind.FACT.value, index=True)
+    section = Column(String(64), nullable=True, index=True)  # ниша/финансы/маркетинг/продажи/клиенты/команда
+    title = Column(String(256), nullable=False)
+    body_text = Column(Text, nullable=True)
+    meta = Column(JSON, nullable=True)
+    ai_description = Column(Text, nullable=True)  # авто-описание медиа/ссылки от ИИ
+    tags = Column(JSON, nullable=True)  # список строк
+    storage_key = Column(String(512), nullable=True)  # ключ в disk-хранилище (media/document)
+    source_url = Column(String(1024), nullable=True)  # для kind=link
+    direction = Column(String(32), nullable=True, index=True)  # программирование/ОГЭ/ЕГЭ
+    is_active = Column(Boolean, nullable=False, default=True, index=True)
+    superseded_by_id = Column(Integer, ForeignKey("academy_kb_entries.id", ondelete="SET NULL"), nullable=True)
+    valid_from = Column(DateTime(timezone=True), server_default=func.now())
+    created_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    chunks = relationship("AcademyKbChunk", back_populates="entry", cascade="all, delete-orphan")
+
+
+class AcademyKbChunk(Base):
+    """Смысловой фрагмент записи БЗ для retrieval. Колонка embedding добавляется
+    отдельной миграцией на этапе смыслового поиска (pgvector)."""
+
+    __tablename__ = "academy_kb_chunks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    entry_id = Column(Integer, ForeignKey("academy_kb_entries.id", ondelete="CASCADE"), nullable=False, index=True)
+    ord = Column(Integer, nullable=False, default=0)
+    text = Column(Text, nullable=False)
+    token_count = Column(Integer, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    entry = relationship("AcademyKbEntry", back_populates="chunks")
+
+
+class AcademyAuditSessionStatus(str, enum.Enum):
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    ABANDONED = "abandoned"
+
+
+class AcademyAuditSession(Base):
+    __tablename__ = "academy_audit_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    status = Column(String(32), nullable=False, default=AcademyAuditSessionStatus.IN_PROGRESS.value, index=True)
+    kind = Column(String(32), nullable=False, default="initial")  # initial/quarterly/follow_up
+    started_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    started_at = Column(DateTime(timezone=True), server_default=func.now())
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+
+    answers = relationship("AcademyAuditAnswer", back_populates="session", cascade="all, delete-orphan")
+
+
+class AcademyAuditQuestion(Base):
+    """Справочник вопросов аудита (сидируется миграцией, дополняется в UI)."""
+
+    __tablename__ = "academy_audit_questions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    section = Column(String(64), nullable=False, index=True)
+    prompt = Column(Text, nullable=False)
+    hint = Column(Text, nullable=True)
+    sort_order = Column(Integer, nullable=False, default=0)
+    is_active = Column(Boolean, nullable=False, default=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class AcademyAuditAnswer(Base):
+    __tablename__ = "academy_audit_answers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(Integer, ForeignKey("academy_audit_sessions.id", ondelete="CASCADE"), nullable=False, index=True)
+    question_id = Column(Integer, ForeignKey("academy_audit_questions.id", ondelete="SET NULL"), nullable=True, index=True)
+    section = Column(String(64), nullable=True, index=True)
+    answer_text = Column(Text, nullable=True)
+    structured = Column(JSON, nullable=True)
+    kb_entry_id = Column(Integer, ForeignKey("academy_kb_entries.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    session = relationship("AcademyAuditSession", back_populates="answers")
+
+
+class AcademyExpertiseSource(Base):
+    """Источник экспертизы (книга/статья/курс) — методология, не привязанная к
+    конкретной академии. status=disabled исключает источник из выдачи (модерация)."""
+
+    __tablename__ = "academy_expertise_sources"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(512), nullable=False)
+    type = Column(String(32), nullable=False, default="book")  # book/article/course/method
+    status = Column(String(16), nullable=False, default="active", index=True)  # active/disabled
+    origin_url = Column(String(1024), nullable=True)
+    storage_key = Column(String(512), nullable=True)
+    ai_description = Column(Text, nullable=True)
+    added_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    chunks = relationship("AcademyExpertiseChunk", back_populates="source", cascade="all, delete-orphan")
+
+
+class AcademyExpertiseChunk(Base):
+    __tablename__ = "academy_expertise_chunks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    source_id = Column(Integer, ForeignKey("academy_expertise_sources.id", ondelete="CASCADE"), nullable=False, index=True)
+    ord = Column(Integer, nullable=False, default=0)
+    text = Column(Text, nullable=False)
+    token_count = Column(Integer, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    source = relationship("AcademyExpertiseSource", back_populates="chunks")
+
+
+class AcademyDialog(Base):
+    __tablename__ = "academy_dialogs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(256), nullable=True)
+    kind = Column(String(32), nullable=False, default="consult")  # consult/generate
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    messages = relationship(
+        "AcademyMessage", back_populates="dialog", cascade="all, delete-orphan", order_by="AcademyMessage.id"
+    )
+
+
+class AcademyMessage(Base):
+    __tablename__ = "academy_messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    dialog_id = Column(Integer, ForeignKey("academy_dialogs.id", ondelete="CASCADE"), nullable=False, index=True)
+    role = Column(String(16), nullable=False)  # user/assistant/system
+    content = Column(Text, nullable=False)
+    used_sources = Column(JSON, nullable=True)  # {kb: [...], expertise: [...], lms: [...]}
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    dialog = relationship("AcademyDialog", back_populates="messages")
+
+
+class AcademyContentDraftStatus(str, enum.Enum):
+    DRAFT = "draft"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    PUBLISHED = "published"
+
+
+class AcademyContentDraft(Base):
+    """Черновик сгенерированного контента. Система НИКОГДА не публикует сама —
+    только очередь черновиков для проверки человеком."""
+
+    __tablename__ = "academy_content_drafts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    kind = Column(String(32), nullable=False, default="post")  # post/summary/image_prompt/newsletter/script
+    status = Column(String(16), nullable=False, default=AcademyContentDraftStatus.DRAFT.value, index=True)
+    title = Column(String(256), nullable=True)
+    body = Column(Text, nullable=True)
+    image_prompt = Column(Text, nullable=True)
+    image_storage_key = Column(String(512), nullable=True)
+    based_on = Column(JSON, nullable=True)  # ссылки на KB-записи / LMS-факты
+    direction = Column(String(32), nullable=True, index=True)
+    feedback_note = Column(Text, nullable=True)
+    schedule_rule_id = Column(Integer, ForeignKey("academy_schedule_rules.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class AcademyScheduleRule(Base):
+    """Правило регулярной генерации постов (этап планировщика)."""
+
+    __tablename__ = "academy_schedule_rules"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(256), nullable=False)
+    cadence = Column(String(64), nullable=False, default="0 9 * * 1,3,5")  # cron
+    topics = Column(JSON, nullable=True)
+    proportions = Column(JSON, nullable=True)  # {"программирование": 0.5, "ОГЭ": 0.25, "ЕГЭ": 0.25}
+    tone = Column(JSON, nullable=True)  # {"voice": "...", "length": "...", "emoji": true}
+    is_active = Column(Boolean, nullable=False, default=True, index=True)
+    next_run_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    created_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class AcademyInsight(Base):
+    """Проактивная подсказка консультанта владельцу: устаревший аудит, пробел в
+    базе знаний, накопившиеся черновики и т.п. Дедуп по dedup_key среди открытых."""
+
+    __tablename__ = "academy_insights"
+
+    id = Column(Integer, primary_key=True, index=True)
+    kind = Column(String(48), nullable=False, index=True)
+    dedup_key = Column(String(128), nullable=False, index=True)
+    severity = Column(String(16), nullable=False, default="info")  # info/warn
+    title = Column(String(256), nullable=False)
+    body = Column(Text, nullable=True)
+    meta = Column(JSON, nullable=True)
+    status = Column(String(16), nullable=False, default="open", index=True)  # open/dismissed/resolved
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
+    resolved_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+
+class AiGatewayCallLog(Base):
+    """Учёт расхода токенов и централизованное логирование вызовов AI Tunnel."""
+
+    __tablename__ = "ai_gateway_call_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    feature = Column(String(64), nullable=False, index=True)  # academy_consult/academy_generate/task_breakdown/...
+    provider = Column(String(64), nullable=True)
+    model = Column(String(128), nullable=True)
+    purpose = Column(String(32), nullable=True)  # text/vision/image/embed
+    prompt_tokens = Column(Integer, nullable=True)
+    completion_tokens = Column(Integer, nullable=True)
+    total_tokens = Column(Integer, nullable=True)
+    cost_usd = Column(Numeric(12, 6), nullable=True)
+    status = Column(String(16), nullable=False, default="ok")  # ok/error
+    error = Column(Text, nullable=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)

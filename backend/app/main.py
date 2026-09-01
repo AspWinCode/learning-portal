@@ -21,6 +21,7 @@ from app.observability import configure_fastapi_observability, configure_sentry
 from app.rate_limit import limiter
 from app.routers import (
     abonements,
+    academy_ai,
     admin_tools,
     agile,
     auth,
@@ -45,6 +46,7 @@ from app.routers import (
     owner_workspace,
     parent_dashboard,
     passwords,
+    pixelforge,
     programs,
     projects,
     reports,
@@ -464,6 +466,8 @@ app.include_router(transcription.router, prefix="/api/v1/transcription", tags=["
 app.include_router(notes.router, prefix="/api/v1/notes", tags=["notes"])
 app.include_router(kodex.router, prefix="/api/v1/kodex/cases", tags=["kodex"])
 app.include_router(technolab.router, prefix="/api/v1/technolab", tags=["technolab"])
+app.include_router(pixelforge.router, prefix="/api/v1/pixelforge", tags=["pixelforge"])
+app.include_router(academy_ai.router, prefix="/api/v1/academy-ai", tags=["academy-ai"])
 app.include_router(methodist_studio.router, prefix="/api/v1/methodist-studio", tags=["methodist-studio"])
 app.include_router(course_studio.router, prefix="/api/v1/course-studio", tags=["course-studio"])
 app.include_router(seo_pages.router, prefix="/api/v1/seo/pages", tags=["seo"])

@@ -14,6 +14,8 @@ from app.background_jobs import (
     run_parent_weekly_digests,
     run_payment_overdue_tasks,
     run_payment_reminder_notifications,
+    run_academy_proactivity_scan,
+    run_academy_scheduled_content,
     run_scheduled_messages,
     run_student_class_autopromo,
     run_tochka_auto_import,
@@ -85,6 +87,16 @@ def task_owner_workspace_task_reminders() -> None:
 @dramatiq.actor(queue_name="periodic")
 def task_daily_task_digest() -> None:
     run_daily_task_digest()
+
+
+@dramatiq.actor(queue_name="periodic")
+def task_academy_scheduled_content() -> None:
+    run_academy_scheduled_content()
+
+
+@dramatiq.actor(queue_name="periodic")
+def task_academy_proactivity_scan() -> None:
+    run_academy_proactivity_scan()
 
 
 @dramatiq.actor(queue_name="delivery", max_retries=0)

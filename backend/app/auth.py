@@ -45,6 +45,8 @@ DEFAULT_ROLE_PERMISSIONS: Dict[str, Set[str]] = {
         "sales.manage_bank",
         "finance.access",
         "finance.manage",
+        "communications.access",
+        "communications.manage",
         "tasks.access",
         "projects.access",
         "owner_workspace.access",

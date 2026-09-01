@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app import auth
 from app.database import get_db
-from app.models import EmailTemplate, User, UserRole
+from app.models import EmailTemplate, User
 from app.schemas.email_templates import (
     EmailTemplateCreate,
     EmailTemplateResponse,
@@ -19,12 +19,15 @@ from app.services.email_sender import is_email_configured, send_email_html
 
 router = APIRouter()
 
-_ALLOWED_ROLES = {UserRole.OWNER, UserRole.ADMIN, UserRole.SALES}
-
 
 def _check_access(current_user: User) -> None:
-    if current_user.role not in _ALLOWED_ROLES:
-        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    """Просмотр email-шаблонов."""
+    auth.ensure_permission(current_user, "communications.access")
+
+
+def _check_manage(current_user: User) -> None:
+    """Создание, изменение, удаление и тестовая отправка email-шаблонов."""
+    auth.ensure_permission(current_user, "communications.manage")
 
 
 def _to_response(t: EmailTemplate) -> EmailTemplateResponse:
@@ -57,7 +60,7 @@ def create_template(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_user),
 ):
-    _check_access(current_user)
+    _check_manage(current_user)
     template = EmailTemplate(
         name=payload.name,
         subject=payload.subject,
@@ -91,7 +94,7 @@ def update_template(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_user),
 ):
-    _check_access(current_user)
+    _check_manage(current_user)
     t = db.query(EmailTemplate).filter(EmailTemplate.id == template_id).first()
     if not t:
         raise HTTPException(status_code=404, detail="Шаблон не найден")
@@ -108,7 +111,7 @@ def delete_template(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_user),
 ):
-    _check_access(current_user)
+    _check_manage(current_user)
     t = db.query(EmailTemplate).filter(EmailTemplate.id == template_id).first()
     if not t:
         raise HTTPException(status_code=404, detail="Шаблон не найден")
@@ -123,7 +126,7 @@ def test_send_template(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_user),
 ):
-    _check_access(current_user)
+    _check_manage(current_user)
     if not is_email_configured():
         raise HTTPException(status_code=503, detail="SMTP не настроен")
 

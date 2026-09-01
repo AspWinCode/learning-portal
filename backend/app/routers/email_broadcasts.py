@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app import auth
 from app.database import get_db
-from app.models import EmailBroadcast, EmailBroadcastAttachment, EmailBroadcastRecipient, SchoolCampaign, User, UserRole
+from app.models import EmailBroadcast, EmailBroadcastAttachment, EmailBroadcastRecipient, SchoolCampaign, User
 from app.schemas.email_broadcasts import (
     EmailBroadcastAttachmentResponse,
     EmailBroadcastCreate,
@@ -31,8 +31,6 @@ from app.utils.datetime import utcnow
 
 router = APIRouter()
 
-_ALLOWED_ROLES = {UserRole.OWNER, UserRole.ADMIN, UserRole.SALES}
-
 _TRACKING_PIXEL = (
     b"GIF89a\x01\x00\x01\x00\x80\x00\x00\xff\xff\xff\x00\x00\x00!"
     b"\xf9\x04\x00\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;"
@@ -40,8 +38,13 @@ _TRACKING_PIXEL = (
 
 
 def _check_access(current_user: User) -> None:
-    if current_user.role not in _ALLOWED_ROLES:
-        raise HTTPException(status_code=403, detail="Недостаточно прав")
+    """Просмотр email-рассылок."""
+    auth.ensure_permission(current_user, "communications.access")
+
+
+def _check_manage(current_user: User) -> None:
+    """Создание, изменение, отправка и удаление email-рассылок."""
+    auth.ensure_permission(current_user, "communications.manage")
 
 
 def _to_response(broadcast: EmailBroadcast, db: Session | None = None) -> EmailBroadcastResponse:
@@ -113,7 +116,7 @@ def create_broadcast(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_user),
 ):
-    _check_access(current_user)
+    _check_manage(current_user)
     broadcast = EmailBroadcast(
         name=payload.name,
         subject=payload.subject,
@@ -148,7 +151,7 @@ def update_broadcast(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_user),
 ):
-    _check_access(current_user)
+    _check_manage(current_user)
     broadcast = db.query(EmailBroadcast).filter(EmailBroadcast.id == broadcast_id).first()
     if not broadcast:
         raise HTTPException(status_code=404, detail="Рассылка не найдена")
@@ -168,7 +171,7 @@ def delete_broadcast(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_user),
 ):
-    _check_access(current_user)
+    _check_manage(current_user)
     broadcast = db.query(EmailBroadcast).filter(EmailBroadcast.id == broadcast_id).first()
     if not broadcast:
         raise HTTPException(status_code=404, detail="Рассылка не найдена")
@@ -187,7 +190,7 @@ def send_broadcast(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_user),
 ):
-    _check_access(current_user)
+    _check_manage(current_user)
     if not is_email_configured():
         raise HTTPException(status_code=503, detail="SMTP не настроен")
     school_ids = list(payload.school_ids)
@@ -223,7 +226,7 @@ def save_recipients(
     current_user: User = Depends(auth.get_current_user),
 ):
     """Save school recipients to a draft broadcast without sending."""
-    _check_access(current_user)
+    _check_manage(current_user)
     school_ids = list(payload.school_ids)
     if payload.campaign_id:
         extra = db.query(SchoolCampaign.b2b_school_id).filter(
@@ -261,7 +264,7 @@ def launch_broadcast(
     current_user: User = Depends(auth.get_current_user),
 ):
     """Launch sending for a draft that already has saved recipients."""
-    _check_access(current_user)
+    _check_manage(current_user)
     if not is_email_configured():
         raise HTTPException(status_code=503, detail="SMTP не настроен")
 
@@ -295,7 +298,7 @@ def test_send_broadcast(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_user),
 ):
-    _check_access(current_user)
+    _check_manage(current_user)
     if not is_email_configured():
         raise HTTPException(status_code=503, detail="SMTP не настроен")
 
@@ -320,7 +323,7 @@ def retry_failed(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_user),
 ):
-    _check_access(current_user)
+    _check_manage(current_user)
     broadcast = db.query(EmailBroadcast).filter(EmailBroadcast.id == broadcast_id).first()
     if not broadcast:
         raise HTTPException(status_code=404, detail="Рассылка не найдена")
@@ -353,7 +356,7 @@ def resume_broadcast(
     current_user: User = Depends(auth.get_current_user),
 ):
     """Resume a stuck/interrupted broadcast by re-queuing pending recipients."""
-    _check_access(current_user)
+    _check_manage(current_user)
     broadcast = db.query(EmailBroadcast).filter(EmailBroadcast.id == broadcast_id).first()
     if not broadcast:
         raise HTTPException(status_code=404, detail="Рассылка не найдена")
@@ -394,7 +397,7 @@ async def upload_attachment(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_user),
 ):
-    _check_access(current_user)
+    _check_manage(current_user)
     broadcast = db.query(EmailBroadcast).filter(EmailBroadcast.id == broadcast_id).first()
     if not broadcast:
         raise HTTPException(status_code=404, detail="Рассылка не найдена")
@@ -439,7 +442,7 @@ def delete_attachment(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_user),
 ):
-    _check_access(current_user)
+    _check_manage(current_user)
     attachment = db.query(EmailBroadcastAttachment).filter(
         EmailBroadcastAttachment.id == attachment_id,
         EmailBroadcastAttachment.broadcast_id == broadcast_id,

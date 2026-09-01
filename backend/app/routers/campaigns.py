@@ -1688,6 +1688,7 @@ def list_school_campaign_logs(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_user),
 ):
+    auth.ensure_permission(current_user, "campaigns.access")
     sc = db.query(SchoolCampaign).filter(SchoolCampaign.id == sc_id).first()
     if not sc:
         raise HTTPException(status_code=404, detail="SchoolCampaign not found")
@@ -1708,6 +1709,7 @@ def create_school_campaign_log(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_user),
 ):
+    auth.ensure_permission(current_user, "campaigns.manage")
     sc = db.query(SchoolCampaign).filter(SchoolCampaign.id == sc_id).first()
     if not sc:
         raise HTTPException(status_code=404, detail="SchoolCampaign not found")
@@ -1733,6 +1735,7 @@ def delete_school_campaign_log(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_user),
 ):
+    auth.ensure_permission(current_user, "campaigns.manage")
     log = (
         db.query(SchoolCampaignLog)
         .filter(SchoolCampaignLog.id == log_id, SchoolCampaignLog.school_campaign_id == sc_id)
@@ -1755,6 +1758,7 @@ def send_template_to_school(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_user),
 ):
+    auth.ensure_permission(current_user, "campaigns.manage")
     sc = db.query(SchoolCampaign).options(joinedload(SchoolCampaign.school)).filter(SchoolCampaign.id == sc_id).first()
     if not sc:
         raise HTTPException(status_code=404, detail="SchoolCampaign not found")
@@ -1831,6 +1835,7 @@ def get_log_email_status(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_user),
 ):
+    auth.ensure_permission(current_user, "campaigns.access")
     log = (
         db.query(SchoolCampaignLog)
         .filter(SchoolCampaignLog.id == log_id, SchoolCampaignLog.school_campaign_id == sc_id)

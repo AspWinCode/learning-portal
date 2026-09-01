@@ -1096,7 +1096,7 @@ async def update_b2b_school(
 async def delete_b2b_school(
     school_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("b2b.access")),
+    current_user: User = Depends(auth.require_permission("b2b.manage")),
 ):
     school = db.query(B2BSchool).filter(B2BSchool.id == school_id).first()
     if not school:
@@ -1193,7 +1193,7 @@ async def delete_school_contact(
     school_id: int,
     contact_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("b2b.access")),
+    current_user: User = Depends(auth.require_permission("b2b.manage")),
 ):
     contact = db.query(B2BSchoolContact).filter(
         B2BSchoolContact.id == contact_id,

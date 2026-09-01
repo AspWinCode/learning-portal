@@ -38,6 +38,10 @@ def _require_sales_admin_owner(user: User) -> None:
     auth.ensure_permission(user, "sales.access")
 
 
+def _require_sales_manage_student_cards(user: User) -> None:
+    auth.ensure_permission(user, "sales.manage_student_cards")
+
+
 def _student_card_response(card: StudentCard, user: User, db: Session) -> StudentCardResponse:
     parent_cabinet_open = False
     if getattr(card, "student_id", None):
@@ -131,7 +135,7 @@ async def create_student_card(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
-    _require_sales_admin_owner(current_user)
+    _require_sales_manage_student_cards(current_user)
     name = (payload.student_full_name or "").strip()
     if not name:
         raise HTTPException(status_code=400, detail="ФИО ученика обязательно")
@@ -232,7 +236,7 @@ async def import_student_cards_from_excel(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
-    _require_sales_admin_owner(current_user)
+    _require_sales_manage_student_cards(current_user)
     filename = (file.filename or "").lower()
     if not filename.endswith(".xlsx"):
         raise HTTPException(status_code=400, detail="Поддерживается только формат .xlsx")
@@ -380,7 +384,7 @@ async def update_student_card(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
-    _require_sales_admin_owner(current_user)
+    _require_sales_manage_student_cards(current_user)
     card = db.query(StudentCard).filter(StudentCard.id == card_id).first()
     if not card:
         raise HTTPException(status_code=404, detail="Карточка не найдена")
@@ -414,7 +418,7 @@ async def convert_anketa_to_student(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
-    _require_sales_admin_owner(current_user)
+    _require_sales_manage_student_cards(current_user)
     body = payload or AnketaConvertRequest()
     try:
         result = student_card_convert(
@@ -440,7 +444,7 @@ async def archive_student_card(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
-    _require_sales_admin_owner(current_user)
+    _require_sales_manage_student_cards(current_user)
     card = db.query(StudentCard).filter(StudentCard.id == card_id).first()
     if not card:
         raise HTTPException(status_code=404, detail="Карточка не найдена")
@@ -455,7 +459,7 @@ async def unarchive_student_card(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
-    _require_sales_admin_owner(current_user)
+    _require_sales_manage_student_cards(current_user)
     card = db.query(StudentCard).filter(StudentCard.id == card_id).first()
     if not card:
         raise HTTPException(status_code=404, detail="Карточка не найдена")
@@ -470,7 +474,7 @@ async def open_parent_cabinet_from_card(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
-    _require_sales_admin_owner(current_user)
+    _require_sales_manage_student_cards(current_user)
     card = db.query(StudentCard).filter(StudentCard.id == card_id).first()
     if not card:
         raise HTTPException(status_code=404, detail="Карточка не найдена")

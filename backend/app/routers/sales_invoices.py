@@ -62,7 +62,7 @@ async def create_invoice_for_lead(
     lead_id: int,
     payload: InvoiceCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("sales.access")),
+    current_user: User = Depends(auth.require_permission("sales.manage_invoices")),
 ):
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
     if not lead:
@@ -122,7 +122,7 @@ async def mark_invoice_paid(
     lead_id: int,
     invoice_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("sales.access")),
+    current_user: User = Depends(auth.require_permission("sales.manage_invoices")),
 ):
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
     if not lead:
@@ -154,7 +154,7 @@ async def mark_invoice_paid(
 async def send_invoice_email(
     invoice_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("sales.access")),
+    current_user: User = Depends(auth.require_permission("sales.manage_invoices")),
 ):
     invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
     if not invoice:

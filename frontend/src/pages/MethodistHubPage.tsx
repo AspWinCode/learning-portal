@@ -33,6 +33,8 @@ interface Direction {
   status: 'live' | 'soon' | 'planned';
   color: 'primary' | 'warning' | 'info' | 'secondary' | 'default';
   route?: string;
+  /** Внешняя площадка со своим редактором — открывается в новой вкладке, без витрины контента Кодэкс. */
+  external?: string;
 }
 
 const DIRECTIONS: Direction[] = [
@@ -56,11 +58,12 @@ const DIRECTIONS: Direction[] = [
   },
   {
     id: 'game',
-    name: 'Гейм Студия',
-    desc: 'Интерактивные игровые сценарии и обучающие механики.',
+    name: 'PixelForge',
+    desc: 'Разработка игр: интерактивные курсы, встроенный редактор кода, сдача проектов.',
     icon: <GameIcon />,
-    status: 'soon',
+    status: 'live',
     color: 'warning',
+    external: 'https://pixelforge.tirskix.space',
   },
   {
     id: 'oge',
@@ -120,7 +123,7 @@ export default function MethodistHubPage() {
   const stats = [
     {
       label: 'Направлений',
-      value: '2 / 5',
+      value: '3 / 5',
       sub: 'подключено',
       icon: <CheckIcon fontSize="small" color="success" />,
     },
@@ -224,7 +227,10 @@ export default function MethodistHubPage() {
                 >
                   {isLive ? (
                     <CardActionArea
-                      onClick={() => dir.route && navigate(dir.route)}
+                      onClick={() => {
+                        if (dir.external) window.open(dir.external, '_blank', 'noopener');
+                        else if (dir.route) navigate(dir.route);
+                      }}
                       sx={{ height: '100%', alignItems: 'flex-start', display: 'flex', flexDirection: 'column' }}
                     >
                       <DirectionCardContent
@@ -368,7 +374,13 @@ function DirectionCardContent({ dir, chip, loading, total, active, attention, is
         <Typography variant="subtitle1" sx={{ mb: 0.25 }}>{dir.name}</Typography>
         <Typography variant="body2" color="text.secondary">{dir.desc}</Typography>
       </Box>
-      {isLive ? (
+      {isLive && dir.external ? (
+        <Box sx={{ pt: 1, borderTop: 1, borderColor: 'divider' }}>
+          <Typography variant="caption" color="text.secondary">
+            Отдельная площадка · открыть редактор →
+          </Typography>
+        </Box>
+      ) : isLive ? (
         loading ? (
           <Box sx={{ pt: 1, borderTop: 1, borderColor: 'divider' }}>
             <CircularProgress size={14} />

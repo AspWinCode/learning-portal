@@ -96,6 +96,7 @@ from app.services.student_account_finance import create_student_account as finan
 from app.services.bank_operation import apply_bank_operation_to_student as bank_operation_apply
 from app.services.payment_status import get_payment_status_summary
 from app.dependencies import require_finance_access as dep_require_finance_access
+from app.dependencies import require_finance_manage as dep_require_finance_manage
 from app.student_display import get_student_display_name
 
 
@@ -106,6 +107,12 @@ def _require_finance_access(user: User) -> None:
     """Права доступа к финансовому журналу: admin / owner / sales."""
     if not auth.has_permission(user, "finance.access"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав для работы с финансовым журналом")
+
+
+def _require_finance_manage(user: User) -> None:
+    """Права на изменение финансовых данных (счета, модели, статьи, бюджет, транзакции)."""
+    if not auth.has_permission(user, "finance.manage"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав для управления финансовыми данными")
 
 
 def _bank_transaction_status_map(db: Session, operation_ids: List[str]) -> Dict[str, str]:
@@ -275,7 +282,7 @@ async def create_finance_account(
     current_user: User = Depends(auth.get_current_active_user),
 ) -> FinanceAccountResponse:
     """Создать новый счёт для импорта выписок."""
-    _require_finance_access(current_user)
+    _require_finance_manage(current_user)
     code = payload.code.strip().lower().replace(" ", "_")
     if db.query(FinanceAccount).filter(FinanceAccount.code == code).first():
         raise HTTPException(status_code=400, detail=f"Счёт с кодом '{code}' уже существует")
@@ -303,7 +310,7 @@ async def delete_finance_account(
     current_user: User = Depends(auth.get_current_active_user),
 ) -> None:
     """Удалить (деактивировать) счёт для импорта."""
-    _require_finance_access(current_user)
+    _require_finance_manage(current_user)
     account = db.query(FinanceAccount).filter(FinanceAccount.id == account_id).first()
     if not account:
         raise HTTPException(status_code=404, detail="Счёт не найден")
@@ -341,7 +348,7 @@ async def create_finance_target(
     current_user: User = Depends(auth.get_current_active_user),
 ) -> FinanceTargetResponse:
     """Создать новый проект/цель."""
-    _require_finance_access(current_user)
+    _require_finance_manage(current_user)
     code = payload.code.strip().lower().replace(" ", "_")
     if db.query(FinanceTarget).filter(FinanceTarget.code == code).first():
         raise HTTPException(status_code=400, detail=f"Проект с кодом '{code}' уже существует")
@@ -359,7 +366,7 @@ async def delete_finance_target(
     current_user: User = Depends(auth.get_current_active_user),
 ) -> None:
     """Деактивировать проект/цель."""
-    _require_finance_access(current_user)
+    _require_finance_manage(current_user)
     target = db.query(FinanceTarget).filter(FinanceTarget.id == target_id).first()
     if not target:
         raise HTTPException(status_code=404, detail="Проект не найден")
@@ -384,7 +391,7 @@ async def create_finance_model_template(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ) -> FinanceModelTemplateResponse:
-    _require_finance_access(current_user)
+    _require_finance_manage(current_user)
     from app.models import FinanceModelTemplate
     key = payload.key.strip().lower().replace(" ", "_")
     if not key:
@@ -411,7 +418,7 @@ async def update_finance_model_template(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ) -> FinanceModelTemplateResponse:
-    _require_finance_access(current_user)
+    _require_finance_manage(current_user)
     from app.models import FinanceModelTemplate
     row = db.query(FinanceModelTemplate).filter(FinanceModelTemplate.id == template_id).first()
     if not row:
@@ -433,7 +440,7 @@ async def delete_finance_model_template(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ) -> None:
-    _require_finance_access(current_user)
+    _require_finance_manage(current_user)
     from app.models import FinanceModelTemplate
     row = db.query(FinanceModelTemplate).filter(FinanceModelTemplate.id == template_id).first()
     if not row:
@@ -465,7 +472,7 @@ async def create_finance_model(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ) -> FinanceModelResponse:
-    _require_finance_access(current_user)
+    _require_finance_manage(current_user)
     target: Optional[FinanceTarget] = None
     if payload.target_id is not None:
         target = db.query(FinanceTarget).filter(FinanceTarget.id == payload.target_id).first()
@@ -538,7 +545,7 @@ async def sync_finance_model_template(
     статьи, у существующих моделей они сами не появляются — нужно применить вручную.
     Уже существующие статьи (по code) и метрики (по name) не трогает и не дублирует.
     """
-    _require_finance_access(current_user)
+    _require_finance_manage(current_user)
     model = db.query(FinanceModel).filter(FinanceModel.id == model_id).first()
     if not model:
         raise HTTPException(status_code=404, detail="Finance model not found")
@@ -617,7 +624,7 @@ async def update_finance_model(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ) -> FinanceModelResponse:
-    _require_finance_access(current_user)
+    _require_finance_manage(current_user)
     row = db.query(FinanceModel).options(joinedload(FinanceModel.target)).filter(FinanceModel.id == model_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Finance model not found")
@@ -643,7 +650,7 @@ async def delete_finance_model(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ) -> None:
-    _require_finance_access(current_user)
+    _require_finance_manage(current_user)
     row = db.query(FinanceModel).filter(FinanceModel.id == model_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Finance model not found")
@@ -710,7 +717,7 @@ async def create_finance_article(
     current_user: User = Depends(auth.get_current_active_user),
 ) -> FinanceArticleResponse:
     """Создание статьи дохода/расхода в едином справочнике."""
-    _require_finance_access(current_user)
+    _require_finance_manage(current_user)
 
     name = (payload.name or "").strip()
     if not name:
@@ -758,7 +765,7 @@ async def update_finance_article(
     current_user: User = Depends(auth.get_current_active_user),
 ) -> FinanceArticleResponse:
     """Частичное обновление статьи (переименование, смена типа, деактивация)."""
-    _require_finance_access(current_user)
+    _require_finance_manage(current_user)
 
     art = db.query(FinanceArticle).filter(FinanceArticle.id == article_id).first()
     if not art:
@@ -818,7 +825,7 @@ async def delete_finance_article(
     По умолчанию делаем мягкое удаление (is_active = False),
     чтобы не ломать ссылки из существующих транзакций.
     """
-    _require_finance_access(current_user)
+    _require_finance_manage(current_user)
 
     art = db.query(FinanceArticle).filter(FinanceArticle.id == article_id).first()
     if not art:
@@ -896,7 +903,7 @@ async def save_budget_entries(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ) -> List[BudgetEntryResponse]:
-    _require_finance_access(current_user)
+    _require_finance_manage(current_user)
     if len(payload.period) != 7:
         raise HTTPException(status_code=400, detail="period must have YYYY-MM format")
     with db_transaction(db):
@@ -944,7 +951,7 @@ async def create_metric(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ) -> MetricDefinitionResponse:
-    _require_finance_access(current_user)
+    _require_finance_manage(current_user)
     if not db.query(FinanceTarget.id).filter(FinanceTarget.id == payload.target_id).first():
         raise HTTPException(status_code=400, detail="target_id not found")
     row = MetricDefinition(
@@ -969,7 +976,7 @@ async def update_metric(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ) -> MetricDefinitionResponse:
-    _require_finance_access(current_user)
+    _require_finance_manage(current_user)
     row = db.query(MetricDefinition).options(joinedload(MetricDefinition.target)).filter(MetricDefinition.id == metric_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Metric not found")
@@ -1021,7 +1028,7 @@ async def delete_metric(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ) -> None:
-    _require_finance_access(current_user)
+    _require_finance_manage(current_user)
     row = db.query(MetricDefinition).filter(MetricDefinition.id == metric_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Metric not found")
@@ -1052,7 +1059,7 @@ async def create_dashboard_widget(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ) -> DashboardWidgetResponse:
-    _require_finance_access(current_user)
+    _require_finance_manage(current_user)
     row = DashboardWidget(
         owner_id=current_user.id,
         metric_id=payload.metric_id,
@@ -1078,7 +1085,7 @@ async def update_dashboard_widget(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ) -> DashboardWidgetResponse:
-    _require_finance_access(current_user)
+    _require_finance_manage(current_user)
     row = (
         db.query(DashboardWidget)
         .options(joinedload(DashboardWidget.metric), joinedload(DashboardWidget.target))
@@ -1102,7 +1109,7 @@ async def delete_dashboard_widget(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ) -> None:
-    _require_finance_access(current_user)
+    _require_finance_manage(current_user)
     row = db.query(DashboardWidget).filter(DashboardWidget.id == widget_id, DashboardWidget.owner_id == current_user.id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Widget not found")
@@ -2512,7 +2519,7 @@ async def import_finance_transactions(
     Минимальный CSV-формат: колонки
       date,amount,counterparty,description,bank_operation_id(optional)
     """
-    _require_finance_access(current_user)
+    _require_finance_manage(current_user)
 
     account = db.query(FinanceAccount).filter(FinanceAccount.code == account_code).first()
     if not account:
@@ -2715,7 +2722,7 @@ async def create_manual_transaction(
     Ручное добавление операции в единый журнал (например, наличные — счёт «Наличка»).
     Операция создаётся сразу с статусом classified.
     """
-    _require_finance_access(current_user)
+    _require_finance_manage(current_user)
 
     amount = float(payload.amount or 0.0)
     if amount == 0:
@@ -3108,7 +3115,7 @@ async def update_finance_transaction(
     current_user: User = Depends(auth.get_current_active_user),
 ) -> FinanceLedgerBankRow:
     """Partial update for a finance journal transaction."""
-    _require_finance_access(current_user)
+    _require_finance_manage(current_user)
 
     tx = (
         db.query(FinanceTransaction)
@@ -3233,7 +3240,7 @@ async def delete_finance_transaction(
     current_user: User = Depends(auth.get_current_active_user),
 ) -> Dict[str, bool]:
     """Удаление транзакции журнала (используется только в личных финансах)."""
-    _require_finance_access(current_user)
+    _require_finance_manage(current_user)
 
     tx = db.query(FinanceTransaction).filter(FinanceTransaction.id == transaction_id).first()
     if not tx:
@@ -3272,7 +3279,7 @@ async def apply_finance_transaction_to_student(
     Используется журналом (Финансы → Журнал), чтобы не идти в таб «Операции банка».
     Создаёт StudentAccountTransaction, обновляет баланс счёта и помечает транзакцию как applied.
     """
-    _require_finance_access(current_user)
+    _require_finance_manage(current_user)
 
     tx = (
         db.query(FinanceTransaction)
@@ -3367,7 +3374,7 @@ async def ignore_finance_transaction_assignment(
     current_user: User = Depends(auth.get_current_active_user),
 ) -> FinanceLedgerBankRow:
     """Пометить транзакцию как 'зачисление не требуется' (ignored)."""
-    _require_finance_access(current_user)
+    _require_finance_manage(current_user)
 
     tx = (
         db.query(FinanceTransaction)
@@ -3434,7 +3441,7 @@ async def ignore_finance_transaction_assignment(
 async def create_student_account_finance(
     payload: FinanceStudentAccountCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(dep_require_finance_access),
+    current_user: User = Depends(dep_require_finance_manage),
 ) -> StudentAccountResponse:
     """Создать счёт ученику. Канонический API Finance (ТЗ этап 4)."""
     try:
@@ -3458,7 +3465,7 @@ async def apply_bank_transaction_to_student(
     transaction_id: int,
     payload: BankTransactionApplyRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(dep_require_finance_access),
+    current_user: User = Depends(dep_require_finance_manage),
 ) -> BankTransactionResponse:
     """
     Зачислить банковскую операцию (BankTransaction) на выбранного ученика.
@@ -3479,7 +3486,7 @@ async def apply_bank_transaction_to_student(
 @router.post("/bank-transactions/backfill-ledger")
 async def backfill_bank_transactions_to_ledger(
     db: Session = Depends(get_db),
-    current_user: User = Depends(dep_require_finance_access),
+    current_user: User = Depends(dep_require_finance_manage),
 ) -> dict:
     """
     Однократный бэкфилл: создаёт/обновляет записи в finance_transactions

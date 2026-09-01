@@ -210,7 +210,13 @@ PERMISSION_CATALOG: List[Dict[str, str]] = [
         "key": "finance.access",
         "module": "finance",
         "label": "Доступ к finance-модулю",
-        "description": "Финансовый журнал и финансовые представления.",
+        "description": "Финансовый журнал и финансовые представления (просмотр).",
+    },
+    {
+        "key": "finance.manage",
+        "module": "finance",
+        "label": "Управление finance-модулем",
+        "description": "Создание/изменение/удаление счетов, целей, моделей, статей, бюджета, метрик, дашбордов и транзакций; импорт выписок, применение операций к ученикам.",
     },
     {
         "key": "tasks.access",

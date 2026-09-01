@@ -42,3 +42,15 @@ async def require_finance_access(
             detail="Not enough permissions for finance access",
         )
     return current_user
+
+
+async def require_finance_manage(
+    current_user: User = Depends(auth.get_current_active_user),
+) -> User:
+    """Manage finance data: accounts, models, articles, budget, metrics, transactions."""
+    if not auth.has_permission(current_user, "finance.manage"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions for finance management",
+        )
+    return current_user

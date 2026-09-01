@@ -257,8 +257,38 @@ PERMISSION_CATALOG: List[Dict[str, str]] = [
     {
         "key": "students.manage",
         "module": "students",
-        "label": "Управление учениками",
-        "description": "Создание, изменение, архивация учеников и управление их привязками.",
+        "label": "Управление учениками (всё)",
+        "description": "Полный доступ ко всем действиям ниже. Даёт то же самое, что все students.* права вместе.",
+    },
+    {
+        "key": "students.create",
+        "module": "students",
+        "label": "Создание учеников",
+        "description": "Завести ученика, в т.ч. вместе с родителем; поиск родителя при создании.",
+    },
+    {
+        "key": "students.edit",
+        "module": "students",
+        "label": "Редактирование учеников",
+        "description": "Изменение данных ученика.",
+    },
+    {
+        "key": "students.delete",
+        "module": "students",
+        "label": "Архивация учеников",
+        "description": "Архивация ученика (без права на что-либо ещё из students.manage).",
+    },
+    {
+        "key": "students.assign_program",
+        "module": "students",
+        "label": "Назначение программ ученику",
+        "description": "Назначить или снять программу обучения у ученика.",
+    },
+    {
+        "key": "students.invite_parent",
+        "module": "students",
+        "label": "Приглашение родителя",
+        "description": "Сгенерировать ссылку-приглашение для родителя ученика.",
     },
     {
         "key": "grades.access",

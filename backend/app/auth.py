@@ -370,6 +370,13 @@ def has_permission(user: User, permission: str) -> bool:
         manage_permission = normalized_permission[: -len(".access")] + ".manage"
         if manage_permission in permissions:
             return True
+    elif not normalized_permission.endswith(".manage"):
+        # Более мелкое право вида "<module>.<action>" (например "students.delete")
+        # считается включённым в широкое "<module>.manage" — так разбивка module.manage
+        # на отдельные действия не отбирает доступ у ролей, у которых уже стоит .manage.
+        module = normalized_permission.split(".", 1)[0]
+        if f"{module}.manage" in permissions:
+            return True
 
     parts = normalized_permission.split(".")
     for index in range(len(parts) - 1, 0, -1):

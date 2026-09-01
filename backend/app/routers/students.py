@@ -151,7 +151,7 @@ def _serialize_students(db: Session, students: List[Student]) -> List[StudentRes
 async def create_student_with_parent(
     payload: StudentWithParentCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("students.manage")),
+    current_user: User = Depends(auth.require_permission("students.create")),
 ):
     """
     Композитное создание: ученик + родитель (найти по id/email или создать нового).
@@ -260,7 +260,7 @@ async def search_parents(
     q: str = Query(..., min_length=1),
     limit: int = Query(20, ge=1, le=50),
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("students.manage")),
+    current_user: User = Depends(auth.require_permission("students.create")),
 ):
     """Поиск родителей по email или ФИО для выбора при создании ученика."""
     term = f"%{q.strip()}%"
@@ -281,7 +281,7 @@ async def search_parents(
 async def create_student(
     student: StudentCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("students.manage")),
+    current_user: User = Depends(auth.require_permission("students.create")),
 ):
     """Создание ученика (admin, owner, sales)."""
     # Проверка существования родителя (если указан)
@@ -474,7 +474,7 @@ async def read_student(
 async def invite_parent_for_student(
     student_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("students.manage")),
+    current_user: User = Depends(auth.require_permission("students.invite_parent")),
 ):
     """Сгенерировать ссылку-приглашение для родителя ученика (установка пароля / вход в кабинет)."""
     student = db.query(Student).filter(Student.id == student_id).first()
@@ -614,7 +614,7 @@ async def assign_program_to_student(
     student_id: int,
     program_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("students.manage")),
+    current_user: User = Depends(auth.require_permission("students.assign_program")),
 ):
     """Назначить программу ученику. Если назначение уже есть — реактивировать. Идемпотентно."""
     student = db.query(Student).filter(Student.id == student_id).first()
@@ -656,7 +656,7 @@ async def unassign_program_from_student(
     student_id: int,
     program_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("students.manage"))
+    current_user: User = Depends(auth.require_permission("students.assign_program"))
 ):
     """Снять программу с ученика. Запрещено если по программе уже есть оценки."""
     link = db.query(StudentProgram).filter(
@@ -695,7 +695,7 @@ async def update_student(
     student_id: int,
     student_update: StudentUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("students.manage")),
+    current_user: User = Depends(auth.require_permission("students.edit")),
 ):
     """Обновление ученика (admin, owner, sales)."""
     db_student = db.query(Student).filter(Student.id == student_id).first()
@@ -776,7 +776,7 @@ async def update_student(
 async def delete_student(
     student_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("students.manage"))
+    current_user: User = Depends(auth.require_permission("students.delete"))
 ):
     """Архивация ученика (удаление запрещено)"""
     db_student = db.query(Student).filter(Student.id == student_id).first()

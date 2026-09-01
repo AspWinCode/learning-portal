@@ -114,7 +114,7 @@ def _serialize_groups(db: Session, groups: List[Group], effective_role: UserRole
 async def create_group(
     group: GroupCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("groups.manage"))
+    current_user: User = Depends(auth.require_permission("groups.create"))
 ):
     """Создание группы (только администратор)"""
     trainer = db.query(User).filter(
@@ -289,7 +289,7 @@ async def update_group(
     group_id: int,
     group_update: GroupUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("groups.manage")),
+    current_user: User = Depends(auth.require_permission("groups.edit")),
 ):
     """Обновление группы (admin/owner/sales). В т.ч. units_per_session, extra_rate_per_unit для лимита 8."""
     db_group = db.query(Group).filter(Group.id == group_id).first()
@@ -358,7 +358,7 @@ async def get_lesson_slot_extra_policy(
     start_time: str = Query(..., description="HH:MM"),
     end_time: str = Query(..., description="HH:MM"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("groups.manage")),
+    current_user: User = Depends(auth.require_permission("groups.access")),
 ):
     """Получить режим доп. занятий (сверх 8) для слота. По умолчанию free."""
     group = db.query(Group).filter(Group.id == group_id).first()
@@ -404,7 +404,7 @@ async def set_lesson_slot_extra_policy(
     group_id: int,
     payload: LessonSlotExtraPolicyPayload,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("groups.manage")),
+    current_user: User = Depends(auth.require_permission("groups.edit")),
 ):
     """Установить режим доп. занятий (сверх 8) для слота: free или paid. Owner/admin/sales."""
     group = db.query(Group).filter(Group.id == group_id).first()
@@ -459,7 +459,7 @@ async def add_student_to_group(
     group_id: int,
     student_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("groups.manage"))
+    current_user: User = Depends(auth.require_permission("groups.manage_roster"))
 ):
     """Добавление ученика в группу. При добавлении автоматически назначаются программы группы."""
     group = db.query(Group).filter(Group.id == group_id).first()
@@ -522,7 +522,7 @@ async def remove_student_from_group(
     group_id: int,
     student_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("groups.manage"))
+    current_user: User = Depends(auth.require_permission("groups.manage_roster"))
 ):
     """Удаление ученика из группы (мягкое: проставляем left_at для истории и отчёта характеристик)."""
     group_student = db.query(GroupStudent).filter(
@@ -557,7 +557,7 @@ async def assign_program_to_group(
     group_id: int,
     program_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("groups.manage"))
+    current_user: User = Depends(auth.require_permission("groups.assign_program"))
 ):
     """Назначить программу группе. При назначении программы автоматически добавляются активным студентам группы."""
     group = db.query(Group).filter(Group.id == group_id).first()
@@ -608,7 +608,7 @@ async def remove_program_from_group(
     group_id: int,
     program_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("groups.manage"))
+    current_user: User = Depends(auth.require_permission("groups.assign_program"))
 ):
     """Удалить программу из группы. Программы студентов остаются активными (удалить можно вручную через /students)."""
     group_program = db.query(GroupProgram).filter(
@@ -631,7 +631,7 @@ async def remove_program_from_group(
 async def delete_group(
     group_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("groups.manage"))
+    current_user: User = Depends(auth.require_permission("groups.delete"))
 ):
     """Архивация группы (удаление запрещено)"""
     db_group = db.query(Group).filter(Group.id == group_id).first()

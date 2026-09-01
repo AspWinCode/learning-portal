@@ -221,8 +221,38 @@ PERMISSION_CATALOG: List[Dict[str, str]] = [
     {
         "key": "groups.manage",
         "module": "groups",
-        "label": "Управление группами",
-        "description": "Создание, изменение, архивация групп и управление их составом.",
+        "label": "Управление группами (всё)",
+        "description": "Полный доступ ко всем действиям ниже. Даёт то же самое, что все groups.* права вместе.",
+    },
+    {
+        "key": "groups.create",
+        "module": "groups",
+        "label": "Создание групп",
+        "description": "Завести новую группу.",
+    },
+    {
+        "key": "groups.edit",
+        "module": "groups",
+        "label": "Редактирование групп",
+        "description": "Изменение группы и режима доп. занятий по слотам.",
+    },
+    {
+        "key": "groups.delete",
+        "module": "groups",
+        "label": "Архивация групп",
+        "description": "Архивация группы (без права на что-либо ещё из groups.manage).",
+    },
+    {
+        "key": "groups.manage_roster",
+        "module": "groups",
+        "label": "Состав группы",
+        "description": "Добавление и удаление учеников из группы.",
+    },
+    {
+        "key": "groups.assign_program",
+        "module": "groups",
+        "label": "Назначение программ группе",
+        "description": "Назначить или снять программу обучения у группы.",
     },
     {
         "key": "programs.access",
@@ -233,8 +263,26 @@ PERMISSION_CATALOG: List[Dict[str, str]] = [
     {
         "key": "programs.manage",
         "module": "programs",
-        "label": "Управление программами",
-        "description": "Создание, версионирование, архивация и назначение программ.",
+        "label": "Управление программами (всё)",
+        "description": "Полный доступ ко всем действиям ниже. Даёт то же самое, что все programs.* права вместе.",
+    },
+    {
+        "key": "programs.create",
+        "module": "programs",
+        "label": "Создание программ",
+        "description": "Завести новую программу обучения.",
+    },
+    {
+        "key": "programs.edit",
+        "module": "programs",
+        "label": "Редактирование программ",
+        "description": "Изменение программы, архивация/разархивация модуля или темы.",
+    },
+    {
+        "key": "programs.assign",
+        "module": "programs",
+        "label": "Назначение программ",
+        "description": "Назначить программу группе или ученику.",
     },
     {
         "key": "abonements.access",

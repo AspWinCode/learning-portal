@@ -65,7 +65,7 @@ def ensure_program_trainer(db: Session, program_id: int, trainer_id: int) -> Non
 async def create_program(
     program: ProgramCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("programs.manage"))
+    current_user: User = Depends(auth.require_permission("programs.create"))
 ):
     """Создание программы обучения"""
     db_program = Program(
@@ -297,7 +297,7 @@ async def update_program(
     program_id: int,
     program_update: ProgramUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("programs.manage"))
+    current_user: User = Depends(auth.require_permission("programs.edit"))
 ):
     """Обновление программы (с версионированием при существенных изменениях)"""
     db_program = db.query(Program).filter(Program.id == program_id).first()
@@ -420,7 +420,7 @@ async def archive_topic(
     program_id: int,
     topic_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("programs.manage"))
+    current_user: User = Depends(auth.require_permission("programs.edit"))
 ):
     """Архивация темы (удаление запрещено)"""
     topic = db.query(Topic).filter(
@@ -451,7 +451,7 @@ async def unarchive_topic(
     program_id: int,
     topic_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("programs.manage"))
+    current_user: User = Depends(auth.require_permission("programs.edit"))
 ):
     """Разархивация темы"""
     topic = db.query(Topic).filter(
@@ -473,7 +473,7 @@ async def archive_module(
     program_id: int,
     module_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("programs.manage"))
+    current_user: User = Depends(auth.require_permission("programs.edit"))
 ):
     """Архивация модуля и его тем (удаление запрещено)"""
     module = db.query(Module).filter(
@@ -506,7 +506,7 @@ async def unarchive_module(
     program_id: int,
     module_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("programs.manage"))
+    current_user: User = Depends(auth.require_permission("programs.edit"))
 ):
     """Разархивация модуля и его тем"""
     module = db.query(Module).filter(
@@ -531,7 +531,7 @@ async def assign_program_to_group(
     program_id: int,
     group_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("programs.manage"))
+    current_user: User = Depends(auth.require_permission("programs.assign"))
 ):
     """Назначение программы группе"""
     program = db.query(Program).filter(Program.id == program_id).first()
@@ -560,7 +560,7 @@ async def assign_program_to_student(
     program_id: int,
     student_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("programs.manage"))
+    current_user: User = Depends(auth.require_permission("programs.assign"))
 ):
     """Добавление программы ученику (у одного ученика может быть несколько программ)"""
     program = db.query(Program).filter(Program.id == program_id).first()

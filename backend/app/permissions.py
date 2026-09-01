@@ -590,6 +590,18 @@ PERMISSION_CATALOG: List[Dict[str, str]] = [
         "label": "Owner workspace: комментарии к задачам",
         "description": "Даёт пользователю с ограниченным доступом право комментировать задачи. Дублирует настройку «Ограниченным можно комментировать задачи».",
     },
+    {
+        "key": "transcription.access",
+        "module": "transcription",
+        "label": "Расшифровки аудио: просмотр",
+        "description": "Просмотр списка и содержимого расшифровок аудиозаписей.",
+    },
+    {
+        "key": "transcription.manage",
+        "module": "transcription",
+        "label": "Расшифровки аудио: управление",
+        "description": "Загрузка новых аудиозаписей на расшифровку и удаление расшифровок.",
+    },
 ]
 
 VALID_PERMISSION_KEYS: Set[str] = {item["key"] for item in PERMISSION_CATALOG}

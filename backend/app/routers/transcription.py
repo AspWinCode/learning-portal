@@ -77,7 +77,7 @@ async def get_transcription(
 async def upload_audio(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("transcription.access")),
+    current_user: User = Depends(auth.require_permission("transcription.manage")),
 ):
     filename = _safe_name(file.filename or "audio")
     extension = Path(filename).suffix.lower()
@@ -121,7 +121,7 @@ async def upload_audio(
 async def delete_transcription(
     transcription_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("transcription.access")),
+    current_user: User = Depends(auth.require_permission("transcription.manage")),
 ):
     row = db.query(Transcription).filter(Transcription.id == transcription_id).first()
     if not row:

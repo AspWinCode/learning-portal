@@ -524,6 +524,72 @@ PERMISSION_CATALOG: List[Dict[str, str]] = [
         "label": "Кодэкс: управление",
         "description": "Создание, редактирование и публикация дел и теории в Кодэкс.",
     },
+    {
+        "key": "owner_workspace.create_projects",
+        "module": "owner_workspace",
+        "label": "Owner workspace: создание проектов",
+        "description": "Даёт пользователю с ограниченным доступом (не admin/owner) право создавать проекты. Дублирует настройку «Ограниченным можно создавать проекты» в Настройках — доступ выдаётся, если включено хотя бы одно из двух.",
+    },
+    {
+        "key": "owner_workspace.create_contacts",
+        "module": "owner_workspace",
+        "label": "Owner workspace: создание контактов",
+        "description": "Даёт пользователю с ограниченным доступом право создавать контакты и контрагентов. Дублирует настройку «Ограниченным можно создавать контакты».",
+    },
+    {
+        "key": "owner_workspace.create_tasks",
+        "module": "owner_workspace",
+        "label": "Owner workspace: создание задач",
+        "description": "Даёт пользователю с ограниченным доступом право создавать задачи (в т.ч. из встреч и сообщений). Дублирует настройку «Ограниченным можно создавать задачи».",
+    },
+    {
+        "key": "owner_workspace.edit_contacts",
+        "module": "owner_workspace",
+        "label": "Owner workspace: редактирование контактов",
+        "description": "Даёт пользователю с ограниченным доступом право редактировать контакты. Дублирует настройку «Ограниченным можно редактировать контакты».",
+    },
+    {
+        "key": "owner_workspace.edit_tasks",
+        "module": "owner_workspace",
+        "label": "Owner workspace: редактирование задач",
+        "description": "Даёт пользователю с ограниченным доступом право редактировать задачи. Дублирует настройку «Ограниченным можно редактировать задачи».",
+    },
+    {
+        "key": "owner_workspace.manage_project_contacts",
+        "module": "owner_workspace",
+        "label": "Owner workspace: контакты проекта",
+        "description": "Даёт пользователю с ограниченным доступом право привязывать/отвязывать контакты к проекту. Дублирует настройку «Ограниченным можно управлять контактами проекта».",
+    },
+    {
+        "key": "owner_workspace.complete_tasks",
+        "module": "owner_workspace",
+        "label": "Owner workspace: завершение задач",
+        "description": "Даёт пользователю с ограниченным доступом право завершать задачи. Дублирует настройку «Ограниченным можно завершать задачи».",
+    },
+    {
+        "key": "owner_workspace.bulk_update_tasks",
+        "module": "owner_workspace",
+        "label": "Owner workspace: массовое изменение задач",
+        "description": "Даёт пользователю с ограниченным доступом право массово менять задачи. Дублирует настройку «Ограниченным можно массово менять задачи».",
+    },
+    {
+        "key": "owner_workspace.link_messages",
+        "module": "owner_workspace",
+        "label": "Owner workspace: привязка сообщений",
+        "description": "Даёт пользователю с ограниченным доступом право привязывать сообщения к задачам. Дублирует настройку «Ограниченным можно привязывать сообщения».",
+    },
+    {
+        "key": "owner_workspace.send_messages",
+        "module": "owner_workspace",
+        "label": "Owner workspace: отправка сообщений",
+        "description": "Даёт пользователю с ограниченным доступом право отправлять исходящие сообщения контактам. Дублирует настройку «Ограниченным можно отправлять сообщения».",
+    },
+    {
+        "key": "owner_workspace.comment_tasks",
+        "module": "owner_workspace",
+        "label": "Owner workspace: комментарии к задачам",
+        "description": "Даёт пользователю с ограниченным доступом право комментировать задачи. Дублирует настройку «Ограниченным можно комментировать задачи».",
+    },
 ]
 
 VALID_PERMISSION_KEYS: Set[str] = {item["key"] for item in PERMISSION_CATALOG}

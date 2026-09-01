@@ -1380,7 +1380,11 @@ async def create_project(
     ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
     permission_policy = get_owner_workspace_permission_policy(db)
-    if not ctx.full and not permission_policy["limited_can_create_projects"]:
+    if (
+        not ctx.full
+        and not permission_policy["limited_can_create_projects"]
+        and not auth.has_permission(ctx.user, "owner_workspace.create_projects")
+    ):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
     if payload.parent_project_id is not None and not ctx.full and not can_edit_project_content(db, ctx, payload.parent_project_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав для создания подпроекта")
@@ -2103,7 +2107,11 @@ async def create_contact(
     ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
     permission_policy = get_owner_workspace_permission_policy(db)
-    if not ctx.full and not permission_policy["limited_can_create_contacts"]:
+    if (
+        not ctx.full
+        and not permission_policy["limited_can_create_contacts"]
+        and not auth.has_permission(ctx.user, "owner_workspace.create_contacts")
+    ):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
     if not ctx.full and not (payload.project_ids or []):
         raise HTTPException(
@@ -2310,7 +2318,11 @@ async def create_counterparty(
     ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
     permission_policy = get_owner_workspace_permission_policy(db)
-    if not ctx.full and not permission_policy["limited_can_create_contacts"]:
+    if (
+        not ctx.full
+        and not permission_policy["limited_can_create_contacts"]
+        and not auth.has_permission(ctx.user, "owner_workspace.create_contacts")
+    ):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
     row = OwnerWorkspaceCounterparty(
         type=payload.type or "company",
@@ -2952,7 +2964,11 @@ async def create_task(
     ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
     permission_policy = get_owner_workspace_permission_policy(db)
-    if not ctx.full and not permission_policy["limited_can_create_tasks"]:
+    if (
+        not ctx.full
+        and not permission_policy["limited_can_create_tasks"]
+        and not auth.has_permission(ctx.user, "owner_workspace.create_tasks")
+    ):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
     if payload.contact_id is not None and not can_edit_contact_content(db, ctx, payload.contact_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
@@ -3282,7 +3298,11 @@ async def complete_task(
 
     if payload.action == "close_and_create_next":
         permission_policy = get_owner_workspace_permission_policy(db)
-        if not ctx.full and not permission_policy["limited_can_create_tasks"]:
+        if (
+            not ctx.full
+            and not permission_policy["limited_can_create_tasks"]
+            and not auth.has_permission(ctx.user, "owner_workspace.create_tasks")
+        ):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
         next_data = payload.next_task
         if next_data is None:
@@ -3393,7 +3413,11 @@ async def create_task_comment(
     ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
     permission_policy = get_owner_workspace_permission_policy(db)
-    if not ctx.full and not permission_policy["limited_can_comment_tasks"]:
+    if (
+        not ctx.full
+        and not permission_policy["limited_can_comment_tasks"]
+        and not auth.has_permission(ctx.user, "owner_workspace.comment_tasks")
+    ):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
     exists = db.query(OwnerWorkspaceTask).filter(OwnerWorkspaceTask.id == task_id).first()
     if not exists or not task_visible(ctx, exists):
@@ -3565,7 +3589,12 @@ async def create_message(
     ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
     permission_policy = get_owner_workspace_permission_policy(db)
-    if payload.direction != "incoming" and not ctx.full and not permission_policy["limited_can_send_messages"]:
+    if (
+        payload.direction != "incoming"
+        and not ctx.full
+        and not permission_policy["limited_can_send_messages"]
+        and not auth.has_permission(ctx.user, "owner_workspace.send_messages")
+    ):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
     contact = db.query(OwnerWorkspaceCounterparty).filter(OwnerWorkspaceCounterparty.id == payload.contact_id).first()
     if not contact or not counterparty_visible(ctx, payload.contact_id):
@@ -3613,7 +3642,11 @@ async def create_task_from_message(
     ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
     permission_policy = get_owner_workspace_permission_policy(db)
-    if not ctx.full and not permission_policy["limited_can_create_tasks"]:
+    if (
+        not ctx.full
+        and not permission_policy["limited_can_create_tasks"]
+        and not auth.has_permission(ctx.user, "owner_workspace.create_tasks")
+    ):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
     message = db.query(OwnerWorkspaceMessage).filter(OwnerWorkspaceMessage.id == message_id).first()
     if not message:

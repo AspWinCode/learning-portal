@@ -397,7 +397,9 @@ def can_update_contact_content(db: Session, ctx: OwnerWorkspaceAccessContext, co
         return False
     if ctx.full:
         return True
-    return get_owner_workspace_permission_policy(db)["limited_can_edit_contacts"]
+    return get_owner_workspace_permission_policy(db)["limited_can_edit_contacts"] or auth.has_permission(
+        ctx.user, "owner_workspace.edit_contacts"
+    )
 
 
 def can_update_task_content(db: Session, ctx: OwnerWorkspaceAccessContext, task: OwnerWorkspaceTask) -> bool:
@@ -407,7 +409,9 @@ def can_update_task_content(db: Session, ctx: OwnerWorkspaceAccessContext, task:
         return True
     if task.project_id is not None and not can_edit_project_content(db, ctx, task.project_id):
         return False
-    return get_owner_workspace_permission_policy(db)["limited_can_edit_tasks"]
+    return get_owner_workspace_permission_policy(db)["limited_can_edit_tasks"] or auth.has_permission(
+        ctx.user, "owner_workspace.edit_tasks"
+    )
 
 
 def can_manage_project_contacts(db: Session, ctx: OwnerWorkspaceAccessContext, project_id: int) -> bool:
@@ -415,7 +419,9 @@ def can_manage_project_contacts(db: Session, ctx: OwnerWorkspaceAccessContext, p
         return False
     if ctx.full:
         return True
-    return get_owner_workspace_permission_policy(db)["limited_can_manage_project_contacts"]
+    return get_owner_workspace_permission_policy(db)["limited_can_manage_project_contacts"] or auth.has_permission(
+        ctx.user, "owner_workspace.manage_project_contacts"
+    )
 
 
 def can_complete_task(db: Session, ctx: OwnerWorkspaceAccessContext, task: OwnerWorkspaceTask) -> bool:
@@ -425,13 +431,17 @@ def can_complete_task(db: Session, ctx: OwnerWorkspaceAccessContext, task: Owner
         return True
     if task.project_id is not None and not can_edit_project_content(db, ctx, task.project_id):
         return False
-    return get_owner_workspace_permission_policy(db)["limited_can_complete_tasks"]
+    return get_owner_workspace_permission_policy(db)["limited_can_complete_tasks"] or auth.has_permission(
+        ctx.user, "owner_workspace.complete_tasks"
+    )
 
 
 def can_bulk_update_tasks(db: Session, ctx: OwnerWorkspaceAccessContext) -> bool:
     if ctx.full:
         return True
-    return get_owner_workspace_permission_policy(db)["limited_can_bulk_update_tasks"]
+    return get_owner_workspace_permission_policy(db)["limited_can_bulk_update_tasks"] or auth.has_permission(
+        ctx.user, "owner_workspace.bulk_update_tasks"
+    )
 
 
 def can_link_task_messages(db: Session, ctx: OwnerWorkspaceAccessContext, task: OwnerWorkspaceTask) -> bool:
@@ -441,7 +451,9 @@ def can_link_task_messages(db: Session, ctx: OwnerWorkspaceAccessContext, task: 
         return True
     if task.project_id is not None and not can_edit_project_content(db, ctx, task.project_id):
         return False
-    return get_owner_workspace_permission_policy(db)["limited_can_link_messages"]
+    return get_owner_workspace_permission_policy(db)["limited_can_link_messages"] or auth.has_permission(
+        ctx.user, "owner_workspace.link_messages"
+    )
 
 
 def can_archive_project(db: Session, ctx: OwnerWorkspaceAccessContext, project_id: int) -> bool:

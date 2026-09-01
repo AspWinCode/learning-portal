@@ -347,8 +347,20 @@ PERMISSION_CATALOG: List[Dict[str, str]] = [
     {
         "key": "grades.manage",
         "module": "grades",
-        "label": "Управление оценками",
-        "description": "Выставление и изменение оценок.",
+        "label": "Управление оценками (всё)",
+        "description": "Полный доступ ко всем действиям ниже. Даёт то же самое, что все grades.* права вместе.",
+    },
+    {
+        "key": "grades.create",
+        "module": "grades",
+        "label": "Выставление оценок",
+        "description": "Проставить новую оценку.",
+    },
+    {
+        "key": "grades.edit",
+        "module": "grades",
+        "label": "Редактирование оценок",
+        "description": "Изменить уже выставленную оценку.",
     },
     {
         "key": "characteristics.access",
@@ -359,8 +371,26 @@ PERMISSION_CATALOG: List[Dict[str, str]] = [
     {
         "key": "characteristics.manage",
         "module": "characteristics",
-        "label": "Управление характеристиками",
-        "description": "Создание, редактирование, согласование и публикация характеристик.",
+        "label": "Управление характеристиками (всё)",
+        "description": "Полный доступ ко всем действиям ниже. Даёт то же самое, что все characteristics.* права вместе.",
+    },
+    {
+        "key": "characteristics.write",
+        "module": "characteristics",
+        "label": "Создание и редактирование характеристик",
+        "description": "Создать характеристику, отправить на согласование, изменить черновик/отклонённую.",
+    },
+    {
+        "key": "characteristics.approve",
+        "module": "characteristics",
+        "label": "Согласование характеристик",
+        "description": "Опубликовать или вернуть на доработку отправленную характеристику.",
+    },
+    {
+        "key": "characteristics.manage_templates",
+        "module": "characteristics",
+        "label": "Шаблоны характеристик",
+        "description": "Создание шаблонов характеристик.",
     },
     {
         "key": "lessons.access",

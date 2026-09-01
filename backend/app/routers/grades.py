@@ -42,7 +42,7 @@ async def create_grade(
 ):
     """Проставление оценки (тренер)"""
     # Проверка прав доступа
-    auth.ensure_permission(current_user, "grades.manage")
+    auth.ensure_permission(current_user, "grades.create")
     if _grades_effective_role(current_user) != UserRole.TRAINER:
         raise HTTPException(status_code=403, detail="Only trainers can create grades")
 
@@ -235,7 +235,7 @@ async def update_grade(
     if db_grade is None:
         raise HTTPException(status_code=404, detail="Grade not found")
     
-    auth.ensure_permission(current_user, "grades.manage")
+    auth.ensure_permission(current_user, "grades.edit")
     if _grades_effective_role(current_user) != UserRole.TRAINER or db_grade.trainer_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not enough permissions")
     

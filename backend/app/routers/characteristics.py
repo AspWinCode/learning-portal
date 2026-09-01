@@ -33,7 +33,7 @@ def _characteristics_effective_role(current_user: User) -> UserRole:
 async def create_template(
     template: CharacteristicTemplateCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("characteristics.manage"))
+    current_user: User = Depends(auth.require_permission("characteristics.manage_templates"))
 ):
     """Создание шаблона характеристики (только администратор)"""
     db_template = CharacteristicTemplate(
@@ -54,6 +54,7 @@ async def read_templates(
     current_user: User = Depends(auth.get_current_active_user)
 ):
     """Получение списка шаблонов характеристик"""
+    auth.ensure_permission(current_user, "characteristics.access")
     templates = db.query(CharacteristicTemplate).filter(
         CharacteristicTemplate.is_active
     ).all()
@@ -67,7 +68,7 @@ async def create_characteristic(
     current_user: User = Depends(auth.get_current_active_user)
 ):
     """Создание характеристики (тренер)"""
-    auth.ensure_permission(current_user, "characteristics.manage")
+    auth.ensure_permission(current_user, "characteristics.write")
     if _characteristics_effective_role(current_user) != UserRole.TRAINER:
         raise HTTPException(status_code=403, detail="Only trainers can create characteristics")
     
@@ -135,7 +136,7 @@ async def submit_characteristic(
     current_user: User = Depends(auth.get_current_active_user)
 ):
     """Отправка характеристики на согласование"""
-    auth.ensure_permission(current_user, "characteristics.manage")
+    auth.ensure_permission(current_user, "characteristics.write")
     if _characteristics_effective_role(current_user) != UserRole.TRAINER:
         raise HTTPException(status_code=403, detail="Only trainers can submit characteristics")
     try:
@@ -186,7 +187,7 @@ async def update_characteristic(
     current_user: User = Depends(auth.get_current_active_user),
 ):
     """Редактирование характеристики (тренер) — разрешено для draft/rejected"""
-    auth.ensure_permission(current_user, "characteristics.manage")
+    auth.ensure_permission(current_user, "characteristics.write")
     if _characteristics_effective_role(current_user) != UserRole.TRAINER:
         raise HTTPException(status_code=403, detail="Only trainers can update characteristics")
 
@@ -234,7 +235,7 @@ async def approve_characteristic(
     characteristic_id: int,
     approval: CharacteristicApprove,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("characteristics.manage"))
+    current_user: User = Depends(auth.require_permission("characteristics.approve"))
 ):
     """Опубликовать характеристику (администратор)"""
     try:
@@ -282,7 +283,7 @@ async def reject_characteristic(
     characteristic_id: int,
     rejection: CharacteristicReject,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("characteristics.manage"))
+    current_user: User = Depends(auth.require_permission("characteristics.approve"))
 ):
     """Вернуть характеристику на доработку (администратор)"""
     try:

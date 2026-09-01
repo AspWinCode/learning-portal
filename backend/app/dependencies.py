@@ -24,6 +24,14 @@ async def require_sales_admin_owner(
     return current_user
 
 
+async def require_sales_manage_bank(
+    current_user: User = Depends(auth.get_current_active_user),
+) -> User:
+    """Manage bank operations: import statements, apply/delete transactions, phone bindings."""
+    auth.ensure_permission(current_user, "sales.manage_bank")
+    return current_user
+
+
 async def require_finance_access(
     current_user: User = Depends(auth.get_current_active_user),
 ) -> User:

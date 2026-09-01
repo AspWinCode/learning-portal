@@ -9,7 +9,7 @@ from jose import jwt
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import db_transaction, get_db
-from app.dependencies import require_sales_admin_owner
+from app.dependencies import require_sales_admin_owner, require_sales_manage_bank
 from app.models import (
     BankTransaction,
     BankTransactionStatus,
@@ -751,7 +751,7 @@ async def tochka_bank_status_public():
 async def tochka_import_and_apply(
     payload: TochkaImportRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_sales_admin_owner),
+    current_user: User = Depends(require_sales_manage_bank),
 ):
     from app.services.tochka_client import is_configured
 
@@ -802,7 +802,7 @@ async def list_bank_transactions(
 async def create_phone_payment_binding(
     payload: PhonePaymentBindingCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_sales_admin_owner),
+    current_user: User = Depends(require_sales_manage_bank),
 ):
     normalized = normalize_phone(payload.payer_phone)
     if not normalized:
@@ -824,7 +824,7 @@ async def apply_bank_transaction(
     transaction_id: int,
     payload: BankTransactionApplyRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_sales_admin_owner),
+    current_user: User = Depends(require_sales_manage_bank),
 ):
     try:
         with db_transaction(db):
@@ -843,7 +843,7 @@ async def update_bank_transaction_expense_category(
     transaction_id: int,
     payload: BankTransactionExpenseCategoryUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_sales_admin_owner),
+    current_user: User = Depends(require_sales_manage_bank),
 ):
     bank_transaction = db.query(BankTransaction).filter(BankTransaction.id == transaction_id).first()
     if not bank_transaction:
@@ -861,7 +861,7 @@ async def update_bank_transaction_expense_category(
 async def delete_bank_transaction(
     transaction_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_sales_admin_owner),
+    current_user: User = Depends(require_sales_manage_bank),
 ) -> Dict[str, bool]:
     bank_transaction = db.query(BankTransaction).filter(BankTransaction.id == transaction_id).first()
     if not bank_transaction:

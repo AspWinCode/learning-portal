@@ -17,8 +17,8 @@ from app.utils.phone import normalize_phone
 router = APIRouter()
 
 
-def _require_sales_admin_owner(user: User) -> None:
-    auth.ensure_permission(user, "sales.access")
+def _require_sales_manage_bank(user: User) -> None:
+    auth.ensure_permission(user, "sales.manage_bank")
 
 
 def _parse_vertical_date(text: str, today: date) -> Optional[str]:
@@ -241,7 +241,7 @@ async def import_bank_transactions_from_excel(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
-    _require_sales_admin_owner(current_user)
+    _require_sales_manage_bank(current_user)
     filename = (file.filename or "").lower()
     if not filename.endswith(".xlsx"):
         raise HTTPException(status_code=400, detail="Поддерживается только формат .xlsx")

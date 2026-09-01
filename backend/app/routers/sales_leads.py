@@ -297,7 +297,7 @@ async def list_leads(
 async def import_leads_from_excel(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("sales.access")),
+    current_user: User = Depends(auth.require_permission("sales.manage_leads")),
 ):
     filename = (file.filename or "").lower()
     if not filename.endswith(".xlsx"):
@@ -682,7 +682,7 @@ async def submit_tilda_lead(
 async def create_lead(
     payload: LeadCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("sales.access")),
+    current_user: User = Depends(auth.require_permission("sales.manage_leads")),
 ):
     effective_role = auth.resolve_effective_role(current_user)
     owner_id = payload.owner_id if (effective_role in (UserRole.ADMIN, UserRole.OWNER) and payload.owner_id) else current_user.id
@@ -882,6 +882,7 @@ async def get_lead(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
+    auth.ensure_permission(current_user, "sales.access")
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
@@ -896,7 +897,7 @@ async def update_lead(
     lead_id: int,
     payload: LeadUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("sales.access")),
+    current_user: User = Depends(auth.require_permission("sales.manage_leads")),
 ):
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
     if not lead:
@@ -974,7 +975,7 @@ async def update_lead(
 async def delete_lead(
     lead_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("sales.access")),
+    current_user: User = Depends(auth.require_permission("sales.manage_leads")),
 ):
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
     if not lead:
@@ -992,7 +993,7 @@ async def convert_lead_to_student(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
-    auth.ensure_permission(current_user, "sales.access")
+    auth.ensure_permission(current_user, "sales.manage_leads")
     try:
         result = lead_conversion_convert(db, lead_id, actor_user_id=current_user.id)
     except ValueError as exc:
@@ -1020,7 +1021,7 @@ async def resend_parent_invite(
     Используется когда первая ссылка истекла или была утеряна.
     Возвращает новую ссылку и отправляет email если SMTP настроен.
     """
-    auth.ensure_permission(current_user, "sales.access")
+    auth.ensure_permission(current_user, "sales.manage_leads")
 
     student = db.query(Student).filter(Student.id == student_id).first()
     if not student:

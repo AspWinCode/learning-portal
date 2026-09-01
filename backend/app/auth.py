@@ -38,6 +38,8 @@ DEFAULT_ROLE_PERMISSIONS: Dict[str, Set[str]] = {
     UserRole.OWNER.value: {"*"},
     UserRole.SALES.value: {
         "sales.access",
+        "sales.manage_leads",
+        "sales.manage_events",
         "finance.access",
         "tasks.access",
         "projects.access",

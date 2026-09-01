@@ -142,7 +142,7 @@ async def list_events(
 async def create_event(
     payload: EventCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("sales.access")),
+    current_user: User = Depends(auth.require_permission("sales.manage_events")),
 ):
     event = Event(
         title=payload.title,
@@ -166,7 +166,7 @@ async def update_event(
     event_id: int,
     payload: EventUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("sales.access")),
+    current_user: User = Depends(auth.require_permission("sales.manage_events")),
 ):
     event = db.query(Event).filter(Event.id == event_id).first()
     if not event:
@@ -203,7 +203,7 @@ async def create_event_registration(
     event_id: int,
     payload: EventRegistrationCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("sales.access")),
+    current_user: User = Depends(auth.require_permission("sales.manage_events")),
 ):
     event = db.query(Event).filter(Event.id == event_id, Event.status == EventStatus.ACTIVE).first()
     if not event:
@@ -264,7 +264,7 @@ async def cancel_event_registration(
     event_id: int,
     registration_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("sales.access")),
+    current_user: User = Depends(auth.require_permission("sales.manage_events")),
 ):
     registration = (
         db.query(EventRegistration)
@@ -294,7 +294,7 @@ async def confirm_event_registration(
     event_id: int,
     registration_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("sales.access")),
+    current_user: User = Depends(auth.require_permission("sales.manage_events")),
 ):
     registration = (
         db.query(EventRegistration)
@@ -322,7 +322,7 @@ async def mark_event_registration_came(
     event_id: int,
     registration_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("sales.access")),
+    current_user: User = Depends(auth.require_permission("sales.manage_events")),
 ):
     registration = (
         db.query(EventRegistration)
@@ -373,7 +373,7 @@ async def mark_event_registration_no_show(
     event_id: int,
     registration_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("sales.access")),
+    current_user: User = Depends(auth.require_permission("sales.manage_events")),
 ):
     registration = (
         db.query(EventRegistration)

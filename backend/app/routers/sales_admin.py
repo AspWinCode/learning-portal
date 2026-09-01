@@ -1125,7 +1125,7 @@ async def list_account_templates(
 async def create_account_template(
     payload: AccountTemplateCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("sales.access")),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
 ):
     name = (payload.name or "").strip()
     if not name:
@@ -1144,7 +1144,7 @@ async def create_account_template(
 async def delete_account_template(
     template_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("sales.access")),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
 ):
     item = db.query(AccountTemplate).filter(AccountTemplate.id == template_id).first()
     if not item:

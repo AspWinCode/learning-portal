@@ -99,7 +99,7 @@ async def create_lead_communication(
     lead_id: int,
     payload: LeadQuickCommunicationCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("sales.access")),
+    current_user: User = Depends(auth.require_permission("sales.manage_leads")),
 ):
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
     if not lead:
@@ -144,7 +144,7 @@ async def send_info_for_lead(
     lead_id: int,
     payload: LeadSendInfoRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("sales.access")),
+    current_user: User = Depends(auth.require_permission("sales.manage_leads")),
 ):
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
     if not lead:
@@ -212,7 +212,7 @@ async def save_lead_contact_result(
     lead_id: int,
     payload: LeadContactResultRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("sales.access")),
+    current_user: User = Depends(auth.require_permission("sales.manage_leads")),
 ):
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
     if not lead:
@@ -284,7 +284,7 @@ async def create_lead_task(
     lead_id: int,
     payload: LeadTaskCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("sales.access")),
+    current_user: User = Depends(auth.require_permission("sales.manage_leads")),
 ):
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
     if not lead:
@@ -389,7 +389,7 @@ async def close_lead_task(
     lead_id: int,
     task_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("sales.access")),
+    current_user: User = Depends(auth.require_permission("sales.manage_leads")),
 ):
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
     if not lead:
@@ -471,7 +471,7 @@ async def update_lead_task(
     task_id: int,
     payload: LeadTaskUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("sales.access")),
+    current_user: User = Depends(auth.require_permission("sales.manage_leads")),
 ):
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
     if not lead:

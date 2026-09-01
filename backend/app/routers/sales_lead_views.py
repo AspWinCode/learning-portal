@@ -385,7 +385,7 @@ async def create_lead_activity(
     lead_id: int,
     payload: LeadActivityCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("sales.access")),
+    current_user: User = Depends(auth.require_permission("sales.manage_leads")),
 ):
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
     if not lead:
@@ -437,7 +437,7 @@ async def update_lead_post_visit_stage(
     lead_id: int,
     payload: LeadPostVisitStageUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("sales.access")),
+    current_user: User = Depends(auth.require_permission("sales.manage_leads")),
 ):
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
     if not lead:

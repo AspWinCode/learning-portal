@@ -1,14 +1,14 @@
 """Add sales_schools.b2b_school_id link and backfill by name
 
-Revision ID: 0179
-Revises: 0178
+Revision ID: 0183
+Revises: 0182
 Create Date: 2026-09-03
 """
 from alembic import op
 import sqlalchemy as sa
 
-revision = "0179"
-down_revision = "0178"
+revision = "0183"
+down_revision = "0182"
 branch_labels = None
 depends_on = None
 

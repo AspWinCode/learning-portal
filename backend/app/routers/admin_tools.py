@@ -22,7 +22,7 @@ router = APIRouter()
 async def reset_trainer_password(
     user_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("admin_tools.manage")),
+    current_user: User = Depends(auth.require_permission("admin_tools.reset_trainer_password")),
 ) -> Dict[str, str]:
     """
     Админский сброс пароля тренера:
@@ -78,7 +78,7 @@ ELEVATED_ROLES = {UserRole.ADMIN, UserRole.OWNER}
 async def reset_user_password(
     user_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("admin_tools.manage")),
+    current_user: User = Depends(auth.require_permission("admin_tools.reset_any_password")),
 ) -> Dict[str, str]:
     """Сброс пароля для любого не-привилегированного пользователя (кроме admin/owner)."""
     user = db.query(User).filter(User.id == user_id).first()

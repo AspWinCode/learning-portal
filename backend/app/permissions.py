@@ -99,10 +99,16 @@ PERMISSION_CATALOG: List[Dict[str, str]] = [
         "description": "Link and unlink Telegram for the current user profile.",
     },
     {
-        "key": "admin_tools.manage",
+        "key": "admin_tools.reset_trainer_password",
         "module": "admin_tools",
-        "label": "Admin tools manage",
-        "description": "Run administrative maintenance tools such as trainer password reset.",
+        "label": "Сброс пароля тренера",
+        "description": "Сбросить пароль любого пользователя с ролью «Тренер».",
+    },
+    {
+        "key": "admin_tools.reset_any_password",
+        "module": "admin_tools",
+        "label": "Сброс пароля любого пользователя",
+        "description": "Сбросить пароль любого пользователя, кроме admin/owner (методист, продажи, родитель и т.д.).",
     },
     {
         "key": "reports.access",

@@ -711,6 +711,7 @@ class SalesSchool(Base):
     website = Column(String, nullable=True)
     district = Column(String, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False, index=True)
+    b2b_school_id = Column(Integer, ForeignKey("b2b_schools.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     contacts = relationship("SalesSchoolContact", back_populates="school", cascade="all, delete-orphan", order_by="SalesSchoolContact.id")

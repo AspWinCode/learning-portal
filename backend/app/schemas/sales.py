@@ -466,6 +466,7 @@ class SalesSchoolContactResponse(BaseModel):
 
 class SalesSchoolResponse(SalesSchoolBase):
     id: int
+    b2b_school_id: Optional[int] = None
     created_at: datetime
     contacts: List[SalesSchoolContactResponse] = []
 

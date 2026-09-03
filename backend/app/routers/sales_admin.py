@@ -96,10 +96,18 @@ def _clean_optional_text(value: Optional[str]) -> Optional[str]:
 
 
 def _sync_sales_school_to_b2b(db: Session, school: SalesSchool) -> B2BSchool:
-    b2b = db.query(B2BSchool).filter(cast(B2BSchool.name, Text).ilike(school.name)).first()
+    # Prefer the stored link so renames update the same b2b record instead of
+    # spawning a duplicate. Fall back to a name match only for legacy rows.
+    b2b = None
+    if school.b2b_school_id:
+        b2b = db.query(B2BSchool).filter(B2BSchool.id == school.b2b_school_id).first()
+    if not b2b:
+        b2b = db.query(B2BSchool).filter(cast(B2BSchool.name, Text).ilike(school.name)).first()
     if not b2b:
         b2b = B2BSchool(name=school.name, pipeline_stage="new")
         db.add(b2b)
+        db.flush()
+    school.b2b_school_id = b2b.id
     b2b.name = school.name
     b2b.city = getattr(school, "city", None)
     b2b.director = getattr(school, "director", None)

@@ -668,6 +668,12 @@ PERMISSION_CATALOG: List[Dict[str, str]] = [
         "label": "ИИ-консультант: настройки",
         "description": "Настройки интеграции: модели AI Tunnel, ключи, параметры генерации.",
     },
+    {
+        "key": "media.upload",
+        "module": "media",
+        "label": "Загрузка медиафайлов",
+        "description": "Загрузка изображений/аудио/видео/PDF через общий эндпоинт медиа. Раньше это право «одалживалось» у seo.manage/kodex.manage/technolab.manage — теперь можно выдать отдельно, не открывая доступ к этим модулям.",
+    },
 ]
 
 VALID_PERMISSION_KEYS: Set[str] = {item["key"] for item in PERMISSION_CATALOG}

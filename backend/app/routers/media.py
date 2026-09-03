@@ -54,7 +54,9 @@ class MediaUploadOut(BaseModel):
 @router.post("/upload", response_model=MediaUploadOut)
 async def upload_media(
     file: UploadFile = File(...),
-    current_user: User = Depends(require_any_permission("seo.manage", "kodex.manage", "technolab.manage")),
+    current_user: User = Depends(
+        require_any_permission("seo.manage", "kodex.manage", "technolab.manage", "media.upload")
+    ),
 ):
     if file.content_type not in ALLOWED_TYPES:
         raise HTTPException(status_code=415, detail=f"Неподдерживаемый тип файла: {file.content_type}. Разрешены: JPEG, PNG, WebP, GIF, SVG, WAV, MP3, OGG, MP4, MOV, WebM, PDF")

@@ -100,7 +100,7 @@ def task_academy_proactivity_scan() -> None:
     run_academy_proactivity_scan()
 
 
-@dramatiq.actor(queue_name="delivery", max_retries=1, time_limit=1_800_000)
+@dramatiq.actor(queue_name="delivery", max_retries=1, time_limit=3_600_000)
 def task_academy_ingest_expertise(source_id: int) -> None:
     run_academy_ingest_expertise(source_id)
 

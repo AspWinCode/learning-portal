@@ -100,12 +100,51 @@ async def _ocr_image(storage_key: str, content_type: str, user_id: Optional[int]
     return result.text.strip() if result.ok and result.text else ""
 
 
-_OCR_MAX_PAGES = int(os.getenv("ACADEMY_OCR_MAX_PAGES", "80"))
+# Максимум страниц, отправляемых на OCR (страницы с текстовым слоем не считаются
+# и обрабатываются бесплатно). Хватает на любую книгу; override — ACADEMY_OCR_MAX_PAGES.
+_OCR_MAX_PAGES = int(os.getenv("ACADEMY_OCR_MAX_PAGES", "400"))
+# Сколько OCR-запросов к vision-модели выполнять параллельно.
+_OCR_CONCURRENCY = int(os.getenv("ACADEMY_OCR_CONCURRENCY", "5"))
+
+
+async def _ocr_one_page(page, *, user_id: Optional[int]) -> Optional[str]:
+    """Текст одной страницы: текстовый слой, если он есть, иначе OCR картинки."""
+    try:
+        native = (page.extract_text() or "").strip()
+    except Exception:  # noqa: BLE001
+        native = ""
+    if len(native) > 40:
+        return native
+    try:
+        images = list(page.images)
+    except Exception:  # noqa: BLE001
+        images = []
+    if not images:
+        return native or None
+    img = images[0]
+    ext = (img.name.rsplit(".", 1)[-1] or "png").lower()
+    mime = "image/jpeg" if ext in ("jpg", "jpeg") else f"image/{ext}"
+    uri = f"data:{mime};base64,{base64.b64encode(img.data).decode('ascii')}"
+    result = await ai_gateway.analyze_image(
+        feature="academy_expertise_ocr",
+        image_url=uri,
+        prompt=(
+            "Распознай и верни весь текст с этой страницы книги/документа как "
+            "есть, без комментариев и пересказа. Сохрани абзацы."
+        ),
+        max_tokens=2000,
+        user_id=user_id,
+    )
+    if result.ok and result.text:
+        return result.text.strip()
+    return native or None
 
 
 async def _ocr_scanned_pdf(data: bytes, *, user_id: Optional[int] = None) -> str:
-    """Постранично распознаёт текст сканированного PDF (страницы = картинки)
-    через vision-модель AI Tunnel. Ограничение — ACADEMY_OCR_MAX_PAGES страниц."""
+    """Распознаёт текст сканированного PDF постранично, с ограниченной
+    параллельностью. Порядок страниц сохраняется."""
+    import asyncio
+
     try:
         from pypdf import PdfReader
     except Exception:  # noqa: BLE001
@@ -115,42 +154,21 @@ async def _ocr_scanned_pdf(data: bytes, *, user_id: Optional[int] = None) -> str
     except Exception:  # noqa: BLE001
         return ""
 
-    pages_out: List[str] = []
-    for idx, page in enumerate(reader.pages):
-        if idx >= _OCR_MAX_PAGES:
-            pages_out.append(f"\n[…распознано {_OCR_MAX_PAGES} из {len(reader.pages)} страниц]")
-            break
-        try:
-            native = (page.extract_text() or "").strip()
-        except Exception:  # noqa: BLE001
-            native = ""
-        if len(native) > 40:
-            pages_out.append(native)
-            continue
-        try:
-            images = list(page.images)
-        except Exception:  # noqa: BLE001
-            images = []
-        if not images:
-            if native:
-                pages_out.append(native)
-            continue
-        img = images[0]
-        ext = (img.name.rsplit(".", 1)[-1] or "png").lower()
-        mime = "image/jpeg" if ext in ("jpg", "jpeg") else f"image/{ext}"
-        uri = f"data:{mime};base64,{base64.b64encode(img.data).decode('ascii')}"
-        result = await ai_gateway.analyze_image(
-            feature="academy_expertise_ocr",
-            image_url=uri,
-            prompt=(
-                "Распознай и верни весь текст с этой страницы книги/документа как "
-                "есть, без комментариев и пересказа. Сохрани абзацы."
-            ),
-            max_tokens=2000,
-            user_id=user_id,
-        )
-        if result.ok and result.text:
-            pages_out.append(result.text.strip())
+    total = len(reader.pages)
+    pages = list(reader.pages)[:_OCR_MAX_PAGES]
+    sem = asyncio.Semaphore(max(1, _OCR_CONCURRENCY))
+
+    async def _guarded(pg):
+        async with sem:
+            try:
+                return await _ocr_one_page(pg, user_id=user_id)
+            except Exception:  # noqa: BLE001
+                return None
+
+    results = await asyncio.gather(*(_guarded(pg) for pg in pages))
+    pages_out: List[str] = [t for t in results if t]
+    if total > _OCR_MAX_PAGES:
+        pages_out.append(f"\n[…обработано {_OCR_MAX_PAGES} из {total} страниц]")
 
     return "\n\n".join(p for p in pages_out if p).strip()
 

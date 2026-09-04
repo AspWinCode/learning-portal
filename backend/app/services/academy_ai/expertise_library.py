@@ -10,7 +10,9 @@
 """
 from __future__ import annotations
 
+import base64
 import io
+import os
 import zipfile
 from typing import Any, Dict, List, Optional
 
@@ -98,6 +100,61 @@ async def _ocr_image(storage_key: str, content_type: str, user_id: Optional[int]
     return result.text.strip() if result.ok and result.text else ""
 
 
+_OCR_MAX_PAGES = int(os.getenv("ACADEMY_OCR_MAX_PAGES", "80"))
+
+
+async def _ocr_scanned_pdf(data: bytes, *, user_id: Optional[int] = None) -> str:
+    """Постранично распознаёт текст сканированного PDF (страницы = картинки)
+    через vision-модель AI Tunnel. Ограничение — ACADEMY_OCR_MAX_PAGES страниц."""
+    try:
+        from pypdf import PdfReader
+    except Exception:  # noqa: BLE001
+        return ""
+    try:
+        reader = PdfReader(io.BytesIO(data))
+    except Exception:  # noqa: BLE001
+        return ""
+
+    pages_out: List[str] = []
+    for idx, page in enumerate(reader.pages):
+        if idx >= _OCR_MAX_PAGES:
+            pages_out.append(f"\n[…распознано {_OCR_MAX_PAGES} из {len(reader.pages)} страниц]")
+            break
+        try:
+            native = (page.extract_text() or "").strip()
+        except Exception:  # noqa: BLE001
+            native = ""
+        if len(native) > 40:
+            pages_out.append(native)
+            continue
+        try:
+            images = list(page.images)
+        except Exception:  # noqa: BLE001
+            images = []
+        if not images:
+            if native:
+                pages_out.append(native)
+            continue
+        img = images[0]
+        ext = (img.name.rsplit(".", 1)[-1] or "png").lower()
+        mime = "image/jpeg" if ext in ("jpg", "jpeg") else f"image/{ext}"
+        uri = f"data:{mime};base64,{base64.b64encode(img.data).decode('ascii')}"
+        result = await ai_gateway.analyze_image(
+            feature="academy_expertise_ocr",
+            image_url=uri,
+            prompt=(
+                "Распознай и верни весь текст с этой страницы книги/документа как "
+                "есть, без комментариев и пересказа. Сохрани абзацы."
+            ),
+            max_tokens=2000,
+            user_id=user_id,
+        )
+        if result.ok and result.text:
+            pages_out.append(result.text.strip())
+
+    return "\n\n".join(p for p in pages_out if p).strip()
+
+
 # ─── Загрузка источника ───────────────────────────────────────────────────
 
 async def ingest_source(
@@ -105,18 +162,23 @@ async def ingest_source(
 ) -> Dict[str, Any]:
     """Извлекает текст источника, пересобирает чанки, ставит краткое описание.
     Best-effort: при пустом тексте источник остаётся без чанков, ошибка не летит."""
-    meta_ct = ""
+    ocr_used = False
+    key = (source.storage_key or "").lower()
     if source.storage_key:
         data = storage.read_bytes(source.storage_key)
-        # content_type сохраняли в origin_url? нет — держим в ai_description? используем filename
-        if data is not None:
-            if source.storage_key.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
-                meta_ct = "image/jpeg"
-                text = await _ocr_image(source.storage_key, meta_ct, user_id)
-            else:
-                text = extract_text_sync(data, "", source.storage_key)
-        else:
+        if data is None:
             text = ""
+        elif key.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
+            ocr_used = True
+            text = await _ocr_image(source.storage_key, "image/jpeg", user_id)
+        else:
+            text = extract_text_sync(data, "", source.storage_key)
+            # PDF без текстового слоя (скан) → постраничный OCR
+            if len(text) < 40 and (key.endswith(".pdf") or data[:5] == b"%PDF-"):
+                ocr_text = await _ocr_scanned_pdf(data, user_id=user_id)
+                if ocr_text:
+                    ocr_used = True
+                    text = ocr_text
     else:
         text = (raw_text or "").strip()
 
@@ -148,7 +210,7 @@ async def ingest_source(
     return {
         "chars_extracted": len(text),
         "chunks": len(chunks),
-        "ocr_used": bool(source.storage_key and meta_ct.startswith("image/")),
+        "ocr_used": ocr_used,
     }
 
 

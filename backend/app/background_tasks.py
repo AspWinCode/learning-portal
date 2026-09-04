@@ -14,6 +14,7 @@ from app.background_jobs import (
     run_parent_weekly_digests,
     run_payment_overdue_tasks,
     run_payment_reminder_notifications,
+    run_academy_ingest_expertise,
     run_academy_proactivity_scan,
     run_academy_scheduled_content,
     run_scheduled_messages,
@@ -97,6 +98,11 @@ def task_academy_scheduled_content() -> None:
 @dramatiq.actor(queue_name="periodic")
 def task_academy_proactivity_scan() -> None:
     run_academy_proactivity_scan()
+
+
+@dramatiq.actor(queue_name="delivery", max_retries=1, time_limit=1_800_000)
+def task_academy_ingest_expertise(source_id: int) -> None:
+    run_academy_ingest_expertise(source_id)
 
 
 @dramatiq.actor(queue_name="delivery", max_retries=0)

@@ -93,6 +93,18 @@ def _require_enabled() -> None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Модуль ИИ-консультанта отключён")
 
 
+def _enqueue_expertise_ingest(source_id: int) -> None:
+    """Ставит тяжёлую обработку источника (текст + OCR + чанки) в фоновый воркер."""
+    try:
+        from app.background_tasks import task_academy_ingest_expertise
+
+        task_academy_ingest_expertise.send(source_id)
+    except Exception:  # noqa: BLE001 — брокер недоступен (напр. локально): обработать можно через /reingest
+        import logging
+
+        logging.getLogger(__name__).warning("academy: не удалось поставить обработку источника %s в очередь", source_id)
+
+
 # ─── Статус ────────────────────────────────────────────────────────────────
 
 @router.get("/status", response_model=ModuleStatus)
@@ -440,16 +452,17 @@ async def upload_expertise_source(
         storage_key=storage_key,
         added_by_id=current_user.id,
     )
+    source.ai_description = "⏳ Обработка: извлечение текста (для сканов OCR может занять несколько минут)"
     db.add(source)
     db.commit()
     db.refresh(source)
-    stats = await expertise.ingest_source(db, source, user_id=current_user.id)
+    _enqueue_expertise_ingest(source.id)
     log_action(db, current_user.id, "upload", "academy_expertise_source", source.id, {"title": source.title})
-    return ExpertiseIngestResult(source=_expertise_out(db, source), **stats)
+    return ExpertiseIngestResult(source=_expertise_out(db, source), chars_extracted=0, chunks=0, ocr_used=False)
 
 
 @router.post("/expertise/{source_id}/reingest", response_model=ExpertiseIngestResult)
-async def reingest_expertise_source(
+def reingest_expertise_source(
     source_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_permission("academy_ai.expertise_manage")),
@@ -457,9 +470,10 @@ async def reingest_expertise_source(
     source = db.query(AcademyExpertiseSource).filter(AcademyExpertiseSource.id == source_id).first()
     if not source:
         raise HTTPException(status_code=404, detail="Источник не найден")
-    source.ai_description = None
-    stats = await expertise.ingest_source(db, source, user_id=current_user.id)
-    return ExpertiseIngestResult(source=_expertise_out(db, source), **stats)
+    source.ai_description = "⏳ Переобработка…"
+    db.commit()
+    _enqueue_expertise_ingest(source.id)
+    return ExpertiseIngestResult(source=_expertise_out(db, source), chars_extracted=0, chunks=0, ocr_used=False)
 
 
 @router.post("/expertise/{source_id}/status", response_model=ExpertiseSourceOut)

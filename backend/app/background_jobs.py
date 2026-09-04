@@ -179,3 +179,21 @@ def run_academy_proactivity_scan() -> None:
     from app.services.academy_ai.proactivity import scan
 
     _run_db_job("academy_proactivity_scan", scan)
+
+
+def run_academy_ingest_expertise(source_id: int) -> None:
+    """Извлечение текста + OCR сканов + чанкинг для источника библиотеки
+    экспертизы. Тяжёлая операция (десятки vision-вызовов) — вынесена в воркер."""
+    import asyncio
+
+    from app.models import AcademyExpertiseSource
+    from app.services.academy_ai.expertise_library import ingest_source
+
+    def _job(db):
+        source = db.query(AcademyExpertiseSource).filter(AcademyExpertiseSource.id == source_id).first()
+        if source is None:
+            return
+        source.ai_description = None
+        asyncio.run(ingest_source(db, source, user_id=source.added_by_id))
+
+    _run_db_job("academy_ingest_expertise", _job)

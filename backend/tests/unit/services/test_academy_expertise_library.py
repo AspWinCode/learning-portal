@@ -53,6 +53,15 @@ class _DB:
         pass
 
 
+@pytest.mark.asyncio
+async def test_ocr_scanned_pdf_bad_bytes_returns_empty():
+    assert await el._ocr_scanned_pdf(b"not a pdf") == ""
+
+
+def test_ocr_max_pages_is_positive():
+    assert el._OCR_MAX_PAGES > 0
+
+
 def test_set_status_validates():
     src = _Source()
     el.set_status(_DB(), src, "disabled")

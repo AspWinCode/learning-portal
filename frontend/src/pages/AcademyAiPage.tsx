@@ -335,9 +335,11 @@ const ExpertiseTab: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      const res = await academyAi.uploadExpertise(file);
-      setMessage(`Загружено: ${res.chunks} фрагментов${res.ocr_used ? ' (OCR)' : ''}`);
+      await academyAi.uploadExpertise(file);
+      setMessage('Файл загружен, идёт обработка (для сканов OCR может занять несколько минут). Список обновится сам.');
       load();
+      // фоновая обработка — подтягиваем список, пока не появятся фрагменты
+      [15000, 40000, 90000, 180000].forEach((delay) => setTimeout(load, delay));
     } catch (err) {
       setError(extractApiError(err, 'Не удалось загрузить источник'));
     } finally {
@@ -394,6 +396,21 @@ const ExpertiseTab: React.FC = () => {
                 </Typography>
               </Box>
               <Stack direction="row" spacing={1}>
+                <Button
+                  size="small"
+                  onClick={async () => {
+                    try {
+                      await academyAi.reingestExpertise(s.id);
+                      setMessage('Переобработка запущена');
+                      load();
+                      [15000, 40000, 90000, 180000].forEach((d) => setTimeout(load, d));
+                    } catch (err) {
+                      setError(extractApiError(err, 'Не удалось переобработать'));
+                    }
+                  }}
+                >
+                  Переобработать
+                </Button>
                 <Button size="small" onClick={() => toggle(s)}>
                   {s.status === 'active' ? 'Отключить' : 'Включить'}
                 </Button>

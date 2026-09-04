@@ -240,7 +240,9 @@ export const uploadKbFile = (file: File, meta?: { title?: string; section?: stri
   if (meta?.title) form.append('title', meta.title);
   if (meta?.section) form.append('section', meta.section);
   if (meta?.direction) form.append('direction', meta.direction);
-  return api.post(`${BASE}/knowledge/upload`, form).then((r) => r.data);
+  return api
+    .post(`${BASE}/knowledge/upload`, form, { headers: { 'Content-Type': 'multipart/form-data' } })
+    .then((r) => r.data);
 };
 
 export const enrichKbEntry = (id: number): Promise<{ applied: Record<string, unknown>; entry: KbEntry }> =>
@@ -280,7 +282,9 @@ export const uploadExpertise = (file: File, meta?: { title?: string; type?: stri
   form.append('file', file);
   if (meta?.title) form.append('title', meta.title);
   if (meta?.type) form.append('type', meta.type);
-  return api.post(`${BASE}/expertise/upload`, form).then((r) => r.data);
+  return api
+    .post(`${BASE}/expertise/upload`, form, { headers: { 'Content-Type': 'multipart/form-data' } })
+    .then((r) => r.data);
 };
 
 export const reingestExpertise = (id: number): Promise<ExpertiseIngestResult> =>

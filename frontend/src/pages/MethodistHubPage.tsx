@@ -59,11 +59,11 @@ const DIRECTIONS: Direction[] = [
   {
     id: 'game',
     name: 'PixelForge',
-    desc: 'Разработка игр: интерактивные курсы, встроенный редактор кода, сдача проектов.',
+    desc: 'Разработка игр: курсы, дерево, задачи (Snap!/GDevelop), тесты, подсказки, лекции.',
     icon: <GameIcon />,
     status: 'live',
     color: 'warning',
-    external: 'https://pixelforge.tirskix.space',
+    route: '/pixelforge',
   },
   {
     id: 'oge',

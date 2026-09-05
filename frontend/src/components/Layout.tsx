@@ -138,6 +138,7 @@ const EXTRA_ROLE_NAV_ITEMS: Record<string, Array<{ text: string; icon: React.Rea
     { text: 'Методист хаб', icon: <School sx={{ fontSize: 18 }} />, path: '/methodist-hub' },
     { text: 'Kodex Studio', icon: <EditNoteIcon sx={{ fontSize: 18 }} />, path: '/kodex' },
     { text: 'ТехноЛаб Studio', icon: <EditNoteIcon sx={{ fontSize: 18 }} />, path: '/technolab' },
+    { text: 'PixelForge Studio', icon: <EditNoteIcon sx={{ fontSize: 18 }} />, path: '/pixelforge' },
   ],
 };
 

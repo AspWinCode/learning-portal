@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import pytest
 
 from app import auth, schemas
@@ -78,6 +80,23 @@ def test_role_schema_rejects_unknown_permission() -> None:
             base_role=schemas.UserRole.SALES,
             permissions=["sales.leads.read"],
         )
+
+
+def test_role_response_tolerates_legacy_permission_keys() -> None:
+    role = Role(
+        id=7,
+        key="ops_manager",
+        name="Ops Manager",
+        base_role=UserRole.SALES,
+        permissions=["sales.access", "admin_tools.manage", "sales.access"],
+        is_system=False,
+        is_active=True,
+        created_at=datetime(2026, 1, 1),
+    )
+
+    response = schemas.RoleResponse.model_validate(role)
+
+    assert response.permissions == ["sales.access", "admin_tools.manage"]
 
 
 def test_has_permission_uses_default_role_permissions_without_custom_role() -> None:

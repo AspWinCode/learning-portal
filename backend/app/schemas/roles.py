@@ -80,5 +80,20 @@ class RoleResponse(RoleBase):
 
     model_config = ConfigDict(from_attributes=True)
 
+    @field_validator("permissions")
+    @classmethod
+    def validate_permissions(cls, value: List[str]) -> List[str]:  # noqa: F811
+        # На выходе не отклоняем устаревшие/неизвестные ключи разрешений: иначе
+        # удаление permission из каталога делает нечитаемыми уже сохранённые роли.
+        seen = set()
+        normalized: List[str] = []
+        for item in value or []:
+            candidate = str(item).strip()
+            if not candidate or candidate in seen:
+                continue
+            seen.add(candidate)
+            normalized.append(candidate)
+        return normalized
+
 
 __all__ = [name for name in globals() if not name.startswith("_")]

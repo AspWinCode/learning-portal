@@ -1,4 +1,5 @@
 import { api } from './api/client';
+import type { AuthoringSummary } from './kodexApi';
 
 // ─── Types (mirror ТехноЛаб / pro-reshaut Admin API) ─────────────────────────
 
@@ -96,6 +97,8 @@ export interface TechnoLabTask {
 const BASE = '/technolab';
 
 export const technolabApi = {
+  authoringSummary: (): Promise<AuthoringSummary> =>
+    api.get(`${BASE}/authoring/summary`).then((r) => r.data),
   // Courses
   listCourses: (): Promise<TechnoLabCourse[]> => api.get(`${BASE}/courses`).then((r) => r.data),
   createCourse: (payload: Partial<TechnoLabCourse>): Promise<TechnoLabCourse> =>

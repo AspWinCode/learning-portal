@@ -158,6 +158,14 @@ async def admin_list_courses(current_user: User = Depends(_manage)):
         _raise(e)
 
 
+@router.get("/admin/summary")
+async def admin_summary(current_user: User = Depends(_manage)):
+    try:
+        return await pf.authoring_summary()
+    except PixelForgeError as e:
+        _raise(e)
+
+
 @router.post("/admin/courses", status_code=status.HTTP_201_CREATED)
 async def admin_create_course(
     payload: PixelForgeCourseCreate,

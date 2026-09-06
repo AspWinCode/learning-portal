@@ -66,9 +66,24 @@ export interface KodexExternalFull extends KodexExternalSummary {
   finale: any[];
 }
 
+/** Единая форма сводки по контенту направления для дашборда «Студия методиста».
+ *  Сегменты воронки (active/in_review/changes_requested/draft) взаимоисключающие
+ *  и в сумме дают total. У направлений без ревью in_review и changes_requested = 0. */
+export interface AuthoringSummary {
+  direction: 'kodex' | 'technolab' | 'pixelforge';
+  total: number;
+  active: number;
+  in_review: number;
+  changes_requested: number;
+  draft: number;
+}
+
 export const kodexExternalApi = {
   list: (): Promise<KodexExternalSummary[]> =>
     api.get('/kodex/cases/external').then((r) => r.data),
+
+  summary: (): Promise<AuthoringSummary> =>
+    api.get('/kodex/cases/external/summary').then((r) => r.data),
 
   get: (slug: string): Promise<KodexExternalFull> =>
     api.get(`/kodex/cases/external/${slug}`).then((r) => r.data),

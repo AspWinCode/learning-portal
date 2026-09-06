@@ -1,4 +1,5 @@
 import { api } from './api/client';
+import type { AuthoringSummary } from './kodexApi';
 
 // ─── Прогресс ученика на PixelForge (методист/тренер/родитель) ────────────────
 
@@ -120,6 +121,7 @@ export interface PFClass { id: number; name: string }
 const B = '/pixelforge/admin';
 
 export const pixelforgeStudioApi = {
+  authoringSummary: (): Promise<AuthoringSummary> => api.get(`${B}/summary`).then((r) => r.data),
   // courses
   listCourses: (): Promise<PFCourse[]> => api.get(`${B}/courses`).then((r) => r.data),
   createCourse: (p: { title: string; slug?: string; description?: string; status?: PixelForgeStatus; sortOrder?: number }): Promise<PFCourse> =>

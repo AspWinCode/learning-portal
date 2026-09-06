@@ -306,3 +306,57 @@ async def get_class(class_id: int) -> dict:
 
 async def get_class_students(class_id: int) -> List[dict]:
     return await _request("GET", f"/api/admin/classes/{class_id}/students")
+
+
+# ─── Authoring summary (дашборд «Студия методиста») ─────────────────────────
+
+_summary_cache: Optional[Dict[str, Any]] = None
+_SUMMARY_TTL = 60
+
+
+def _iter_nodes(nodes: Any):
+    for node in nodes or []:
+        if not isinstance(node, dict):
+            continue
+        yield node
+        yield from _iter_nodes(node.get("children"))
+
+
+async def authoring_summary() -> Dict[str, Any]:
+    """Сводка по контенту PixelForge: единица — узел дерева (тема/раздел),
+    статус берётся из самого узла (DRAFT/PUBLISHED/ARCHIVED). Один обход дерева
+    на курс, кэш 60с. Статусов «на ревью»/«правки» у PixelForge нет — всегда 0."""
+    global _summary_cache
+    now = time.time()
+    if _summary_cache and now - _summary_cache["_ts"] < _SUMMARY_TTL:
+        return {k: v for k, v in _summary_cache.items() if k != "_ts"}
+
+    courses = await list_courses() or []
+    active = draft = 0
+    for course in courses:
+        if str(course.get("status") or "").upper() == "ARCHIVED":
+            continue
+        try:
+            tree = await get_course_tree(course.get("id"))
+        except PixelForgeError:
+            continue
+        nodes = tree.get("nodes") if isinstance(tree, dict) else tree
+        for node in _iter_nodes(nodes):
+            st = str(node.get("status") or "").upper()
+            if st == "PUBLISHED":
+                active += 1
+            elif st == "ARCHIVED":
+                continue
+            else:
+                draft += 1
+
+    summary: Dict[str, Any] = {
+        "direction": "pixelforge",
+        "total": active + draft,
+        "active": active,
+        "in_review": 0,
+        "changes_requested": 0,
+        "draft": draft,
+    }
+    _summary_cache = {**summary, "_ts": now}
+    return summary

@@ -23,7 +23,9 @@ import {
   ErrorOutline as ErrorIcon,
 } from '@mui/icons-material';
 import Layout from '../components/Layout';
-import { kodexExternalApi, KodexExternalSummary } from '../services/kodexApi';
+import { AuthoringSummary, kodexExternalApi, KodexExternalSummary } from '../services/kodexApi';
+import { technolabApi } from '../services/technolabApi';
+import { pixelforgeStudioApi } from '../services/pixelforgeApi';
 
 interface Direction {
   id: string;
@@ -96,24 +98,56 @@ const STATUS_META: Record<string, { label: string; color: 'default' | 'info' | '
   changes_requested: { label: 'Правки', color: 'error' },
 };
 
+/** Сводку по контенту отдаёт своя площадка каждого направления. Ключ — id из DIRECTIONS. */
+const SUMMARY_FETCHERS: Record<string, () => Promise<AuthoringSummary>> = {
+  kodex: kodexExternalApi.summary,
+  technolab: technolabApi.authoringSummary,
+  game: pixelforgeStudioApi.authoringSummary,
+};
+
+const EMPTY_AGG = { total: 0, active: 0, inReview: 0, attention: 0, draft: 0 };
+
 export default function MethodistHubPage() {
   const navigate = useNavigate();
   const [cases, setCases] = useState<KodexExternalSummary[]>([]);
+  const [summaries, setSummaries] = useState<Record<string, AuthoringSummary>>({});
   const [loading, setLoading] = useState(true);
 
+  const liveIds = React.useMemo(
+    () => DIRECTIONS.filter((d) => d.status === 'live' && SUMMARY_FETCHERS[d.id]).map((d) => d.id),
+    [],
+  );
+
   const load = useCallback(async () => {
-    try { setCases(await kodexExternalApi.list()); }
-    catch { /* silent */ }
-    finally { setLoading(false); }
-  }, []);
+    const results = await Promise.allSettled([
+      kodexExternalApi.list(),
+      ...liveIds.map((id) => SUMMARY_FETCHERS[id]()),
+    ]);
+    const [caseRes, ...summaryRes] = results;
+    if (caseRes.status === 'fulfilled') setCases(caseRes.value as KodexExternalSummary[]);
+    const map: Record<string, AuthoringSummary> = {};
+    liveIds.forEach((id, i) => {
+      const r = summaryRes[i];
+      if (r.status === 'fulfilled') map[id] = r.value as AuthoringSummary;
+    });
+    setSummaries(map);
+    setLoading(false);
+  }, [liveIds]);
 
   useEffect(() => { load(); }, [load]);
 
-  const total = cases.length;
-  const active = cases.filter((c) => c.playable).length;
-  const attention = cases.filter((c) => c.status === 'changes_requested').length;
-  const inReview = cases.filter((c) => c.status === 'in_review').length;
-  const drafts = cases.filter((c) => !c.status || c.status === 'draft').length;
+  // Суммарные цифры по всем подключённым направлениям — для верхних плашек.
+  const agg = Object.values(summaries).reduce(
+    (a, s) => ({
+      total: a.total + s.total,
+      active: a.active + s.active,
+      inReview: a.inReview + s.in_review,
+      attention: a.attention + s.changes_requested,
+      draft: a.draft + s.draft,
+    }),
+    EMPTY_AGG,
+  );
+  const { total, inReview, attention } = agg;
 
   const recentChanged = cases.filter((c) => c.is_override).slice(0, 5);
   const needAttention = cases.filter(
@@ -123,7 +157,7 @@ export default function MethodistHubPage() {
   const stats = [
     {
       label: 'Направлений',
-      value: '3 / 5',
+      value: `${DIRECTIONS.filter((d) => d.status === 'live').length} / ${DIRECTIONS.length}`,
       sub: 'подключено',
       icon: <CheckIcon fontSize="small" color="success" />,
     },
@@ -176,31 +210,47 @@ export default function MethodistHubPage() {
           ))}
         </Grid>
 
-        {/* Pipeline */}
-        {!loading && total > 0 && (
+        {/* Pipelines — по одной воронке на подключённое направление */}
+        {!loading && liveIds.some((id) => summaries[id]) && (
           <Card variant="outlined" sx={{ mb: 3 }}>
-            <CardContent>
-              <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
-                Воронка по статусам — Кодэкс
-              </Typography>
-              <Box sx={{ display: 'flex', gap: '3px', height: 8, borderRadius: 999, overflow: 'hidden', bgcolor: 'action.hover' }}>
-                <Box sx={{ width: `${(active / total) * 100}%`, bgcolor: 'success.main', borderRadius: 999 }} />
-                <Box sx={{ width: `${(inReview / total) * 100}%`, bgcolor: 'info.main', borderRadius: 999 }} />
-                <Box sx={{ width: `${(attention / total) * 100}%`, bgcolor: 'error.main', borderRadius: 999 }} />
-              </Box>
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mt: 1.5 }}>
-                {[
-                  { label: `Активно — ${active}`, color: 'success.main' },
-                  { label: `На ревью — ${inReview}`, color: 'info.main' },
-                  { label: `Правки — ${attention}`, color: 'error.main' },
-                  { label: `Черновик — ${drafts}`, color: 'text.disabled' },
-                ].map((s) => (
-                  <Box key={s.label} sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                    <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: s.color, flexShrink: 0 }} />
-                    <Typography variant="caption" color="text.secondary">{s.label}</Typography>
+            <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+              {liveIds.map((id) => {
+                const s = summaries[id];
+                if (!s) return null;
+                const name = DIRECTIONS.find((d) => d.id === id)?.name ?? id;
+                const legend = [
+                  { label: `Активно — ${s.active}`, color: 'success.main', show: true },
+                  { label: `На ревью — ${s.in_review}`, color: 'info.main', show: s.in_review > 0 },
+                  { label: `Правки — ${s.changes_requested}`, color: 'error.main', show: s.changes_requested > 0 },
+                  { label: `Черновик — ${s.draft}`, color: 'text.disabled', show: true },
+                ].filter((x) => x.show);
+                return (
+                  <Box key={id}>
+                    <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                      Воронка по статусам — {name}
+                    </Typography>
+                    {s.total > 0 ? (
+                      <>
+                        <Box sx={{ display: 'flex', gap: '3px', height: 8, borderRadius: 999, overflow: 'hidden', bgcolor: 'action.hover' }}>
+                          <Box sx={{ width: `${(s.active / s.total) * 100}%`, bgcolor: 'success.main', borderRadius: 999 }} />
+                          <Box sx={{ width: `${(s.in_review / s.total) * 100}%`, bgcolor: 'info.main', borderRadius: 999 }} />
+                          <Box sx={{ width: `${(s.changes_requested / s.total) * 100}%`, bgcolor: 'error.main', borderRadius: 999 }} />
+                        </Box>
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mt: 1.25 }}>
+                          {legend.map((x) => (
+                            <Box key={x.label} sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                              <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: x.color, flexShrink: 0 }} />
+                              <Typography variant="caption" color="text.secondary">{x.label}</Typography>
+                            </Box>
+                          ))}
+                        </Box>
+                      </>
+                    ) : (
+                      <Typography variant="caption" color="text.secondary">Пока нет контента</Typography>
+                    )}
                   </Box>
-                ))}
-              </Box>
+                );
+              })}
             </CardContent>
           </Card>
         )}
@@ -237,9 +287,7 @@ export default function MethodistHubPage() {
                         dir={dir}
                         chip={chip}
                         loading={loading}
-                        total={total}
-                        active={active}
-                        attention={attention}
+                        summary={summaries[dir.id]}
                         isLive
                       />
                     </CardActionArea>
@@ -248,9 +296,7 @@ export default function MethodistHubPage() {
                       dir={dir}
                       chip={chip}
                       loading={loading}
-                      total={total}
-                      active={active}
-                      attention={attention}
+                      summary={summaries[dir.id]}
                       isLive={false}
                     />
                   )}
@@ -347,13 +393,14 @@ interface DirectionCardContentProps {
   dir: Direction;
   chip: { label: string; color: 'success' | 'warning' | 'default' };
   loading: boolean;
-  total: number;
-  active: number;
-  attention: number;
+  summary?: AuthoringSummary;
   isLive: boolean;
 }
 
-function DirectionCardContent({ dir, chip, loading, total, active, attention, isLive }: DirectionCardContentProps) {
+function DirectionCardContent({ dir, chip, loading, summary, isLive }: DirectionCardContentProps) {
+  const total = summary?.total ?? 0;
+  const active = summary?.active ?? 0;
+  const attention = summary?.changes_requested ?? 0;
   return (
     <CardContent sx={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 1.5 }}>
       <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
@@ -384,6 +431,12 @@ function DirectionCardContent({ dir, chip, loading, total, active, attention, is
         loading ? (
           <Box sx={{ pt: 1, borderTop: 1, borderColor: 'divider' }}>
             <CircularProgress size={14} />
+          </Box>
+        ) : !summary ? (
+          <Box sx={{ pt: 1, borderTop: 1, borderColor: 'divider' }}>
+            <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+              Площадка недоступна
+            </Typography>
           </Box>
         ) : (
           <Box sx={{ display: 'flex', gap: 2.5, pt: 1, borderTop: 1, borderColor: 'divider' }}>

@@ -327,6 +327,39 @@ async def list_external_cases(
         raise HTTPException(status_code=502, detail=f"Не удалось загрузить дела из Кодэкс: {e}")
 
 
+@router.get("/external/summary")
+async def external_cases_summary(
+    current_user: User = Depends(auth.require_permission("kodex.access")),
+) -> dict:
+    """Сводка по контенту Кодэкса для дашборда «Студия методиста».
+    Единица — детективное дело. Сегменты воронки — взаимоисключающие, в сумме = total."""
+    try:
+        cases = await _fetch_merged_cases()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Не удалось загрузить дела из Кодэкс: {e}")
+
+    active = in_review = changes = draft = 0
+    for c in cases:
+        st = c.get("status")
+        if st == "changes_requested":
+            changes += 1
+        elif st == "in_review":
+            in_review += 1
+        elif c.get("playable"):
+            active += 1
+        else:
+            draft += 1
+
+    return {
+        "direction": "kodex",
+        "total": len(cases),
+        "active": active,
+        "in_review": in_review,
+        "changes_requested": changes,
+        "draft": draft,
+    }
+
+
 @router.get("/external/{slug}")
 async def get_external_case(
     slug: str,

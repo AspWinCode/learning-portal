@@ -112,6 +112,14 @@ async def get_course_tree(course_id: int, current_user: User = Depends(auth.requ
         _raise(e)
 
 
+@router.get("/authoring/summary")
+async def authoring_summary(current_user: User = Depends(auth.require_permission("technolab.access"))):
+    try:
+        return await tl.authoring_summary()
+    except TechnoLabError as e:
+        _raise(e)
+
+
 # ─── Nodes ─────────────────────────────────────────────────────────────────
 
 @router.post("/courses/{course_id}/nodes", status_code=status.HTTP_201_CREATED)

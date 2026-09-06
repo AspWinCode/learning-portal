@@ -1,9 +1,12 @@
 import { methodistStudioClient } from './methodistStudioClient';
-import type { KodexExternalFull, KodexExternalSummary } from './kodexApi';
+import type { AuthoringSummary, KodexExternalFull, KodexExternalSummary } from './kodexApi';
 
 export const methodistKodexApi = {
   list: (): Promise<KodexExternalSummary[]> =>
     methodistStudioClient.get('/kodex/cases/external').then((r) => r.data),
+
+  summary: (): Promise<AuthoringSummary> =>
+    methodistStudioClient.get('/kodex/cases/external/summary').then((r) => r.data),
 
   get: (slug: string): Promise<KodexExternalFull> =>
     methodistStudioClient.get(`/kodex/cases/external/${slug}`).then((r) => r.data),

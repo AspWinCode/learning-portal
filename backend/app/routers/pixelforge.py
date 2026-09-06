@@ -1,17 +1,22 @@
+import hashlib
+import hmac
+import logging
+import os
 from typing import Any, Dict
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app import auth
 from app.database import get_db
-from app.models import Student, StudentStatus, User
+from app.models import CourseCatalogItem, CourseCatalogItemKind, Student, StudentStatus, User
 from app.routers.action_log import log_action
 from app.schemas.pixelforge import (
     PixelForgeCardCreate,
     PixelForgeCardUpdate,
     PixelForgeCourseCreate,
     PixelForgeCourseUpdate,
+    PixelForgeCourseWebhook,
     PixelForgeLecture,
     PixelForgeNodeCreate,
     PixelForgeNodeMove,
@@ -25,10 +30,16 @@ from app.schemas.pixelforge import (
     PixelForgeTaskUpdate,
 )
 from app.services import pixelforge_client as pf
+from app.services.kodex_sso import SSO_KODEX_SHARED_SECRET
 from app.services.pixelforge_client import PixelForgeError
-from app.services.pixelforge_sso import fetch_student_pixelforge_progress
+from app.services.pixelforge_sso import PIXELFORGE_EXTERNAL_BASE, fetch_student_pixelforge_progress
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def pixelforge_course_code(course_id: int) -> str:
+    return f"pixelforge-{course_id}"
 
 
 def _raise(e: PixelForgeError):
@@ -78,6 +89,55 @@ async def get_student_progress(
     if not overview:
         return PixelForgeStudentProgress(started=False)
     return PixelForgeStudentProgress(started=True, **overview)
+
+
+# ─── Вебхук публикации курса (§8.2) — витрина портала ────────────────────────
+
+@router.post("/courses/webhook")
+async def pixelforge_course_webhook(request: Request, db: Session = Depends(get_db)):
+    """PixelForge зовёт при смене видимости курса. Подпись — HMAC тела общим
+    секретом (заголовок X-LP-Signature, как X-Kodex-Signature у progress-sync).
+    Ведёт пункт витрины `pixelforge-<course_id>`."""
+    raw = await request.body()
+    sig = request.headers.get("X-LP-Signature", "")
+    secret = SSO_KODEX_SHARED_SECRET.encode("utf-8")
+    if not secret or not sig or not hmac.compare_digest(
+        hmac.new(secret, raw, hashlib.sha256).hexdigest(), sig
+    ):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Неверная подпись")
+
+    payload = PixelForgeCourseWebhook.model_validate_json(raw)
+    c = payload.course
+    code = pixelforge_course_code(c.id)
+    item = db.query(CourseCatalogItem).filter(CourseCatalogItem.code == code).first()
+
+    if payload.event == "published":
+        base = PIXELFORGE_EXTERNAL_BASE.rstrip("/")
+        external_url = f"{base}/api/auth/sso?course={c.id}"
+        if item:
+            item.name = c.title
+            item.description = c.description
+            item.external_url = external_url
+            item.is_active = True
+        else:
+            db.add(CourseCatalogItem(
+                code=code,
+                name=c.title,
+                description=c.description,
+                kind=CourseCatalogItemKind.EXTERNAL,
+                external_url=external_url,
+                is_active=True,
+                sort_order=100,
+            ))
+        db.commit()
+    elif payload.event in ("unpublished", "deleted"):
+        if item:
+            item.is_active = False
+            db.commit()
+    else:
+        logger.warning("pixelforge webhook: unknown event %r", payload.event)
+
+    return {"ok": True}
 
 
 # ══════════ Студия методиста — проксирование authoring-API PixelForge ══════════

@@ -55,6 +55,32 @@ from app.schemas.student_portal import (
 )
 from app.services.kodex_sso import SSO_KODEX_SHARED_SECRET, build_launch_redirect_url
 
+import logging as _logging
+
+_logger = _logging.getLogger(__name__)
+
+
+async def _sync_pixelforge_enrollment(item: "CourseCatalogItem", student_id: int, *, enroll: bool) -> None:
+    """Курсы PixelForge — пункты витрины code=pixelforge-<course_id>. При выдаче/
+    отзыве доступа синхронизируем зачисление ученика на курс в PixelForge.
+    Best-effort: сбой не ломает выдачу доступа в портале."""
+    if not item.code or not item.code.startswith("pixelforge-"):
+        return
+    try:
+        course_id = int(item.code.rsplit("-", 1)[1])
+    except (ValueError, IndexError):
+        return
+    from app.services import pixelforge_client as _pf
+
+    ref = f"lp-student-{student_id}"
+    try:
+        if enroll:
+            await _pf.enroll_student(course_id, ref)
+        else:
+            await _pf.unenroll_student(course_id, ref)
+    except Exception as e:  # noqa: BLE001
+        _logger.warning("PixelForge enroll sync failed (course=%s ref=%s enroll=%s): %s", course_id, ref, enroll, e)
+
 
 def _verify_kodex_signature(raw_body: bytes, signature_header: str) -> bool:
     secret = SSO_KODEX_SHARED_SECRET.encode("utf-8")
@@ -618,6 +644,7 @@ async def admin_grant_course_access(
         existing.revoked_at = None
         db.commit()
         db.refresh(existing)
+        await _sync_pixelforge_enrollment(item, student.id, enroll=True)
         return StudentCourseAccessOut.model_validate(existing)
 
     grant = StudentCourseAccess(
@@ -628,6 +655,7 @@ async def admin_grant_course_access(
     db.add(grant)
     db.commit()
     db.refresh(grant)
+    await _sync_pixelforge_enrollment(item, student.id, enroll=True)
     return StudentCourseAccessOut.model_validate(grant)
 
 
@@ -645,4 +673,8 @@ async def admin_revoke_course_access(
     grant.status = StudentCourseAccessStatus.REVOKED
     grant.revoked_at = datetime.now(timezone.utc)
     db.commit()
+
+    item = db.query(CourseCatalogItem).filter(CourseCatalogItem.id == grant.catalog_item_id).first()
+    if item:
+        await _sync_pixelforge_enrollment(item, grant.student_id, enroll=False)
     return {"ok": True}

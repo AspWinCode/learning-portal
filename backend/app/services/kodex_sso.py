@@ -29,9 +29,13 @@ def build_launch_redirect_url(student: Student, catalog_item: CourseCatalogItem)
         return None
 
     now = datetime.now(timezone.utc)
+    # Внешние площадки проверяют aud по фиксированному имени сервиса. У PixelForge
+    # каждый курс — отдельный пункт витрины (code=pixelforge-<id>), но SSO-фильтр
+    # ждёт aud="pixelforge"; курс передаётся отдельным query-параметром ?course=.
+    aud = "pixelforge" if catalog_item.code.startswith("pixelforge") else catalog_item.code
     payload = {
         "iss": "tirskix-lms",
-        "aud": catalog_item.code,
+        "aud": aud,
         "external_ref": f"lp-student-{student.id}",
         "full_name": student.full_name,
         "catalog_item_code": catalog_item.code,

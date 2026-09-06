@@ -130,3 +130,18 @@ class PixelForgeCardCreate(BaseModel):
 class PixelForgeCardUpdate(BaseModel):
     cardType: Optional[str] = None
     content: Optional[str] = None
+
+
+# ─── Вебхук публикации курса (§8.2) ──────────────────────────────────────────
+
+class PixelForgeWebhookCourse(BaseModel):
+    id: int
+    slug: Optional[str] = None
+    title: str
+    description: Optional[str] = None
+    status: Optional[str] = None
+
+
+class PixelForgeCourseWebhook(BaseModel):
+    event: str                              # published | unpublished | deleted
+    course: PixelForgeWebhookCourse

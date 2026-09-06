@@ -150,6 +150,22 @@ async def get_course_tree(course_id: int) -> Any:
     return await _request("GET", f"/api/admin/courses/{course_id}/tree")
 
 
+# ─── Зачисление учеников на курс (§8) ──────────────────────────────────────
+
+async def enroll_student(course_id: int, external_ref: str) -> Any:
+    return await _request(
+        "POST", f"/api/admin/courses/{course_id}/enroll", json={"externalRef": external_ref}
+    )
+
+
+async def unenroll_student(course_id: int, external_ref: str) -> None:
+    await _request("DELETE", f"/api/admin/courses/{course_id}/enroll/{external_ref}")
+
+
+async def list_course_enrollments(course_id: int) -> List[dict]:
+    return await _request("GET", f"/api/admin/courses/{course_id}/enrollments")
+
+
 # ─── Узлы дерева (группа a) ────────────────────────────────────────────────
 
 async def create_node(course_id: int, payload: dict) -> dict:

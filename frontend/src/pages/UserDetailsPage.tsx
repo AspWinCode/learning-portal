@@ -24,6 +24,7 @@ const roleLabel = (value?: string | null): string => {
   if (value === 'owner') return 'Владелец';
   if (value === 'admin') return 'Администратор';
   if (value === 'sales') return 'Продажи';
+  if (value === 'manager') return 'Менеджер';
   if (value === 'trainer') return 'Тренер';
   if (value === 'parent') return 'Родитель';
   if (value === 'guest') return 'Гость';

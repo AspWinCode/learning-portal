@@ -21,6 +21,11 @@ export const getEffectiveRole = (user: User | null | undefined): string | null =
 export const getUserPermissions = (user: User | null | undefined): string[] => {
   if (!user) return [];
 
+  // Бэкенд отдаёт уже объединённый набор прав (база + доп. роли + доп. кастомные роли).
+  if (user.effective_permissions && user.effective_permissions.length) {
+    return user.effective_permissions.map((p) => p.trim()).filter(Boolean);
+  }
+
   const effectiveRole = getEffectiveRole(user);
   const defaults = effectiveRole ? DEFAULT_ROLE_PERMISSIONS[effectiveRole] || [] : [];
   const explicitPermissions = (user.role_permissions || []).map((permission) => permission.trim()).filter(Boolean);

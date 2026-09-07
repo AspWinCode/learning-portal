@@ -35,13 +35,14 @@ import type { PermissionCatalogItem, Role, User } from '../types';
 import { extractApiError } from '../utils/extractApiError';
 import { getEffectiveRole, hasPermission } from '../utils/permissions';
 
-const BASE_ROLE_OPTIONS: Array<Role['base_role']> = ['owner', 'admin', 'developer', 'sales', 'seo_manager', 'methodist', 'trainer', 'parent', 'guest'];
+const BASE_ROLE_OPTIONS: Array<Role['base_role']> = ['owner', 'admin', 'developer', 'sales', 'manager', 'seo_manager', 'methodist', 'trainer', 'parent', 'guest'];
 
 const BASE_ROLE_LABELS: Record<Role['base_role'], string> = {
   owner: 'Владелец',
   admin: 'Администратор',
   developer: 'Разработчик',
   sales: 'Продажи',
+  manager: 'Менеджер',
   seo_manager: 'SEO-менеджер',
   methodist: 'Методист',
   trainer: 'Преподаватель',
@@ -88,12 +89,15 @@ const ExtraRolesCell: React.FC<{
   canManage: boolean;
   roleLabels: Record<string, string>;
   roleOptions: string[];
+  allowAdmin?: boolean;
   onAdd: (user: User, role: string) => void;
   onRemove: (user: User, role: string) => void;
-}> = ({ user, busy, canManage, roleLabels, roleOptions, onAdd, onRemove }) => {
+}> = ({ user, busy, canManage, roleLabels, roleOptions, allowAdmin, onAdd, onRemove }) => {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const extra = user.extra_roles || [];
-  const available = roleOptions.filter(r => r !== user.role && !extra.includes(r) && r !== 'owner' && r !== 'admin');
+  const available = roleOptions.filter(
+    r => r !== user.role && !extra.includes(r) && r !== 'owner' && (allowAdmin || r !== 'admin'),
+  );
 
   return (
     <Box sx={{ mt: 0.5, display: 'flex', flexWrap: 'wrap', gap: 0.4, alignItems: 'center', minHeight: 24 }}>
@@ -119,6 +123,55 @@ const ExtraRolesCell: React.FC<{
             {available.map(r => (
               <MenuItem key={r} dense onClick={() => { setAnchorEl(null); onAdd(user, r); }}>
                 {roleLabels[r] || r}
+              </MenuItem>
+            ))}
+          </Menu>
+        </>
+      )}
+    </Box>
+  );
+};
+
+// Дополнительные кастомные роли пользователя (помимо основной) — права суммируются
+const ExtraCustomRolesCell: React.FC<{
+  user: User;
+  busy: boolean;
+  canManage: boolean;
+  roles: Role[];
+  onAdd: (user: User, roleId: number) => void;
+  onRemove: (user: User, roleId: number) => void;
+}> = ({ user, busy, canManage, roles, onAdd, onRemove }) => {
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const selectedIds = user.extra_custom_role_ids || [];
+  const nameById = new Map(roles.map((r) => [r.id, r.name]));
+  const available = roles.filter(
+    (r) => r.is_active && !r.is_system && r.id !== user.custom_role_id && !selectedIds.includes(r.id),
+  );
+
+  return (
+    <Box sx={{ mt: 0.5, display: 'flex', flexWrap: 'wrap', gap: 0.4, alignItems: 'center', minHeight: 24 }}>
+      {selectedIds.map((id) => (
+        <Chip
+          key={id}
+          label={nameById.get(id) || `#${id}`}
+          size="small"
+          variant="outlined"
+          color="secondary"
+          onDelete={canManage && !busy ? () => onRemove(user, id) : undefined}
+          sx={{ fontSize: 10, height: 20 }}
+        />
+      ))}
+      {canManage && available.length > 0 && (
+        <>
+          <Tooltip title="Добавить кастомную роль">
+            <IconButton size="small" disabled={busy} onClick={(e) => setAnchorEl(e.currentTarget)} sx={{ p: 0.2 }}>
+              <AddCircleOutlineIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
+            </IconButton>
+          </Tooltip>
+          <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={() => setAnchorEl(null)}>
+            {available.map((r) => (
+              <MenuItem key={r.id} dense onClick={() => { setAnchorEl(null); onAdd(user, r.id); }}>
+                {r.name}
               </MenuItem>
             ))}
           </Menu>
@@ -442,6 +495,35 @@ const RolesPage: React.FC = () => {
     }
   };
 
+  const handleAddExtraCustomRole = async (targetUser: User, roleId: number) => {
+    const current = targetUser.extra_custom_role_ids || [];
+    if (current.includes(roleId)) return;
+    setUpdatingUserId(targetUser.id);
+    try {
+      await usersApi.update(targetUser.id, { extra_custom_role_ids: [...current, roleId] } as any);
+      setSuccess('Дополнительная кастомная роль добавлена.');
+      await loadData();
+    } catch (err: unknown) {
+      setError(extractApiError(err, 'Не удалось обновить роли.'));
+    } finally {
+      setUpdatingUserId(null);
+    }
+  };
+
+  const handleRemoveExtraCustomRole = async (targetUser: User, roleId: number) => {
+    const current = targetUser.extra_custom_role_ids || [];
+    setUpdatingUserId(targetUser.id);
+    try {
+      await usersApi.update(targetUser.id, { extra_custom_role_ids: current.filter((id) => id !== roleId) } as any);
+      setSuccess('Дополнительная кастомная роль удалена.');
+      await loadData();
+    } catch (err: unknown) {
+      setError(extractApiError(err, 'Не удалось обновить роли.'));
+    } finally {
+      setUpdatingUserId(null);
+    }
+  };
+
   const handleCreateUser = async () => {
     setUserSaving(true);
     try {
@@ -653,6 +735,16 @@ const RolesPage: React.FC = () => {
                           onRemove={handleRemoveExtraRole}
                           roleLabels={BASE_ROLE_LABELS}
                           roleOptions={manageableBaseRoleOptions}
+                          allowAdmin={isOwner}
+                        />
+                        {/* Дополнительные кастомные роли */}
+                        <ExtraCustomRolesCell
+                          user={targetUser}
+                          busy={isBusy}
+                          canManage={!!canManageUsers}
+                          roles={roles}
+                          onAdd={handleAddExtraCustomRole}
+                          onRemove={handleRemoveExtraCustomRole}
                         />
                       </TableCell>
                       <TableCell sx={{ minWidth: 280 }}>

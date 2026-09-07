@@ -16,11 +16,14 @@ export interface User {
   person_id?: number | null;
   email: string;
   full_name: string;
-  role: 'admin' | 'owner' | 'trainer' | 'parent' | 'guest' | 'sales' | 'seo_manager' | 'methodist' | 'developer';
+  role: 'admin' | 'owner' | 'trainer' | 'parent' | 'guest' | 'sales' | 'seo_manager' | 'methodist' | 'developer' | 'manager';
   extra_roles?: string[];
+  extra_custom_role_ids?: number[];
+  extra_custom_role_names?: string[];
+  effective_permissions?: string[];
   custom_role_id?: number | null;
   custom_role_name?: string | null;
-  effective_role?: 'admin' | 'owner' | 'trainer' | 'parent' | 'guest' | 'sales' | 'seo_manager' | 'methodist' | 'developer' | null;
+  effective_role?: 'admin' | 'owner' | 'trainer' | 'parent' | 'guest' | 'sales' | 'seo_manager' | 'methodist' | 'developer' | 'manager' | null;
   role_permissions?: string[];
   is_active: boolean;
   created_at: string;
@@ -46,7 +49,7 @@ export interface Role {
   key: string;
   name: string;
   description?: string | null;
-  base_role: 'admin' | 'owner' | 'trainer' | 'parent' | 'guest' | 'sales' | 'seo_manager' | 'methodist' | 'developer';
+  base_role: 'admin' | 'owner' | 'trainer' | 'parent' | 'guest' | 'sales' | 'seo_manager' | 'methodist' | 'developer' | 'manager';
   permissions: string[];
   is_system: boolean;
   is_active: boolean;

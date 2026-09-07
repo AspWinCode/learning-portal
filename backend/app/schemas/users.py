@@ -39,6 +39,7 @@ class UserUpdate(BaseModel):
     custom_role_id: Optional[int] = None
     extra_roles: Optional[List[str]] = None
     is_active: Optional[bool] = None
+    extra_custom_role_ids: Optional[List[int]] = None
     trainer_rate: Optional[float] = None
     trainer_rate_per_hour: Optional[float] = None
     trainer_lessons: Optional[int] = None
@@ -65,6 +66,9 @@ class UserResponse(UserBase):
     effective_role: Optional[UserRole] = None
     role_permissions: List[str] = Field(default_factory=list)
     extra_roles: List[str] = Field(default_factory=list)
+    extra_custom_role_ids: List[int] = Field(default_factory=list)
+    extra_custom_role_names: List[str] = Field(default_factory=list)
+    effective_permissions: List[str] = Field(default_factory=list)
     trainer_rate: Optional[float] = None
     trainer_rate_per_hour: Optional[float] = None
     trainer_lessons: Optional[int] = None

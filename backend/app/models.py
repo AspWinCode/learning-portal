@@ -182,6 +182,8 @@ class User(Base):
     qualification = Column(Text, nullable=True)
     trainer_comment = Column(Text, nullable=True)
     extra_roles = Column(postgresql.ARRAY(String(32)), nullable=False, server_default='{}', default=list)
+    # Дополнительные кастомные роли (помимо custom_role_id) — их права суммируются.
+    extra_custom_role_ids = Column(postgresql.ARRAY(Integer), nullable=False, server_default='{}', default=list)
 
     # Relationships
     person = relationship("Person", back_populates="users", foreign_keys=[person_id])
@@ -209,6 +211,21 @@ class User(Base):
         if self.custom_role and self.custom_role.is_active and isinstance(self.custom_role.permissions, list):
             return [str(item) for item in self.custom_role.permissions]
         return []
+
+    @property
+    def extra_custom_roles(self) -> List["Role"]:
+        """Загруженные объекты доп. кастомных ролей (заполняется в роутерах)."""
+        return list(getattr(self, "_extra_custom_roles", None) or [])
+
+    @property
+    def extra_custom_role_names(self) -> List[str]:
+        return [r.name for r in self.extra_custom_roles if getattr(r, "is_active", False)]
+
+    @property
+    def effective_permissions(self) -> List[str]:
+        from app import auth
+
+        return sorted(auth.get_user_permissions(self))
 
 
 class Role(Base):

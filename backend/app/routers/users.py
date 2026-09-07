@@ -13,6 +13,7 @@ from app.services.parent_invite import create_parent_with_invite
 from app.services.email_sender import is_email_configured
 from app.services.account_notifications import send_account_credentials_email
 from app.services.person_sync import sync_user_person
+from app.services.user_roles import load_extra_custom_roles
 from app.utils.phone import normalize_phone
 
 router = APIRouter()
@@ -108,6 +109,7 @@ async def create_user(
         )
     except Exception:
         pass
+    load_extra_custom_roles(db, [db_user])
     return db_user
 
 
@@ -158,6 +160,7 @@ async def read_users(
     if role:
         query = query.filter(User.role == UserRole(role))
     users = query.offset(skip).limit(limit).all()
+    load_extra_custom_roles(db, users)
     return users
 
 
@@ -179,6 +182,7 @@ async def read_users_paginated(
         query = query.filter(User.role == UserRole(role))
     total = query.order_by(None).count()
     users = query.offset(skip).limit(limit).all()
+    load_extra_custom_roles(db, users)
     return {
         "total": total,
         "items": users,
@@ -197,6 +201,7 @@ async def read_user(
     user = db.query(User).filter(User.id == user_id).first()
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
+    load_extra_custom_roles(db, [user])
     if current_user.id == user_id:
         return user
     if auth.has_permission(current_user, "users.access"):
@@ -250,11 +255,37 @@ async def update_user(
             db_user.custom_role_id = None
             update_data["custom_role_id"] = None
 
+    if "extra_roles" in update_data:
+        raw = update_data.get("extra_roles") or []
+        cleaned: list[str] = []
+        for item in raw:
+            try:
+                extra = UserRole(str(item))
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"Unknown role '{item}'")
+            _ensure_owner_for_elevated_role_assignment(current_user, extra)
+            if extra.value not in cleaned:
+                cleaned.append(extra.value)
+        update_data["extra_roles"] = cleaned
+
+    if "extra_custom_role_ids" in update_data:
+        raw_ids = update_data.get("extra_custom_role_ids") or []
+        cleaned_ids: list[int] = []
+        for raw_id in raw_ids:
+            role_obj = db.query(Role).filter(Role.id == int(raw_id)).first()
+            if role_obj is None or not role_obj.is_active:
+                raise HTTPException(status_code=400, detail=f"Custom role {raw_id} not found or inactive")
+            _ensure_owner_for_elevated_role_assignment(current_user, role_obj.base_role)
+            if role_obj.id not in cleaned_ids:
+                cleaned_ids.append(role_obj.id)
+        update_data["extra_custom_role_ids"] = cleaned_ids
+
     for field, value in update_data.items():
         setattr(db_user, field, value)
     sync_user_person(db, db_user)
     db.commit()
     db.refresh(db_user)
+    load_extra_custom_roles(db, [db_user])
     log_action(db, current_user.id, "update", "user", user_id, update_data)
     return db_user
 

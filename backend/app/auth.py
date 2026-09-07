@@ -314,18 +314,28 @@ async def get_current_user(
         raise credentials_exception
 
     if role == UserRole.GUEST.value:
-        return User(
+        guest = User(
             id=GUEST_USER_ID,
             email="guest@example.com",
             full_name="Гость",
             role=UserRole.GUEST,
             is_active=True,
             created_at=datetime.now(timezone.utc),
+            extra_roles=[],
+            extra_custom_role_ids=[],
         )
+        guest._extra_custom_roles = []
+        return guest
 
     user = get_user_by_email(db, email=email)
     if user is None:
         raise credentials_exception
+    try:
+        from app.services.user_roles import load_extra_custom_roles
+
+        load_extra_custom_roles(db, [user])
+    except Exception:
+        user._extra_custom_roles = []
     return user
 
 
@@ -368,6 +378,14 @@ def get_user_permissions(user: User) -> Set[str]:
     extra_permissions: Set[str] = set()
     for extra_role in extra_roles:
         extra_permissions |= set(DEFAULT_ROLE_PERMISSIONS.get(str(extra_role), set()))
+
+    # Дополнительные кастомные роли (загружаются в роутерах в user._extra_custom_roles)
+    for extra_custom_role in getattr(user, "_extra_custom_roles", None) or []:
+        if not getattr(extra_custom_role, "is_active", False):
+            continue
+        extra_permissions |= _normalize_permission_values(
+            getattr(extra_custom_role, "permissions", None) or []
+        )
 
     if custom_role and getattr(custom_role, "is_active", False):
         base = explicit_permissions or default_permissions

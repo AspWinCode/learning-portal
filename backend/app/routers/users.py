@@ -296,6 +296,26 @@ _FK_LABELS = {
     ("characteristics", "trainer_id"): "характеристик как тренер",
 }
 
+# При физическом удалении пользователя строки в этих таблицах удаляются вместе
+# с ним: это производные записи (проведение занятий, выплаты, участие),
+# не имеющие смысла без пользователя. Реальные бизнес-сущности (группы, оценки,
+# характеристики, ученики, лиды, финансы) сюда НЕ входят — они блокируют
+# удаление до ручного переназначения.
+_CASCADE_ON_HARD_DELETE = {
+    "lesson_trainer_overrides",
+    "program_trainers",
+    "trainer_period_bonuses",
+    "trainer_payouts",
+    "custom_lessons",
+    "lesson_attendance",
+    "event_registrations",
+    "it_project_members",
+    "it_checklist_items",
+    "it_issue_comments",
+    "agile_role_access",
+    "student_activity_log",
+}
+
 
 def _user_fk_columns(db: Session) -> list:
     """Все FK-колонки, ссылающиеся на users.id: (table, column, is_nullable)."""
@@ -340,6 +360,11 @@ def _detach_user_references(db: Session, user_id: int) -> List[str]:
         if is_nullable == "YES":
             db.execute(
                 text(f'UPDATE "{table_name}" SET "{column_name}" = NULL WHERE "{column_name}" = :uid'),
+                {"uid": user_id},
+            )
+        elif table_name in _CASCADE_ON_HARD_DELETE:
+            db.execute(
+                text(f'DELETE FROM "{table_name}" WHERE "{column_name}" = :uid'),
                 {"uid": user_id},
             )
         else:

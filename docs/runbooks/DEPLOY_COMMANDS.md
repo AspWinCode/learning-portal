@@ -1,5 +1,13 @@
 # Команды: коммит, пуш, деплой
 
+> ⚠️ На боевом хосте каждую минуту работает cron-автодеплой
+> (`deploy/autodeploy.sh`). Ручной `docker compose up` без общего лока
+> пересекается с ним и оставляет контейнеры с именем `<hash>_learning-portal-backend-1`.
+> Предпочтительно: `python3 scripts/remote_deploy.py --mode deploy` или на хосте
+> `./deploy.sh`. Голый `docker compose up -d` — только через
+> `flock -w 600 /tmp/learning-portal-deploy.lock docker compose up -d`.
+> Подробности и разбор первопричины: [FIX_CONTAINER_RENAME.md](FIX_CONTAINER_RENAME.md).
+
 ## Быстрая шпаргалка (последнее обновление: лиды → ученики)
 
 **Локально (коммит + пуш):**

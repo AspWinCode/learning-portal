@@ -107,6 +107,10 @@ services:
         condition: service_healthy
     command: ["alembic", "upgrade", "head"]
     restart: "no"
+    # Явный шаг деплоя, а не фоновый сервис: запускается только через
+    # `docker compose run --rm migrator`. Без профиля обычный `docker compose up -d`
+    # заново поднимал этот one-shot каждый раз и дёргал recreate у backend/воркеров.
+    profiles: ["migrate"]
 
   backend:
     image: ghcr.io/aspwincode/learning-portal-backend:latest
@@ -135,13 +139,16 @@ services:
     volumes:
       - disk_storage:/app/storage
       - public_site_data:/app/public_site
+    # Миграции гоняет отдельный шаг деплоя (`docker compose run --rm --no-deps migrator`),
+    # а не hard-dependency: одноразовый `migrator` (restart:"no") при каждом `up`
+    # перезапускался и каскадно пересоздавал backend/воркеров — из-за чего compose
+    # прерывал recreate и оставлял контейнеры с префиксом-хэшем (<id>_learning-portal-backend-1).
     depends_on:
-      migrator:
-        condition: service_completed_successfully
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
+    stop_grace_period: 30s
     restart: unless-stopped
 
   app_worker:
@@ -157,13 +164,12 @@ services:
       - disk_storage:/app/storage
       - public_site_data:/app/public_site
     depends_on:
-      migrator:
-        condition: service_completed_successfully
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
     command: ["python", "-m", "dramatiq", "app.background_tasks", "--processes", "1", "--threads", "8"]
+    stop_grace_period: 30s
     restart: unless-stopped
 
   app_scheduler:
@@ -176,13 +182,12 @@ services:
       IN_PROCESS_SCHEDULER_ENABLED: "0"
       OWNER_WORKSPACE_AUTO_SYNC_MAX: ${OWNER_WORKSPACE_AUTO_SYNC_MAX:-0}
     depends_on:
-      migrator:
-        condition: service_completed_successfully
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
     command: ["python", "-m", "app.background_scheduler"]
+    stop_grace_period: 30s
     restart: unless-stopped
 
   app_delivery_worker:
@@ -193,11 +198,10 @@ services:
     environment:
       <<: *app_common_env
     depends_on:
-      migrator:
-        condition: service_completed_successfully
       db:
         condition: service_healthy
     command: ["python", "-m", "app.owner_workspace_delivery_worker"]
+    stop_grace_period: 30s
     restart: unless-stopped
 
   telegram_bot:
@@ -208,8 +212,6 @@ services:
       DATABASE_URL: postgresql://learning_user:${POSTGRES_PASSWORD:-change_me_strong_password}@db:5432/learning_portal
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
     depends_on:
-      migrator:
-        condition: service_completed_successfully
       db:
         condition: service_healthy
     command: ["python", "telegram_bot_polling.py"]

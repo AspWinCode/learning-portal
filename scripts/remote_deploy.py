@@ -1,4 +1,5 @@
 import argparse
+import shlex
 import sys
 from typing import Optional, Tuple
 
@@ -35,6 +36,32 @@ def print_block(title: str, content: str) -> None:
     print(content.strip() or "<empty>")
 
 
+# Единый лок для всех путей деплоя (этот скрипт, deploy/autodeploy.sh, deploy.sh).
+# Одновременные `docker compose up` рвут recreate и оставляют контейнеры с
+# префиксом-хэшем (<id>_learning-portal-backend-1).
+DEPLOY_LOCK = "/tmp/learning-portal-deploy.lock"
+
+# Долгоживущие сервисы, которым compose иногда не возвращает штатное имя после
+# сорванного recreate — приводим имя в порядок без пересоздания контейнера.
+FIX_RENAMED_CONTAINERS = (
+    "for svc in backend app_worker app_scheduler app_delivery_worker web; do "
+    'want="learning-portal-${svc}-1"; '
+    "cid=$(docker ps -aq --filter label=com.docker.compose.project=learning-portal "
+    "--filter label=com.docker.compose.service=${svc} | head -n1); "
+    '[ -z "$cid" ] && continue; '
+    "have=$(docker inspect -f '{{.Name}}' \"$cid\" | sed 's#^/##'); "
+    'if [ -n "$have" ] && [ "$have" != "$want" ]; then '
+    'echo "rename $have -> $want"; docker rm -f "$want" 2>/dev/null || true; '
+    'docker rename "$have" "$want" || true; fi; done'
+)
+
+
+def locked(repo_dir: str, script: str) -> str:
+    """Обернуть compose-команды во flock, чтобы не пересекаться с cron-автодеплоем."""
+    body = f"cd {repo_dir} && {script}"
+    return f"flock -w 600 {DEPLOY_LOCK} bash -lc {shlex.quote(body)}"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", required=True)
@@ -43,7 +70,7 @@ def main() -> int:
     parser.add_argument("--repo-dir")
     parser.add_argument(
         "--mode",
-        choices=["deploy", "inspect", "inspect-patch", "status", "rebuild", "force-sync-deploy"],
+        choices=["deploy", "inspect", "inspect-patch", "status", "rebuild", "force-sync-deploy", "fix-orphans"],
         default="deploy",
     )
     args = parser.parse_args()
@@ -81,9 +108,24 @@ def main() -> int:
             commands = [
                 ("revision", f"cd {repo_dir} && git rev-parse --short HEAD"),
                 ("git status", f"cd {repo_dir} && git status --short"),
-                ("docker compose up", f"cd {repo_dir} && docker compose up -d --build --force-recreate backend app_worker app_scheduler web"),
-                ("migrations", f"cd {repo_dir} && docker compose exec -T backend alembic upgrade head"),
+                ("migrations", locked(repo_dir, "docker compose up -d db redis && docker compose run --rm migrator")),
+                ("docker compose up", locked(repo_dir, "docker compose up -d --build --force-recreate --remove-orphans backend app_worker app_scheduler app_delivery_worker web")),
+                ("fix renamed containers", locked(repo_dir, FIX_RENAMED_CONTAINERS)),
                 ("compose ps", f"cd {repo_dir} && docker compose ps"),
+                ("health", "curl -fsS http://127.0.0.1:8000/api/v1/health"),
+            ]
+        elif args.mode == "fix-orphans":
+            commands = [
+                ("compose ps (before)", f"cd {repo_dir} && docker compose ps"),
+                ("fix renamed containers", locked(repo_dir, FIX_RENAMED_CONTAINERS)),
+                ("docker compose up", locked(repo_dir, "docker compose up -d --remove-orphans")),
+                ("prune stopped hash-prefixed leftovers", locked(
+                    repo_dir,
+                    "docker ps -a --filter label=com.docker.compose.project=learning-portal "
+                    "--filter status=exited --filter status=created --format '{{.Names}}' "
+                    "| { grep -E '^[0-9a-f]{12}_learning-portal-' || true; } | xargs -r docker rm -f",
+                )),
+                ("compose ps (after)", f"cd {repo_dir} && docker compose ps"),
                 ("health", "curl -fsS http://127.0.0.1:8000/api/v1/health"),
             ]
         elif args.mode == "force-sync-deploy":
@@ -95,8 +137,9 @@ def main() -> int:
                 ("hard reset", f"cd {repo_dir} && git checkout main && git reset --hard origin/main"),
                 ("clean untracked", f"cd {repo_dir} && git clean -fd"),
                 ("restore server config", f"cd {repo_dir} && git checkout stash@{{0}} -- docker-compose.yml frontend/Caddyfile"),
-                ("docker compose up", f"cd {repo_dir} && docker compose up -d --build"),
-                ("migrations", f"cd {repo_dir} && docker compose exec -T backend alembic upgrade head"),
+                ("db/redis + migrations", locked(repo_dir, "docker compose up -d --build db redis && docker compose run --rm migrator")),
+                ("docker compose up", locked(repo_dir, "docker compose up -d --build --remove-orphans")),
+                ("fix renamed containers", locked(repo_dir, FIX_RENAMED_CONTAINERS)),
                 ("revision", f"cd {repo_dir} && git rev-parse --short HEAD"),
                 ("health", "curl -fsS http://127.0.0.1:8000/api/v1/health"),
                 ("compose ps", f"cd {repo_dir} && docker compose ps"),
@@ -106,8 +149,9 @@ def main() -> int:
             commands = [
                 ("git status", f"cd {repo_dir} && git status --short"),
                 ("git pull", f"cd {repo_dir} && git fetch origin main && git checkout main && git pull --ff-only origin main"),
-                ("docker compose up", f"cd {repo_dir} && docker compose up -d --build"),
-                ("migrations", f"cd {repo_dir} && docker compose exec -T backend alembic upgrade head"),
+                ("db/redis + migrations", locked(repo_dir, "docker compose up -d --build db redis && docker compose run --rm migrator")),
+                ("docker compose up", locked(repo_dir, "docker compose up -d --build --remove-orphans")),
+                ("fix renamed containers", locked(repo_dir, FIX_RENAMED_CONTAINERS)),
                 ("revision", f"cd {repo_dir} && git rev-parse --short HEAD"),
                 ("health", "curl -fsS http://127.0.0.1:8000/api/v1/health"),
                 ("compose ps", f"cd {repo_dir} && docker compose ps"),

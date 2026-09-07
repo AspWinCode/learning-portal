@@ -1,5 +1,6 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from app.database import get_db
@@ -258,24 +259,62 @@ async def update_user(
     return db_user
 
 
-def _related_data_blockers(db: Session, user_id: int) -> List[str]:
-    """Список причин, по которым пользователя нельзя удалить физически."""
-    from app.models import Student, Group, Grade, Characteristic
+_FK_LABELS = {
+    ("groups", "trainer_id"): "групп как тренер",
+    ("grades", "trainer_id"): "оценок как тренер",
+    ("characteristics", "trainer_id"): "характеристик как тренер",
+}
 
-    blockers: List[str] = []
-    students = db.query(Student).filter(Student.parent_id == user_id).count()
-    if students:
-        blockers.append(f"учеников как родитель: {students}")
-    groups = db.query(Group).filter(Group.trainer_id == user_id).count()
-    if groups:
-        blockers.append(f"групп как тренер: {groups}")
-    grades = db.query(Grade).filter(Grade.trainer_id == user_id).count()
-    if grades:
-        blockers.append(f"оценок как тренер: {grades}")
-    characteristics = db.query(Characteristic).filter(Characteristic.trainer_id == user_id).count()
-    if characteristics:
-        blockers.append(f"характеристик как тренер: {characteristics}")
-    return blockers
+
+def _user_fk_columns(db: Session) -> list:
+    """Все FK-колонки, ссылающиеся на users.id: (table, column, is_nullable)."""
+    rows = db.execute(
+        text(
+            """
+            SELECT kcu.table_name, kcu.column_name, col.is_nullable
+            FROM information_schema.table_constraints tc
+            JOIN information_schema.key_column_usage kcu
+              ON tc.constraint_name = kcu.constraint_name
+             AND tc.table_schema = kcu.table_schema
+            JOIN information_schema.constraint_column_usage ccu
+              ON tc.constraint_name = ccu.constraint_name
+             AND tc.table_schema = ccu.table_schema
+            JOIN information_schema.columns col
+              ON col.table_name = kcu.table_name
+             AND col.column_name = kcu.column_name
+             AND col.table_schema = kcu.table_schema
+            WHERE tc.constraint_type = 'FOREIGN KEY'
+              AND ccu.table_name = 'users'
+              AND ccu.column_name = 'id'
+            """
+        )
+    ).fetchall()
+    return [(t, c, n) for (t, c, n) in rows if t != "users"]
+
+
+def _detach_user_references(db: Session, user_id: int) -> List[str]:
+    """Отвязать все nullable-ссылки на пользователя (SET NULL).
+
+    Возвращает список NOT NULL-ссылок, которые нельзя обнулить — их наличие
+    означает, что пользователя нельзя удалить физически.
+    """
+    hard_blockers: List[str] = []
+    for table_name, column_name, is_nullable in _user_fk_columns(db):
+        count = db.execute(
+            text(f'SELECT count(*) FROM "{table_name}" WHERE "{column_name}" = :uid'),
+            {"uid": user_id},
+        ).scalar()
+        if not count:
+            continue
+        if is_nullable == "YES":
+            db.execute(
+                text(f'UPDATE "{table_name}" SET "{column_name}" = NULL WHERE "{column_name}" = :uid'),
+                {"uid": user_id},
+            )
+        else:
+            label = _FK_LABELS.get((table_name, column_name), f"{table_name}.{column_name}")
+            hard_blockers.append(f"{label}: {count}")
+    return hard_blockers
 
 
 @router.delete("/{user_id}")
@@ -291,9 +330,10 @@ async def delete_user(
     иначе физическое удаление.
 
     hard=true — физическое удаление из БД. Доступно только владельцу (owner).
-    Если у пользователя есть связанные данные (группы, оценки, ученики,
-    характеристики) — возвращается 409 со списком, эти связи нужно
-    переназначить вручную перед удалением.
+    Все необязательные ссылки на пользователя обнуляются автоматически
+    (журнал действий, задачи и т.п.). Если остаются обязательные связи
+    (группы, оценки, характеристики как тренер) — возвращается 409 со
+    списком, их нужно переназначить вручную перед удалением.
     """
     db_user = db.query(User).filter(User.id == user_id).first()
     if db_user is None:
@@ -302,15 +342,15 @@ async def delete_user(
     if db_user.id == current_user.id:
         raise HTTPException(status_code=400, detail="Нельзя удалить собственную учётную запись")
 
-    blockers = _related_data_blockers(db, user_id)
-
     if hard:
         if auth.resolve_effective_role(current_user) != UserRole.OWNER:
             raise HTTPException(status_code=403, detail="Физическое удаление доступно только владельцу")
-        if blockers:
+        hard_blockers = _detach_user_references(db, user_id)
+        if hard_blockers:
+            db.rollback()
             raise HTTPException(
                 status_code=409,
-                detail="Нельзя удалить: есть связанные данные (" + "; ".join(blockers) + "). "
+                detail="Нельзя удалить: есть обязательные связи (" + "; ".join(hard_blockers) + "). "
                        "Переназначьте их на другого пользователя и повторите.",
             )
         try:
@@ -326,7 +366,15 @@ async def delete_user(
         log_action(db, current_user.id, "hard_delete", "user", user_id)
         return {"message": "User permanently deleted"}
 
-    if blockers:
+    from app.models import Student, Group, Grade, Characteristic
+
+    has_related = (
+        db.query(Student).filter(Student.parent_id == user_id).count()
+        or db.query(Group).filter(Group.trainer_id == user_id).count()
+        or db.query(Grade).filter(Grade.trainer_id == user_id).count()
+        or db.query(Characteristic).filter(Characteristic.trainer_id == user_id).count()
+    )
+    if has_related:
         db_user.is_active = False
         db.commit()
         log_action(db, current_user.id, "deactivate", "user", user_id)

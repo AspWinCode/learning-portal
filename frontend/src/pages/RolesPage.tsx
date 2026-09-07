@@ -424,6 +424,24 @@ const RolesPage: React.FC = () => {
     }
   };
 
+  const handleDeleteUser = async (targetUser: User) => {
+    const confirmed = window.confirm(
+      `Удалить пользователя ${targetUser.full_name} (${targetUser.email}) без возможности восстановления?\n\n` +
+        'Если у пользователя есть связанные данные (группы, оценки, ученики), удаление будет отклонено — сначала переназначьте их.'
+    );
+    if (!confirmed) return;
+    setUpdatingUserId(targetUser.id);
+    try {
+      await usersApi.remove(targetUser.id, true);
+      setSuccess(`Пользователь ${targetUser.full_name} удалён.`);
+      await loadData();
+    } catch (err: unknown) {
+      setError(extractApiError(err, 'Не удалось удалить пользователя.'));
+    } finally {
+      setUpdatingUserId(null);
+    }
+  };
+
   const handleCreateUser = async () => {
     setUserSaving(true);
     try {
@@ -686,6 +704,16 @@ const RolesPage: React.FC = () => {
                         >
                           {targetUser.is_active ? 'Архивировать' : 'Разархивировать'}
                         </Button>
+                        {isOwner && (
+                          <Button
+                            size="small"
+                            color="error"
+                            disabled={!canManageUsers || isBusy || targetUser.id === user?.id}
+                            onClick={() => void handleDeleteUser(targetUser)}
+                          >
+                            Удалить
+                          </Button>
+                        )}
                         </Stack>
                       </TableCell>
                     </TableRow>

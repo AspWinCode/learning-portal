@@ -9,6 +9,7 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from redis import Redis
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -271,8 +272,15 @@ def ensure_persisted_user_id(user_id: int) -> int:
     return int(user_id)
 
 
+def normalize_email(email: str) -> str:
+    return str(email or "").strip().lower()
+
+
 def get_user_by_email(db: Session, email: str) -> Optional[User]:
-    return db.query(User).filter(User.email == email).first()
+    normalized = normalize_email(email)
+    if not normalized:
+        return None
+    return db.query(User).filter(func.lower(User.email) == normalized).first()
 
 
 def authenticate_user(db: Session, email: str, password: str) -> Optional[User]:

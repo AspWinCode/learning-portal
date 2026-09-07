@@ -1,5 +1,6 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app import auth
@@ -9,6 +10,7 @@ from app.models import User, UserRole, Role
 from app.routers.action_log import log_action
 from app.services.parent_invite import create_parent_with_invite
 from app.services.email_sender import is_email_configured
+from app.services.account_notifications import send_account_credentials_email
 from app.services.person_sync import sync_user_person
 from app.utils.phone import normalize_phone
 
@@ -61,7 +63,8 @@ async def create_user(
     current_user: User = Depends(auth.require_permission("users.manage"))
 ):
     """Создание пользователя (admin, owner). Для тренера можно сразу заполнить профиль."""
-    db_user = auth.get_user_by_email(db, email=user.email)
+    email_normalized = auth.normalize_email(user.email)
+    db_user = auth.get_user_by_email(db, email=email_normalized)
     if db_user:
         raise HTTPException(status_code=400, detail="Email already registered")
 
@@ -77,7 +80,7 @@ async def create_user(
         _ensure_owner_for_elevated_role_assignment(current_user, custom_role.base_role)
     hashed_password = auth.get_password_hash(user.password)
     db_user = User(
-        email=user.email,
+        email=email_normalized,
         hashed_password=hashed_password,
         full_name=user.full_name,
         role=requested_role,
@@ -96,6 +99,14 @@ async def create_user(
         db.commit()
         db.refresh(db_user)
     log_action(db, current_user.id, "create", "user", db_user.id)
+    try:
+        send_account_credentials_email(
+            to_email=db_user.email,
+            full_name=db_user.full_name or "",
+            password=user.password,
+        )
+    except Exception:
+        pass
     return db_user
 
 
@@ -247,32 +258,80 @@ async def update_user(
     return db_user
 
 
+def _related_data_blockers(db: Session, user_id: int) -> List[str]:
+    """Список причин, по которым пользователя нельзя удалить физически."""
+    from app.models import Student, Group, Grade, Characteristic
+
+    blockers: List[str] = []
+    students = db.query(Student).filter(Student.parent_id == user_id).count()
+    if students:
+        blockers.append(f"учеников как родитель: {students}")
+    groups = db.query(Group).filter(Group.trainer_id == user_id).count()
+    if groups:
+        blockers.append(f"групп как тренер: {groups}")
+    grades = db.query(Grade).filter(Grade.trainer_id == user_id).count()
+    if grades:
+        blockers.append(f"оценок как тренер: {grades}")
+    characteristics = db.query(Characteristic).filter(Characteristic.trainer_id == user_id).count()
+    if characteristics:
+        blockers.append(f"характеристик как тренер: {characteristics}")
+    return blockers
+
+
 @router.delete("/{user_id}")
 async def delete_user(
     user_id: int,
+    hard: bool = False,
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_permission("users.manage"))
 ):
-    """Деактивация пользователя (удаление запрещено)"""
+    """Удаление пользователя.
+
+    По умолчанию — архивация (is_active=False), если есть связанные данные,
+    иначе физическое удаление.
+
+    hard=true — физическое удаление из БД. Доступно только владельцу (owner).
+    Если у пользователя есть связанные данные (группы, оценки, ученики,
+    характеристики) — возвращается 409 со списком, эти связи нужно
+    переназначить вручную перед удалением.
+    """
     db_user = db.query(User).filter(User.id == user_id).first()
     if db_user is None:
         raise HTTPException(status_code=404, detail="User not found")
-    
-    # Проверка связанных данных
-    from app.models import Student, Group, Grade, Characteristic
-    has_students = db.query(Student).filter(Student.parent_id == user_id).count() > 0
-    has_groups = db.query(Group).filter(Group.trainer_id == user_id).count() > 0
-    has_grades = db.query(Grade).filter(Grade.trainer_id == user_id).count() > 0
-    has_characteristics = db.query(Characteristic).filter(Characteristic.trainer_id == user_id).count() > 0
-    
-    if has_students or has_groups or has_grades or has_characteristics:
-        # Деактивация вместо удаления
+
+    if db_user.id == current_user.id:
+        raise HTTPException(status_code=400, detail="Нельзя удалить собственную учётную запись")
+
+    blockers = _related_data_blockers(db, user_id)
+
+    if hard:
+        if auth.resolve_effective_role(current_user) != UserRole.OWNER:
+            raise HTTPException(status_code=403, detail="Физическое удаление доступно только владельцу")
+        if blockers:
+            raise HTTPException(
+                status_code=409,
+                detail="Нельзя удалить: есть связанные данные (" + "; ".join(blockers) + "). "
+                       "Переназначьте их на другого пользователя и повторите.",
+            )
+        try:
+            db.delete(db_user)
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            raise HTTPException(
+                status_code=409,
+                detail="Нельзя удалить: на пользователя ссылаются другие записи. "
+                       "Сначала переназначьте или удалите связанные данные.",
+            )
+        log_action(db, current_user.id, "hard_delete", "user", user_id)
+        return {"message": "User permanently deleted"}
+
+    if blockers:
         db_user.is_active = False
         db.commit()
         log_action(db, current_user.id, "deactivate", "user", user_id)
         return {"message": "User deactivated (cannot delete due to related data)"}
-    
-    # Если нет связанных данных, можно удалить
+
     db.delete(db_user)
     db.commit()
     log_action(db, current_user.id, "delete", "user", user_id)

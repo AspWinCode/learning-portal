@@ -285,6 +285,10 @@ export const usersApi = {
     const response = await api.put(`/api/users/${id}`, data);
     return response.data;
   },
+  remove: async (id: number, hard = false): Promise<{ message: string }> => {
+    const response = await api.delete(`/api/users/${id}`, { params: hard ? { hard: true } : {} });
+    return response.data;
+  },
 };
 
 export const rolesApi = {

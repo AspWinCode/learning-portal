@@ -83,6 +83,10 @@ import {
 
 const DRAWER_OPEN = 240;
 const DRAWER_MINI = 64;
+
+// Пути студий методиста: при переходе интерфейс разворачивается на весь экран,
+// а боковое меню скрывается (доступно по кнопке-гамбургеру в шапке).
+const STUDIO_FULLSCREEN_PATHS = new Set(['/kodex', '/kodex-menu', '/technolab', '/pixelforge']);
 const SIDEBAR_SCROLL_STORAGE_KEY = 'sb_scroll_top';
 
 // Группы меню: id → массив путей
@@ -260,6 +264,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     }
   })();
   const isPwaNavigation = hasPwaQuery || isStandalonePwa || hasStoredPwaMode;
+  const isStudioFullscreen = !isPwaNavigation && STUDIO_FULLSCREEN_PATHS.has(location.pathname);
   const [pwaAllowedRoutes, setPwaAllowedRoutes] = React.useState<Set<string> | null>(null);
   const [notesEnabledRoles, setNotesEnabledRoles] = React.useState<string[]>(['owner']);
 
@@ -804,8 +809,8 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
       <AppBar
         position="fixed"
         sx={{
-          width: isPwaNavigation ? '100%' : { sm: `calc(100% - ${drawerWidth}px)` },
-          ml: isPwaNavigation ? 0 : { sm: `${drawerWidth}px` },
+          width: isPwaNavigation || isStudioFullscreen ? '100%' : { sm: `calc(100% - ${drawerWidth}px)` },
+          ml: isPwaNavigation || isStudioFullscreen ? 0 : { sm: `${drawerWidth}px` },
           transition: 'width 200ms ease, margin 200ms ease',
         }}
       >
@@ -815,7 +820,7 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
             aria-label="open drawer"
             edge="start"
             onClick={handleDrawerToggle}
-            sx={{ mr: 2, display: isPwaNavigation ? 'none' : { sm: 'none' } }}
+            sx={{ mr: 2, display: isPwaNavigation ? 'none' : isStudioFullscreen ? 'inline-flex' : { sm: 'none' } }}
           >
             <MenuIcon />
           </IconButton>
@@ -914,7 +919,7 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
       <Box
         component="nav"
         sx={{
-          display: isPwaNavigation ? 'none' : 'block',
+          display: isPwaNavigation || isStudioFullscreen ? 'none' : 'block',
           width: { sm: drawerWidth },
           flexShrink: { sm: 0 },
           transition: 'width 200ms ease',
@@ -928,7 +933,7 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
             keepMounted: true,
           }}
           sx={{
-            display: { xs: 'block', sm: 'none' },
+            display: isStudioFullscreen ? 'block' : { xs: 'block', sm: 'none' },
             '& .MuiDrawer-paper': {
               boxSizing: 'border-box',
               width: drawerWidth,
@@ -943,7 +948,7 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
         <Drawer
           variant="permanent"
           sx={{
-            display: { xs: 'none', sm: 'block' },
+            display: isStudioFullscreen ? 'none' : { xs: 'none', sm: 'block' },
             '& .MuiDrawer-paper': {
               boxSizing: 'border-box',
               width: drawerWidth,
@@ -961,9 +966,9 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
         component="main"
         sx={{
           flexGrow: 1,
-          p: isPwaNavigation ? { xs: 1.5, sm: 2 } : { xs: 2, sm: 3 },
+          p: isPwaNavigation ? { xs: 1.5, sm: 2 } : isStudioFullscreen ? { xs: 1, sm: 1.5 } : { xs: 2, sm: 3 },
           pb: isPwaNavigation ? 'calc(96px + env(safe-area-inset-bottom))' : undefined,
-          width: isPwaNavigation ? '100%' : { sm: `calc(100% - ${drawerWidth}px)` },
+          width: isPwaNavigation || isStudioFullscreen ? '100%' : { sm: `calc(100% - ${drawerWidth}px)` },
           transition: 'width 200ms ease',
         }}
       >

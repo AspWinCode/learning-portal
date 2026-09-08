@@ -9,13 +9,11 @@ const SpecialistQuestionnairePage: React.FC = () => {
     parent_full_name: '',
     parent_phone: '',
     parent_phone_2: '',
-    parent_telegram: '',
     parent_email: '',
     // Обучающийся
     child_full_name: '',
     birth_date: '',
     child_phone: '',
-    child_telegram: '',
     gender: '',
     city: '',
     school_name: '',
@@ -59,12 +57,10 @@ const SpecialistQuestionnairePage: React.FC = () => {
         city,
         birth_date: form.birth_date || undefined,
         child_phone: form.child_phone.trim() || undefined,
-        child_telegram: form.child_telegram.trim() || undefined,
         gender: form.gender.trim() || undefined,
         school_name: form.school_name.trim() || undefined,
         school_class: form.school_class.trim() || undefined,
         parent_phone_2: form.parent_phone_2.trim() || undefined,
-        parent_telegram: form.parent_telegram.trim() || undefined,
         parent_email: form.parent_email.trim() || undefined,
         student_email: form.student_email.trim() || undefined,
         preferred_messenger: form.preferred_messenger.trim() || undefined,
@@ -137,12 +133,6 @@ const SpecialistQuestionnairePage: React.FC = () => {
               fullWidth
             />
             <TextField
-              label="Телеграм ученика"
-              value={form.child_telegram}
-              onChange={handleChange('child_telegram')}
-              fullWidth
-            />
-            <TextField
               label="Email ученика"
               type="email"
               value={form.student_email}
@@ -199,12 +189,6 @@ const SpecialistQuestionnairePage: React.FC = () => {
               fullWidth
             />
             <TextField
-              label="Телеграм родителя"
-              value={form.parent_telegram}
-              onChange={handleChange('parent_telegram')}
-              fullWidth
-            />
-            <TextField
               label="Email родителя"
               type="email"
               value={form.parent_email}
@@ -212,7 +196,7 @@ const SpecialistQuestionnairePage: React.FC = () => {
               fullWidth
             />
             <TextField
-              label="Мессенджер (Telegram/MAX)"
+              label="Мессенджер (MAX)"
               value={form.preferred_messenger}
               onChange={handleChange('preferred_messenger')}
               fullWidth

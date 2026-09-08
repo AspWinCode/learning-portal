@@ -10,7 +10,6 @@
 - **Frontend**: React build (статические файлы) отдаёт Nginx.
 - **PostgreSQL**: база данных на сервере (или отдельный managed Postgres).
 - **Nginx**: reverse-proxy + HTTPS (Let’s Encrypt) + статика.
-- **Telegram bot polling** (опционально): отдельный процесс/служба, если используете `telegram_bot_polling.py`.
 
 ---
 
@@ -137,7 +136,6 @@ nano .env
 - **CORS_ORIGINS**:
   - Если фронт на `https://example.com`:  
     `CORS_ORIGINS=https://example.com`
-- **TELEGRAM_BOT_TOKEN** и (опционально) **TELEGRAM_BOT_USERNAME**.
 
 ---
 
@@ -309,41 +307,7 @@ sudo certbot renew --dry-run
 
 ---
 
-### 12) Telegram bot polling как systemd (если вы используете polling-скрипт)
-Если вы запускаете `backend/telegram_bot_polling.py`, лучше тоже как сервис:
-
-```bash
-sudo nano /etc/systemd/system/learning-telegram-bot.service
-```
-
-```ini
-[Unit]
-Description=Learning Portal Telegram Bot (Polling)
-After=network.target
-
-[Service]
-User=learning
-Group=learning
-WorkingDirectory=/home/learning/apps/learning-portal/backend
-EnvironmentFile=/home/learning/apps/learning-portal/backend/.env
-ExecStart=/home/learning/apps/learning-portal/backend/venv/bin/python telegram_bot_polling.py
-Restart=always
-RestartSec=3
-
-[Install]
-WantedBy=multi-user.target
-```
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable learning-telegram-bot
-sudo systemctl start learning-telegram-bot
-sudo journalctl -u learning-telegram-bot -f
-```
-
----
-
-### 13) Проверка “всё работает”
+### 12) Проверка “всё работает”
 - API: откройте `https://api.example.com/api/health` (или `https://api.example.com/docs`).
 - Web: `https://example.com`
 - Проверьте логин админом.
@@ -390,6 +354,5 @@ sudo -u postgres pg_dump learning_portal > /home/learning/backup_learning_portal
 - **CORS ошибка**: проверьте `CORS_ORIGINS` в `backend/.env` (должен быть ровно `https://example.com`).
 - **502 Bad Gateway**: backend сервис не поднят или слушает не `127.0.0.1:8000` → `sudo systemctl status learning-backend`.
 - **alembic падает**: неверный `DATABASE_URL`, нет прав на базу, база не создана.
-- **Telegram не шлёт**: `TELEGRAM_BOT_TOKEN` пустой или бот не привязан (нет `telegram_chat_id`).
 
 

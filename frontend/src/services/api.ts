@@ -268,7 +268,6 @@ export const usersApi = {
     trainer_lesson_formats?: string | null;
     trainer_banks?: string[] | null;
     city?: string | null;
-    trainer_telegram?: string | null;
     is_self_employed?: boolean | null;
     is_ip?: boolean | null;
     work_schedule?: string | null;
@@ -1466,16 +1465,6 @@ export const searchApi = {
   },
 };
 
-export const telegramApi = {
-  getLinkCode: async (): Promise<{ code: string; expires_at: string; deep_link_url?: string | null }> => {
-    const response = await api.post('/api/telegram/link-code');
-    return response.data;
-  },
-  unlink: async (): Promise<void> => {
-    await api.post('/api/telegram/unlink');
-  },
-};
-
 export const settingsApi = {
   getLogo: async (): Promise<{ data_url: string | null }> => {
     const response = await api.get('/api/settings/logo');
@@ -1711,7 +1700,6 @@ export type LessonTaskStudent = {
   parent_full_name: string | null;
   parent_phone: string | null;
   parent_phone_2: string | null;
-  parent_telegram: string | null;
 };
 export type LessonTaskItem = {
   group_id: number;
@@ -2341,12 +2329,10 @@ export const salesApi = {
     city: string;
     birth_date?: string;
     child_phone?: string;
-    child_telegram?: string;
     gender?: string;
     school_name?: string;
     school_class?: string;
     parent_phone_2?: string;
-    parent_telegram?: string;
     parent_email?: string;
     student_email?: string;
     preferred_messenger?: string;

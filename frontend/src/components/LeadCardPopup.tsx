@@ -507,7 +507,6 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
                       {sidebar.contacts.phone && <Typography variant="body2">Телефон: {sidebar.contacts.phone}</Typography>}
                       {sidebar.contacts.child_phone && <Typography variant="body2">Тел. ребёнка: {sidebar.contacts.child_phone}</Typography>}
                       {sidebar.contacts.email && <Typography variant="body2">Email: {sidebar.contacts.email}</Typography>}
-                      {sidebar.contacts.telegram && <Typography variant="body2">Telegram: {sidebar.contacts.telegram}</Typography>}
                       {sidebar.contacts.communication_channel && <Typography variant="body2">Канал: {sidebar.contacts.communication_channel}</Typography>}
                     </Box>
                     <Divider />
@@ -760,7 +759,6 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
                 )}
                 <TextField fullWidth size="small" label="Канал" select SelectProps={{ native: true }} value={quickActionChannel} onChange={(e) => setQuickActionChannel(e.target.value)}>
                   <option value="">Выберите канал</option>
-                  <option value="telegram">Telegram</option>
                   <option value="sms">SMS</option>
                   <option value="max">MAX</option>
                   <option value="email">Email</option>

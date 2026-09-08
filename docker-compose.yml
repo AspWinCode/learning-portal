@@ -127,9 +127,6 @@ services:
       # Импорт max_messages → owner workspace раз в 30 мин (телефон контакта). По умолчанию выкл.
       # OWNER_WORKSPACE_AUTO_SYNC_MAX: "1"
       CORS_ORIGINS: ${CORS_ORIGINS:-https://example.com}
-      # Telegram (optional)
-      TELEGRAM_BOT_TOKEN: ""
-      TELEGRAM_BOT_USERNAME: ""
       # Точка Банк (выписки, привязка платежей; TOCHKA_ACCOUNT_ID — для автозачисления раз в 10 мин)
       # SMS Gateway: InfiniReach (SMS_GATEWAY_PROVIDER=infinireach) или другой (generic)
       # MAX мессенджер: бот (официальный API) и/или личный аккаунт (api-messenger.com)
@@ -203,20 +200,6 @@ services:
     command: ["python", "-m", "app.owner_workspace_delivery_worker"]
     stop_grace_period: 30s
     restart: unless-stopped
-
-  telegram_bot:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    environment:
-      DATABASE_URL: postgresql://learning_user:${POSTGRES_PASSWORD:-change_me_strong_password}@db:5432/learning_portal
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
-    depends_on:
-      db:
-        condition: service_healthy
-    command: ["python", "telegram_bot_polling.py"]
-    restart: unless-stopped
-    profiles: ["telegram"]
 
   web:
     image: ghcr.io/aspwincode/learning-portal-frontend:latest

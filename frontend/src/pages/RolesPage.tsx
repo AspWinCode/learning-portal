@@ -77,7 +77,6 @@ const PERMISSION_MODULE_LABELS: Record<string, string> = {
   student_accounts: 'Счета учеников',
   students: 'Ученики',
   tasks: 'Задачи',
-  telegram: 'Telegram',
   trainer_cockpit: 'Кабинет преподавателя',
   users: 'Пользователи',
 };

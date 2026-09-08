@@ -69,7 +69,6 @@ from app.routers import (
     students,
     tasks,
     technolab,
-    telegram,
     trainer_cockpit,
     trainer_lessons,
     transcription,
@@ -441,7 +440,6 @@ app.include_router(admin_dashboard.router, prefix="/api/v1/admin-dashboard", tag
 app.include_router(reports.router, prefix="/api/v1/reports", tags=["reports"])
 app.include_router(communications.router, prefix="/api/v1/communications", tags=["communications"])
 app.include_router(search.router, prefix="/api/v1/search", tags=["search"])
-app.include_router(telegram.router, prefix="/api/v1/telegram", tags=["telegram"])
 app.include_router(settings.router, prefix="/api/v1/settings", tags=["settings"])
 app.include_router(abonements.router, prefix="/api/v1/abonements", tags=["abonements"])
 app.include_router(sales.router, prefix="/api/v1/sales", tags=["sales"])

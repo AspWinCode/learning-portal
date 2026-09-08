@@ -65,7 +65,6 @@ const StudentCardsPage: React.FC = () => {
   const [studentFullName, setStudentFullName] = useState('');
   const [birthDate, setBirthDate] = useState('');
   const [studentPhone, setStudentPhone] = useState('');
-  const [telegram, setTelegram] = useState('');
   const [gender, setGender] = useState('');
   const [onGrant, setOnGrant] = useState(false);
   const [formatType, setFormatType] = useState('');
@@ -75,7 +74,6 @@ const StudentCardsPage: React.FC = () => {
   const [parentFullName, setParentFullName] = useState('');
   const [parentPhone, setParentPhone] = useState('');
   const [parentPhone2, setParentPhone2] = useState('');
-  const [parentTelegram, setParentTelegram] = useState('');
   const [parentEmail, setParentEmail] = useState('');
   const [studentEmail, setStudentEmail] = useState('');
   const [preferredMessenger, setPreferredMessenger] = useState('');
@@ -95,7 +93,6 @@ const StudentCardsPage: React.FC = () => {
     setStudentFullName('');
     setBirthDate('');
     setStudentPhone('');
-    setTelegram('');
     setGender('');
     setOnGrant(false);
     setFormatType('');
@@ -105,7 +102,6 @@ const StudentCardsPage: React.FC = () => {
     setParentFullName('');
     setParentPhone('');
     setParentPhone2('');
-    setParentTelegram('');
     setParentEmail('');
     setStudentEmail('');
     setPreferredMessenger('');
@@ -165,7 +161,6 @@ const StudentCardsPage: React.FC = () => {
     salesApi.getStudentsForCards().then(setStudentsForCards).catch(() => setStudentsForCards([]));
     setBirthDate(card.birth_date ? card.birth_date.slice(0, 10) : '');
     setStudentPhone(card.student_phone || '');
-    setTelegram(card.telegram || '');
     setGender(card.gender || '');
     setOnGrant(card.on_grant || false);
     setFormatType(card.format_type || '');
@@ -175,7 +170,6 @@ const StudentCardsPage: React.FC = () => {
     setParentFullName(card.parent_full_name || '');
     setParentPhone(card.parent_phone || '');
     setParentPhone2(card.parent_phone_2 || '');
-    setParentTelegram(card.parent_telegram || '');
     setParentEmail(card.parent_email || '');
     setStudentEmail(card.student_email || '');
     setPreferredMessenger(card.preferred_messenger || '');
@@ -202,7 +196,6 @@ const StudentCardsPage: React.FC = () => {
         student_full_name: name,
         birth_date: birthDate || null,
         student_phone: studentPhone.trim() || null,
-        telegram: telegram.trim() || null,
         gender: gender.trim() || null,
         on_grant: onGrant,
         format_type: formatType.trim() || null,
@@ -212,7 +205,6 @@ const StudentCardsPage: React.FC = () => {
         parent_full_name: parentFullName.trim() || null,
         parent_phone: parentPhone.trim() || null,
         parent_phone_2: parentPhone2.trim() || null,
-        parent_telegram: parentTelegram.trim() || null,
         parent_email: parentEmail.trim() || null,
         student_email: studentEmail.trim() || null,
         preferred_messenger: preferredMessenger.trim() || null,
@@ -446,7 +438,6 @@ const StudentCardsPage: React.FC = () => {
               <TextField label="ФИО ученика" value={studentFullName} onChange={(e) => setStudentFullName(e.target.value)} fullWidth required />
               <TextField label="Дата рождения" type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} fullWidth InputLabelProps={{ shrink: true }} />
               <TextField label="Мобильный телефон ученика" value={studentPhone} onChange={(e) => setStudentPhone(e.target.value)} fullWidth />
-              <TextField label="Телеграмм ученика" value={telegram} onChange={(e) => setTelegram(e.target.value)} fullWidth />
               <FormControl fullWidth>
                 <InputLabel>Пол</InputLabel>
                 <Select value={gender} label="Пол" onChange={(e) => setGender(e.target.value)}>
@@ -472,7 +463,6 @@ const StudentCardsPage: React.FC = () => {
               <TextField label="ФИО родителя" value={parentFullName} onChange={(e) => setParentFullName(e.target.value)} fullWidth />
               <TextField label="Мобильный телефон родителя" value={parentPhone} onChange={(e) => setParentPhone(e.target.value)} fullWidth />
               <TextField label="Второй мобильный телефон родителя" value={parentPhone2} onChange={(e) => setParentPhone2(e.target.value)} fullWidth />
-              <TextField label="Телеграм родителя" value={parentTelegram} onChange={(e) => setParentTelegram(e.target.value)} fullWidth />
               <TextField label="Email родителя" type="email" value={parentEmail} onChange={(e) => setParentEmail(e.target.value)} fullWidth />
               <TextField label="Email ученика" type="email" value={studentEmail} onChange={(e) => setStudentEmail(e.target.value)} fullWidth />
               <FormControl fullWidth>
@@ -480,7 +470,6 @@ const StudentCardsPage: React.FC = () => {
                 <Select value={preferredMessenger} label="Удобный мессенджер для общения с родителем" onChange={(e) => setPreferredMessenger(e.target.value)}>
                   <MenuItem value="">—</MenuItem>
                   <MenuItem value="max">MAX</MenuItem>
-                  <MenuItem value="telegram">Telegram</MenuItem>
                   <MenuItem value="sms">SMS</MenuItem>
                 </Select>
               </FormControl>

@@ -285,18 +285,6 @@ class TestCommunicationTypes:
         assert message["channel"] == "email"
         assert message["subject"] == "Test Subject"
 
-    def test_telegram_message(self):
-        """Telegram message type."""
-        message = {
-            "type": "telegram",
-            "channel": "telegram",
-            "chat_id": "123456",
-            "text": "Test telegram message"
-        }
-
-        assert message["type"] == "telegram"
-        assert message["chat_id"] == "123456"
-
     def test_push_notification(self):
         """Push notification type."""
         message = {

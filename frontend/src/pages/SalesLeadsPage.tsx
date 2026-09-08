@@ -41,7 +41,6 @@ import {
 } from '@mui/material';
 import {
   Call as CallIcon,
-  ChatBubbleOutline as ChatIcon,
   Send as SendIcon,
   EventNote as FollowUpIcon,
   Close as CloseIcon,
@@ -134,7 +133,6 @@ const leadCommunicationChannelLabels: Record<LeadCommunicationChannel, string> =
   max: 'MAX',
   email: '\u043f\u043e\u0447\u0442\u0430',
   sms: 'смс',
-  telegram: 'telegram',
 };
 
 const normalizeRuPhone = (raw: string): string => {
@@ -2356,11 +2354,6 @@ const SalesLeadsPage: React.FC = () => {
                       <CallIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
-                  <Tooltip title="Telegram">
-                    <IconButton size="small" component="a" href={`https://t.me/${(lead.parent_phone || lead.phone || '').replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" disabled={!lead.phone}>
-                      <ChatIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
                   <Tooltip title="SMS">
                     <IconButton
                       size="small"
@@ -2588,19 +2581,6 @@ const SalesLeadsPage: React.FC = () => {
                     <Button
                       size="small"
                       variant="outlined"
-                      startIcon={<ChatIcon />}
-                      href={selectedLead.phone ? `https://t.me/${selectedLead.phone.replace(/\D/g, '')}` : undefined}
-                      component="a"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      disabled={!selectedLead.phone}
-                    >
-                      Telegram
-                    </Button>
-                    <Button
-                      size="small"
-                      variant="outlined"
                       startIcon={<SmsIcon />}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -2646,7 +2626,6 @@ const SalesLeadsPage: React.FC = () => {
                           { key: 'child_full_name', label: 'ФИО ученика' },
                           { key: 'birth_date', label: 'Дата рождения' },
                           { key: 'child_phone', label: 'Телефон ученика' },
-                          { key: 'child_telegram', label: 'Телеграм ученика' },
                           { key: 'student_email', label: 'Email ученика' },
                           { key: 'gender', label: 'Пол' },
                           { key: 'city', label: 'Город' },
@@ -2655,7 +2634,6 @@ const SalesLeadsPage: React.FC = () => {
                           { key: 'parent_full_name', label: 'ФИО родителя' },
                           { key: 'parent_phone', label: 'Телефон родителя' },
                           { key: 'parent_phone_2', label: 'Второй телефон' },
-                          { key: 'parent_telegram', label: 'Телеграм родителя' },
                           { key: 'parent_email', label: 'Email родителя' },
                           { key: 'preferred_messenger', label: 'Мессенджер' },
                           { key: 'comment', label: 'Комментарий (цели обучения, уровень, удобное время и т.п.)' },

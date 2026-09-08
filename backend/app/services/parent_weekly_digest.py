@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session
 from app.models import AppSetting, Student, User
 from app.services.communication_hub import CommunicationService
 from app.services.parent_dashboard import build_parent_weekly_digest_context
-from app.services.telegram import notify_user
 
 PARENT_WEEKLY_DIGEST_SETTINGS_KEY = "parent_weekly_digest_settings"
 DEFAULT_PARENT_WEEKLY_DIGEST_SETTINGS = {
@@ -105,24 +104,6 @@ def enqueue_parent_weekly_digests(db: Session, *, now: datetime | None = None) -
             event_key="parent_weekly_digest",
             context=context,
         )
-        try:
-            if parent.telegram_chat_id:
-                text = (
-                    f"Еженедельный отчёт по {context['student_name']}\n"
-                    f"Занятий: {context['lessons_attended_count']} посещено, {context['lessons_missed_count']} пропущено\n"
-                    f"Новых оценок: {context['new_grades_count']}\n"
-                    f"Прогресс: {context['progress_percent']}%\n"
-                    f"Ближайшее занятие: {context['nearest_lesson_date']} {context['nearest_lesson_time']}"
-                )
-                import asyncio
-
-                try:
-                    loop = asyncio.get_running_loop()
-                    loop.create_task(notify_user(db, parent.id, text))
-                except RuntimeError:
-                    asyncio.run(notify_user(db, parent.id, text))
-        except Exception:
-            pass
         sent_count += 1
 
     settings["last_sent_on"] = today_key

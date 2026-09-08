@@ -12,7 +12,6 @@ from app.models import (
     Characteristic, CharacteristicTemplate, User, CharacteristicStatus, Student, GroupStudent, Group, UserRole, StudentStatus
 )
 from app.routers.action_log import log_action
-from app.services.telegram import notify_admins, notify_user
 from app.services.characteristic_review import (
     submit_characteristic_for_review,
     approve_characteristic as approve_characteristic_svc,
@@ -148,13 +147,6 @@ async def submit_characteristic(
         raise HTTPException(status_code=400, detail=msg)
     log_action(db, current_user.id, "submit", "characteristic", characteristic_id)
     try:
-        await notify_admins(
-            db,
-            f"Характеристика на согласовании\n"
-            f"Ученик: {db_characteristic.student.full_name if db_characteristic.student else db_characteristic.student_id}\n"
-            f"Период: {db_characteristic.month}/{db_characteristic.year}\n"
-            f"Тренер: {current_user.full_name}"
-        )
         if db_characteristic.student:
             CommunicationService.send(
                 db,
@@ -255,26 +247,6 @@ async def approve_characteristic(
         payload_json={"characteristic_id": db_characteristic.id, "month": db_characteristic.month, "year": db_characteristic.year},
     )
     log_action(db, current_user.id, "approve", "characteristic", characteristic_id)
-    try:
-        if db_characteristic.trainer_id:
-            await notify_user(
-                db,
-                db_characteristic.trainer_id,
-                f"Характеристика опубликована\n"
-                f"Ученик: {db_characteristic.student.full_name if db_characteristic.student else db_characteristic.student_id}\n"
-                f"Период: {db_characteristic.month}/{db_characteristic.year}\n"
-                f"Комментарий: {approval.comment or '—'}"
-            )
-        if db_characteristic.student and db_characteristic.student.parent_id:
-            await notify_user(
-                db,
-                db_characteristic.student.parent_id,
-                f"Опубликована характеристика\n"
-                f"Ученик: {db_characteristic.student.full_name}\n"
-                f"Период: {db_characteristic.month}/{db_characteristic.year}"
-            )
-    except Exception:
-        pass
     return {"message": "Characteristic approved and published"}
 
 
@@ -287,25 +259,13 @@ async def reject_characteristic(
 ):
     """Вернуть характеристику на доработку (администратор)"""
     try:
-        db_characteristic = reject_characteristic_svc(db, characteristic_id, rejection.comment)
+        reject_characteristic_svc(db, characteristic_id, rejection.comment)
     except ValueError as e:
         msg = str(e)
         if "not found" in msg.lower():
             raise HTTPException(status_code=404, detail=msg)
         raise HTTPException(status_code=400, detail=msg)
     log_action(db, current_user.id, "reject", "characteristic", characteristic_id)
-    try:
-        if db_characteristic.trainer_id:
-            await notify_user(
-                db,
-                db_characteristic.trainer_id,
-                f"Характеристика возвращена на доработку\n"
-                f"Ученик: {db_characteristic.student.full_name if db_characteristic.student else db_characteristic.student_id}\n"
-                f"Период: {db_characteristic.month}/{db_characteristic.year}\n"
-                f"Комментарий: {rejection.comment}"
-            )
-    except Exception:
-        pass
     return {"message": "Characteristic rejected"}
 
 

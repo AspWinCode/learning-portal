@@ -19,7 +19,6 @@ from app.schemas.auth import (
     Token,
 )
 from app.schemas.users import UserResponse
-from app.services.telegram import notify_user
 from app.services.email_sender import is_email_configured, send_email
 
 router = APIRouter()
@@ -133,16 +132,6 @@ async def _password_reset_request_impl(payload: PasswordReset, db: Session):
         db.add(user)
         db.commit()
         db.refresh(user)
-
-        if user.telegram_chat_id:
-            try:
-                await notify_user(
-                    db,
-                    user.id,
-                    f"Код для сброса пароля: {code}\nДействителен 15 минут.",
-                )
-            except Exception:
-                pass
 
         if is_email_configured():
             try:

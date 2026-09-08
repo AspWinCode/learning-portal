@@ -160,7 +160,6 @@ const UserDetailsPage: React.FC = () => {
                       <Typography variant="subtitle2">Контакты</Typography>
                       <Typography variant="body2">Phone: {fieldValue(targetUser.phone)}</Typography>
                       <Typography variant="body2">Доп. телефон: {fieldValue(targetUser.phone_extra)}</Typography>
-                      <Typography variant="body2">Telegram: {fieldValue(targetUser.trainer_telegram)}</Typography>
                       <Typography variant="body2">City: {fieldValue(targetUser.city)}</Typography>
                     </Stack>
                   </Stack>

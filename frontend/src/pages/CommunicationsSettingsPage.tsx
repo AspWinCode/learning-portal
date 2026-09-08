@@ -25,7 +25,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { hasPermission } from '../utils/permissions';
 import { extractApiError } from '../utils/extractApiError';
 
-const CHANNEL_OPTIONS: CommunicationTemplate['channel'][] = ['email', 'sms', 'max', 'telegram', 'web_push'];
+const CHANNEL_OPTIONS: CommunicationTemplate['channel'][] = ['email', 'sms', 'max', 'web_push'];
 
 const EVENT_OPTIONS = [
   'student_absent',

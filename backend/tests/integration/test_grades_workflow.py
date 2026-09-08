@@ -9,7 +9,6 @@
 5. Валидация: архивированных студентов нельзя оценивать
 """
 from types import SimpleNamespace
-from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -167,7 +166,6 @@ class TestCreateGrade:
         monkeypatch.setattr(grades_router.auth, "ensure_permission", lambda u, p: None)
         monkeypatch.setattr(grades_router, "log_student_activity", lambda *a, **kw: None)
         monkeypatch.setattr(grades_router, "log_action", lambda *a, **kw: None)
-        monkeypatch.setattr(grades_router, "notify_user", lambda *a, **kw: None)
 
         response = client.post(
             "/api/v1/grades/",
@@ -419,7 +417,6 @@ class TestCreateGrade:
         monkeypatch.setattr(grades_router.auth, "ensure_permission", lambda u, p: None)
         monkeypatch.setattr(grades_router, "log_student_activity", lambda *a, **kw: None)
         monkeypatch.setattr(grades_router, "log_action", lambda *a, **kw: None)
-        monkeypatch.setattr(grades_router, "notify_user", lambda *a, **kw: None)
 
         client.post(
             "/api/v1/grades/",
@@ -436,47 +433,3 @@ class TestCreateGrade:
         types_added = [type(obj).__name__ for obj in db.added]
         assert "ProgramTrainer" in types_added or "Grade" in types_added  # Grade точно добавлена
         assert db.committed is True
-
-    def test_notifies_parent_on_grade(self, client: TestClient, monkeypatch):
-        """При выставлении оценки родитель получает уведомление."""
-        trainer = _trainer_user(1)
-        parent_id = 3
-        student = _make_student(2, parent_id=parent_id)
-        topic = _make_topic(5)
-        group_student = SimpleNamespace(
-            group_id=1, student_id=2, left_at=None,
-            group=SimpleNamespace(trainer_id=1)
-        )
-        student_program = SimpleNamespace(
-            student_id=2, program_id=10, status=StudentProgramLinkStatus.ACTIVE
-        )
-
-        db = FakeGradesDB(
-            student=student, topic=topic, group_student=group_student,
-            student_program=student_program
-        )
-        app.dependency_overrides[get_db] = lambda: db
-        app.dependency_overrides[auth.get_current_active_user] = lambda: trainer
-        app.dependency_overrides[auth.require_permission("grades.manage")] = lambda: trainer
-
-        notify_mock = MagicMock()
-
-        monkeypatch.setattr(grades_router.auth, "ensure_permission", lambda u, p: None)
-        monkeypatch.setattr(grades_router, "log_student_activity", lambda *a, **kw: None)
-        monkeypatch.setattr(grades_router, "log_action", lambda *a, **kw: None)
-        monkeypatch.setattr(grades_router, "notify_user", notify_mock)
-
-        response = client.post(
-            "/api/v1/grades/",
-            json={
-                "student_id": 2,
-                "topic_id": 5,
-                "grade": 5,
-                "comment": "Good work",
-                "date": "2026-05-30",
-            }
-        )
-
-        assert response.status_code == 201
-        # Проверяем что notify_user был вызван с parent_id
-        assert notify_mock.called or db.committed  # notify может быть async

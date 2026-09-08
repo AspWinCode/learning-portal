@@ -31,7 +31,6 @@ from app.services.owner_workspace_notifications import (
     get_web_push_public_key,
     is_web_push_configured,
 )
-from app.services.telegram import notify_admins, notify_user
 
 
 def get_parent_students(db: Session, parent_user_id: int) -> List[Student]:
@@ -193,23 +192,6 @@ async def create_parent_question(
     db.add(row)
     db.commit()
     db.refresh(row)
-
-    notice_lines = [
-        "Новый вопрос из кабинета родителя",
-        f"Родитель: {parent_user.full_name}",
-        f"Ученик: {student.full_name}",
-    ]
-    if row.topic:
-        notice_lines.append(f"Тема: {row.topic}")
-    notice_lines.append(f"Сообщение: {row.message}")
-    notice_text = "\n".join(notice_lines)
-
-    try:
-        if target_trainer_id:
-            await notify_user(db, target_trainer_id, notice_text)
-        await notify_admins(db, notice_text)
-    except Exception:
-        pass
 
     return row
 

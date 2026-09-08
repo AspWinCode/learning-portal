@@ -36,7 +36,6 @@ export interface User {
   trainer_lesson_formats?: TrainerLessonFormat | null;
   trainer_banks?: string[] | null;
   city?: string | null;
-  trainer_telegram?: string | null;
   is_self_employed?: boolean | null;
   is_ip?: boolean | null;
   work_schedule?: string | null;
@@ -91,7 +90,7 @@ export interface CommunicationTemplate {
   name: string;
   category?: string | null;
   event_key?: string | null;
-  channel: 'sms' | 'email' | 'max' | 'telegram' | 'web_push';
+  channel: 'sms' | 'email' | 'max' | 'web_push';
   subject?: string | null;
   text: string;
   active: boolean;
@@ -559,7 +558,7 @@ export type LeadStatus =
   | 'trial_scheduled'
   | 'event_registered'
   | 'decided_immediately';
-export type LeadCommunicationChannel = 'max' | 'email' | 'sms' | 'telegram';
+export type LeadCommunicationChannel = 'max' | 'email' | 'sms';
 
 export interface LeadStatusOption {
   id: number;
@@ -929,7 +928,6 @@ export interface StudentCard {
   parent_cabinet_open?: boolean;
   birth_date?: string | null;
   student_phone?: string | null;
-  telegram?: string | null;
   gender?: string | null;
   on_grant: boolean;
   format_type?: string | null;
@@ -939,10 +937,9 @@ export interface StudentCard {
   parent_full_name?: string | null;
   parent_phone?: string | null;
   parent_phone_2?: string | null;
-  parent_telegram?: string | null;
   parent_email?: string | null;
   student_email?: string | null;
-  preferred_messenger?: string | null; // max | telegram | sms
+  preferred_messenger?: string | null; // max | sms
   comment?: string | null;
   source?: string | null; // откуда пришел
    /** Ссылка на оплату, которую могут задать owner/admin */

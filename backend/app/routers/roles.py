@@ -57,10 +57,6 @@ PERMISSION_DISPLAY_OVERRIDES: Dict[str, Dict[str, str]] = {
         "label": "Управление коммуникациями",
         "description": "Создание и редактирование шаблонов коммуникаций.",
     },
-    "telegram.link": {
-        "label": "Привязка Telegram",
-        "description": "Право привязывать и отвязывать Telegram в профиле текущего пользователя.",
-    },
     "owner_funnels.access": {
         "label": "Просмотр воронок владельца",
         "description": "Доступ к воронкам владельца, событиям и карточкам воронок.",

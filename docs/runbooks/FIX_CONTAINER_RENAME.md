@@ -41,7 +41,7 @@
 
 | Файл | Изменение |
 |---|---|
-| `docker-compose.yml` | Убран `depends_on: migrator` у `backend`, `app_worker`, `app_scheduler`, `app_delivery_worker`, `telegram_bot`. `migrator` переведён в профиль `migrate` (обычный `up` его больше не трогает). Добавлен `stop_grace_period: 30s` долгоживущим сервисам. |
+| `docker-compose.yml` | Убран `depends_on: migrator` у `backend` и воркеров. `migrator` переведён в профиль `migrate` (обычный `up` его больше не трогает). Добавлен `stop_grace_period: 30s` долгоживущим сервисам. |
 | `deploy/autodeploy.sh` | Новый канонический cron-скрипт: единый лок `/tmp/learning-portal-deploy.lock`, явный шаг миграций `docker compose run --rm migrator`, `--remove-orphans`, авто-переименование застрявших контейнеров обратно. |
 | `scripts/remote_deploy.py` | Все mutate-команды обёрнуты в тот же `flock`; миграции через `run --rm migrator` вместо `exec`; `--remove-orphans`; шаг «fix renamed containers»; новый режим `--mode fix-orphans`. |
 | `deploy.sh` | То же: общий лок, явные миграции, `--remove-orphans`, нормализация имён. |

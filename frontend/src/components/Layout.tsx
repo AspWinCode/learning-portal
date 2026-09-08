@@ -42,7 +42,6 @@ import {
   LocalOffer,
   Home,
   ExitToApp,
-  Telegram as TelegramIcon,
   WorkOutline,
   EventAvailable,
   ReceiptLong,
@@ -72,7 +71,7 @@ import {
   FlightTakeoff,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
-import { salesApi, settingsApi, telegramApi } from '../services/api';
+import { salesApi, settingsApi } from '../services/api';
 import { getEffectiveRole, hasPermission } from '../utils/permissions';
 import EditNoteIcon from '@mui/icons-material/EditNote';
 import {
@@ -195,11 +194,6 @@ const removeDuplicateContentTitle = (
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
-  const [tgOpen, setTgOpen] = useState(false);
-  const [tgError, setTgError] = useState('');
-  const [tgCode, setTgCode] = useState('');
-  const [tgExpiresAt, setTgExpiresAt] = useState('');
-  const [tgLink, setTgLink] = useState<string | null>(null);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [logoOpen, setLogoOpen] = useState(false);
   const [logoError, setLogoError] = useState('');
@@ -341,23 +335,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   const handleMenuClose = () => {
     setAnchorEl(null);
-  };
-
-  const handleTelegramLink = async () => {
-    handleMenuClose();
-    setTgError('');
-    setTgCode('');
-    setTgExpiresAt('');
-    setTgLink(null);
-    setTgOpen(true);
-    try {
-      const data = await telegramApi.getLinkCode();
-      setTgCode(data.code);
-      setTgExpiresAt(data.expires_at);
-      setTgLink(data.deep_link_url || null);
-    } catch (err: any) {
-      setTgError(err.response?.data?.detail || 'Не удалось получить ссылку для привязки Telegram');
-    }
   };
 
   const handleLogoOpen = () => {
@@ -898,14 +875,6 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
                   <ListItemText>Логотип школы</ListItemText>
                 </MenuItem>
               )}
-              {role !== 'guest' && (
-                <MenuItem onClick={handleTelegramLink}>
-                  <ListItemIcon>
-                    <TelegramIcon fontSize="small" />
-                  </ListItemIcon>
-                  <ListItemText>Telegram: привязать</ListItemText>
-                </MenuItem>
-              )}
                 <MenuItem onClick={handleLogout}>
                   <ListItemIcon>
                     <ExitToApp fontSize="small" />
@@ -1033,36 +1002,6 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
           ))}
         </BottomNavigation>
       )}
-
-      <Dialog open={tgOpen} onClose={() => setTgOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>╨Я╤А╨╕╨▓╤П╨╖╨║╨░ Telegram</DialogTitle>
-        <DialogContent>
-          {tgError && (
-            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setTgError('')}>
-              {tgError}
-            </Alert>
-          )}
-          <Typography variant="body2" color="text.secondary">
-            ╨Э╨░╨┐╨╕╤И╨╕╤В╨╡ ╨▒╨╛╤В╤Г ╨║╨╛╨╝╨░╨╜╨┤╤Г:
-          </Typography>
-          <Typography variant="body1" sx={{ mt: 1, fontWeight: 700 }}>
-            /start {tgCode || '...'}
-          </Typography>
-          {tgLink && (
-            <Typography variant="body2" sx={{ mt: 1 }}>
-              ╨Ы╨╕╨▒╨╛ ╨╛╤В╨║╤А╨╛╨╣╤В╨╡ ╤Б╤Б╤Л╨╗╨║╤Г: <code>{tgLink}</code>
-            </Typography>
-          )}
-          {tgExpiresAt && (
-            <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block' }}>
-              ╨Ъ╨╛╨┤ ╨┤╨╡╨╣╤Б╤В╨▓╤Г╨╡╤В ╨┤╨╛: {new Date(tgExpiresAt).toLocaleString('ru-RU')}
-            </Typography>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setTgOpen(false)}>╨Ч╨░╨║╤А╤Л╤В╤М</Button>
-        </DialogActions>
-      </Dialog>
 
       <Dialog open={logoOpen} onClose={() => setLogoOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>╨Ы╨╛╨│╨╛╤В╨╕╨┐ ╤Б╨░╨╣╤В╨░</DialogTitle>

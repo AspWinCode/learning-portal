@@ -9,7 +9,7 @@ class CommunicationTemplateBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=256)
     category: Optional[str] = Field(None, max_length=64)
     event_key: Optional[str] = Field(None, max_length=128)
-    channel: Literal["sms", "email", "max", "telegram", "web_push"]
+    channel: Literal["sms", "email", "max", "web_push"]
     subject: Optional[str] = Field(None, max_length=255)
     text: str = Field(..., min_length=1)
     active: bool = True
@@ -23,7 +23,7 @@ class CommunicationTemplateUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=256)
     category: Optional[str] = Field(None, max_length=64)
     event_key: Optional[str] = Field(None, max_length=128)
-    channel: Optional[Literal["sms", "email", "max", "telegram", "web_push"]] = None
+    channel: Optional[Literal["sms", "email", "max", "web_push"]] = None
     subject: Optional[str] = Field(None, max_length=255)
     text: Optional[str] = Field(None, min_length=1)
     active: Optional[bool] = None

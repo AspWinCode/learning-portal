@@ -15,7 +15,7 @@ from app.utils.datetime import utcnow
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_CHANNELS = {"sms", "email", "max", "telegram", "web_push"}
+SUPPORTED_CHANNELS = {"sms", "email", "max", "web_push"}
 FINAL_STATUSES = {"sent", "failed", "cancelled"}
 RETRY_LIMIT = 3
 DEDUPE_WINDOW_HOURS = 24

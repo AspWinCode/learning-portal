@@ -55,15 +55,7 @@ docker compose up -d --build
 docker compose logs -f --tail=200
 ```
 
-## 3) Telegram bot (опционально)
-
-Если нужен polling-бот (`telegram_bot_polling.py`), включите профиль `telegram` и задайте `TELEGRAM_BOT_TOKEN`:
-
-```bash
-docker compose --profile telegram up -d --build
-```
-
-## 4) Обновление (deploy новой версии)
+## 3) Обновление (deploy новой версии)
 
 ```bash
 cd learning-portal

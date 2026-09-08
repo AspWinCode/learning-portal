@@ -83,7 +83,6 @@ const StudentsPage: React.FC = () => {
     student_email: '',
     birth_date: '',
     student_phone: '',
-    telegram: '',
     gender: '' as '' | 'm' | 'f',
     on_grant: false,
     format_type: '' as '' | 'group' | 'individual',
@@ -93,9 +92,8 @@ const StudentsPage: React.FC = () => {
     parent_full_name: '',
     parent_phone: '',
     parent_phone_2: '',
-    parent_telegram: '',
     parent_email: '',
-    preferred_messenger: '' as '' | 'max' | 'telegram' | 'sms',
+    preferred_messenger: '' as '' | 'max' | 'sms',
     source: '',
     comment: '',
     payment_link: '',
@@ -660,7 +658,6 @@ const StudentsPage: React.FC = () => {
       student_email: cardFields.student_email.trim() || undefined,
       birth_date: cardFields.birth_date.trim() || undefined,
       student_phone: cardFields.student_phone.trim() ? phoneToApiValue(cardFields.student_phone) || undefined : undefined,
-      telegram: cardFields.telegram.trim() || undefined,
       gender: cardFields.gender || undefined,
       on_grant: cardFields.on_grant,
       format_type: cardFields.format_type || undefined,
@@ -670,7 +667,6 @@ const StudentsPage: React.FC = () => {
       parent_full_name: (cardFields.parent_full_name || parentInfo?.full_name || '').trim() || undefined,
       parent_phone: cardFields.parent_phone.trim() ? phoneToApiValue(cardFields.parent_phone) || undefined : undefined,
       parent_phone_2: cardFields.parent_phone_2.trim() ? phoneToApiValue(cardFields.parent_phone_2) || undefined : undefined,
-      parent_telegram: cardFields.parent_telegram.trim() || undefined,
       parent_email: (cardFields.parent_email || parentInfo?.email || '').trim() || undefined,
       preferred_messenger: cardFields.preferred_messenger || undefined,
       source: cardFields.source.trim() || undefined,
@@ -686,7 +682,6 @@ const StudentsPage: React.FC = () => {
     student_email: '',
     birth_date: '',
     student_phone: '',
-    telegram: '',
     gender: '' as '' | 'm' | 'f',
     on_grant: false,
     format_type: '' as '' | 'group' | 'individual',
@@ -696,9 +691,8 @@ const StudentsPage: React.FC = () => {
     parent_full_name: '',
     parent_phone: '',
     parent_phone_2: '',
-    parent_telegram: '',
     parent_email: '',
-    preferred_messenger: '' as '' | 'max' | 'telegram' | 'sms',
+    preferred_messenger: '' as '' | 'max' | 'sms',
     source: '',
     comment: '',
     payment_link: '',
@@ -741,7 +735,6 @@ const StudentsPage: React.FC = () => {
         student_email: card.student_email || '',
         birth_date: card.birth_date || '',
         student_phone: phoneFromApi(card.student_phone),
-        telegram: card.telegram || '',
         gender: (card.gender === 'm' || card.gender === 'f' ? card.gender : '') as '' | 'm' | 'f',
         on_grant: card.on_grant ?? false,
         format_type: (card.format_type === 'group' || card.format_type === 'individual' ? card.format_type : '') as '' | 'group' | 'individual',
@@ -751,9 +744,8 @@ const StudentsPage: React.FC = () => {
         parent_full_name: card.parent_full_name || '',
         parent_phone: phoneFromApi(card.parent_phone),
         parent_phone_2: phoneFromApi(card.parent_phone_2),
-        parent_telegram: card.parent_telegram || '',
         parent_email: card.parent_email || '',
-        preferred_messenger: (card.preferred_messenger === 'max' || card.preferred_messenger === 'telegram' || card.preferred_messenger === 'sms' ? card.preferred_messenger : '') as '' | 'max' | 'telegram' | 'sms',
+        preferred_messenger: (card.preferred_messenger === 'max' || card.preferred_messenger === 'sms' ? card.preferred_messenger : '') as '' | 'max' | 'sms',
         source: card.source || '',
         comment: card.comment || '',
         payment_link: card.payment_link || '',
@@ -827,8 +819,7 @@ const StudentsPage: React.FC = () => {
           student_email: cardFields.student_email.trim() || undefined,
           birth_date: cardFields.birth_date.trim() || undefined,
           student_phone: cardFields.student_phone.trim() ? phoneToApiValue(cardFields.student_phone) || undefined : undefined,
-          telegram: cardFields.telegram.trim() || undefined,
-          gender: cardFields.gender || undefined,
+              gender: cardFields.gender || undefined,
           on_grant: cardFields.on_grant,
           format_type: cardFields.format_type || undefined,
           city: cardFields.city.trim() || undefined,
@@ -837,8 +828,7 @@ const StudentsPage: React.FC = () => {
           parent_full_name: (cardFields.parent_full_name ?? '').trim() || (parentInfo?.full_name ?? '').trim() || null,
           parent_phone: cardFields.parent_phone.trim() ? phoneToApiValue(cardFields.parent_phone) || undefined : undefined,
           parent_phone_2: cardFields.parent_phone_2.trim() ? phoneToApiValue(cardFields.parent_phone_2) || undefined : undefined,
-          parent_telegram: cardFields.parent_telegram.trim() || undefined,
-          parent_email: (cardFields.parent_email || parentInfo?.email || '').trim() || undefined,
+              parent_email: (cardFields.parent_email || parentInfo?.email || '').trim() || undefined,
           preferred_messenger: cardFields.preferred_messenger || undefined,
           source: cardFields.source.trim() || undefined,
           comment: cardFields.comment.trim() || undefined,
@@ -1505,7 +1495,6 @@ const StudentsPage: React.FC = () => {
                         : ''
                     }
                   />
-                  <TextField size="small" fullWidth label="Телеграмм ученика" value={cardFields.telegram} onChange={(e) => setCardFields((f) => ({ ...f, telegram: e.target.value }))} />
                   <FormControl size="small" fullWidth>
                     <InputLabel>Пол</InputLabel>
                     <Select value={cardFields.gender} label="Пол" onChange={(e) => setCardFields((f) => ({ ...f, gender: e.target.value as '' | 'm' | 'f' }))}>
@@ -1553,14 +1542,12 @@ const StudentsPage: React.FC = () => {
                   <TextField size="small" fullWidth label="ФИО родителя" value={cardFields.parent_full_name || (parentCreateMode === 'new' ? newParent.full_name : selectedParentForCreate?.full_name || '')} onChange={(e) => setCardFields((f) => ({ ...f, parent_full_name: e.target.value }))} />
                   <TextField size="small" fullWidth label="Мобильный телефон родителя" value={cardFields.parent_phone} onChange={(e) => setCardFields((f) => ({ ...f, parent_phone: applyPhoneMask(e.target.value) }))} placeholder="+7(999) 123-45-67" error={!!cardFields.parent_phone.trim() && !isValidPhone(cardFields.parent_phone)} helperText={cardFields.parent_phone.trim() && !isValidPhone(cardFields.parent_phone) ? '10 цифр номера' : ''} />
                   <TextField size="small" fullWidth label="Второй мобильный телефон родителя" value={cardFields.parent_phone_2} onChange={(e) => setCardFields((f) => ({ ...f, parent_phone_2: applyPhoneMask(e.target.value) }))} placeholder="+7(999) 123-45-67" error={!!cardFields.parent_phone_2.trim() && !isValidPhone(cardFields.parent_phone_2)} helperText={cardFields.parent_phone_2.trim() && !isValidPhone(cardFields.parent_phone_2) ? '10 цифр номера' : ''} />
-                  <TextField size="small" fullWidth label="Телеграм родителя" value={cardFields.parent_telegram} onChange={(e) => setCardFields((f) => ({ ...f, parent_telegram: e.target.value }))} />
                   <TextField size="small" fullWidth label="Email родителя" type="email" value={cardFields.parent_email || (parentCreateMode === 'new' ? newParent.email : selectedParentForCreate?.email || '')} onChange={(e) => setCardFields((f) => ({ ...f, parent_email: e.target.value }))} error={!!(cardFields.parent_email || (parentCreateMode === 'new' ? newParent.email : selectedParentForCreate?.email || '')).trim() && !isValidEmail(cardFields.parent_email || (parentCreateMode === 'new' ? newParent.email : selectedParentForCreate?.email || ''))} helperText={((cardFields.parent_email || (parentCreateMode === 'new' ? newParent.email : selectedParentForCreate?.email || '')).trim() && !isValidEmail(cardFields.parent_email || (parentCreateMode === 'new' ? newParent.email : selectedParentForCreate?.email || ''))) ? 'Введите корректный email' : ''} />
                   <FormControl size="small" fullWidth>
                     <InputLabel>Удобный мессенджер для общения с родителем</InputLabel>
-                    <Select value={cardFields.preferred_messenger} label="Удобный мессенджер для общения с родителем" onChange={(e) => setCardFields((f) => ({ ...f, preferred_messenger: e.target.value as '' | 'max' | 'telegram' | 'sms' }))}>
+                    <Select value={cardFields.preferred_messenger} label="Удобный мессенджер для общения с родителем" onChange={(e) => setCardFields((f) => ({ ...f, preferred_messenger: e.target.value as '' | 'max' | 'sms' }))}>
                       <MenuItem value="">—</MenuItem>
                       <MenuItem value="max">MAX</MenuItem>
-                      <MenuItem value="telegram">Telegram</MenuItem>
                       <MenuItem value="sms">SMS</MenuItem>
                     </Select>
                   </FormControl>
@@ -1734,7 +1721,6 @@ const StudentsPage: React.FC = () => {
                     : ''
                 }
               />
-              <TextField size="small" fullWidth label="Телеграмм ученика" value={cardFields.telegram} onChange={(e) => setCardFields((f) => ({ ...f, telegram: e.target.value }))} />
               <FormControl size="small" fullWidth>
                 <InputLabel>Пол</InputLabel>
                 <Select value={cardFields.gender} label="Пол" onChange={(e) => setCardFields((f) => ({ ...f, gender: e.target.value as '' | 'm' | 'f' }))}>
@@ -1782,14 +1768,12 @@ const StudentsPage: React.FC = () => {
               <TextField size="small" fullWidth label="ФИО родителя" value={cardFields.parent_full_name || (selectedParentForCreate?.full_name || '')} onChange={(e) => setCardFields((f) => ({ ...f, parent_full_name: e.target.value }))} />
               <TextField size="small" fullWidth label="Мобильный телефон родителя" value={cardFields.parent_phone} onChange={(e) => setCardFields((f) => ({ ...f, parent_phone: applyPhoneMask(e.target.value) }))} placeholder="+7(999) 123-45-67" error={!!cardFields.parent_phone.trim() && !isValidPhone(cardFields.parent_phone)} helperText={cardFields.parent_phone.trim() && !isValidPhone(cardFields.parent_phone) ? '10 цифр номера' : ''} />
               <TextField size="small" fullWidth label="Второй мобильный телефон родителя" value={cardFields.parent_phone_2} onChange={(e) => setCardFields((f) => ({ ...f, parent_phone_2: applyPhoneMask(e.target.value) }))} placeholder="+7(999) 123-45-67" error={!!cardFields.parent_phone_2.trim() && !isValidPhone(cardFields.parent_phone_2)} helperText={cardFields.parent_phone_2.trim() && !isValidPhone(cardFields.parent_phone_2) ? '10 цифр номера' : ''} />
-              <TextField size="small" fullWidth label="Телеграм родителя" value={cardFields.parent_telegram} onChange={(e) => setCardFields((f) => ({ ...f, parent_telegram: e.target.value }))} />
               <TextField size="small" fullWidth label="Email родителя" type="email" value={cardFields.parent_email || (selectedParentForCreate?.email || '')} onChange={(e) => setCardFields((f) => ({ ...f, parent_email: e.target.value }))} error={!!(cardFields.parent_email || selectedParentForCreate?.email || '').trim() && !isValidEmail(cardFields.parent_email || selectedParentForCreate?.email || '')} helperText={((cardFields.parent_email || selectedParentForCreate?.email || '').trim() && !isValidEmail(cardFields.parent_email || selectedParentForCreate?.email || '')) ? 'Введите корректный email' : ''} />
               <FormControl size="small" fullWidth>
                 <InputLabel>Удобный мессенджер для общения с родителем</InputLabel>
-                <Select value={cardFields.preferred_messenger} label="Удобный мессенджер для общения с родителем" onChange={(e) => setCardFields((f) => ({ ...f, preferred_messenger: e.target.value as '' | 'max' | 'telegram' | 'sms' }))}>
+                <Select value={cardFields.preferred_messenger} label="Удобный мессенджер для общения с родителем" onChange={(e) => setCardFields((f) => ({ ...f, preferred_messenger: e.target.value as '' | 'max' | 'sms' }))}>
                   <MenuItem value="">—</MenuItem>
                   <MenuItem value="max">MAX</MenuItem>
-                  <MenuItem value="telegram">Telegram</MenuItem>
                   <MenuItem value="sms">SMS</MenuItem>
                 </Select>
               </FormControl>

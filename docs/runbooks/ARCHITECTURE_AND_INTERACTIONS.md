@@ -77,7 +77,7 @@ index.tsx
 - Один экземпляр **axios** с `baseURL` из `REACT_APP_API_URL` (или текущий origin).
 - **Request interceptor:** подставляет `Authorization: Bearer <token>` из `localStorage`.
 - **Response interceptor:** при 401 удаляет токен и перенаправляет на `/login`.
-- Методы сгруппированы по доменам: `authApi`, `usersApi`, `studentsApi`, `groupsApi`, `programsApi`, `gradesApi`, `characteristicsApi`, `reportsApi`, `salesApi`, `financeApi`, `projectsApi`, `tasksApi`, `trainerLessonsApi`, `studentAccountsApi`, `studentCardsApi`, `settingsApi`, `telegramApi`, и т.д. Страницы импортируют нужные объекты и вызывают методы без промежуточного слоя (например, хуков с кешем).
+- Методы сгруппированы по доменам: `authApi`, `usersApi`, `studentsApi`, `groupsApi`, `programsApi`, `gradesApi`, `characteristicsApi`, `reportsApi`, `salesApi`, `financeApi`, `projectsApi`, `tasksApi`, `trainerLessonsApi`, `studentAccountsApi`, `studentCardsApi`, `settingsApi`, и т.д. Страницы импортируют нужные объекты и вызывают методы без промежуточного слоя (например, хуков с кешем).
 
 ### 2.4. Маршрутизация
 
@@ -99,7 +99,7 @@ backend/app/
   models.py         # SQLAlchemy модели (User, Student, Group, ...)
   schemas.py        # Pydantic-схемы для запросов/ответов
   routers/          # Роутеры по доменам
-  services/         # Бизнес-логика (tochka_client, telegram, payment_overdue_tasks, ...)
+  services/         # Бизнес-логика (tochka_client, payment_overdue_tasks, ...)
 ```
 
 ### 3.2. Роутеры и префиксы
@@ -115,7 +115,6 @@ backend/app/
 | `/api/characteristics` | characteristics | Шаблоны, характеристики, согласование |
 | `/api/reports` | reports | Отчёты, экспорт, контроль характеристик, журнал |
 | `/api/search` | search | Глобальный поиск |
-| `/api/telegram` | telegram | Привязка Telegram (код, deep link) |
 | `/api/settings` | settings | Настройки (например, логотип) |
 | `/api/abonements` | abonements | Абонементы |
 | `/api/sales` | sales | Лиды, события, инструкции, пропуски, оплаты, счета, дашборд, настройки CRM, студенческие карточки, банк и т.д. |

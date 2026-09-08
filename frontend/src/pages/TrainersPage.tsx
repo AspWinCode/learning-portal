@@ -82,7 +82,6 @@ type TrainerProfileForm = {
   trainer_lesson_formats: TrainerLessonFormat | '';
   trainer_banks: string[];
   city: string;
-  trainer_telegram: string;
   is_self_employed: boolean;
   is_ip: boolean;
   work_schedule: string;
@@ -103,7 +102,6 @@ const emptyProfileForm: TrainerProfileForm = {
   trainer_lesson_formats: '',
   trainer_banks: [],
   city: '',
-  trainer_telegram: '',
   is_self_employed: false,
   is_ip: false,
   work_schedule: '',
@@ -168,7 +166,6 @@ function profileFromUser(u: User): TrainerProfileForm {
     trainer_lesson_formats: (u.trainer_lesson_formats as TrainerLessonFormat) ?? '',
     trainer_banks: u.trainer_banks ?? [],
     city: u.city ?? '',
-    trainer_telegram: u.trainer_telegram ?? '',
     is_self_employed: u.is_self_employed ?? false,
     is_ip: u.is_ip ?? false,
     work_schedule: u.work_schedule ?? '',
@@ -268,7 +265,6 @@ const TrainersPage: React.FC = () => {
         trainer_lesson_formats: newTrainer.trainer_lesson_formats || undefined,
         trainer_banks: newTrainer.trainer_banks.length ? newTrainer.trainer_banks : undefined,
         city: newTrainer.city || undefined,
-        trainer_telegram: newTrainer.trainer_telegram || undefined,
         is_self_employed: newTrainer.is_self_employed,
         is_ip: newTrainer.is_ip,
         work_schedule: newTrainer.work_schedule || undefined,
@@ -348,7 +344,6 @@ const TrainersPage: React.FC = () => {
         trainer_lesson_formats: profileForm.trainer_lesson_formats || null,
         trainer_banks: profileForm.trainer_banks.length ? profileForm.trainer_banks : null,
         city: profileForm.city || null,
-        trainer_telegram: profileForm.trainer_telegram || null,
         is_self_employed: profileForm.is_self_employed,
         is_ip: profileForm.is_ip,
         work_schedule: profileForm.work_schedule || null,
@@ -485,15 +480,6 @@ const TrainersPage: React.FC = () => {
           />
         )}
       </Box>
-      <TextField
-        fullWidth
-        label="Телеграмм"
-        value={form.trainer_telegram}
-        onChange={(e) => setForm((p: any) => ({ ...p, trainer_telegram: e.target.value }))}
-        placeholder="@username"
-        helperText="@username"
-        sx={{ mt: 1 }}
-      />
       <FormGroup row sx={{ mt: 1 }}>
         <FormControlLabel
           control={
@@ -899,7 +885,7 @@ const TrainersPage: React.FC = () => {
             InputProps={{ readOnly: true }}
           />
           <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-            Пароль также отправлен тренеру в Telegram (если он привязан). Передайте его тренеру любым удобным способом.
+            Передайте временный пароль тренеру любым удобным способом.
           </Typography>
         </DialogContent>
         <DialogActions>

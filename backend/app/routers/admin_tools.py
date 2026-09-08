@@ -10,7 +10,6 @@ from app import auth
 from app.database import get_db
 from app.models import User, UserRole
 from app.routers.action_log import log_action
-from app.services.telegram import notify_user
 
 router = APIRouter()
 
@@ -28,8 +27,7 @@ async def reset_trainer_password(
     Админский сброс пароля тренера:
     - генерирует временный пароль;
     - меняет пароль тренера;
-    - логирует событие в ActionLog;
-    - если у тренера привязан Telegram, отправляет туда временный пароль.
+    - логирует событие в ActionLog.
     """
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
@@ -55,16 +53,6 @@ async def reset_trainer_password(
         details={"trainer_email": user.email},
     )
 
-    # Отправляем временный пароль в Telegram, если тренер привязан
-    try:
-        await notify_user(
-            db,
-            user.id,
-            f"Вам установлен новый временный пароль для входа в портал: {temp_password}",
-        )
-    except Exception:
-        # не блокируем основной поток
-        pass
     return {"temporary_password": temp_password}
 
 
@@ -104,13 +92,5 @@ async def reset_user_password(
         details={"user_email": user.email, "user_role": user.role},
     )
 
-    try:
-        await notify_user(
-            db,
-            user.id,
-            f"Вам установлен новый временный пароль для входа в портал: {temp_password}",
-        )
-    except Exception:
-        pass
     return {"temporary_password": temp_password}
 

@@ -31,7 +31,7 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
-import { Call as CallIcon, ChatBubbleOutline as ChatIcon, Sms as SmsIcon, Forum as MaxIcon } from '@mui/icons-material';
+import { Call as CallIcon, Sms as SmsIcon, Forum as MaxIcon } from '@mui/icons-material';
 import { format, isValid, parseISO } from 'date-fns';
 import Layout from '../components/Layout';
 import { SendSMSModal } from '../components/SendSMSModal';
@@ -621,11 +621,6 @@ export const SalesEventsPageContent: React.FC = () => {
                           <Tooltip title="Позвонить">
                             <IconButton size="small" component="a" href={`tel:${reg.lead?.parent_phone || reg.lead?.phone || ''}`}>
                               <CallIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Telegram">
-                            <IconButton size="small" component="a" href={`https://t.me/${(reg.lead?.parent_phone || reg.lead?.phone || '').replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" disabled={!reg.lead?.phone}>
-                              <ChatIcon fontSize="small" />
                             </IconButton>
                           </Tooltip>
                           <Tooltip title="SMS">

@@ -23,7 +23,7 @@ const BRAND_FEATURES = [
   { icon: '👩‍🎓', text: 'Управление учениками и группами' },
   { icon: '📊', text: 'Финансы, отчёты и аналитика' },
   { icon: '🤝', text: 'CRM для отдела продаж' },
-  { icon: '📱', text: 'Telegram-уведомления и родительский кабинет' },
+  { icon: '📱', text: 'Родительский кабинет и уведомления' },
 ];
 
 const LoginPage: React.FC = () => {
@@ -332,7 +332,7 @@ const LoginPage: React.FC = () => {
         <DialogTitle>Восстановление пароля</DialogTitle>
         <DialogContent>
           <Alert severity="info" sx={{ mt: 1, mb: 2 }}>
-            Код придёт в Telegram, если он привязан к аккаунту.
+            Код придёт на электронную почту, привязанную к аккаунту.
           </Alert>
           {resetError && <Alert severity="error" sx={{ mb: 2 }}>{resetError}</Alert>}
           {resetInfo  && <Alert severity="success" sx={{ mb: 2 }}>{resetInfo}</Alert>}
@@ -357,7 +357,7 @@ const LoginPage: React.FC = () => {
               />
               <TextField
                 fullWidth
-                label="Код из Telegram"
+                label="Код из письма"
                 value={resetCode}
                 onChange={(e) => setResetCode(e.target.value)}
               />

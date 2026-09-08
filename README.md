@@ -89,8 +89,8 @@
 
 ## Docker Compose Startup
 
-- `migrator` is a dedicated one-shot service that runs `alembic upgrade head`.
-- `backend`, `app_worker`, `app_scheduler`, and `telegram_bot` start only after `migrator` completes successfully.
+- `migrator` is a dedicated one-shot service (profile `migrate`) that runs `alembic upgrade head`.
+- Migrations are an explicit deploy step — run `docker compose run --rm migrator` before `docker compose up -d`. The deploy scripts (`deploy/autodeploy.sh`, `deploy.sh`, `scripts/remote_deploy.py`) do this automatically.
 - `RUN_MIGRATIONS_ON_STARTUP` is deprecated. Schema migrations must not be executed from the FastAPI startup process.
 
 ## Backend Tests

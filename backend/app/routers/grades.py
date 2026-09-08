@@ -10,7 +10,6 @@ from app.models import (
     StudentProgramLinkStatus,
 )
 from app.routers.action_log import log_action
-from app.services.telegram import notify_user
 from app.services.student_activity import log_student_activity
 
 router = APIRouter()
@@ -146,21 +145,6 @@ async def create_grade(
     
     log_action(db, current_user.id, "create", "grade", db_grade.id)
 
-    # Telegram уведомление родителю (если привязан)
-    try:
-        if student and student.parent_id:
-            await notify_user(
-                db,
-                student.parent_id,
-                f"Новая оценка\n"
-                f"Ученик: {student.full_name}\n"
-                f"Тема: {topic.name}\n"
-                f"Оценка: {grade.grade}\n"
-                f"Комментарий: {grade.comment or '—'}"
-            )
-    except Exception:
-        # не мешаем основному процессу
-        pass
     return db_grade
 
 
@@ -247,23 +231,6 @@ async def update_grade(
     db.refresh(db_grade)
     
     log_action(db, current_user.id, "update", "grade", grade_id, update_data)
-
-    # Telegram уведомление родителю (если привязан) об изменении оценки
-    try:
-        student = db_grade.student
-        topic = db_grade.topic
-        if student and student.parent_id and student.status == StudentStatus.ACTIVE:
-            await notify_user(
-                db,
-                student.parent_id,
-                f"Оценка обновлена\n"
-                f"Ученик: {student.full_name}\n"
-                f"Тема: {topic.name if topic else db_grade.topic_id}\n"
-                f"Оценка: {db_grade.grade}\n"
-                f"Комментарий: {db_grade.comment or '—'}"
-            )
-    except Exception:
-        pass
 
     return db_grade
 

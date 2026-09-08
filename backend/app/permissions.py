@@ -93,12 +93,6 @@ PERMISSION_CATALOG: List[Dict[str, str]] = [
         "description": "Create and edit communication templates.",
     },
     {
-        "key": "telegram.link",
-        "module": "telegram",
-        "label": "Telegram link access",
-        "description": "Link and unlink Telegram for the current user profile.",
-    },
-    {
         "key": "admin_tools.reset_trainer_password",
         "module": "admin_tools",
         "label": "Сброс пароля тренера",

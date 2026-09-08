@@ -7,7 +7,6 @@
   - `DATABASE_URL`
   - `SECRET_KEY` (уникальный, длинный)
   - `CORS_ORIGINS` (URL вашего фронта)
-  - `TELEGRAM_BOT_TOKEN` (+ `TELEGRAM_BOT_USERNAME` если нужен deep-link)
   - `APP_ENV=production` (включает строгие проверки конфигурации при старте)
 
 - **Миграции** (перед запуском приложения):

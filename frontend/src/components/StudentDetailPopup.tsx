@@ -335,7 +335,7 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
         login: newLogin.trim(),
         password: newPassword,
       });
-      setPortalView((prev) => (prev ? { ...prev, credential } : { credential, access_grants: [] }));
+      setPortalView((prev) => (prev ? { ...prev, credential } : { credential, access_grants: [], course_progress: [] }));
       setNewLogin('');
       setNewPassword('');
     } catch (err: any) {
@@ -378,7 +378,7 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
       setPortalView((prev) =>
         prev
           ? { ...prev, access_grants: [...prev.access_grants.filter((g) => g.catalog_item_id !== catalogItemId), grant] }
-          : { credential: null, access_grants: [grant] }
+          : { credential: null, access_grants: [grant], course_progress: [] }
       );
     } catch (err: any) {
       setPortalError(err.response?.data?.detail || err.message || 'Не удалось выдать доступ');

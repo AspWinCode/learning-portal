@@ -22,6 +22,7 @@ from app.rate_limit import limiter
 from app.routers import (
     abonements,
     academy_ai,
+    admin_dashboard,
     admin_tools,
     agile,
     auth,
@@ -436,6 +437,7 @@ app.include_router(characteristics.router, prefix="/api/v1/characteristics", tag
 app.include_router(trainer_cockpit.router, prefix="/api/v1/trainer-cockpit", tags=["trainer-cockpit"])
 app.include_router(parent_dashboard.router, prefix="/api/v1/parent-dashboard", tags=["parent-dashboard"])
 app.include_router(owner_dashboard.router, prefix="/api/v1/owner-dashboard", tags=["owner-dashboard"])
+app.include_router(admin_dashboard.router, prefix="/api/v1/admin-dashboard", tags=["admin-dashboard"])
 app.include_router(reports.router, prefix="/api/v1/reports", tags=["reports"])
 app.include_router(communications.router, prefix="/api/v1/communications", tags=["communications"])
 app.include_router(search.router, prefix="/api/v1/search", tags=["search"])

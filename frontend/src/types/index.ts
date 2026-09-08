@@ -226,6 +226,20 @@ export interface OwnerDashboardSummary {
   ai_insights: OwnerAIInsight[];
 }
 
+export interface AdminDashboardSummary {
+  generated_at: string;
+  active_students: number;
+  active_groups: number;
+  active_trainers: number;
+  active_methodists: number;
+  active_programs: number;
+  active_abonements: number;
+  characteristics_pending: number;
+  grades_last_7_days: number;
+  makeups_pending: number;
+  open_tasks: number;
+}
+
 export interface Student {
   id: number;
   full_name: string;

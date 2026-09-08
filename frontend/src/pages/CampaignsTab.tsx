@@ -1277,6 +1277,20 @@ export const CampaignsTab: React.FC = () => {
     }
   };
 
+  const handleStatusChange = async (campaignId: number, newStatus: string) => {
+    setError(null);
+    // Оптимистичное обновление
+    setCampaigns((prev) => prev.map((c) => (c.id === campaignId ? { ...c, status: newStatus } : c)));
+    setCampaignDetail((prev) => (prev && prev.id === campaignId ? { ...prev, status: newStatus } : prev));
+    try {
+      await campaignsApi.update(campaignId, { status: newStatus });
+      await loadCampaigns();
+    } catch (err: any) {
+      setError(extractApiError(err, 'Не удалось изменить статус кампании'));
+      await loadCampaigns();
+    }
+  };
+
   const handleArchiveCampaign = async (c: Campaign) => {
     if (!window.confirm(`Отправить кампанию «${c.name}» в архив?`)) return;
     setError(null);
@@ -1382,7 +1396,26 @@ export const CampaignsTab: React.FC = () => {
 
           {campaignDetail ? (
             <>
-              <Typography variant="h5" gutterBottom>{campaignDetail.name}</Typography>
+              <Stack direction="row" alignItems="center" gap={1.5} flexWrap="wrap" sx={{ mb: 1 }}>
+                <Typography variant="h5">{campaignDetail.name}</Typography>
+                {canManageCampaigns ? (
+                  <FormControl size="small" sx={{ minWidth: 150 }}>
+                    <Select
+                      value={campaignDetail.status}
+                      onChange={(e) => void handleStatusChange(campaignDetail.id, e.target.value)}
+                    >
+                      {CAMPAIGN_STATUSES.map((s) => (
+                        <MenuItem key={s.value} value={s.value}>{s.label}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                ) : (
+                  <Chip
+                    size="small"
+                    label={CAMPAIGN_STATUSES.find((s) => s.value === campaignDetail.status)?.label ?? campaignDetail.status}
+                  />
+                )}
+              </Stack>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                 {campaignTypeLabel(campaignDetail.type)} · {campaignFormatLabel(campaignDetail.format)}
                 {campaignDetail.city && ` · ${campaignDetail.city}`}
@@ -1830,7 +1863,22 @@ export const CampaignsTab: React.FC = () => {
                         <TableCell>{campaignFormatLabel(c.format)}</TableCell>
                         <TableCell>{c.city || '—'}</TableCell>
                         <TableCell>{c.responsible_full_name || '—'}</TableCell>
-                        <TableCell>{CAMPAIGN_STATUSES.find((s) => s.value === c.status)?.label ?? c.status}</TableCell>
+                        <TableCell onClick={(e) => e.stopPropagation()}>
+                          {canManageCampaigns ? (
+                            <FormControl size="small" variant="standard" sx={{ minWidth: 110 }}>
+                              <Select
+                                value={c.status}
+                                onChange={(e) => void handleStatusChange(c.id, e.target.value)}
+                              >
+                                {CAMPAIGN_STATUSES.map((s) => (
+                                  <MenuItem key={s.value} value={s.value}>{s.label}</MenuItem>
+                                ))}
+                              </Select>
+                            </FormControl>
+                          ) : (
+                            CAMPAIGN_STATUSES.find((s) => s.value === c.status)?.label ?? c.status
+                          )}
+                        </TableCell>
                         <TableCell onClick={(e) => e.stopPropagation()}>
                           <Stack direction="row" spacing={1}>
                             <Button size="small" startIcon={<Edit />} onClick={() => setSelectedCampaignId(c.id)}>

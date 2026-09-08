@@ -39,8 +39,10 @@ const MetricCard: React.FC<{
   title: string;
   value: React.ReactNode;
   subtitle?: string;
-}> = ({ title, value, subtitle }) => (
-  <Card variant="outlined" sx={{ height: '100%' }}>
+  to?: string;
+}> = ({ title, value, subtitle, to }) => {
+  const navigate = useNavigate();
+  const body = (
     <CardContent>
       <Typography variant="caption" color="text.secondary">
         {title}
@@ -54,8 +56,19 @@ const MetricCard: React.FC<{
         </Typography>
       ) : null}
     </CardContent>
-  </Card>
-);
+  );
+  return (
+    <Card variant="outlined" sx={{ height: '100%' }}>
+      {to ? (
+        <CardActionArea onClick={() => navigate(to)} sx={{ height: '100%' }}>
+          {body}
+        </CardActionArea>
+      ) : (
+        body
+      )}
+    </Card>
+  );
+};
 
 const TrendPanel: React.FC<{
   title: string;
@@ -120,6 +133,7 @@ const DashboardOwnerTabs: React.FC = () => {
                   title="Активные ученики"
                   value={summaryQuery.data.active_students}
                   subtitle={`Групп: ${summaryQuery.data.active_groups}, тренеров: ${summaryQuery.data.active_trainers}`}
+                  to="/students"
                 />
               </Grid>
               <Grid item xs={12} md={3}>
@@ -127,6 +141,7 @@ const DashboardOwnerTabs: React.FC = () => {
                   title="Лиды за месяц"
                   value={summaryQuery.data.new_leads_month}
                   subtitle={`Сегодня: ${summaryQuery.data.new_leads_today}, в работе: ${summaryQuery.data.active_pipeline_count}`}
+                  to="/sales/leads"
                 />
               </Grid>
               <Grid item xs={12} md={3}>
@@ -134,6 +149,7 @@ const DashboardOwnerTabs: React.FC = () => {
                   title="Оплаты за месяц"
                   value={`${summaryQuery.data.payments_received_month.toLocaleString('ru-RU')} ₽`}
                   subtitle={`Транзакций: ${summaryQuery.data.payments_transactions_month}`}
+                  to="/finance/overview"
                 />
               </Grid>
               <Grid item xs={12} md={3}>
@@ -141,6 +157,7 @@ const DashboardOwnerTabs: React.FC = () => {
                   title="Просрочки"
                   value={summaryQuery.data.overdue_payments_3_count}
                   subtitle={`10+ дней: ${summaryQuery.data.overdue_payments_10_count}`}
+                  to="/finance/payments"
                 />
               </Grid>
 
@@ -149,6 +166,7 @@ const DashboardOwnerTabs: React.FC = () => {
                   title="Выиграно лидов"
                   value={summaryQuery.data.won_leads_month}
                   subtitle={`Регистраций на события: ${summaryQuery.data.registered_events_month}`}
+                  to="/sales/leads"
                 />
               </Grid>
               <Grid item xs={12} md={4}>
@@ -156,6 +174,7 @@ const DashboardOwnerTabs: React.FC = () => {
                   title="Owner workspace"
                   value={summaryQuery.data.owner_workspace_overdue_tasks}
                   subtitle={`Ожидают: ${summaryQuery.data.owner_workspace_waiting_tasks}, закрыто за 7 дней: ${summaryQuery.data.owner_workspace_completed_7_days}`}
+                  to="/owner-workspace"
                 />
               </Grid>
               <Grid item xs={12} md={4}>
@@ -163,6 +182,7 @@ const DashboardOwnerTabs: React.FC = () => {
                   title="Отработки"
                   value={summaryQuery.data.makeups_pending_total}
                   subtitle={`Ждут родителя: ${summaryQuery.data.makeups_waiting_parent}, назначено: ${summaryQuery.data.makeups_assigned}`}
+                  to="/operations/absences"
                 />
               </Grid>
 

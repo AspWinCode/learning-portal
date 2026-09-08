@@ -258,6 +258,9 @@ export const startAuditSession = (kind = 'initial'): Promise<AuditSession> =>
 export const getAuditSession = (id: number): Promise<AuditSession> =>
   api.get(`${BASE}/audit/sessions/${id}`).then((r) => r.data);
 
+export const getActiveAuditSession = (): Promise<AuditSession | null> =>
+  api.get(`${BASE}/audit/sessions/active`).then((r) => r.data || null);
+
 export const submitAuditAnswer = (
   sessionId: number,
   payload: { question_id?: number; section?: string; answer_text: string },

@@ -434,12 +434,15 @@ const AuditTab: React.FC = () => {
 
   useEffect(() => {
     academyAi.listAuditQuestions().then(setQuestions).catch((err) => setError(extractApiError(err, 'Ошибка загрузки вопросов')));
+    academyAi.getActiveAuditSession()
+      .then((s) => { if (s) setSession(s); })
+      .catch(() => {});
   }, [setError]);
 
   const start = async () => {
     try {
       setSession(await academyAi.startAuditSession());
-      setMessage('Сессия аудита создана');
+      setMessage('Сессия аудита создана — поля стали активными');
     } catch (err) {
       setError(extractApiError(err, 'Не удалось начать аудит'));
     }
@@ -465,7 +468,12 @@ const AuditTab: React.FC = () => {
       {error && <Alert severity="error">{error}</Alert>}
       {message && <Alert severity="success" onClose={() => setMessage(null)}>{message}</Alert>}
       {!session ? (
-        <Button variant="contained" onClick={start}>Начать аудит</Button>
+        <Alert
+          severity="info"
+          action={<Button color="inherit" size="small" onClick={start}>Начать аудит</Button>}
+        >
+          Чтобы поля стали активными, начните сессию аудита.
+        </Alert>
       ) : (
         <Stack direction="row" spacing={1} alignItems="center">
           <Chip label={`Сессия #${session.id}`} />

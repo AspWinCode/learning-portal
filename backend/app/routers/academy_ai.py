@@ -545,6 +545,21 @@ def start_audit_session(
     return session
 
 
+@router.get("/audit/sessions/active", response_model=Optional[AuditSessionOut])
+def get_active_audit_session(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("academy_ai.audit")),
+):
+    """Последняя незавершённая сессия аудита (для продолжения заполнения).
+    Возвращает null, если открытых сессий нет."""
+    return (
+        db.query(AcademyAuditSession)
+        .filter(AcademyAuditSession.status == AcademyAuditSessionStatus.IN_PROGRESS.value)
+        .order_by(AcademyAuditSession.started_at.desc().nullslast(), AcademyAuditSession.id.desc())
+        .first()
+    )
+
+
 @router.get("/audit/sessions/{session_id}", response_model=AuditSessionOut)
 def get_audit_session(
     session_id: int,
@@ -586,6 +601,9 @@ def submit_audit_answer(
     )
     db.add(kb_entry)
     db.flush()
+
+    # Индексируем ответ аудита в поиск, иначе консультант его не увидит.
+    kb.reindex_entry(db, kb_entry, commit=False)
 
     answer = AcademyAuditAnswer(
         session_id=session.id,

@@ -572,7 +572,7 @@ def get_audit_session(
     return session
 
 
-@router.post("/audit/sessions/{session_id}/answers", response_model=AuditAnswerOut, status_code=status.HTTP_201_CREATED)
+@router.post("/audit/sessions/{session_id}/answers", response_model=AuditAnswerOut)
 def submit_audit_answer(
     session_id: int,
     payload: AuditAnswerIn,
@@ -589,34 +589,70 @@ def submit_audit_answer(
         question = db.query(AcademyAuditQuestion).filter(AcademyAuditQuestion.id == payload.question_id).first()
         if question:
             section = section or question.section
+    title = question.prompt[:240] if question else f"Аудит: {section or 'ответ'}"
 
-    # Ответ аудита дублируется в базу знаний как структурированная запись.
-    kb_entry = AcademyKbEntry(
-        kind=AcademyKbEntryKind.AUDIT_ANSWER.value,
-        section=section,
-        title=(question.prompt[:240] if question else f"Аудит: {section or 'ответ'}"),
-        body_text=payload.answer_text,
-        meta=payload.structured,
-        created_by_id=current_user.id,
-    )
-    db.add(kb_entry)
+    # Один ответ на вопрос в рамках сессии — обновляем существующий, не плодим дубли.
+    answer = None
+    if payload.question_id:
+        answer = (
+            db.query(AcademyAuditAnswer)
+            .filter(
+                AcademyAuditAnswer.session_id == session.id,
+                AcademyAuditAnswer.question_id == payload.question_id,
+            )
+            .first()
+        )
+
+    # Ответ аудита зеркалится в базу знаний как запись — переиспользуем её при правке.
+    kb_entry = None
+    if answer and answer.kb_entry_id:
+        kb_entry = db.query(AcademyKbEntry).filter(AcademyKbEntry.id == answer.kb_entry_id).first()
+    if kb_entry is None:
+        kb_entry = AcademyKbEntry(kind=AcademyKbEntryKind.AUDIT_ANSWER.value, created_by_id=current_user.id)
+        db.add(kb_entry)
+    kb_entry.section = section
+    kb_entry.title = title
+    kb_entry.body_text = payload.answer_text
+    kb_entry.meta = payload.structured
+    kb_entry.is_active = True
     db.flush()
 
     # Индексируем ответ аудита в поиск, иначе консультант его не увидит.
     kb.reindex_entry(db, kb_entry, commit=False)
 
-    answer = AcademyAuditAnswer(
-        session_id=session.id,
-        question_id=payload.question_id,
-        section=section,
-        answer_text=payload.answer_text,
-        structured=payload.structured,
-        kb_entry_id=kb_entry.id,
-    )
-    db.add(answer)
+    if answer is None:
+        answer = AcademyAuditAnswer(session_id=session.id, question_id=payload.question_id)
+        db.add(answer)
+    answer.section = section
+    answer.answer_text = payload.answer_text
+    answer.structured = payload.structured
+    answer.kb_entry_id = kb_entry.id
+
     db.commit()
     db.refresh(answer)
     return answer
+
+
+@router.delete("/audit/sessions/{session_id}/answers/{answer_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_audit_answer(
+    session_id: int,
+    answer_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("academy_ai.audit")),
+):
+    answer = (
+        db.query(AcademyAuditAnswer)
+        .filter(AcademyAuditAnswer.id == answer_id, AcademyAuditAnswer.session_id == session_id)
+        .first()
+    )
+    if not answer:
+        raise HTTPException(status_code=404, detail="Ответ аудита не найден")
+    if answer.kb_entry_id:
+        entry = db.query(AcademyKbEntry).filter(AcademyKbEntry.id == answer.kb_entry_id).first()
+        if entry:
+            db.delete(entry)  # чанки удалятся каскадом
+    db.delete(answer)
+    db.commit()
 
 
 @router.post("/audit/sessions/{session_id}/complete", response_model=AuditSessionOut)

@@ -266,6 +266,9 @@ export const submitAuditAnswer = (
   payload: { question_id?: number; section?: string; answer_text: string },
 ): Promise<AuditAnswer> => api.post(`${BASE}/audit/sessions/${sessionId}/answers`, payload).then((r) => r.data);
 
+export const deleteAuditAnswer = (sessionId: number, answerId: number): Promise<void> =>
+  api.delete(`${BASE}/audit/sessions/${sessionId}/answers/${answerId}`).then(() => undefined);
+
 export const completeAuditSession = (id: number): Promise<AuditSession> =>
   api.post(`${BASE}/audit/sessions/${id}/complete`).then((r) => r.data);
 

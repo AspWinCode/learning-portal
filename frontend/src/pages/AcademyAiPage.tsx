@@ -431,17 +431,34 @@ const AuditTab: React.FC = () => {
   const [questions, setQuestions] = useState<academyAi.AuditQuestion[]>([]);
   const [session, setSession] = useState<academyAi.AuditSession | null>(null);
   const [answers, setAnswers] = useState<Record<number, string>>({});
+  // Сохранённые ответы по question_id — из них берём текст полей и id для удаления.
+  const [saved, setSaved] = useState<Record<number, academyAi.AuditAnswer>>({});
+  const [busy, setBusy] = useState<Record<number, boolean>>({});
+
+  const applySession = useCallback((s: academyAi.AuditSession) => {
+    setSession(s);
+    const byQ: Record<number, academyAi.AuditAnswer> = {};
+    const text: Record<number, string> = {};
+    (s.answers || []).forEach((a) => {
+      if (a.question_id != null) {
+        byQ[a.question_id] = a;
+        text[a.question_id] = a.answer_text || '';
+      }
+    });
+    setSaved(byQ);
+    setAnswers(text);
+  }, []);
 
   useEffect(() => {
     academyAi.listAuditQuestions().then(setQuestions).catch((err) => setError(extractApiError(err, 'Ошибка загрузки вопросов')));
     academyAi.getActiveAuditSession()
-      .then((s) => { if (s) setSession(s); })
+      .then((s) => { if (s) applySession(s); })
       .catch(() => {});
-  }, [setError]);
+  }, [setError, applySession]);
 
   const start = async () => {
     try {
-      setSession(await academyAi.startAuditSession());
+      applySession(await academyAi.startAuditSession());
       setMessage('Сессия аудита создана — поля стали активными');
     } catch (err) {
       setError(extractApiError(err, 'Не удалось начать аудит'));
@@ -450,11 +467,35 @@ const AuditTab: React.FC = () => {
 
   const saveAnswer = async (q: academyAi.AuditQuestion) => {
     if (!session || !answers[q.id]?.trim()) return;
+    setBusy((p) => ({ ...p, [q.id]: true }));
     try {
-      await academyAi.submitAuditAnswer(session.id, { question_id: q.id, section: q.section, answer_text: answers[q.id].trim() });
+      const a = await academyAi.submitAuditAnswer(session.id, {
+        question_id: q.id, section: q.section, answer_text: answers[q.id].trim(),
+      });
+      setSaved((p) => ({ ...p, [q.id]: a }));
+      setAnswers((p) => ({ ...p, [q.id]: a.answer_text || '' }));
       setMessage(`Ответ сохранён: ${q.prompt.slice(0, 40)}…`);
     } catch (err) {
       setError(extractApiError(err, 'Не удалось сохранить ответ'));
+    } finally {
+      setBusy((p) => ({ ...p, [q.id]: false }));
+    }
+  };
+
+  const deleteAnswer = async (q: academyAi.AuditQuestion) => {
+    const existing = saved[q.id];
+    if (!session || !existing) return;
+    if (!window.confirm('Удалить ответ? Его можно будет написать заново.')) return;
+    setBusy((p) => ({ ...p, [q.id]: true }));
+    try {
+      await academyAi.deleteAuditAnswer(session.id, existing.id);
+      setSaved((p) => { const n = { ...p }; delete n[q.id]; return n; });
+      setAnswers((p) => ({ ...p, [q.id]: '' }));
+      setMessage('Ответ удалён');
+    } catch (err) {
+      setError(extractApiError(err, 'Не удалось удалить ответ'));
+    } finally {
+      setBusy((p) => ({ ...p, [q.id]: false }));
     }
   };
 
@@ -486,23 +527,51 @@ const AuditTab: React.FC = () => {
         <Paper key={sec} variant="outlined" sx={{ p: 2 }}>
           <Typography variant="subtitle2" gutterBottom>{SECTION_LABELS[sec] || sec}</Typography>
           <Stack spacing={1.5}>
-            {qs.map((q) => (
-              <Box key={q.id}>
-                <Typography variant="body2">{q.prompt}</Typography>
-                {q.hint && <Typography variant="caption" color="text.secondary">{q.hint}</Typography>}
-                <Stack direction="row" spacing={1} sx={{ mt: 0.5 }}>
-                  <TextField
-                    size="small"
-                    fullWidth
-                    multiline
-                    disabled={!session}
-                    value={answers[q.id] || ''}
-                    onChange={(e) => setAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))}
-                  />
-                  <Button size="small" disabled={!session} onClick={() => saveAnswer(q)}>Сохранить</Button>
-                </Stack>
-              </Box>
-            ))}
+            {qs.map((q) => {
+              const isSaved = !!saved[q.id];
+              const dirty = (answers[q.id] || '') !== (saved[q.id]?.answer_text || '');
+              return (
+                <Box key={q.id}>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <Typography variant="body2">{q.prompt}</Typography>
+                    {isSaved && (
+                      <Chip
+                        size="small"
+                        color={dirty ? 'warning' : 'success'}
+                        label={dirty ? 'есть несохранённые правки' : 'сохранено'}
+                      />
+                    )}
+                  </Stack>
+                  {q.hint && <Typography variant="caption" color="text.secondary">{q.hint}</Typography>}
+                  <Stack direction="row" spacing={1} sx={{ mt: 0.5 }} alignItems="flex-start">
+                    <TextField
+                      size="small"
+                      fullWidth
+                      multiline
+                      disabled={!session || busy[q.id]}
+                      value={answers[q.id] || ''}
+                      onChange={(e) => setAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))}
+                    />
+                    <Button
+                      size="small"
+                      variant={dirty ? 'contained' : 'text'}
+                      disabled={!session || busy[q.id] || !answers[q.id]?.trim() || !dirty}
+                      onClick={() => saveAnswer(q)}
+                    >
+                      Сохранить
+                    </Button>
+                    <Button
+                      size="small"
+                      color="error"
+                      disabled={!session || busy[q.id] || !isSaved}
+                      onClick={() => deleteAnswer(q)}
+                    >
+                      Удалить
+                    </Button>
+                  </Stack>
+                </Box>
+              );
+            })}
           </Stack>
         </Paper>
       ))}

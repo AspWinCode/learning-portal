@@ -2313,7 +2313,7 @@ const SalesLeadsPage: React.FC = () => {
                 ) : null}
               </TableCell>
               <TableCell>{lead.phone || '—'}</TableCell>
-              <TableCell>
+              <TableCell onClick={(e) => e.stopPropagation()}>
                 <FormControl size="small" sx={{ minWidth: 160 }}>
                   <Select
                     value={getLeadStatusMenuValue(lead)}

@@ -125,6 +125,7 @@ import {
   CourseCatalogItemOut,
   StudentCredentialOut,
   StudentCourseAccessOut,
+  LearningLink,
 } from '../types';
 export { ownerWorkspaceApi } from './api/ownerWorkspace';
 
@@ -1488,6 +1489,14 @@ export const settingsApi = {
   },
   setRefusedReasons: async (items: string[]): Promise<{ items: string[] }> => {
     const response = await api.post('/api/settings/refused-reasons', { items });
+    return response.data;
+  },
+  getLearningLinks: async (): Promise<{ items: LearningLink[] }> => {
+    const response = await api.get('/api/settings/learning-links');
+    return response.data;
+  },
+  setLearningLinks: async (items: LearningLink[]): Promise<{ items: LearningLink[] }> => {
+    const response = await api.post('/api/settings/learning-links', { items });
     return response.data;
   },
   getStudentQuestionnaires: async (): Promise<StudentQuestionnaireTemplate[]> => {

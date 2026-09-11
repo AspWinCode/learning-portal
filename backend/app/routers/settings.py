@@ -16,6 +16,9 @@ from app.schemas.notes import NotesEnabledRolesResponse, NotesEnabledRolesUpdate
 from app.schemas.settings import (
     B2BDistrictsResponse,
     B2BDistrictsUpdate,
+    LearningLink,
+    LearningLinksResponse,
+    LearningLinksUpdate,
     LogoResponse,
     LogoUpdate,
     OwnerWorkspaceNotificationConfigResponse,
@@ -86,6 +89,7 @@ router = APIRouter()
 LOGO_KEY = "site_logo_data_url"
 DISTRICTS_KEY = "b2b_districts"
 REFUSED_REASONS_KEY = "sales_refused_reasons"
+LEARNING_LINKS_KEY = "learning_links"
 STUDENT_QUESTIONNAIRES_KEY = "student_questionnaires"
 OWNER_WS_TASK_CONFIG_KEY = "owner_workspace_task_config"
 OWNER_WS_PROJECT_CONFIG_KEY = "owner_workspace_project_config"
@@ -1180,6 +1184,48 @@ async def set_refused_reasons(
     db.commit()
     db.refresh(setting)
     return RefusedReasonsResponse(items=items)
+
+
+@router.get("/learning-links", response_model=LearningLinksResponse)
+async def get_learning_links(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    setting = db.query(AppSetting).filter(AppSetting.key == LEARNING_LINKS_KEY).first()
+    if not setting or not (setting.value or "").strip():
+        return LearningLinksResponse(items=[])
+    try:
+        data = json.loads(setting.value)
+        items = [LearningLink(**x) for x in data] if isinstance(data, list) else []
+    except Exception:
+        items = []
+    return LearningLinksResponse(items=items)
+
+
+@router.post("/learning-links", response_model=LearningLinksResponse)
+async def set_learning_links(
+    body: LearningLinksUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
+):
+    items = []
+    for link in body.items:
+        name = link.name.strip()
+        url = link.url.strip()
+        if not name or not url:
+            continue
+        items.append(LearningLink(id=link.id or str(uuid4()), name=name, url=url))
+    raw = json.dumps([item.model_dump() for item in items], ensure_ascii=False)
+    setting = db.query(AppSetting).filter(AppSetting.key == LEARNING_LINKS_KEY).first()
+    if not setting:
+        setting = AppSetting(key=LEARNING_LINKS_KEY, value=raw)
+        db.add(setting)
+    else:
+        setting.value = raw
+        db.add(setting)
+    db.commit()
+    db.refresh(setting)
+    return LearningLinksResponse(items=items)
 
 
 @router.get("/student-questionnaires", response_model=StudentQuestionnairesResponse)

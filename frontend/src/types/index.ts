@@ -1358,6 +1358,12 @@ export interface CampaignEventStage {
   is_terminal: boolean;
 }
 
+export interface LearningLink {
+  id: string;
+  name: string;
+  url: string;
+}
+
 export interface CampaignDictionaryItem {
   id: number;
   category: string;

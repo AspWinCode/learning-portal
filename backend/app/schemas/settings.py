@@ -28,6 +28,20 @@ class RefusedReasonsUpdate(BaseModel):
     items: List[str]
 
 
+class LearningLink(BaseModel):
+    id: str
+    name: str
+    url: str
+
+
+class LearningLinksResponse(BaseModel):
+    items: List[LearningLink]
+
+
+class LearningLinksUpdate(BaseModel):
+    items: List[LearningLink]
+
+
 class StudentQuestionnaireFieldValidation(BaseModel):
     min_length: Optional[int] = None
     max_length: Optional[int] = None

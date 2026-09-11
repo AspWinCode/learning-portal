@@ -30,7 +30,7 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
-import { Add as AddIcon, Delete as DeleteIcon, Edit as EditIcon, Lock as LockIcon } from '@mui/icons-material';
+import { Add as AddIcon, ContentCopy as ContentCopyIcon, Delete as DeleteIcon, Edit as EditIcon, Lock as LockIcon } from '@mui/icons-material';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout';
 import OwnerWorkspaceSettingsSection from '../components/ownerWorkspace/OwnerWorkspaceSettingsSection';
@@ -64,6 +64,7 @@ import {
   FinanceModelTemplate,
   FinanceTemplateArticleNode,
   FinanceTemplateMetric,
+  LearningLink,
 } from '../types';
 
 const leadStatusLabels: Record<LeadStatus, string> = {
@@ -244,6 +245,13 @@ const SalesSettingsPage: React.FC = () => {
   });
   const [refusedReasons, setRefusedReasons] = useState<string[]>([]);
   const [newRefusedReason, setNewRefusedReason] = useState('');
+  const [learningLinks, setLearningLinks] = useState<LearningLink[]>([]);
+  const [newLearningLinkName, setNewLearningLinkName] = useState('');
+  const [newLearningLinkUrl, setNewLearningLinkUrl] = useState('');
+  const [editingLearningLinkId, setEditingLearningLinkId] = useState<string | null>(null);
+  const [editingLearningLinkName, setEditingLearningLinkName] = useState('');
+  const [editingLearningLinkUrl, setEditingLearningLinkUrl] = useState('');
+  const [copiedLearningLinkId, setCopiedLearningLinkId] = useState<string | null>(null);
   const [maxPersonalConfigured, setMaxPersonalConfigured] = useState(false);
   const [maxPersonalProvider, setMaxPersonalProvider] = useState<'greenapi' | 'api_messenger' | null>(null);
   const [maxQrImg, setMaxQrImg] = useState<string | null>(null);
@@ -278,6 +286,7 @@ const SalesSettingsPage: React.FC = () => {
       load('Районы B2B', async () => (await settingsApi.getB2BDistricts()).items, setB2bDistricts),
       load('Работа со школами', () => campaignsApi.getSettings(), setCampaignSettings),
       load('Причины отказа', async () => (await settingsApi.getRefusedReasons()).items, setRefusedReasons),
+      load('Ссылки на обучение', async () => (await settingsApi.getLearningLinks()).items, setLearningLinks),
       load('Доступ к заметкам', async () => (await settingsApi.getNotesEnabledRoles()).enabled_roles, setNotesEnabledRoles),
     ]);
     maxApi.isConfigured().then((r) => {
@@ -705,6 +714,7 @@ const SalesSettingsPage: React.FC = () => {
           <Tab value="schools" label="Школы" />
           <Tab value="questionnaires" label="Анкеты" />
           <Tab value="cities" label="Города" />
+          <Tab value="learningLinks" label="Ссылки на обучение" />
           <Tab value="classes" label="Классы" />
           <Tab value="b2b" label="Районы" />
           <Tab value="schoolWork" label="Работа со школами" />
@@ -764,6 +774,155 @@ const SalesSettingsPage: React.FC = () => {
               ))}
             </TableBody>
           </Table>
+        </Paper>
+
+        <Paper sx={sectionPaperSx('learningLinks')}>
+          <Typography variant="h6" mb={1}>Ссылки на обучение</Typography>
+          <Box sx={{ display: 'flex', gap: 1, mb: 1, flexWrap: 'wrap' }}>
+            <TextField
+              size="small"
+              label="Название"
+              value={newLearningLinkName}
+              onChange={(e) => setNewLearningLinkName(e.target.value)}
+            />
+            <TextField
+              size="small"
+              label="Ссылка"
+              value={newLearningLinkUrl}
+              onChange={(e) => setNewLearningLinkUrl(e.target.value)}
+              sx={{ minWidth: 320 }}
+            />
+            <Button
+              variant="contained"
+              onClick={() =>
+                safeAction(async () => {
+                  const name = newLearningLinkName.trim();
+                  const url = newLearningLinkUrl.trim();
+                  if (!name || !url) return;
+                  const next = [...learningLinks, { id: '', name, url }];
+                  const res = await settingsApi.setLearningLinks(next);
+                  setLearningLinks(res.items);
+                  setNewLearningLinkName('');
+                  setNewLearningLinkUrl('');
+                })
+              }
+            >
+              Добавить
+            </Button>
+          </Box>
+          {learningLinks.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              Пока нет ни одной ссылки.
+            </Typography>
+          ) : (
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Название</TableCell>
+                  <TableCell>Ссылка</TableCell>
+                  <TableCell width={160} />
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {learningLinks.map((link) => (
+                  <TableRow key={link.id}>
+                    {editingLearningLinkId === link.id ? (
+                      <>
+                        <TableCell>
+                          <TextField
+                            size="small"
+                            value={editingLearningLinkName}
+                            onChange={(e) => setEditingLearningLinkName(e.target.value)}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <TextField
+                            size="small"
+                            fullWidth
+                            value={editingLearningLinkUrl}
+                            onChange={(e) => setEditingLearningLinkUrl(e.target.value)}
+                          />
+                        </TableCell>
+                        <TableCell align="right">
+                          <Button
+                            size="small"
+                            onClick={() =>
+                              safeAction(async () => {
+                                const name = editingLearningLinkName.trim();
+                                const url = editingLearningLinkUrl.trim();
+                                if (!name || !url) return;
+                                const next = learningLinks.map((l) =>
+                                  l.id === link.id ? { ...l, name, url } : l
+                                );
+                                const res = await settingsApi.setLearningLinks(next);
+                                setLearningLinks(res.items);
+                                setEditingLearningLinkId(null);
+                              })
+                            }
+                          >
+                            Сохранить
+                          </Button>
+                          <Button size="small" onClick={() => setEditingLearningLinkId(null)}>
+                            Отмена
+                          </Button>
+                        </TableCell>
+                      </>
+                    ) : (
+                      <>
+                        <TableCell>{link.name}</TableCell>
+                        <TableCell>
+                          <a href={link.url} target="_blank" rel="noopener noreferrer">
+                            {link.url}
+                          </a>
+                        </TableCell>
+                        <TableCell align="right">
+                          <Tooltip title={copiedLearningLinkId === link.id ? 'Скопировано' : 'Скопировать ссылку'}>
+                            <IconButton
+                              size="small"
+                              onClick={async () => {
+                                try {
+                                  await navigator.clipboard.writeText(link.url);
+                                  setCopiedLearningLinkId(link.id);
+                                  setTimeout(() => setCopiedLearningLinkId(null), 1500);
+                                } catch {
+                                  /* clipboard unavailable */
+                                }
+                              }}
+                            >
+                              <ContentCopyIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                          <IconButton
+                            size="small"
+                            onClick={() => {
+                              setEditingLearningLinkId(link.id);
+                              setEditingLearningLinkName(link.name);
+                              setEditingLearningLinkUrl(link.url);
+                            }}
+                          >
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={() =>
+                              safeAction(async () => {
+                                const next = learningLinks.filter((l) => l.id !== link.id);
+                                const res = await settingsApi.setLearningLinks(next);
+                                setLearningLinks(res.items);
+                              })
+                            }
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </TableCell>
+                      </>
+                    )}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </Paper>
 
         {canAccessPersons ? (

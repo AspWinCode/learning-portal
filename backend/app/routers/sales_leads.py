@@ -568,31 +568,61 @@ async def submit_specialist_questionnaire(
         full_comment = (base_comment + "\n\n" if base_comment else "") + extras_str
 
     questionnaire_data = payload.model_dump(mode="json")
-    lead = Lead(
-        owner_id=owner.id,
-        contact_name=payload.parent_full_name,
-        phone=payload.parent_phone,
-        phone_normalized=normalize_phone(payload.parent_phone or payload.child_phone or "") or None,
-        parent_full_name=payload.parent_full_name,
-        child_full_name=payload.child_full_name,
-        parent_phone=payload.parent_phone,
-        child_phone=payload.child_phone,
-        email=payload.parent_email or payload.student_email,
-        city=payload.city,
-        school_name=payload.school_name,
-        school_class=payload.school_class,
-        comment=full_comment or None,
-        source=payload.source or "Анкета Специалист",
-        tags=["direction:specialist"],
-        status=LeadStatus.NEW,
-        questionnaire_filled=True,
-        questionnaire_data=questionnaire_data,
-    )
+    phone_norm = normalize_phone(payload.parent_phone or payload.child_phone or "") or None
+
     db.add(card)
-    db.add(lead)
     db.flush()
     sync_student_card_person(db, card)
-    lead.student_card_id = card.id
+
+    # У leads.phone_normalized уникальный индекс — если лид с этим телефоном уже есть
+    # (например, менеджер уже завёл его вручную), обновляем существующего вместо вставки дубля.
+    existing_lead = (
+        db.query(Lead).filter(Lead.phone_normalized == phone_norm).first() if phone_norm else None
+    )
+    if existing_lead:
+        lead = existing_lead
+        lead.contact_name = payload.parent_full_name
+        lead.phone = payload.parent_phone
+        lead.parent_full_name = payload.parent_full_name
+        lead.child_full_name = payload.child_full_name
+        lead.parent_phone = payload.parent_phone
+        lead.child_phone = payload.child_phone
+        lead.email = payload.parent_email or payload.student_email or lead.email
+        lead.city = payload.city or lead.city
+        lead.school_name = payload.school_name or lead.school_name
+        lead.school_class = payload.school_class or lead.school_class
+        lead.comment = (f"{lead.comment}\n\n" if lead.comment else "") + full_comment if full_comment else lead.comment
+        lead.tags = sorted(set((lead.tags or []) + ["direction:specialist"]))
+        lead.questionnaire_filled = True
+        lead.questionnaire_data = questionnaire_data
+        lead.student_card_id = card.id
+        if not lead.source:
+            lead.source = payload.source or "Анкета Специалист"
+    else:
+        lead = Lead(
+            owner_id=owner.id,
+            contact_name=payload.parent_full_name,
+            phone=payload.parent_phone,
+            phone_normalized=phone_norm,
+            parent_full_name=payload.parent_full_name,
+            child_full_name=payload.child_full_name,
+            parent_phone=payload.parent_phone,
+            child_phone=payload.child_phone,
+            email=payload.parent_email or payload.student_email,
+            city=payload.city,
+            school_name=payload.school_name,
+            school_class=payload.school_class,
+            comment=full_comment or None,
+            source=payload.source or "Анкета Специалист",
+            tags=["direction:specialist"],
+            status=LeadStatus.NEW,
+            questionnaire_filled=True,
+            questionnaire_data=questionnaire_data,
+            student_card_id=card.id,
+        )
+        db.add(lead)
+
+    db.flush()
     sync_lead_person(db, lead)
     db.commit()
     db.refresh(lead)
@@ -627,27 +657,53 @@ async def submit_ege_trial_questionnaire(
     )
 
     questionnaire_data = payload.model_dump(mode="json")
-    lead = Lead(
-        owner_id=owner.id,
-        contact_name=payload.full_name,
-        phone=payload.phone,
-        phone_normalized=normalize_phone(payload.phone or "") or None,
-        parent_full_name=payload.full_name,
-        child_full_name=payload.full_name,
-        parent_phone=payload.phone,
-        city=payload.city,
-        school_name=payload.school_name,
-        source=payload.source or "Анкета Пробное ЕГЭ",
-        tags=["direction:ege-trial"],
-        status=LeadStatus.NEW,
-        questionnaire_filled=True,
-        questionnaire_data=questionnaire_data,
-    )
+    phone_norm = normalize_phone(payload.phone or "") or None
+
     db.add(card)
-    db.add(lead)
     db.flush()
     sync_student_card_person(db, card)
-    lead.student_card_id = card.id
+
+    # У leads.phone_normalized уникальный индекс — если лид с этим телефоном уже есть
+    # (например, менеджер уже завёл его вручную), обновляем существующего вместо вставки дубля.
+    existing_lead = (
+        db.query(Lead).filter(Lead.phone_normalized == phone_norm).first() if phone_norm else None
+    )
+    if existing_lead:
+        lead = existing_lead
+        lead.contact_name = payload.full_name
+        lead.phone = payload.phone
+        lead.parent_full_name = payload.full_name
+        lead.child_full_name = payload.full_name
+        lead.parent_phone = payload.phone
+        lead.city = payload.city or lead.city
+        lead.school_name = payload.school_name or lead.school_name
+        lead.tags = sorted(set((lead.tags or []) + ["direction:ege-trial"]))
+        lead.questionnaire_filled = True
+        lead.questionnaire_data = questionnaire_data
+        lead.student_card_id = card.id
+        if not lead.source:
+            lead.source = payload.source or "Анкета Пробное ЕГЭ"
+    else:
+        lead = Lead(
+            owner_id=owner.id,
+            contact_name=payload.full_name,
+            phone=payload.phone,
+            phone_normalized=phone_norm,
+            parent_full_name=payload.full_name,
+            child_full_name=payload.full_name,
+            parent_phone=payload.phone,
+            city=payload.city,
+            school_name=payload.school_name,
+            source=payload.source or "Анкета Пробное ЕГЭ",
+            tags=["direction:ege-trial"],
+            status=LeadStatus.NEW,
+            questionnaire_filled=True,
+            questionnaire_data=questionnaire_data,
+            student_card_id=card.id,
+        )
+        db.add(lead)
+
+    db.flush()
     sync_lead_person(db, lead)
     db.commit()
     db.refresh(lead)
@@ -805,21 +861,39 @@ async def submit_tilda_lead(
     source_id, source_name = _resolve_source(db, None, source_label)
     status_option_id = _get_default_lead_status_option_id(db, LeadStatus.NEW)
 
-    lead = Lead(
-        owner_id=owner.id,
-        contact_name=parent_name,
-        phone=normalized_phone,
-        phone_normalized=normalized_phone,
-        parent_full_name=parent_name,
-        parent_phone=normalized_phone,
-        child_full_name=child_name,
-        source=source_name or source_label,
-        source_id=source_id,
-        status=LeadStatus.NEW,
-        status_option_id=status_option_id,
-        tags=[tag],
+    # У leads.phone_normalized уникальный индекс — если лид с этим телефоном уже есть
+    # (например, менеджер уже завёл его вручную), обновляем существующего вместо вставки дубля.
+    existing_lead = (
+        db.query(Lead).filter(Lead.phone_normalized == normalized_phone).first() if normalized_phone else None
     )
-    db.add(lead)
+    if existing_lead:
+        lead = existing_lead
+        lead.contact_name = parent_name
+        lead.phone = normalized_phone
+        lead.parent_full_name = parent_name
+        lead.parent_phone = normalized_phone
+        lead.child_full_name = child_name
+        lead.tags = sorted(set((lead.tags or []) + [tag]))
+        if not lead.source:
+            lead.source = source_name or source_label
+            lead.source_id = source_id
+    else:
+        lead = Lead(
+            owner_id=owner.id,
+            contact_name=parent_name,
+            phone=normalized_phone,
+            phone_normalized=normalized_phone,
+            parent_full_name=parent_name,
+            parent_phone=normalized_phone,
+            child_full_name=child_name,
+            source=source_name or source_label,
+            source_id=source_id,
+            status=LeadStatus.NEW,
+            status_option_id=status_option_id,
+            tags=[tag],
+        )
+        db.add(lead)
+
     db.flush()
     sync_lead_person(db, lead)
     db.commit()

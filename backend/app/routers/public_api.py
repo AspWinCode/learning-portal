@@ -203,18 +203,36 @@ def submit_site_lead(payload: SiteLeadRequest, db: Session = Depends(get_db)):
     if payload.message and payload.message.strip():
         parts.append(payload.message.strip())
 
-    lead = Lead(
-        owner_id=owner.id,
-        contact_name=name,
-        phone=phone_val,
-        phone_normalized=phone_norm,
-        email=email_val,
-        source=source_label,
-        status=LeadStatus.NEW,
-        tags=["site_lead"],
-        comment="\n\n".join(parts) or None,
+    new_comment = "\n\n".join(parts) or None
+
+    # У leads.phone_normalized уникальный индекс — если лид с этим телефоном уже есть
+    # (например, менеджер уже завёл его вручную), обновляем существующего вместо вставки дубля.
+    existing_lead = (
+        db.query(Lead).filter(Lead.phone_normalized == phone_norm).first() if phone_norm else None
     )
-    db.add(lead)
+    if existing_lead:
+        lead = existing_lead
+        lead.contact_name = name
+        lead.phone = phone_val or lead.phone
+        lead.email = email_val or lead.email
+        lead.comment = (f"{lead.comment}\n\n" if lead.comment else "") + new_comment if new_comment else lead.comment
+        lead.tags = sorted(set((lead.tags or []) + ["site_lead"]))
+        if not lead.source:
+            lead.source = source_label
+    else:
+        lead = Lead(
+            owner_id=owner.id,
+            contact_name=name,
+            phone=phone_val,
+            phone_normalized=phone_norm,
+            email=email_val,
+            source=source_label,
+            status=LeadStatus.NEW,
+            tags=["site_lead"],
+            comment=new_comment,
+        )
+        db.add(lead)
+
     db.flush()
     sync_lead_person(db, lead)
     db.commit()

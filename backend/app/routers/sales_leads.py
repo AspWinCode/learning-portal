@@ -681,11 +681,13 @@ async def submit_individual_lessons_questionnaire(
     if max_comment:
         full_comment = (base_comment + "\n\n" if base_comment else "") + max_comment
 
+    phone_norm = normalize_phone(payload.parent_phone or payload.child_phone or "") or None
+
     card = StudentCard(
         student_full_name=payload.child_full_name,
         birth_date=payload.birth_date,
         student_phone=payload.child_phone,
-        phone_normalized=normalize_phone(payload.parent_phone or payload.child_phone or "") or None,
+        phone_normalized=phone_norm,
         gender=payload.gender,
         on_grant=False,
         format_type=None,
@@ -703,33 +705,61 @@ async def submit_individual_lessons_questionnaire(
         discount_value=0.0,
         anketa_status="filled",
     )
-
-    questionnaire_data = payload.model_dump(mode="json")
-    lead = Lead(
-        owner_id=owner.id,
-        contact_name=payload.parent_full_name,
-        phone=payload.parent_phone,
-        phone_normalized=normalize_phone(payload.parent_phone or payload.child_phone or "") or None,
-        parent_full_name=payload.parent_full_name,
-        child_full_name=payload.child_full_name,
-        parent_phone=payload.parent_phone,
-        child_phone=payload.child_phone,
-        email=payload.parent_email or payload.student_email,
-        city=payload.city,
-        school_name=payload.school_name,
-        school_class=payload.school_class,
-        comment=full_comment or None,
-        source=payload.source or "Анкета Индивидуальные занятия",
-        tags=["direction:individual"],
-        status=LeadStatus.NEW,
-        questionnaire_filled=True,
-        questionnaire_data=questionnaire_data,
-    )
     db.add(card)
-    db.add(lead)
     db.flush()
     sync_student_card_person(db, card)
-    lead.student_card_id = card.id
+
+    questionnaire_data = payload.model_dump(mode="json")
+
+    # У leads.phone_normalized уникальный индекс — если лид с этим телефоном уже есть
+    # (например, менеджер уже завёл его вручную), обновляем существующего вместо вставки дубля.
+    existing_lead = (
+        db.query(Lead).filter(Lead.phone_normalized == phone_norm).first() if phone_norm else None
+    )
+    if existing_lead:
+        lead = existing_lead
+        lead.parent_full_name = payload.parent_full_name
+        lead.contact_name = payload.parent_full_name
+        lead.child_full_name = payload.child_full_name
+        lead.phone = payload.parent_phone
+        lead.parent_phone = payload.parent_phone
+        lead.child_phone = payload.child_phone
+        lead.email = payload.parent_email or payload.student_email or lead.email
+        lead.city = payload.city or lead.city
+        lead.school_name = payload.school_name or lead.school_name
+        lead.school_class = payload.school_class or lead.school_class
+        lead.comment = (f"{lead.comment}\n\n" if lead.comment else "") + full_comment if full_comment else lead.comment
+        lead.tags = sorted(set((lead.tags or []) + ["direction:individual"]))
+        lead.questionnaire_filled = True
+        lead.questionnaire_data = questionnaire_data
+        lead.student_card_id = card.id
+        if not lead.source:
+            lead.source = payload.source or "Анкета Индивидуальные занятия"
+    else:
+        lead = Lead(
+            owner_id=owner.id,
+            contact_name=payload.parent_full_name,
+            phone=payload.parent_phone,
+            phone_normalized=phone_norm,
+            parent_full_name=payload.parent_full_name,
+            child_full_name=payload.child_full_name,
+            parent_phone=payload.parent_phone,
+            child_phone=payload.child_phone,
+            email=payload.parent_email or payload.student_email,
+            city=payload.city,
+            school_name=payload.school_name,
+            school_class=payload.school_class,
+            comment=full_comment or None,
+            source=payload.source or "Анкета Индивидуальные занятия",
+            tags=["direction:individual"],
+            status=LeadStatus.NEW,
+            questionnaire_filled=True,
+            questionnaire_data=questionnaire_data,
+            student_card_id=card.id,
+        )
+        db.add(lead)
+
+    db.flush()
     sync_lead_person(db, lead)
     db.commit()
     db.refresh(lead)

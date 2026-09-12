@@ -81,6 +81,7 @@ class StudentResponse(StudentBase, StudentProfileFields):
 
 class StudentImportResponse(BaseModel):
     created: int
+    updated: int = 0
     skipped: int
     errors: List[str] = []
 

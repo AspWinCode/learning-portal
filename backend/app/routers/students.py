@@ -393,7 +393,19 @@ async def import_students_from_excel(
     def parse_bool(raw_value) -> bool:
         return str(raw_value or "").strip().lower() in ("да", "yes", "1", "true", "+")
 
+    def name_match_key(full_name: str) -> str:
+        parts = full_name.strip().lower().split()
+        return " ".join(parts[:2])
+
+    existing_active_students = (
+        db.query(Student).filter(Student.status == StudentStatus.ACTIVE).all()
+    )
+    students_by_key: dict = {}
+    for existing_student in existing_active_students:
+        students_by_key.setdefault(name_match_key(existing_student.full_name), []).append(existing_student)
+
     created = 0
+    updated = 0
     skipped = 0
     errors: List[str] = []
 
@@ -462,6 +474,66 @@ async def import_students_from_excel(
                 except ValueError as exc:
                     errors.append(f"Строка {row_index}: не удалось создать родителя ({exc}) — ученик создан без родителя")
 
+        row_fields = dict(
+            birth_date=parse_date(cell(row, ["дата рождения", "birth_date"])),
+            phone=cell(row, ["телефон ученика", "phone"]),
+            email=cell(row, ["email ученика", "email"]),
+            gender=gender,
+            format_type=format_type,
+            city=cell(row, ["город", "city"]),
+            school=cell(row, ["школа", "school"]),
+            grade=cell(row, ["класс", "grade"]),
+            parent_phone_2=cell(row, ["второй телефон родителя", "parent_phone_2"]),
+            preferred_messenger=preferred_messenger,
+            comment=cell(row, ["комментарий", "comment"]),
+            source=cell(row, ["источник", "source"]),
+        )
+        on_grant_raw = cell(row, ["на гранте", "on_grant"])
+        has_max_raw = cell(row, ["есть max", "has_max"])
+
+        match_key = name_match_key(full_name)
+        candidates = students_by_key.get(match_key, [])
+        if len(candidates) > 1:
+            skipped += 1
+            errors.append(
+                f"Строка {row_index}: найдено несколько учеников с именем «{full_name}» — "
+                f"пропущена, обновите вручную"
+            )
+            continue
+
+        if len(candidates) == 1:
+            db_student = candidates[0]
+            db_student.full_name = full_name
+            for field_name, value in row_fields.items():
+                if value:
+                    setattr(db_student, field_name, value)
+            if on_grant_raw:
+                db_student.on_grant = parse_bool(on_grant_raw)
+            if has_max_raw:
+                db_student.has_max = parse_bool(has_max_raw)
+            if parent_id and not db_student.parent_id:
+                db_student.parent_id = parent_id
+            if abonement_id and not db_student.abonement_id:
+                db_student.abonement_id = abonement_id
+            if group_id:
+                already_in_group = db.query(GroupStudent).filter(
+                    GroupStudent.group_id == group_id,
+                    GroupStudent.student_id == db_student.id,
+                    GroupStudent.left_at.is_(None),
+                ).first()
+                if not already_in_group:
+                    db.add(GroupStudent(group_id=group_id, student_id=db_student.id))
+            log_student_activity(
+                db,
+                student_id=db_student.id,
+                activity_type="updated",
+                title="Ученик обновлён импортом из Excel",
+                created_by=current_user.id,
+                payload_json={"source": "students.import_xlsx", "row": row_index},
+            )
+            updated += 1
+            continue
+
         db_student = Student(
             full_name=full_name,
             parent_id=parent_id,
@@ -469,20 +541,9 @@ async def import_students_from_excel(
             discount_type=DiscountType.NONE,
             discount_value=0.0,
             status=StudentStatus.ACTIVE,
-            birth_date=parse_date(cell(row, ["дата рождения", "birth_date"])),
-            phone=cell(row, ["телефон ученика", "phone"]),
-            email=cell(row, ["email ученика", "email"]),
-            gender=gender,
-            on_grant=parse_bool(cell(row, ["на гранте", "on_grant"])),
-            format_type=format_type,
-            city=cell(row, ["город", "city"]),
-            school=cell(row, ["школа", "school"]),
-            grade=cell(row, ["класс", "grade"]),
-            parent_phone_2=cell(row, ["второй телефон родителя", "parent_phone_2"]),
-            has_max=parse_bool(cell(row, ["есть max", "has_max"])),
-            preferred_messenger=preferred_messenger,
-            comment=cell(row, ["комментарий", "comment"]),
-            source=cell(row, ["источник", "source"]),
+            on_grant=parse_bool(on_grant_raw),
+            has_max=parse_bool(has_max_raw),
+            **row_fields,
         )
         db.add(db_student)
         db.flush()
@@ -497,11 +558,12 @@ async def import_students_from_excel(
             created_by=current_user.id,
             payload_json={"source": "students.import_xlsx", "row": row_index},
         )
+        students_by_key.setdefault(match_key, []).append(db_student)
         created += 1
 
     db.commit()
-    log_action(db, current_user.id, "import", "student", None, {"created": created, "skipped": skipped})
-    return StudentImportResponse(created=created, skipped=skipped, errors=errors)
+    log_action(db, current_user.id, "import", "student", None, {"created": created, "updated": updated, "skipped": skipped})
+    return StudentImportResponse(created=created, updated=updated, skipped=skipped, errors=errors)
 
 
 @router.get("/parents/search", response_model=List[dict])

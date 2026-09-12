@@ -518,7 +518,7 @@ export const studentsApi = {
     });
     return response.data;
   },
-  importXlsx: async (file: File): Promise<{ created: number; skipped: number; errors: string[] }> => {
+  importXlsx: async (file: File): Promise<{ created: number; updated: number; skipped: number; errors: string[] }> => {
     const form = new FormData();
     form.append('file', file);
     const response = await api.post('/api/students/import-xlsx', form, {

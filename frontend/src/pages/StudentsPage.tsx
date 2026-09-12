@@ -54,7 +54,7 @@ const StudentsPage: React.FC = () => {
   const [studentCards, setStudentCards] = useState<StudentCardType[]>([]);
   const [open, setOpen] = useState(false);
   const [importing, setImporting] = useState(false);
-  const [importResult, setImportResult] = useState<{ created: number; skipped: number; errors: string[] } | null>(null);
+  const [importResult, setImportResult] = useState<{ created: number; updated: number; skipped: number; errors: string[] } | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [parentOpen, setParentOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
@@ -1164,7 +1164,7 @@ const StudentsPage: React.FC = () => {
 
           {importResult && (
             <Alert severity="info" onClose={() => setImportResult(null)} sx={{ mb: 2 }}>
-              Импорт: создано {importResult.created}, пропущено {importResult.skipped}.
+              Импорт: создано {importResult.created}, обновлено {importResult.updated}, пропущено {importResult.skipped}.
               {importResult.errors.length > 0 && (
                 <Box component="span" sx={{ display: 'block', mt: 0.5 }}>
                   {importResult.errors.join('; ')}

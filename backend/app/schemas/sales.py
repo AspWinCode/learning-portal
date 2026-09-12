@@ -836,6 +836,8 @@ class LeadCommunicationResponse(BaseModel):
     pause_reason: Optional[str] = None
     follow_up_at: datetime
     created_at: datetime
+    max_sent: Optional[bool] = None
+    max_send_error: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

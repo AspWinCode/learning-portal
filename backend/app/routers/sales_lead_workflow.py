@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -31,7 +31,15 @@ from app.schemas.sales import (
     LeadTaskResponse,
     LeadTaskUpdate,
 )
+from app.services.max_messenger import (
+    get_personal_provider as max_get_personal_provider,
+    is_configured as max_is_configured,
+    is_personal_configured as max_is_personal_configured,
+    send_message as max_send_message,
+    send_message_personal as max_send_message_personal,
+)
 from app.utils.datetime import utcnow
+from app.utils.phone import normalize_phone
 
 router = APIRouter()
 
@@ -43,6 +51,34 @@ def _require_owner_or_admin(lead: Lead, user: User) -> None:
     if auth.resolve_effective_role(user) in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
         return
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions")
+
+
+def _try_send_lead_max_message(lead: Lead, message: str):
+    """Попытаться реально отправить сообщение лиду в MAX. Возвращает (sent, error)."""
+    if not max_is_configured():
+        return None, "MAX не настроен"
+
+    user_id = lead.max_user_id
+    phone = (lead.parent_phone or lead.phone or "").strip() or None
+
+    chat_id_for_personal = None
+    use_phone = False
+    if max_is_personal_configured() and max_get_personal_provider() == "greenapi" and phone:
+        normalized = normalize_phone(phone)
+        if normalized and (normalized.startswith("+7") or normalized.startswith("+375")):
+            chat_id_for_personal = f"{normalized.lstrip('+')}@c.us"
+            use_phone = True
+
+    if not use_phone and user_id is None:
+        return None, "Нет MAX user_id у лида и телефон не поддержан для отправки"
+
+    if max_is_personal_configured() and use_phone and chat_id_for_personal:
+        ok, _, err = max_send_message_personal(chat_id_for_personal, message)
+    elif max_is_personal_configured():
+        ok, _, err = max_send_message_personal(str(user_id), message)
+    else:
+        ok, _, err = max_send_message(user_id, message)
+    return ok, err
 
 
 def _add_activity(
@@ -151,7 +187,10 @@ async def send_info_for_lead(
         raise HTTPException(status_code=404, detail="Lead not found")
     _require_owner_or_admin(lead, current_user)
 
-    if payload.follow_up_at <= utcnow():
+    follow_up_at = payload.follow_up_at
+    if follow_up_at.tzinfo is None:
+        follow_up_at = follow_up_at.replace(tzinfo=timezone.utc)
+    if follow_up_at <= datetime.now(timezone.utc):
         raise HTTPException(status_code=400, detail="follow_up_at must be in the future")
     message = (payload.message or "").strip()
     if not message:
@@ -191,6 +230,12 @@ async def send_info_for_lead(
         lead.status = LeadStatus.CONTACTED
     db.commit()
     db.refresh(communication)
+
+    max_sent = None
+    max_send_error = None
+    if communication.channel == "max":
+        max_sent, max_send_error = _try_send_lead_max_message(lead, message)
+
     log_action(
         db,
         current_user.id,
@@ -202,8 +247,12 @@ async def send_info_for_lead(
             "channel": payload.channel,
             "follow_up_at": payload.follow_up_at.isoformat(),
             "pause_reason": payload.pause_reason,
+            "max_sent": max_sent,
+            "max_send_error": max_send_error,
         },
     )
+    communication.max_sent = max_sent
+    communication.max_send_error = max_send_error
     return communication
 
 

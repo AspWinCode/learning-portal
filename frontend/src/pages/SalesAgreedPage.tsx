@@ -39,6 +39,7 @@ export const SalesAgreedPageContent: React.FC = () => {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [templates, setTemplates] = useState<LeadInfoTemplate[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
   const [actionLoadingId, setActionLoadingId] = useState<number | null>(null);
 
   const [sendOpen, setSendOpen] = useState(false);
@@ -120,7 +121,7 @@ export const SalesAgreedPageContent: React.FC = () => {
     setActionLoadingId(sendLead.id);
     setError(null);
     try {
-      await salesApi.sendLeadInfo(sendLead.id, {
+      const comm = await salesApi.sendLeadInfo(sendLead.id, {
         template_id: sendForm.template_id || undefined,
         channel: sendForm.channel,
         message: sendForm.message.trim(),
@@ -130,6 +131,13 @@ export const SalesAgreedPageContent: React.FC = () => {
       setSendOpen(false);
       setSendLead(null);
       await loadLeads();
+      if (comm.channel === 'max') {
+        if (comm.max_sent) {
+          setInfo(S.maxSentOk);
+        } else {
+          setError(S.maxSentFailedPrefix + (comm.max_send_error || ''));
+        }
+      }
     } catch (err: any) {
       setError(extractApiError(err, S.sendError));
     } finally {
@@ -184,6 +192,12 @@ export const SalesAgreedPageContent: React.FC = () => {
       {error && (
         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
           {error}
+        </Alert>
+      )}
+
+      {info && (
+        <Alert severity="success" sx={{ mb: 2 }} onClose={() => setInfo(null)}>
+          {info}
         </Alert>
       )}
 
@@ -296,6 +310,7 @@ export const SalesAgreedPageContent: React.FC = () => {
               value={sendForm.channel}
               onChange={(e) => setSendForm((s) => ({ ...s, channel: String(e.target.value) }))}
             >
+              <MenuItem value="max">{S.channelMax}</MenuItem>
               <MenuItem value="messenger">messenger</MenuItem>
               <MenuItem value="email">email</MenuItem>
               <MenuItem value="call">call</MenuItem>

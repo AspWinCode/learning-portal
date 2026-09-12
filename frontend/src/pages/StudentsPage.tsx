@@ -177,6 +177,9 @@ const StudentsPage: React.FC = () => {
   const [rowMenuAnchor, setRowMenuAnchor] = useState<{ el: HTMLElement; student: Student } | null>(null);
   const [parentSearch, setParentSearch] = useState('');
   const [archiveConfirmOpen, setArchiveConfirmOpen] = useState<Student | null>(null);
+  const [hardDeleteConfirm, setHardDeleteConfirm] = useState<Student | null>(null);
+  const [hardDeleteConfirmName, setHardDeleteConfirmName] = useState('');
+  const [hardDeleteSaving, setHardDeleteSaving] = useState(false);
 
   const isValidEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((s || '').trim());
 
@@ -1369,6 +1372,18 @@ const StudentsPage: React.FC = () => {
                 setRowMenuAnchor(null);
               }}>Разархивировать</MenuItem>
             )}
+            {isAdminLike && rowMenuAnchor && (
+              <MenuItem
+                sx={{ color: 'error.main' }}
+                onClick={() => {
+                  setHardDeleteConfirm(rowMenuAnchor.student);
+                  setHardDeleteConfirmName('');
+                  setRowMenuAnchor(null);
+                }}
+              >
+                Удалить навсегда
+              </MenuItem>
+            )}
           </Menu>
 
           <Dialog open={!!archiveConfirmOpen} onClose={() => setArchiveConfirmOpen(null)}>
@@ -1383,6 +1398,47 @@ const StudentsPage: React.FC = () => {
                   setArchiveConfirmOpen(null);
                 }
               }}>Архивировать</Button>
+            </DialogActions>
+          </Dialog>
+
+          <Dialog open={!!hardDeleteConfirm} onClose={() => setHardDeleteConfirm(null)}>
+            <DialogTitle>Удалить ученика навсегда?</DialogTitle>
+            <DialogContent>
+              <Typography sx={{ mb: 2 }}>
+                Все данные ученика — оценки, посещаемость, платежи, характеристики, счета —
+                будут удалены без возможности восстановления. Это необратимо.
+              </Typography>
+              <TextField
+                fullWidth
+                size="small"
+                autoFocus
+                label={`Введите «${hardDeleteConfirm?.full_name ?? ''}» для подтверждения`}
+                value={hardDeleteConfirmName}
+                onChange={(e) => setHardDeleteConfirmName(e.target.value)}
+              />
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setHardDeleteConfirm(null)}>Отмена</Button>
+              <Button
+                color="error"
+                variant="contained"
+                disabled={hardDeleteSaving || !hardDeleteConfirm || hardDeleteConfirmName.trim() !== hardDeleteConfirm.full_name}
+                onClick={async () => {
+                  if (!hardDeleteConfirm) return;
+                  setHardDeleteSaving(true);
+                  try {
+                    await studentsApi.hardDelete(hardDeleteConfirm.id);
+                    await loadStudents();
+                    setHardDeleteConfirm(null);
+                  } catch (err: any) {
+                    setError(err.response?.data?.detail || 'Не удалось удалить ученика');
+                  } finally {
+                    setHardDeleteSaving(false);
+                  }
+                }}
+              >
+                {hardDeleteSaving ? 'Удаление…' : 'Удалить навсегда'}
+              </Button>
             </DialogActions>
           </Dialog>
         </>

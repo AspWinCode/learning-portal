@@ -488,6 +488,10 @@ export const studentsApi = {
   archive: async (id: number): Promise<void> => {
     await api.delete(`/api/students/${id}`);
   },
+  hardDelete: async (id: number): Promise<{ message: string }> => {
+    const response = await api.delete(`/api/students/${id}`, { params: { hard: true } });
+    return response.data;
+  },
   removeProgram: async (studentId: number, programId: number): Promise<void> => {
     await api.delete(`/api/students/${studentId}/programs/${programId}`);
   },

@@ -3,6 +3,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session, selectinload, joinedload
 from sqlalchemy import func, or_
+from sqlalchemy.exc import IntegrityError
 from app.database import get_db
 from app import auth
 from app.schemas.programs import ProgramSummaryResponse
@@ -20,7 +21,13 @@ from app.schemas.students import (
     StudentWithParentCreate,
     StudentWithParentResponse,
 )
-from app.models import Student, User, StudentStatus, UserRole, Abonement, AbonementStatus, DiscountType, StudentProgram, StudentProgramLinkStatus, StudentAccount, StudentAccountTransaction, LessonAttendance, Group, StudentActivityLog, Grade, Program, ProgramStatus, Topic, Module
+from app.models import (
+    Student, User, StudentStatus, UserRole, Abonement, AbonementStatus, DiscountType,
+    StudentProgram, StudentProgramLinkStatus, StudentAccount, StudentAccountTransaction,
+    LessonAttendance, Group, StudentActivityLog, Grade, Program, ProgramStatus, Topic, Module,
+    StudentCard, BankTransaction, TochkaAppliedPayment, FinanceTransaction, GroupStudent,
+    Characteristic, ParentQuestion, AbsenceFollowUp, Lead,
+)
 from app.routers.action_log import log_action
 from app.student_display import get_student_display_name, get_students_display_names
 from app.services.parent_invite import create_parent_user_no_invite, create_invite_for_existing_parent
@@ -1085,33 +1092,81 @@ async def update_student(
     return db_student
 
 
+def _hard_delete_student_cascade(db: Session, student_id: int) -> None:
+    """Полностью удаляет все данные ученика без проверок на связанные записи.
+
+    Таблицы с ON DELETE CASCADE в БД (student_credentials, student_course_access,
+    student_course_progress, custom_lesson_students, student_freezes,
+    task_template_students, task_students) не трогаем — их подчистит СУБД при
+    удалении самой строки students. Остальное — явно, до удаления Student.
+    """
+    for account in db.query(StudentAccount).filter(StudentAccount.student_id == student_id).all():
+        db.delete(account)  # ORM-каскад удалит student_account_transactions
+
+    for model in (
+        FinanceTransaction, BankTransaction, TochkaAppliedPayment, LessonAttendance,
+        Grade, Characteristic, GroupStudent, StudentProgram, AbsenceFollowUp,
+        ParentQuestion, StudentActivityLog,
+    ):
+        db.query(model).filter(model.student_id == student_id).delete(synchronize_session=False)
+
+    # Лиды — независимая CRM-сущность, не удаляем, только отвязываем.
+    student_card = db.query(StudentCard).filter(StudentCard.student_id == student_id).first()
+    db.query(Lead).filter(Lead.converted_to_student_id == student_id).update(
+        {"converted_to_student_id": None}, synchronize_session=False
+    )
+    if student_card:
+        db.query(Lead).filter(Lead.student_card_id == student_card.id).update(
+            {"student_card_id": None}, synchronize_session=False
+        )
+        db.delete(student_card)
+
+
 @router.delete("/{student_id}")
 async def delete_student(
     student_id: int,
+    hard: bool = False,
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_permission("students.delete"))
 ):
-    """Архивация ученика (удаление запрещено)"""
+    """Архивация ученика по умолчанию; hard=true — полное необратимое удаление
+    (только Owner/Admin), без проверки связанных данных."""
     db_student = db.query(Student).filter(Student.id == student_id).first()
     if db_student is None:
         raise HTTPException(status_code=404, detail="Student not found")
-    
+
+    if hard:
+        if auth.resolve_effective_role(current_user) not in (UserRole.OWNER, UserRole.ADMIN):
+            raise HTTPException(status_code=403, detail="Полное удаление доступно только владельцу и администратору")
+        try:
+            _hard_delete_student_cascade(db, student_id)
+            db.delete(db_student)
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            raise HTTPException(
+                status_code=409,
+                detail="Не удалось удалить: на ученика ссылаются другие записи, которые не были учтены.",
+            )
+        log_action(db, current_user.id, "hard_delete", "student", student_id)
+        return {"message": "Student permanently deleted"}
+
     # Архивируем вместо удаления
     db_student.status = StudentStatus.ARCHIVED
     db.commit()
-    
+
     # Проверяем, нужно ли деактивировать родителя
     active_students_count = db.query(Student).filter(
         Student.parent_id == db_student.parent_id,
         Student.status == StudentStatus.ACTIVE
     ).count()
-    
+
     if active_students_count == 0:
         parent = db.query(User).filter(User.id == db_student.parent_id).first()
         if parent:
             parent.is_active = False
             db.commit()
-    
+
     log_action(db, current_user.id, "archive", "student", student_id)
     return {"message": "Student archived"}
 

@@ -23,7 +23,33 @@ import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import Layout from '../components/Layout';
 import { extractApiError } from '../utils/extractApiError';
+import { markdownToHtml } from '../utils/markdownHtml';
 import * as academyAi from '../services/academyAiApi';
+
+const CONSULT_DIALOG_STORAGE_KEY = 'academy_ai_consult_dialog_id';
+
+const LMS_TOOL_LABELS: Record<string, string> = {
+  schools_directory: 'справочник школ и B2B',
+  finance_summary: 'финансы',
+  students_overview: 'ученики',
+  groups_load: 'загрузка групп',
+  programs_catalog: 'каталог программ',
+  sales_funnel: 'воронка продаж',
+  reviews_summary: 'характеристики учеников',
+};
+
+/** Человекочитаемая сводка источников ответа вместо сырого JSON. */
+function formatUsedSources(sources: Record<string, unknown> | null | undefined): string[] {
+  if (!sources) return [];
+  const lines: string[] = [];
+  const expertise = sources.expertise as { title: string }[] | undefined;
+  const kb = sources.kb as { title: string }[] | undefined;
+  const lms = sources.lms as string[] | undefined;
+  if (expertise?.length) lines.push(`Методика: ${expertise.map((s) => s.title).join(', ')}`);
+  if (kb?.length) lines.push(`База знаний: ${kb.map((s) => s.title).join(', ')}`);
+  if (lms?.length) lines.push(`LMS: ${lms.map((t) => LMS_TOOL_LABELS[t] || t).join(', ')}`);
+  return lines;
+}
 
 const SECTION_LABELS: Record<string, string> = {
   niche: 'Ниша и продукты',
@@ -63,11 +89,39 @@ const ConsultTab: React.FC = () => {
   const [dialogId, setDialogId] = useState<number | undefined>();
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(true);
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Восстанавливаем сохранённый диалог при загрузке страницы, чтобы история
+  // и контекст переписки не терялись при перезагрузке.
+  useEffect(() => {
+    const saved = localStorage.getItem(CONSULT_DIALOG_STORAGE_KEY);
+    const savedId = saved ? Number(saved) : NaN;
+    if (!saved || Number.isNaN(savedId)) {
+      setHistoryLoading(false);
+      return;
+    }
+    academyAi
+      .getDialog(savedId)
+      .then((data) => {
+        setDialogId(data.id);
+        setMessages(data.messages);
+      })
+      .catch(() => {
+        localStorage.removeItem(CONSULT_DIALOG_STORAGE_KEY);
+      })
+      .finally(() => setHistoryLoading(false));
+  }, []);
+
+  const startNewDialog = () => {
+    localStorage.removeItem(CONSULT_DIALOG_STORAGE_KEY);
+    setDialogId(undefined);
+    setMessages([]);
+  };
 
   const sendMessage = async () => {
     const text = input.trim();
@@ -82,6 +136,7 @@ const ConsultTab: React.FC = () => {
     try {
       const res = await academyAi.consult(text, dialogId);
       setDialogId(res.dialog_id);
+      localStorage.setItem(CONSULT_DIALOG_STORAGE_KEY, String(res.dialog_id));
       setMessages((prev) => [
         ...prev,
         {
@@ -102,36 +157,60 @@ const ConsultTab: React.FC = () => {
   return (
     <Stack spacing={2}>
       {error && <Alert severity="error">{error}</Alert>}
+      <Stack direction="row" justifyContent="flex-end">
+        <Button size="small" startIcon={<RefreshIcon />} onClick={startNewDialog} disabled={sending || messages.length === 0}>
+          Новый диалог
+        </Button>
+      </Stack>
       <Paper variant="outlined" sx={{ p: 2, minHeight: 320, maxHeight: 480, overflowY: 'auto' }}>
-        {messages.length === 0 && (
+        {historyLoading && (
+          <Stack alignItems="center" sx={{ py: 4 }}>
+            <CircularProgress size={24} />
+          </Stack>
+        )}
+        {!historyLoading && messages.length === 0 && (
           <Typography color="text.secondary">
             Задайте вопрос по управлению академией — консультант ответит, опираясь на методику,
             базу знаний и данные LMS.
           </Typography>
         )}
         <Stack spacing={1.5}>
-          {messages.map((m) => (
-            <Box
-              key={m.id}
-              sx={{
-                alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
-                maxWidth: '85%',
-                bgcolor: m.role === 'user' ? 'primary.main' : 'grey.100',
-                color: m.role === 'user' ? 'primary.contrastText' : 'text.primary',
-                px: 1.5,
-                py: 1,
-                borderRadius: 2,
-                whiteSpace: 'pre-wrap',
-              }}
-            >
-              <Typography variant="body2">{m.content}</Typography>
-              {m.used_sources && Object.keys(m.used_sources).length > 0 && (
-                <Typography variant="caption" sx={{ opacity: 0.7, display: 'block', mt: 0.5 }}>
-                  {JSON.stringify(m.used_sources)}
-                </Typography>
-              )}
-            </Box>
-          ))}
+          {messages.map((m) => {
+            const sourceLines = m.role === 'assistant' ? formatUsedSources(m.used_sources) : [];
+            return (
+              <Box
+                key={m.id}
+                sx={{
+                  alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
+                  maxWidth: '85%',
+                  bgcolor: m.role === 'user' ? 'primary.main' : 'grey.100',
+                  color: m.role === 'user' ? 'primary.contrastText' : 'text.primary',
+                  px: 1.5,
+                  py: 1,
+                  borderRadius: 2,
+                }}
+              >
+                {m.role === 'assistant' ? (
+                  <Box
+                    sx={{
+                      typography: 'body2',
+                      '& > :first-of-type': { mt: 0 },
+                      '& > :last-child': { mb: 0 },
+                      '& ul, & ol': { pl: 2.5 },
+                    }}
+                    dangerouslySetInnerHTML={{ __html: markdownToHtml(m.content) }}
+                  />
+                ) : (
+                  <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{m.content}</Typography>
+                )}
+                {sourceLines.length > 0 && (
+                  <Typography variant="caption" sx={{ opacity: 0.7, display: 'block', mt: 0.5 }}>
+                    {sourceLines.join(' · ')}
+                  </Typography>
+                )}
+              </Box>
+            );
+          })}
         </Stack>
         <div ref={endRef} />
       </Paper>

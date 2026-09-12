@@ -400,8 +400,23 @@ const SalesSettingsPage: React.FC = () => {
     pipelineStageDraft.some((c) => !c.label.trim() || !c.primary_status);
 
   const handlePipelineColumnStatusesChange = (idx: number, newSelected: LeadStatus[]) => {
-    setPipelineStageDraft((prev) =>
-      prev.map((col, i) => {
+    setPipelineStageDraft((prev) => {
+      // Сначала забираем выбранные статусы у ЛЮБЫХ других колонок, где они сейчас закреплены,
+      // чтобы статус мог быть только в одном месте — иначе список для новой/пустой колонки
+      // всегда пуст, так как все 12 статусов уже разобраны по существующим колонкам.
+      const stripped = prev.map((col, i) => {
+        if (i === idx) return col;
+        const loseePrimary = newSelected.includes(col.primary_status);
+        const remainingGrouped = col.grouped_statuses.filter((s) => !newSelected.includes(s));
+        if (!loseePrimary) {
+          return { ...col, grouped_statuses: remainingGrouped };
+        }
+        if (remainingGrouped.length > 0) {
+          return { ...col, primary_status: remainingGrouped[0], grouped_statuses: remainingGrouped.slice(1) };
+        }
+        return { ...col, primary_status: '' as LeadStatus, grouped_statuses: [] };
+      });
+      return stripped.map((col, i) => {
         if (i !== idx) return col;
         if (newSelected.length === 0) {
           return { ...col, primary_status: '' as LeadStatus, grouped_statuses: [] };
@@ -409,8 +424,8 @@ const SalesSettingsPage: React.FC = () => {
         const primary = newSelected.includes(col.primary_status) ? col.primary_status : newSelected[0];
         const grouped = newSelected.filter((s) => s !== primary);
         return { ...col, primary_status: primary, grouped_statuses: grouped };
-      })
-    );
+      });
+    });
   };
 
   const handlePipelinePrimaryStatusChange = (idx: number, newPrimary: LeadStatus) => {
@@ -1177,7 +1192,6 @@ const SalesSettingsPage: React.FC = () => {
             >
               {pipelineStageDraft.map((col, idx) => {
                 const columnStatuses = [col.primary_status, ...col.grouped_statuses].filter(Boolean) as LeadStatus[];
-                const selectableOptions = Array.from(new Set([...pipelineUnassignedStatuses, ...columnStatuses]));
                 return (
                   <SortableStageRow key={col.key} id={col.key}>
                     <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap" useFlexGap>
@@ -1209,11 +1223,16 @@ const SalesSettingsPage: React.FC = () => {
                             (selected as LeadStatus[]).map((s) => leadStatusLabels[s]).join(', ')
                           }
                         >
-                          {selectableOptions.map((st) => (
-                            <MenuItem key={st} value={st}>
-                              {leadStatusLabels[st]}
-                            </MenuItem>
-                          ))}
+                          {ALL_LEAD_STATUSES.map((st) => {
+                            const ownerIdx = pipelineAssignedStatusColumn[st];
+                            const ownedByOther = ownerIdx !== undefined && ownerIdx !== idx;
+                            return (
+                              <MenuItem key={st} value={st}>
+                                {leadStatusLabels[st]}
+                                {ownedByOther && ` (заберётся из «${pipelineStageDraft[ownerIdx].label}»)`}
+                              </MenuItem>
+                            );
+                          })}
                         </Select>
                       </FormControl>
                       {columnStatuses.length > 1 && (

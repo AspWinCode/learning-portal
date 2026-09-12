@@ -518,9 +518,21 @@ const AuditTab: React.FC = () => {
       ) : (
         <Stack direction="row" spacing={1} alignItems="center">
           <Chip label={`Сессия #${session.id}`} />
-          <Button size="small" onClick={() => academyAi.completeAuditSession(session.id).then(() => setMessage('Аудит завершён'))}>
-            Завершить
-          </Button>
+          {session.status === 'completed' ? (
+            <Chip size="small" color="success" label="Аудит завершён — можно продолжать редактировать" />
+          ) : (
+            <Button
+              size="small"
+              onClick={() =>
+                academyAi.completeAuditSession(session.id).then((s) => {
+                  setSession(s);
+                  setMessage('Аудит завершён');
+                })
+              }
+            >
+              Завершить
+            </Button>
+          )}
         </Stack>
       )}
       {Object.entries(grouped).map(([sec, qs]) => (

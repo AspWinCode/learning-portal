@@ -550,11 +550,11 @@ def get_active_audit_session(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_permission("academy_ai.audit")),
 ):
-    """Последняя незавершённая сессия аудита (для продолжения заполнения).
-    Возвращает null, если открытых сессий нет."""
+    """Последняя сессия аудита (для продолжения заполнения) — независимо от статуса:
+    «Завершить» ставит отметку, но не должен прятать уже введённые ответы за
+    более старой незавершённой сессией. Возвращает null, если сессий вообще нет."""
     return (
         db.query(AcademyAuditSession)
-        .filter(AcademyAuditSession.status == AcademyAuditSessionStatus.IN_PROGRESS.value)
         .order_by(AcademyAuditSession.started_at.desc().nullslast(), AcademyAuditSession.id.desc())
         .first()
     )

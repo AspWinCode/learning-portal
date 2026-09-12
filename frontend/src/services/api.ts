@@ -126,6 +126,7 @@ import {
   StudentCredentialOut,
   StudentCourseAccessOut,
   LearningLink,
+  LeadPipelineStage,
 } from '../types';
 export { ownerWorkspaceApi } from './api/ownerWorkspace';
 
@@ -1503,6 +1504,14 @@ export const settingsApi = {
   },
   setRefusedReasons: async (items: string[]): Promise<{ items: string[] }> => {
     const response = await api.post('/api/settings/refused-reasons', { items });
+    return response.data;
+  },
+  getLeadPipelineStages: async (): Promise<{ items: LeadPipelineStage[] }> => {
+    const response = await api.get('/api/settings/lead-pipeline-stages');
+    return response.data;
+  },
+  setLeadPipelineStages: async (items: LeadPipelineStage[]): Promise<{ items: LeadPipelineStage[] }> => {
+    const response = await api.post('/api/settings/lead-pipeline-stages', { items });
     return response.data;
   },
   getLearningLinks: async (): Promise<{ items: LearningLink[] }> => {

@@ -63,6 +63,7 @@ import {
   LeadCommunication,
   LeadCommunicationChannel,
   LeadInfoTemplate,
+  LeadPipelineStage,
   LeadSource,
   LeadStatus,
   LeadStatusOption,
@@ -98,27 +99,16 @@ const leadAiStageMeta: Record<string, { label: string; color: 'success' | 'warni
 /** Тег лида: пригласить на следующее мероприятие (воронка → колонка «Следующее мероприятие») */
 const TAG_REINVITE_NEXT_EVENT = 'reinvite_next_event';
 
-const PIPELINE_STATUSES: LeadStatus[] = [
-  'new',
-  'thinking',
-  'no_answer',
-  'refused',
-  'trial_scheduled',
-  'event_registered',
-  'decided_immediately',
+/** Дефолтная конфигурация колонок воронки — используется, пока не загружен пользовательский конфиг из настроек. */
+const DEFAULT_PIPELINE_STAGES: LeadPipelineStage[] = [
+  { key: 'new', label: 'Новый', color: null, primary_status: 'new', grouped_statuses: [], position: 0 },
+  { key: 'thinking', label: 'Подумают', color: null, primary_status: 'thinking', grouped_statuses: ['contacted'], position: 1 },
+  { key: 'no_answer', label: 'Недозвон', color: null, primary_status: 'no_answer', grouped_statuses: [], position: 2 },
+  { key: 'refused', label: 'Отказали', color: null, primary_status: 'refused', grouped_statuses: ['lost'], position: 3 },
+  { key: 'trial_scheduled', label: 'Запланировали пробное', color: null, primary_status: 'trial_scheduled', grouped_statuses: ['demo', 'invoice_sent'], position: 4 },
+  { key: 'event_registered', label: 'Записали на мероприятие', color: null, primary_status: 'event_registered', grouped_statuses: [], position: 5 },
+  { key: 'decided_immediately', label: 'Решил заниматься сразу', color: null, primary_status: 'decided_immediately', grouped_statuses: ['won'], position: 6 },
 ];
-
-/** Маппинг финальных/служебных статусов в колонки воронки. */
-function getPipelineColumnForStatus(status: LeadStatus): LeadStatus {
-  const map: Partial<Record<LeadStatus, LeadStatus>> = {
-    contacted: 'thinking',
-    demo: 'trial_scheduled',
-    invoice_sent: 'trial_scheduled',
-    won: 'decided_immediately',
-    lost: 'refused',
-  };
-  return map[status] ?? status;
-}
 
 const DEFAULT_REFUSED_REASONS = [
   'Нет времени',
@@ -234,6 +224,32 @@ const SalesLeadsPage: React.FC = () => {
   const [dropRefusedReason, setDropRefusedReason] = useState('');
   const [dropTrialAt, setDropTrialAt] = useState('');
   const [refusedReasons, setRefusedReasons] = useState<string[]>([]);
+  const [pipelineStages, setPipelineStages] = useState<LeadPipelineStage[]>(DEFAULT_PIPELINE_STAGES);
+  /** Отсортированные по позиции колонки воронки (из настроек, с фолбэком на дефолт). */
+  const sortedPipelineStages = useMemo(
+    () => [...pipelineStages].sort((a, b) => a.position - b.position),
+    [pipelineStages]
+  );
+  /** Обратная карта: любой статус лида (основной или служебный) → основной статус его колонки. */
+  const statusToPrimaryStatus = useMemo(() => {
+    const map: Partial<Record<LeadStatus, LeadStatus>> = {};
+    for (const col of sortedPipelineStages) {
+      map[col.primary_status] = col.primary_status;
+      for (const st of col.grouped_statuses) map[st] = col.primary_status;
+    }
+    return map;
+  }, [sortedPipelineStages]);
+  /** Маппинг финального/служебного статуса лида в основной статус его колонки воронки. */
+  const getPipelineColumnForStatus = useCallback(
+    (status: LeadStatus): LeadStatus => statusToPrimaryStatus[status] ?? status,
+    [statusToPrimaryStatus]
+  );
+  /** Название колонки (с учётом переименования в настройках) по её основному статусу. */
+  const columnLabelByPrimaryStatus = useMemo(() => {
+    const map: Partial<Record<LeadStatus, string>> = {};
+    for (const col of sortedPipelineStages) map[col.primary_status] = col.label;
+    return map;
+  }, [sortedPipelineStages]);
   const [dropEventId, setDropEventId] = useState<number | ''>('');
   const [dropEventNote, setDropEventNote] = useState('');
   const [noAnswerArchiveConfirmOpen, setNoAnswerArchiveConfirmOpen] = useState(false);
@@ -354,6 +370,16 @@ const SalesLeadsPage: React.FC = () => {
         setRefusedReasons(refused.items && refused.items.length ? refused.items : DEFAULT_REFUSED_REASONS);
       } catch {
         setRefusedReasons(DEFAULT_REFUSED_REASONS);
+      }
+      try {
+        const stagesRes = await settingsApi.getLeadPipelineStages();
+        setPipelineStages(
+          stagesRes.items && stagesRes.items.length
+            ? [...stagesRes.items].sort((a, b) => a.position - b.position)
+            : DEFAULT_PIPELINE_STAGES
+        );
+      } catch {
+        setPipelineStages(DEFAULT_PIPELINE_STAGES);
       }
     } catch {
       // ignore metadata fetch errors in UI
@@ -661,8 +687,12 @@ const SalesLeadsPage: React.FC = () => {
     return `base:${getPipelineColumnForStatus(lead.status)}`;
   };
 
+  /** Название колонки воронки для статуса (с учётом переименования), либо название самого статуса. */
+  const pipelineStatusLabel = (status: LeadStatus): string =>
+    columnLabelByPrimaryStatus[status] ?? statusLabels[status];
+
   const getLeadStatusDisplay = (lead: Lead): string => {
-    return statusLabels[getPipelineColumnForStatus(lead.status)];
+    return pipelineStatusLabel(getPipelineColumnForStatus(lead.status));
   };
 
   const handleLeadStatusSelectChange = async (lead: Lead, value: string) => {
@@ -1846,13 +1876,13 @@ const SalesLeadsPage: React.FC = () => {
       setDropFollowUpAt('');
       setDropEventId('');
       setDropEventNote('');
-      setToast({ open: true, message: `Лид "${lead.contact_name}" перенесён в "${statusLabels[dropTargetStatus]}"`, severity: 'success' });
+      setToast({ open: true, message: `Лид "${lead.contact_name}" перенесён в "${pipelineStatusLabel(dropTargetStatus)}"`, severity: 'success' });
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось перенести лид в стадию'));
     }
   };
 
-  const statusOptions = PIPELINE_STATUSES;
+  const statusOptions = sortedPipelineStages;
   const pipelineLeads = useMemo(
     () =>
       isPipelineRoute
@@ -1872,33 +1902,38 @@ const SalesLeadsPage: React.FC = () => {
       if (schoolTrim) {
         source = source.filter((l) => (l.school_name || '').toLowerCase().includes(schoolTrim));
       }
-      // Архивные лиды показываем только при включенной колонке архива.
-      const visibleSource = showArchiveColumn ? source : source.filter((l) => l.status !== 'lost');
       // Лиды в колонке следующего мероприятия и no-show исключаются из основных колонок.
       const notInNextEventColumn = (l: Lead) => !noShowLeadIds.has(l.id) && !reinviteLeadIds.has(l.id);
-      const base = PIPELINE_STATUSES.map((st) => ({
-        status: st as LeadStatus | 'archive' | 'next_event',
-        title: statusLabels[st],
-        leads:
-          st === 'refused' && showArchiveColumn
-            ? source.filter((l) => l.status === 'refused' && notInNextEventColumn(l))
-            : visibleSource.filter((l) => getPipelineColumnForStatus(l.status) === st && notInNextEventColumn(l)),
-      }));
+      // Лиды со статусом «lost» всегда уходят в структурную колонку «Архив» (или скрываются, если она выключена),
+      // независимо от того, к какой пользовательской колонке приписан статус lost в настройках.
+      const base = sortedPipelineStages.map((col) => {
+        const columnStatuses = new Set<LeadStatus>([col.primary_status, ...col.grouped_statuses]);
+        return {
+          status: col.primary_status as LeadStatus | 'archive' | 'next_event',
+          title: col.label,
+          color: col.color || undefined,
+          leads: source.filter(
+            (l) => l.status !== 'lost' && columnStatuses.has(l.status) && notInNextEventColumn(l)
+          ),
+        };
+      });
       base.push({
         status: 'next_event',
         title: 'Следующее мероприятие',
+        color: undefined,
         leads: source.filter((l) => noShowLeadIds.has(l.id) || reinviteLeadIds.has(l.id)),
       });
       if (showArchiveColumn) {
         base.push({
           status: 'archive',
           title: 'Архив',
+          color: undefined,
           leads: source.filter((l) => l.status === 'lost'),
         });
       }
       return base;
     },
-    [isPipelineRoute, leads, pipelineLeads, showArchiveColumn, noShowLeadIds, reinviteLeadIds, pipelineSchoolFilter]
+    [isPipelineRoute, leads, pipelineLeads, showArchiveColumn, noShowLeadIds, reinviteLeadIds, pipelineSchoolFilter, sortedPipelineStages]
   );
 
   const [kanbanBadges, setKanbanBadges] = useState<Record<number, { has_invoice: boolean; has_task_today: boolean; is_overdue: boolean }>>({});
@@ -2050,9 +2085,9 @@ const SalesLeadsPage: React.FC = () => {
             >
               <MenuItem value="">Любой</MenuItem>
               <MenuItem value="next_event">Следующее мероприятие</MenuItem>
-              {statusOptions.map((st) => (
-                <MenuItem key={st} value={st}>
-                  {statusLabels[st]}
+              {statusOptions.map((col) => (
+                <MenuItem key={col.key} value={col.primary_status}>
+                  {col.label}
                 </MenuItem>
               ))}
             </Select>
@@ -2324,9 +2359,9 @@ const SalesLeadsPage: React.FC = () => {
                     <MenuItem value="next_event">
                       <Chip size="small" label="Следующее мероприятие" />
                     </MenuItem>
-                    {statusOptions.map((st) => (
-                      <MenuItem key={st} value={`base:${st}`}>
-                        <Chip size="small" label={statusLabels[st]} color={badgeColor(st)} />
+                    {statusOptions.map((col) => (
+                      <MenuItem key={col.key} value={`base:${col.primary_status}`}>
+                        <Chip size="small" label={col.label} color={badgeColor(col.primary_status)} />
                       </MenuItem>
                     ))}
                   </Select>
@@ -2440,7 +2475,12 @@ const SalesLeadsPage: React.FC = () => {
               >
                 <CardContent>
                   <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
-                    <Typography variant="subtitle1">{col.title}</Typography>
+                    <Stack direction="row" alignItems="center" spacing={1}>
+                      {col.color && (
+                        <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: col.color, flexShrink: 0 }} />
+                      )}
+                      <Typography variant="subtitle1">{col.title}</Typography>
+                    </Stack>
                     <Chip size="small" label={col.leads.length} />
                   </Stack>
                   <Stack spacing={1.5}>
@@ -3417,7 +3457,7 @@ const SalesLeadsPage: React.FC = () => {
           {dropTargetStatus && !['thinking', 'refused', 'trial_scheduled', 'event_registered'].includes(dropTargetStatus) && (
             <>
               <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                Новая стадия: {dropTargetStatus ? statusLabels[dropTargetStatus] : '—'}
+                Новая стадия: {dropTargetStatus ? pipelineStatusLabel(dropTargetStatus) : '—'}
               </Typography>
               {(() => {
                 const lead = dropLeadId ? leads.find((l) => l.id === dropLeadId) : null;

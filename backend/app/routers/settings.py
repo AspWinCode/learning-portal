@@ -11,11 +11,14 @@ from uuid import uuid4
 
 from app.database import get_db
 from app import auth
-from app.models import AppSetting, OwnerWorkspaceNotification, OwnerWorkspaceWebPushSubscription, StudentCard, User, UserRole
+from app.models import AppSetting, LeadStatus, OwnerWorkspaceNotification, OwnerWorkspaceWebPushSubscription, StudentCard, User, UserRole
 from app.schemas.notes import NotesEnabledRolesResponse, NotesEnabledRolesUpdate
 from app.schemas.settings import (
     B2BDistrictsResponse,
     B2BDistrictsUpdate,
+    LeadPipelineStage,
+    LeadPipelineStagesResponse,
+    LeadPipelineStagesUpdate,
     LearningLink,
     LearningLinksResponse,
     LearningLinksUpdate,
@@ -89,6 +92,7 @@ router = APIRouter()
 LOGO_KEY = "site_logo_data_url"
 DISTRICTS_KEY = "b2b_districts"
 REFUSED_REASONS_KEY = "sales_refused_reasons"
+LEAD_PIPELINE_STAGES_KEY = "sales_lead_pipeline_stages"
 LEARNING_LINKS_KEY = "learning_links"
 STUDENT_QUESTIONNAIRES_KEY = "student_questionnaires"
 OWNER_WS_TASK_CONFIG_KEY = "owner_workspace_task_config"
@@ -1184,6 +1188,86 @@ async def set_refused_reasons(
     db.commit()
     db.refresh(setting)
     return RefusedReasonsResponse(items=items)
+
+
+DEFAULT_LEAD_PIPELINE_STAGES: List[Dict[str, Any]] = [
+    {"key": "new", "label": "Новый", "color": None, "primary_status": "new", "grouped_statuses": [], "position": 0},
+    {"key": "thinking", "label": "Подумают", "color": None, "primary_status": "thinking", "grouped_statuses": ["contacted"], "position": 1},
+    {"key": "no_answer", "label": "Недозвон", "color": None, "primary_status": "no_answer", "grouped_statuses": [], "position": 2},
+    {"key": "refused", "label": "Отказали", "color": None, "primary_status": "refused", "grouped_statuses": ["lost"], "position": 3},
+    {"key": "trial_scheduled", "label": "Запланировали пробное", "color": None, "primary_status": "trial_scheduled", "grouped_statuses": ["demo", "invoice_sent"], "position": 4},
+    {"key": "event_registered", "label": "Записали на мероприятие", "color": None, "primary_status": "event_registered", "grouped_statuses": [], "position": 5},
+    {"key": "decided_immediately", "label": "Решил заниматься сразу", "color": None, "primary_status": "decided_immediately", "grouped_statuses": ["won"], "position": 6},
+]
+
+
+def _validate_lead_pipeline_stages(items: List[LeadPipelineStage]) -> None:
+    if not items:
+        raise HTTPException(status_code=400, detail="Нужна хотя бы одна колонка")
+    all_status_values = {s.value for s in LeadStatus}
+    seen_keys: set = set()
+    seen_primary: set = set()
+    seen_statuses: set = set()
+    for item in items:
+        if not item.label or not item.label.strip():
+            raise HTTPException(status_code=400, detail="Название колонки не может быть пустым")
+        if item.key in seen_keys:
+            raise HTTPException(status_code=400, detail=f"Повторяющийся ключ колонки: {item.key}")
+        seen_keys.add(item.key)
+        if item.primary_status not in all_status_values:
+            raise HTTPException(status_code=400, detail=f"Неизвестный статус: {item.primary_status}")
+        if item.primary_status in seen_primary:
+            raise HTTPException(status_code=400, detail=f"Статус {item.primary_status} назначен основным сразу в нескольких колонках")
+        seen_primary.add(item.primary_status)
+        column_statuses = [item.primary_status, *item.grouped_statuses]
+        for st in column_statuses:
+            if st not in all_status_values:
+                raise HTTPException(status_code=400, detail=f"Неизвестный статус: {st}")
+            if st in seen_statuses:
+                raise HTTPException(status_code=400, detail=f"Статус {st} назначен сразу в несколько колонок")
+            seen_statuses.add(st)
+    missing = all_status_values - seen_statuses
+    if missing:
+        raise HTTPException(status_code=400, detail=f"Не назначены колонки для статусов: {', '.join(sorted(missing))}")
+
+
+@router.get("/lead-pipeline-stages", response_model=LeadPipelineStagesResponse)
+async def get_lead_pipeline_stages(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    setting = db.query(AppSetting).filter(AppSetting.key == LEAD_PIPELINE_STAGES_KEY).first()
+    if not setting or not (setting.value or "").strip():
+        return LeadPipelineStagesResponse(items=[LeadPipelineStage(**s) for s in DEFAULT_LEAD_PIPELINE_STAGES])
+    try:
+        data = json.loads(setting.value)
+        items = [LeadPipelineStage(**s) for s in data] if isinstance(data, list) else []
+        if not items:
+            items = [LeadPipelineStage(**s) for s in DEFAULT_LEAD_PIPELINE_STAGES]
+    except Exception:
+        items = [LeadPipelineStage(**s) for s in DEFAULT_LEAD_PIPELINE_STAGES]
+    return LeadPipelineStagesResponse(items=items)
+
+
+@router.post("/lead-pipeline-stages", response_model=LeadPipelineStagesResponse)
+async def set_lead_pipeline_stages(
+    body: LeadPipelineStagesUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
+):
+    _validate_lead_pipeline_stages(body.items)
+    items_sorted = sorted(body.items, key=lambda s: s.position)
+    raw = json.dumps([s.model_dump() for s in items_sorted], ensure_ascii=False)
+    setting = db.query(AppSetting).filter(AppSetting.key == LEAD_PIPELINE_STAGES_KEY).first()
+    if not setting:
+        setting = AppSetting(key=LEAD_PIPELINE_STAGES_KEY, value=raw)
+        db.add(setting)
+    else:
+        setting.value = raw
+        db.add(setting)
+    db.commit()
+    db.refresh(setting)
+    return LeadPipelineStagesResponse(items=items_sorted)
 
 
 @router.get("/learning-links", response_model=LearningLinksResponse)

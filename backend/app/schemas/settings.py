@@ -28,6 +28,23 @@ class RefusedReasonsUpdate(BaseModel):
     items: List[str]
 
 
+class LeadPipelineStage(BaseModel):
+    key: str
+    label: str
+    color: Optional[str] = None
+    primary_status: str
+    grouped_statuses: List[str] = Field(default_factory=list)
+    position: int
+
+
+class LeadPipelineStagesResponse(BaseModel):
+    items: List[LeadPipelineStage]
+
+
+class LeadPipelineStagesUpdate(BaseModel):
+    items: List[LeadPipelineStage]
+
+
 class LearningLink(BaseModel):
     id: str
     name: str

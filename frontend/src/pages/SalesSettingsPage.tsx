@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -30,7 +30,10 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
-import { Add as AddIcon, ContentCopy as ContentCopyIcon, Delete as DeleteIcon, Edit as EditIcon, Lock as LockIcon } from '@mui/icons-material';
+import { Add as AddIcon, ContentCopy as ContentCopyIcon, Delete as DeleteIcon, DragIndicator as DragIndicatorIcon, Edit as EditIcon, Lock as LockIcon } from '@mui/icons-material';
+import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
+import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout';
 import OwnerWorkspaceSettingsSection from '../components/ownerWorkspace/OwnerWorkspaceSettingsSection';
@@ -65,7 +68,13 @@ import {
   FinanceTemplateArticleNode,
   FinanceTemplateMetric,
   LearningLink,
+  LeadPipelineStage,
 } from '../types';
+
+const ALL_LEAD_STATUSES: LeadStatus[] = [
+  'new', 'contacted', 'no_answer', 'demo', 'invoice_sent', 'won', 'lost',
+  'thinking', 'refused', 'trial_scheduled', 'event_registered', 'decided_immediately',
+];
 
 const leadStatusLabels: Record<LeadStatus, string> = {
   new: 'Новый',
@@ -140,6 +149,34 @@ const SchoolSearchField: React.FC<{ onSearch: (q: string) => void }> = ({ onSear
       onChange={handleChange}
       sx={{ flex: 1, maxWidth: 400 }}
     />
+  );
+};
+
+const SortableStageRow: React.FC<{ id: string; children: React.ReactNode }> = ({ id, children }) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  return (
+    <Box
+      ref={setNodeRef}
+      sx={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.5 : 1,
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: 1,
+        p: 1.5,
+        mb: 1,
+        border: '1px solid',
+        borderColor: 'divider',
+        borderRadius: 1,
+        bgcolor: 'background.paper',
+      }}
+    >
+      <Box {...attributes} {...listeners} sx={{ cursor: 'grab', pt: 1, color: 'text.secondary' }}>
+        <DragIndicatorIcon fontSize="small" />
+      </Box>
+      <Box sx={{ flex: 1 }}>{children}</Box>
+    </Box>
   );
 };
 
@@ -245,6 +282,9 @@ const SalesSettingsPage: React.FC = () => {
   });
   const [refusedReasons, setRefusedReasons] = useState<string[]>([]);
   const [newRefusedReason, setNewRefusedReason] = useState('');
+  const [pipelineStageDraft, setPipelineStageDraft] = useState<LeadPipelineStage[]>([]);
+  const [pipelineStagesSaving, setPipelineStagesSaving] = useState(false);
+  const [pipelineStagesError, setPipelineStagesError] = useState('');
   const [learningLinks, setLearningLinks] = useState<LearningLink[]>([]);
   const [newLearningLinkName, setNewLearningLinkName] = useState('');
   const [newLearningLinkUrl, setNewLearningLinkUrl] = useState('');
@@ -286,6 +326,11 @@ const SalesSettingsPage: React.FC = () => {
       load('Районы B2B', async () => (await settingsApi.getB2BDistricts()).items, setB2bDistricts),
       load('Работа со школами', () => campaignsApi.getSettings(), setCampaignSettings),
       load('Причины отказа', async () => (await settingsApi.getRefusedReasons()).items, setRefusedReasons),
+      load(
+        'Этапы воронки лидов',
+        async () => (await settingsApi.getLeadPipelineStages()).items,
+        (items) => setPipelineStageDraft([...items].sort((a, b) => a.position - b.position))
+      ),
       load('Ссылки на обучение', async () => (await settingsApi.getLearningLinks()).items, setLearningLinks),
       load('Доступ к заметкам', async () => (await settingsApi.getNotesEnabledRoles()).enabled_roles, setNotesEnabledRoles),
     ]);
@@ -331,6 +376,103 @@ const SalesSettingsPage: React.FC = () => {
       await Promise.all([loadData(), loadSchools()]);
     } catch (err: any) {
       setError(extractApiError(err, 'Ошибка сохранения'));
+    }
+  };
+
+  const pipelineAssignedStatusColumn = useMemo(() => {
+    const map: Partial<Record<LeadStatus, number>> = {};
+    pipelineStageDraft.forEach((col, idx) => {
+      [col.primary_status, ...col.grouped_statuses].forEach((st) => {
+        if (st) map[st] = idx;
+      });
+    });
+    return map;
+  }, [pipelineStageDraft]);
+
+  const pipelineUnassignedStatuses = useMemo(
+    () => ALL_LEAD_STATUSES.filter((st) => pipelineAssignedStatusColumn[st] === undefined),
+    [pipelineAssignedStatusColumn]
+  );
+
+  const pipelineStagesInvalid =
+    pipelineStageDraft.length === 0 ||
+    pipelineUnassignedStatuses.length > 0 ||
+    pipelineStageDraft.some((c) => !c.label.trim() || !c.primary_status);
+
+  const handlePipelineColumnStatusesChange = (idx: number, newSelected: LeadStatus[]) => {
+    setPipelineStageDraft((prev) =>
+      prev.map((col, i) => {
+        if (i !== idx) return col;
+        if (newSelected.length === 0) {
+          return { ...col, primary_status: '' as LeadStatus, grouped_statuses: [] };
+        }
+        const primary = newSelected.includes(col.primary_status) ? col.primary_status : newSelected[0];
+        const grouped = newSelected.filter((s) => s !== primary);
+        return { ...col, primary_status: primary, grouped_statuses: grouped };
+      })
+    );
+  };
+
+  const handlePipelinePrimaryStatusChange = (idx: number, newPrimary: LeadStatus) => {
+    setPipelineStageDraft((prev) =>
+      prev.map((col, i) => {
+        if (i !== idx) return col;
+        const all = [col.primary_status, ...col.grouped_statuses].filter(Boolean) as LeadStatus[];
+        if (!all.includes(newPrimary)) return col;
+        return { ...col, primary_status: newPrimary, grouped_statuses: all.filter((s) => s !== newPrimary) };
+      })
+    );
+  };
+
+  const handlePipelineLabelChange = (idx: number, value: string) => {
+    setPipelineStageDraft((prev) => prev.map((c, i) => (i === idx ? { ...c, label: value } : c)));
+  };
+
+  const handlePipelineColorChange = (idx: number, value: string) => {
+    setPipelineStageDraft((prev) => prev.map((c, i) => (i === idx ? { ...c, color: value || null } : c)));
+  };
+
+  const handlePipelineAddColumn = () => {
+    setPipelineStageDraft((prev) => [
+      ...prev,
+      {
+        key: `custom_${Date.now()}`,
+        label: 'Новая колонка',
+        color: null,
+        primary_status: '' as LeadStatus,
+        grouped_statuses: [],
+        position: prev.length,
+      },
+    ]);
+  };
+
+  const handlePipelineRemoveColumn = (idx: number) => {
+    setPipelineStageDraft((prev) => prev.filter((_, i) => i !== idx).map((c, i) => ({ ...c, position: i })));
+  };
+
+  const pipelineDndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+
+  const handlePipelineStagesDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    setPipelineStageDraft((prev) => {
+      const oldIndex = prev.findIndex((c) => c.key === active.id);
+      const newIndex = prev.findIndex((c) => c.key === over.id);
+      if (oldIndex < 0 || newIndex < 0) return prev;
+      return arrayMove(prev, oldIndex, newIndex).map((c, i) => ({ ...c, position: i }));
+    });
+  };
+
+  const handleSavePipelineStages = async () => {
+    setPipelineStagesSaving(true);
+    setPipelineStagesError('');
+    try {
+      const res = await settingsApi.setLeadPipelineStages(pipelineStageDraft);
+      setPipelineStageDraft([...res.items].sort((a, b) => a.position - b.position));
+    } catch (err: any) {
+      setPipelineStagesError(extractApiError(err, 'Не удалось сохранить этапы воронки'));
+    } finally {
+      setPipelineStagesSaving(false);
     }
   };
 
@@ -1004,6 +1146,117 @@ const SalesSettingsPage: React.FC = () => {
               </TableBody>
             </Table>
           )}
+        </Paper>
+
+        <Paper sx={sectionPaperSx('leads')}>
+          <Typography variant="h6" mb={1}>Этапы воронки лидов</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Колонки канбана «Лиды». Можно переименовать, поменять порядок перетаскиванием, а также
+            перераспределить статусы лида между колонками. Каждый статус должен быть закреплён ровно
+            за одной колонкой; «основной» статус — тот, что проставляется при ручном переносе лида в
+            колонку.
+          </Typography>
+          {pipelineStagesError && (
+            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setPipelineStagesError('')}>
+              {pipelineStagesError}
+            </Alert>
+          )}
+          {pipelineUnassignedStatuses.length > 0 && (
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              Не назначены колонкам: {pipelineUnassignedStatuses.map((s) => leadStatusLabels[s]).join(', ')}
+            </Alert>
+          )}
+          <DndContext
+            sensors={pipelineDndSensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handlePipelineStagesDragEnd}
+          >
+            <SortableContext
+              items={pipelineStageDraft.map((c) => c.key)}
+              strategy={verticalListSortingStrategy}
+            >
+              {pipelineStageDraft.map((col, idx) => {
+                const columnStatuses = [col.primary_status, ...col.grouped_statuses].filter(Boolean) as LeadStatus[];
+                const selectableOptions = Array.from(new Set([...pipelineUnassignedStatuses, ...columnStatuses]));
+                return (
+                  <SortableStageRow key={col.key} id={col.key}>
+                    <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap" useFlexGap>
+                      <TextField
+                        size="small"
+                        label="Название"
+                        value={col.label}
+                        onChange={(e) => handlePipelineLabelChange(idx, e.target.value)}
+                        sx={{ minWidth: 200 }}
+                      />
+                      <TextField
+                        size="small"
+                        label="Цвет"
+                        type="color"
+                        value={col.color || '#9e9e9e'}
+                        onChange={(e) => handlePipelineColorChange(idx, e.target.value)}
+                        sx={{ width: 90 }}
+                      />
+                      <FormControl size="small" sx={{ minWidth: 260 }}>
+                        <InputLabel>Статусы в колонке</InputLabel>
+                        <Select
+                          multiple
+                          label="Статусы в колонке"
+                          value={columnStatuses}
+                          onChange={(e) =>
+                            handlePipelineColumnStatusesChange(idx, e.target.value as LeadStatus[])
+                          }
+                          renderValue={(selected) =>
+                            (selected as LeadStatus[]).map((s) => leadStatusLabels[s]).join(', ')
+                          }
+                        >
+                          {selectableOptions.map((st) => (
+                            <MenuItem key={st} value={st}>
+                              {leadStatusLabels[st]}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                      {columnStatuses.length > 1 && (
+                        <FormControl size="small" sx={{ minWidth: 200 }}>
+                          <InputLabel>Основной статус</InputLabel>
+                          <Select
+                            label="Основной статус"
+                            value={col.primary_status}
+                            onChange={(e) => handlePipelinePrimaryStatusChange(idx, e.target.value as LeadStatus)}
+                          >
+                            {columnStatuses.map((st) => (
+                              <MenuItem key={st} value={st}>
+                                {leadStatusLabels[st]}
+                              </MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      )}
+                      <Button
+                        size="small"
+                        color="error"
+                        onClick={() => handlePipelineRemoveColumn(idx)}
+                      >
+                        Удалить колонку
+                      </Button>
+                    </Stack>
+                  </SortableStageRow>
+                );
+              })}
+            </SortableContext>
+          </DndContext>
+          <Stack direction="row" spacing={1.5} sx={{ mt: 1 }}>
+            <Button variant="outlined" onClick={handlePipelineAddColumn}>
+              Добавить колонку
+            </Button>
+            <Button
+              variant="contained"
+              disabled={pipelineStagesInvalid || pipelineStagesSaving}
+              onClick={handleSavePipelineStages}
+            >
+              {pipelineStagesSaving ? 'Сохранение…' : 'Сохранить этапы'}
+            </Button>
+          </Stack>
         </Paper>
 
         <Paper sx={sectionPaperSx('schools')}>

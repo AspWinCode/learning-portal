@@ -1380,6 +1380,15 @@ export interface LearningLink {
   url: string;
 }
 
+export interface LeadPipelineStage {
+  key: string;
+  label: string;
+  color?: string | null;
+  primary_status: LeadStatus;
+  grouped_statuses: LeadStatus[];
+  position: number;
+}
+
 export interface CampaignDictionaryItem {
   id: number;
   category: string;

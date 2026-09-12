@@ -75,10 +75,33 @@ def _history_text(db: Session, dialog_id: int) -> str:
     return "\n".join(lines)
 
 
+def _last_user_message(db: Session, dialog_id: int) -> str:
+    """Предыдущее сообщение владельца в этом диалоге (до текущего — оно ещё не
+    сохранено на момент вызова). Нужно, чтобы короткие уточняющие вопросы
+    ("а конкретно для нашей?") наследовали тему предыдущего сообщения при
+    поиске по базе знаний и выборе LMS-инструментов."""
+    row = (
+        db.query(AcademyMessage)
+        .filter(AcademyMessage.dialog_id == dialog_id, AcademyMessage.role == "user")
+        .order_by(AcademyMessage.id.desc())
+        .first()
+    )
+    return row.content or "" if row else ""
+
+
 async def _gather_context(
-    db: Session, user, message: str
+    db: Session, user, message: str, dialog_id: Optional[int] = None
 ) -> Tuple[str, Dict[str, Any]]:
+    prev_message = _last_user_message(db, dialog_id) if dialog_id else ""
+    # Запрос с учётом предыдущей реплики — для случаев, когда текущее сообщение
+    # само по себе не содержит ключевых слов темы (короткие уточнения/ответы).
+    contextual_query = f"{prev_message} {message}".strip() if prev_message else message
+
     hits = await retrieval.search(db, message, scopes=("expertise", "kb"), k=_RETRIEVAL_K, user_id=getattr(user, "id", None))
+    if not hits and contextual_query != message:
+        hits = await retrieval.search(
+            db, contextual_query, scopes=("expertise", "kb"), k=_RETRIEVAL_K, user_id=getattr(user, "id", None)
+        )
     expertise_hits = [h for h in hits if h.scope == "expertise"]
     kb_hits = [h for h in hits if h.scope == "kb"]
 
@@ -98,7 +121,7 @@ async def _gather_context(
         blocks.append(f"=== БАЗА ЗНАНИЙ АКАДЕМИИ ===\n{joined}")
 
     lms_blocks: List[str] = []
-    for tool_name in _select_lms_tools(message, user):
+    for tool_name in _select_lms_tools(contextual_query, user):
         result = lms_context.run_tool(tool_name, db, user)
         if "data" in result:
             used["lms"].append(tool_name)
@@ -126,7 +149,7 @@ async def consult(
     db: Session, user, *, message: str, dialog_id: Optional[int] = None
 ) -> Dict[str, Any]:
     dialog = _get_or_create_dialog(db, user, dialog_id)
-    context, used_sources = await _gather_context(db, user, message)
+    context, used_sources = await _gather_context(db, user, message, dialog.id)
     history = _history_text(db, dialog.id)
 
     db.add(AcademyMessage(dialog_id=dialog.id, role="user", content=message))

@@ -55,6 +55,25 @@ def _vec_literal(vec: List[float]) -> str:
     return "[" + ",".join(f"{float(x):.6f}" for x in vec) + "]"
 
 
+_TSQUERY_SPECIAL = set("&|!():'\\")
+
+
+def _or_tsquery_text(q: str) -> Optional[str]:
+    """Готовит запрос для ``to_tsquery`` со словами через OR (``|``).
+
+    ``plainto_tsquery``/``websearch_to_tsquery`` по умолчанию требуют совпадения
+    ВСЕХ слов запроса (AND) — для вопроса в чат-стиле ("какие курсы вы
+    предлагаете?") это почти никогда не совпадает с текстом факта в базе
+    знаний, даже если факт есть. OR по отдельным словам радикально повышает
+    recall; ранжирование по числу/весу совпавших лексем даёт ``ts_rank``.
+    """
+    words = [w.strip("".join(_TSQUERY_SPECIAL)) for w in q.split()]
+    words = [w for w in words if w]
+    if not words:
+        return None
+    return " | ".join(words)
+
+
 def capabilities(db: Session, *, refresh: bool = False) -> Dict[str, bool]:
     global _caps
     if _caps is not None and not refresh:
@@ -152,6 +171,7 @@ async def search(
         emb = await ai_gateway.embed(feature="academy_retrieval_query", inputs=[q], user_id=user_id)
         if emb.ok and emb.data:
             qvec = _vec_literal(emb.data[0])
+    or_query = _or_tsquery_text(q)
 
     hits: List[Hit] = []
     for sc in scopes:
@@ -170,15 +190,15 @@ async def search(
             )
             rows = db.execute(sql, {"q": qvec, "k": k}).all()
             method = "vector"
-        elif caps["fts"]:
+        elif caps["fts"] and or_query:
             sql = text(
                 f"SELECT c.id, c.{ref}, {title}, c.text, "
-                f"ts_rank(c.search_tsv, plainto_tsquery('russian', :q)) AS score "
+                f"ts_rank(c.search_tsv, to_tsquery('russian', :q)) AS score "
                 f"FROM {table} c {join} "
-                f"WHERE c.search_tsv @@ plainto_tsquery('russian', :q) "
+                f"WHERE c.search_tsv @@ to_tsquery('russian', :q) "
                 f"ORDER BY score DESC LIMIT :k"
             )
-            rows = db.execute(sql, {"q": q, "k": k}).all()
+            rows = db.execute(sql, {"q": or_query, "k": k}).all()
             method = "fts"
         else:
             sql = text(

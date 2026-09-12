@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session, selectinload, joinedload
 from sqlalchemy import func, or_
 from app.database import get_db
@@ -12,7 +12,9 @@ from app.schemas.students import (
     StudentAccountResponse,
     StudentActivityLogResponse,
     StudentCreate,
+    StudentImportResponse,
     StudentListResponse,
+    StudentProfileFields,
     StudentResponse,
     StudentUpdate,
     StudentWithParentCreate,
@@ -255,6 +257,253 @@ async def create_student_with_parent(
     )
 
 
+_IMPORT_HEADERS = [
+    "ФИО ученика",
+    "Дата рождения",
+    "Телефон ученика",
+    "Email ученика",
+    "Пол",
+    "На гранте",
+    "Формат",
+    "Город",
+    "Школа",
+    "Класс",
+    "ФИО родителя",
+    "Телефон родителя",
+    "Второй телефон родителя",
+    "Email родителя",
+    "Есть MAX",
+    "Удобный способ связи",
+    "Комментарий",
+    "Источник",
+    "Группа",
+    "Абонемент",
+]
+
+_IMPORT_EXAMPLE_ROW = [
+    "Иванов Пётр Сергеевич",
+    "2015-03-15",
+    "+7 999 111-22-33",
+    "petr@example.com",
+    "м",
+    "нет",
+    "группа",
+    "Москва",
+    "Школа №12",
+    "3",
+    "Иванова Анна Петровна",
+    "+7 999 111-22-34",
+    "+7 900 111-22-44",
+    "anna@example.com",
+    "да",
+    "MAX",
+    "Записан на пробное занятие",
+    "рекомендация",
+    "Frontend-1",
+    "",
+]
+
+
+@router.get("/import-template")
+async def download_students_import_template(
+    current_user: User = Depends(auth.require_permission("students.create")),
+):
+    """Шаблон Excel для массового импорта учеников."""
+    from io import BytesIO
+    from openpyxl import Workbook
+    from fastapi.responses import StreamingResponse
+
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "Ученики"
+    worksheet.append(_IMPORT_HEADERS)
+    worksheet.append(_IMPORT_EXAMPLE_ROW)
+    worksheet.freeze_panes = "A2"
+    stream = BytesIO()
+    workbook.save(stream)
+    stream.seek(0)
+    return StreamingResponse(
+        stream,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="students_import_template.xlsx"'},
+    )
+
+
+@router.post("/import-xlsx", response_model=StudentImportResponse)
+async def import_students_from_excel(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("students.create")),
+):
+    """Массовый импорт учеников из Excel: создаёт активных учеников, находит/создаёт
+    родителей по email (с письмом-приглашением), опционально зачисляет в группу."""
+    from io import BytesIO
+    from datetime import datetime as _dt
+    from openpyxl import load_workbook
+    from app.models import GroupStudent
+    from app.services.parent_invite import create_parent_with_invite
+    from app.utils.phone import normalize_phone
+
+    filename = (file.filename or "").lower()
+    if not filename.endswith(".xlsx"):
+        raise HTTPException(status_code=400, detail="Поддерживается только формат .xlsx")
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Файл пустой")
+    workbook = load_workbook(filename=BytesIO(data), data_only=True)
+    worksheet = workbook.active
+    rows = list(worksheet.iter_rows(values_only=True))
+    if not rows:
+        return StudentImportResponse(created=0, skipped=0, errors=["Пустой лист"])
+
+    headers = [str(h).strip().lower() if h is not None else "" for h in rows[0]]
+    header_map = {name: idx for idx, name in enumerate(headers)}
+
+    def cell(row, variants: List[str]) -> Optional[str]:
+        for key in variants:
+            idx = header_map.get(key)
+            if idx is None or idx >= len(row):
+                continue
+            raw = row[idx]
+            if raw is None:
+                continue
+            text = str(raw).strip()
+            if text:
+                return text
+        return None
+
+    def parse_date(raw_value):
+        if raw_value is None:
+            return None
+        if hasattr(raw_value, "year") and hasattr(raw_value, "month") and hasattr(raw_value, "day"):
+            return raw_value.date() if hasattr(raw_value, "date") else raw_value
+        text = str(raw_value).strip()
+        if not text:
+            return None
+        for fmt in ("%Y-%m-%d", "%d.%m.%Y", "%d/%m/%Y"):
+            try:
+                return _dt.strptime(text, fmt).date()
+            except ValueError:
+                continue
+        try:
+            return _dt.fromisoformat(text[:10]).date()
+        except (ValueError, TypeError):
+            return None
+
+    def parse_bool(raw_value) -> bool:
+        return str(raw_value or "").strip().lower() in ("да", "yes", "1", "true", "+")
+
+    created = 0
+    skipped = 0
+    errors: List[str] = []
+
+    for row_index, row in enumerate(rows[1:], start=2):
+        row = list(row) if row else []
+        full_name = cell(row, ["фио ученика", "ученик", "full_name"])
+        if not full_name:
+            skipped += 1
+            errors.append(f"Строка {row_index}: не указано ФИО ученика — пропущена")
+            continue
+
+        gender_raw = cell(row, ["пол", "gender"])
+        gender = None
+        if gender_raw:
+            lowered = gender_raw.strip().lower()
+            gender = "m" if lowered in ("м", "m", "male") else ("f" if lowered in ("ж", "f", "female") else gender_raw)
+
+        format_raw = cell(row, ["формат", "format_type"])
+        format_type = None
+        if format_raw:
+            lowered = format_raw.lower()
+            if "групп" in lowered:
+                format_type = "group"
+            elif "индивид" in lowered:
+                format_type = "individual"
+            else:
+                format_type = format_raw
+
+        messenger_raw = cell(row, ["удобный способ связи", "preferred_messenger"])
+        preferred_messenger = None
+        if messenger_raw:
+            lowered = messenger_raw.lower()
+            preferred_messenger = "max" if "max" in lowered else ("sms" if "sms" in lowered else messenger_raw)
+
+        abonement_id = None
+        abonement_name = cell(row, ["абонемент", "abonement"])
+        if abonement_name:
+            abonement = db.query(Abonement).filter(Abonement.name == abonement_name).first()
+            if abonement and abonement.status == AbonementStatus.ACTIVE:
+                abonement_id = abonement.id
+            else:
+                errors.append(f"Строка {row_index}: абонемент «{abonement_name}» не найден — пропущен для этой строки")
+
+        group_id = None
+        group_name = cell(row, ["группа", "group"])
+        if group_name:
+            group = db.query(Group).filter(Group.name == group_name).first()
+            if group:
+                group_id = group.id
+            else:
+                errors.append(f"Строка {row_index}: группа «{group_name}» не найдена — ученик создан без группы")
+
+        parent_email = cell(row, ["email родителя", "parent_email"])
+        parent_full_name = cell(row, ["фио родителя", "parent_full_name"]) or "Родитель"
+        parent_id = None
+        if parent_email:
+            parent_email = parent_email.strip().lower()
+            existing = db.query(User).filter(User.email == parent_email, User.role == UserRole.PARENT).first()
+            if existing:
+                parent_id = existing.id
+            else:
+                try:
+                    parent_user, _invite_link = create_parent_with_invite(db, parent_email, parent_full_name)
+                    db.flush()
+                    parent_id = parent_user.id
+                except ValueError as exc:
+                    errors.append(f"Строка {row_index}: не удалось создать родителя ({exc}) — ученик создан без родителя")
+
+        db_student = Student(
+            full_name=full_name,
+            parent_id=parent_id,
+            abonement_id=abonement_id,
+            discount_type=DiscountType.NONE,
+            discount_value=0.0,
+            status=StudentStatus.ACTIVE,
+            birth_date=parse_date(cell(row, ["дата рождения", "birth_date"])),
+            phone=cell(row, ["телефон ученика", "phone"]),
+            email=cell(row, ["email ученика", "email"]),
+            gender=gender,
+            on_grant=parse_bool(cell(row, ["на гранте", "on_grant"])),
+            format_type=format_type,
+            city=cell(row, ["город", "city"]),
+            school=cell(row, ["школа", "school"]),
+            grade=cell(row, ["класс", "grade"]),
+            parent_phone_2=cell(row, ["второй телефон родителя", "parent_phone_2"]),
+            has_max=parse_bool(cell(row, ["есть max", "has_max"])),
+            preferred_messenger=preferred_messenger,
+            comment=cell(row, ["комментарий", "comment"]),
+            source=cell(row, ["источник", "source"]),
+        )
+        db.add(db_student)
+        db.flush()
+        ensure_default_student_account(db, db_student.id)
+        if group_id:
+            db.add(GroupStudent(group_id=group_id, student_id=db_student.id))
+        log_student_activity(
+            db,
+            student_id=db_student.id,
+            activity_type="enrolled",
+            title="Ученик создан импортом из Excel",
+            created_by=current_user.id,
+            payload_json={"source": "students.import_xlsx", "row": row_index},
+        )
+        created += 1
+
+    db.commit()
+    log_action(db, current_user.id, "import", "student", None, {"created": created, "skipped": skipped})
+    return StudentImportResponse(created=created, skipped=skipped, errors=errors)
+
+
 @router.get("/parents/search", response_model=List[dict])
 async def search_parents(
     q: str = Query(..., min_length=1),
@@ -304,13 +553,15 @@ async def create_student(
 
     _validate_student_discount(student.discount_type, float(student.discount_value or 0))
 
+    profile_data = student.model_dump(include=set(StudentProfileFields.model_fields.keys()))
     db_student = Student(
         full_name=student.full_name,
         parent_id=student.parent_id if student.parent_id else None,
         abonement_id=abonement_id,
         discount_type=student.discount_type,
         discount_value=_normalized_discount_value(student.discount_type, student.discount_value),
-        status=StudentStatus.ACTIVE
+        status=StudentStatus.ACTIVE,
+        **profile_data,
     )
     db.add(db_student)
     db.flush()

@@ -512,6 +512,20 @@ export const studentsApi = {
     const response = await api.get(`/api/students/${studentId}/timeline`, { params });
     return response.data;
   },
+  downloadImportTemplate: async (): Promise<Blob> => {
+    const response = await api.get('/api/students/import-template', {
+      responseType: 'blob',
+    });
+    return response.data;
+  },
+  importXlsx: async (file: File): Promise<{ created: number; skipped: number; errors: string[] }> => {
+    const form = new FormData();
+    form.append('file', file);
+    const response = await api.post('/api/students/import-xlsx', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
+  },
 };
 
 export const studentAccountsApi = {

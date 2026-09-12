@@ -748,6 +748,27 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
                   </Box>
                 )}
                 <Typography variant="body2">Статус: {student.status === 'active' ? 'Активен' : 'В архиве'}</Typography>
+                {(student.birth_date || student.phone || student.email || student.gender || student.city || student.school || student.grade || student.parent_phone_2 || student.comment || student.source || student.format_type || student.on_grant) && (
+                  <Box sx={{ mt: 1 }}>
+                    <Typography variant="subtitle2" color="text.secondary" gutterBottom>Профиль</Typography>
+                    <Stack spacing={0.25}>
+                      {student.birth_date && <Typography variant="body2">Дата рождения: {student.birth_date}</Typography>}
+                      {student.phone && <Typography variant="body2">Телефон ученика: {student.phone}</Typography>}
+                      {student.email && <Typography variant="body2">Email ученика: {student.email}</Typography>}
+                      {student.gender && <Typography variant="body2">Пол: {student.gender === 'm' ? 'М' : student.gender === 'f' ? 'Ж' : student.gender}</Typography>}
+                      {student.format_type && <Typography variant="body2">Формат: {student.format_type === 'group' ? 'Групповой' : student.format_type === 'individual' ? 'Индивидуальный' : student.format_type}</Typography>}
+                      {student.on_grant && <Typography variant="body2">На гранте: да</Typography>}
+                      {student.city && <Typography variant="body2">Город: {student.city}</Typography>}
+                      {student.school && <Typography variant="body2">Школа: {student.school}</Typography>}
+                      {student.grade && <Typography variant="body2">Класс: {student.grade}</Typography>}
+                      {student.parent_phone_2 && <Typography variant="body2">Второй телефон родителя: {student.parent_phone_2}</Typography>}
+                      {typeof student.has_max === 'boolean' && <Typography variant="body2">Есть MAX: {student.has_max ? 'да' : 'нет'}</Typography>}
+                      {student.preferred_messenger && <Typography variant="body2">Удобный способ связи: {student.preferred_messenger === 'max' ? 'MAX' : student.preferred_messenger === 'sms' ? 'SMS' : student.preferred_messenger}</Typography>}
+                      {student.source && <Typography variant="body2">Источник: {student.source}</Typography>}
+                      {student.comment && <Typography variant="body2">Комментарий: {student.comment}</Typography>}
+                    </Stack>
+                  </Box>
+                )}
                 {studentCard?.payment_link && (
                   <Box sx={{ mt: 1 }}>
                     <Typography variant="body2" fontWeight={500} sx={{ mb: 0.5 }}>

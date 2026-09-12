@@ -13,7 +13,24 @@ class StudentBase(BaseModel):
     full_name: str
 
 
-class StudentCreate(StudentBase):
+class StudentProfileFields(BaseModel):
+    birth_date: Optional[date] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    gender: Optional[str] = None
+    on_grant: bool = False
+    format_type: Optional[str] = None
+    city: Optional[str] = None
+    school: Optional[str] = None
+    grade: Optional[str] = None
+    parent_phone_2: Optional[str] = None
+    has_max: bool = False
+    preferred_messenger: Optional[str] = None
+    comment: Optional[str] = None
+    source: Optional[str] = None
+
+
+class StudentCreate(StudentBase, StudentProfileFields):
     parent_id: Optional[int] = None
     abonement_id: Optional[int] = None
     discount_type: DiscountType = DiscountType.NONE
@@ -28,9 +45,23 @@ class StudentUpdate(BaseModel):
     discount_type: Optional[DiscountType] = None
     discount_value: Optional[float] = None
     training_start_date: Optional[date] = None
+    birth_date: Optional[date] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    gender: Optional[str] = None
+    on_grant: Optional[bool] = None
+    format_type: Optional[str] = None
+    city: Optional[str] = None
+    school: Optional[str] = None
+    grade: Optional[str] = None
+    parent_phone_2: Optional[str] = None
+    has_max: Optional[bool] = None
+    preferred_messenger: Optional[str] = None
+    comment: Optional[str] = None
+    source: Optional[str] = None
 
 
-class StudentResponse(StudentBase):
+class StudentResponse(StudentBase, StudentProfileFields):
     id: int
     parent_id: Optional[int] = None
     from_lead_id: Optional[int] = None
@@ -46,6 +77,12 @@ class StudentResponse(StudentBase):
     in_group: bool = False
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class StudentImportResponse(BaseModel):
+    created: int
+    skipped: int
+    errors: List[str] = []
 
 
 class StudentListResponse(BaseModel):

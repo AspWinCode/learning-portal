@@ -255,6 +255,20 @@ export interface Student {
   programs?: ProgramSummary[];
   /** true если ученик привязан хотя бы к одной группе */
   in_group?: boolean;
+  birth_date?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  gender?: 'm' | 'f' | string | null;
+  on_grant?: boolean;
+  format_type?: 'group' | 'individual' | string | null;
+  city?: string | null;
+  school?: string | null;
+  grade?: string | null;
+  parent_phone_2?: string | null;
+  has_max?: boolean;
+  preferred_messenger?: 'max' | 'sms' | string | null;
+  comment?: string | null;
+  source?: string | null;
 }
 
 export interface StudentTimelineEvent {
@@ -1171,6 +1185,8 @@ export interface LeadCommunication {
   pause_reason?: string | null;
   follow_up_at: string;
   created_at: string;
+  max_sent?: boolean | null;
+  max_send_error?: string | null;
 }
 
 export interface LeadPushStats {

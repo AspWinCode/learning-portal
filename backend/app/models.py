@@ -261,6 +261,21 @@ class Student(Base):
     discount_value = Column(Float, default=0.0, nullable=False)
     status = Column(_StudentStatusType(), default=StudentStatus.ACTIVE)
     training_start_date = Column(Date, nullable=True)  # с этой даты ученик в уроках; от неё считаются оплата и напоминания
+    # Профиль ученика (заполняется вручную или Excel-импортом)
+    birth_date = Column(Date, nullable=True)
+    phone = Column(String(32), nullable=True)
+    email = Column(String, nullable=True)
+    gender = Column(String(8), nullable=True)  # m / f
+    on_grant = Column(Boolean, nullable=False, default=False, server_default="false")
+    format_type = Column(String(16), nullable=True)  # group / individual
+    city = Column(String(64), nullable=True)
+    school = Column(String(255), nullable=True)
+    grade = Column(String(16), nullable=True)
+    parent_phone_2 = Column(String(32), nullable=True)
+    has_max = Column(Boolean, nullable=False, default=False, server_default="false")  # есть ли MAX-мессенджер у родителя
+    preferred_messenger = Column(String(16), nullable=True)  # max / sms
+    comment = Column(Text, nullable=True)
+    source = Column(String(128), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

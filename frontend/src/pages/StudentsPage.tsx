@@ -53,6 +53,8 @@ const StudentsPage: React.FC = () => {
   const [programFilter, setProgramFilter] = useState<number | ''>('');
   const [studentCards, setStudentCards] = useState<StudentCardType[]>([]);
   const [open, setOpen] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{ created: number; skipped: number; errors: string[] } | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [parentOpen, setParentOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
@@ -1109,6 +1111,45 @@ const StudentsPage: React.FC = () => {
             </Box>
             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
               <Button
+                variant="outlined"
+                disabled={importing}
+                onClick={async () => {
+                  const blob = await studentsApi.downloadImportTemplate();
+                  const url = window.URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = 'students_import_template.xlsx';
+                  a.click();
+                  window.URL.revokeObjectURL(url);
+                }}
+              >
+                Шаблон Excel
+              </Button>
+              <Button variant="outlined" component="label" disabled={importing}>
+                {importing ? 'Импорт...' : 'Импорт из Excel'}
+                <input
+                  type="file"
+                  hidden
+                  accept=".xlsx"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = '';
+                    if (!file) return;
+                    setImporting(true);
+                    setImportResult(null);
+                    try {
+                      const result = await studentsApi.importXlsx(file);
+                      setImportResult(result);
+                      loadStudents();
+                    } catch (err: any) {
+                      setError(err.response?.data?.detail || 'Ошибка импорта');
+                    } finally {
+                      setImporting(false);
+                    }
+                  }}
+                />
+              </Button>
+              <Button
                 variant="contained"
                 startIcon={<AddIcon />}
                 onClick={() => {
@@ -1120,6 +1161,17 @@ const StudentsPage: React.FC = () => {
               </Button>
             </Box>
           </Box>
+
+          {importResult && (
+            <Alert severity="info" onClose={() => setImportResult(null)} sx={{ mb: 2 }}>
+              Импорт: создано {importResult.created}, пропущено {importResult.skipped}.
+              {importResult.errors.length > 0 && (
+                <Box component="span" sx={{ display: 'block', mt: 0.5 }}>
+                  {importResult.errors.join('; ')}
+                </Box>
+              )}
+            </Alert>
+          )}
 
           {error && (
             <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>

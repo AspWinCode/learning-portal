@@ -756,7 +756,7 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
                       {student.phone && <Typography variant="body2">Телефон ученика: {student.phone}</Typography>}
                       {student.email && <Typography variant="body2">Email ученика: {student.email}</Typography>}
                       {student.gender && <Typography variant="body2">Пол: {student.gender === 'm' ? 'М' : student.gender === 'f' ? 'Ж' : student.gender}</Typography>}
-                      {student.format_type && <Typography variant="body2">Формат: {student.format_type === 'group' ? 'Групповой' : student.format_type === 'individual' ? 'Индивидуальный' : student.format_type}</Typography>}
+                      {student.format_type && <Typography variant="body2">Формат: {student.format_type === 'group' ? 'Групповой' : student.format_type === 'individual' ? 'Индивидуальный' : student.format_type === 'hybrid' ? 'Гибрид (индивидуальный + групповой)' : student.format_type}</Typography>}
                       {student.on_grant && <Typography variant="body2">На гранте: да</Typography>}
                       {student.city && <Typography variant="body2">Город: {student.city}</Typography>}
                       {student.school && <Typography variant="body2">Школа: {student.school}</Typography>}
@@ -832,7 +832,7 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
                   <Typography variant="body2"><strong>Email:</strong> {studentCard.parent_email || '—'}</Typography>
                   <Typography variant="body2"><strong>Город:</strong> {studentCard.city || '—'}</Typography>
                   <Typography variant="body2"><strong>Откуда пришел:</strong> {studentCard.source || '—'}</Typography>
-                  <Typography variant="body2"><strong>Формат:</strong> {studentCard.format_type === 'group' ? 'Группа' : studentCard.format_type === 'individual' ? 'Индивидуальное' : '—'}</Typography>
+                  <Typography variant="body2"><strong>Формат:</strong> {studentCard.format_type === 'group' ? 'Группа' : studentCard.format_type === 'individual' ? 'Индивидуальное' : studentCard.format_type === 'hybrid' ? 'Гибрид (индивидуальный + групповой)' : '—'}</Typography>
                 </Box>
                 {studentCard.comment && <Typography variant="body2" sx={{ mb: 1 }}><strong>Комментарий:</strong> {studentCard.comment}</Typography>}
               </Paper>

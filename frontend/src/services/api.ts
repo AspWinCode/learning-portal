@@ -126,6 +126,7 @@ import {
   StudentCredentialOut,
   StudentCourseAccessOut,
   LearningLink,
+  PaymentLink,
   LeadPipelineStage,
 } from '../types';
 export { ownerWorkspaceApi } from './api/ownerWorkspace';
@@ -1524,6 +1525,14 @@ export const settingsApi = {
   },
   setLearningLinks: async (items: LearningLink[]): Promise<{ items: LearningLink[] }> => {
     const response = await api.post('/api/settings/learning-links', { items });
+    return response.data;
+  },
+  getPaymentLinks: async (): Promise<{ items: PaymentLink[] }> => {
+    const response = await api.get('/api/settings/payment-links');
+    return response.data;
+  },
+  setPaymentLinks: async (items: PaymentLink[]): Promise<{ items: PaymentLink[] }> => {
+    const response = await api.post('/api/settings/payment-links', { items });
     return response.data;
   },
   getStudentQuestionnaires: async (): Promise<StudentQuestionnaireTemplate[]> => {

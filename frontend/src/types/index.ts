@@ -1380,6 +1380,12 @@ export interface LearningLink {
   url: string;
 }
 
+export interface PaymentLink {
+  id: string;
+  name: string;
+  url: string;
+}
+
 export interface LeadPipelineStage {
   key: string;
   label: string;

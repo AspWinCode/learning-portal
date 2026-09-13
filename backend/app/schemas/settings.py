@@ -59,6 +59,20 @@ class LearningLinksUpdate(BaseModel):
     items: List[LearningLink]
 
 
+class PaymentLink(BaseModel):
+    id: str
+    name: str
+    url: str
+
+
+class PaymentLinksResponse(BaseModel):
+    items: List[PaymentLink]
+
+
+class PaymentLinksUpdate(BaseModel):
+    items: List[PaymentLink]
+
+
 class StudentQuestionnaireFieldValidation(BaseModel):
     min_length: Optional[int] = None
     max_length: Optional[int] = None

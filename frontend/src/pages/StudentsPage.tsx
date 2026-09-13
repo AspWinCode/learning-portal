@@ -36,8 +36,8 @@ import {
   TableSortLabel,
 } from '@mui/material';
 import { Add as AddIcon, Edit as EditIcon, AccountBalance as AccountBalanceIcon, Person as PersonIcon, MoreVert as MoreVertIcon } from '@mui/icons-material';
-import { studentsApi, usersApi, groupsApi, programsApi, abonementsApi, studentAccountsApi, studentCardsApi, salesApi } from '../services/api';
-import { Student, User, Group, Program, Abonement, AccountTemplate, StudentAccount, StudentCard as StudentCardType } from '../types';
+import { studentsApi, usersApi, groupsApi, programsApi, abonementsApi, studentAccountsApi, studentCardsApi, salesApi, settingsApi } from '../services/api';
+import { Student, User, Group, Program, Abonement, AccountTemplate, StudentAccount, StudentCard as StudentCardType, PaymentLink } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import StudentDetailPopup from '../components/StudentDetailPopup';
 import { applyPhoneMask, isValidPhone, isValidGeorgianPhone, phoneFromApi, phoneToApiValue } from '../utils/phoneMask';
@@ -88,7 +88,7 @@ const StudentsPage: React.FC = () => {
     student_phone: '',
     gender: '' as '' | 'm' | 'f',
     on_grant: false,
-    format_type: '' as '' | 'group' | 'individual',
+    format_type: '' as '' | 'group' | 'individual' | 'hybrid',
     city: '',
     school: '',
     grade: '',
@@ -158,6 +158,8 @@ const StudentsPage: React.FC = () => {
   const [citiesList, setCitiesList] = useState<string[]>([]);
   const [schoolsList, setSchoolsList] = useState<string[]>([]);
   const [classesList, setClassesList] = useState<string[]>([]);
+  const [sourcesList, setSourcesList] = useState<string[]>([]);
+  const [paymentLinksList, setPaymentLinksList] = useState<PaymentLink[]>([]);
   const [parentsLoaded, setParentsLoaded] = useState(false);
   const [trainersLoaded, setTrainersLoaded] = useState(false);
   const [refDataLoaded, setRefDataLoaded] = useState(false);
@@ -223,6 +225,8 @@ const StudentsPage: React.FC = () => {
     salesApi.listSalesCities(true).then((list) => setCitiesList(list.map((c) => c.name).filter(Boolean))).catch(() => {});
     salesApi.listSalesSchoolNames(true).then(setSchoolsList).catch(() => setSchoolsList([]));
     salesApi.listSalesClasses(true).then((list) => setClassesList(list.filter((c) => c.is_active).map((c) => c.name))).catch(() => setClassesList([]));
+    salesApi.listLeadSources(true).then((list) => setSourcesList(list.map((s) => s.name).filter(Boolean))).catch(() => setSourcesList([]));
+    settingsApi.getPaymentLinks().then((res) => setPaymentLinksList(res.items)).catch(() => setPaymentLinksList([]));
   }, [hasFullStudentsView, open, editOpen, refDataLoaded]);
 
   useEffect(() => {
@@ -691,7 +695,7 @@ const StudentsPage: React.FC = () => {
     student_phone: '',
     gender: '' as '' | 'm' | 'f',
     on_grant: false,
-    format_type: '' as '' | 'group' | 'individual',
+    format_type: '' as '' | 'group' | 'individual' | 'hybrid',
     city: '',
     school: '',
     grade: '',
@@ -744,7 +748,7 @@ const StudentsPage: React.FC = () => {
         student_phone: phoneFromApi(card.student_phone),
         gender: (card.gender === 'm' || card.gender === 'f' ? card.gender : '') as '' | 'm' | 'f',
         on_grant: card.on_grant ?? false,
-        format_type: (card.format_type === 'group' || card.format_type === 'individual' ? card.format_type : '') as '' | 'group' | 'individual',
+        format_type: (card.format_type === 'group' || card.format_type === 'individual' || card.format_type === 'hybrid' ? card.format_type : '') as '' | 'group' | 'individual' | 'hybrid',
         city: card.city || '',
         school: card.school || '',
         grade: card.grade || '',
@@ -1628,10 +1632,11 @@ const StudentsPage: React.FC = () => {
                   <FormControlLabel control={<Switch checked={cardFields.on_grant} onChange={(e) => setCardFields((f) => ({ ...f, on_grant: e.target.checked }))} />} label="На гранте" />
                   <FormControl size="small" fullWidth>
                     <InputLabel>Формат</InputLabel>
-                    <Select value={cardFields.format_type} label="Формат" onChange={(e) => setCardFields((f) => ({ ...f, format_type: e.target.value as '' | 'group' | 'individual' }))}>
+                    <Select value={cardFields.format_type} label="Формат" onChange={(e) => setCardFields((f) => ({ ...f, format_type: e.target.value as '' | 'group' | 'individual' | 'hybrid' }))}>
                       <MenuItem value="">—</MenuItem>
                       <MenuItem value="group">Группа</MenuItem>
                       <MenuItem value="individual">Индивидуальное</MenuItem>
+                      <MenuItem value="hybrid">Гибрид (индивидуальный + групповой)</MenuItem>
                     </Select>
                   </FormControl>
                   <Autocomplete
@@ -1673,17 +1678,33 @@ const StudentsPage: React.FC = () => {
                       <MenuItem value="sms">SMS</MenuItem>
                     </Select>
                   </FormControl>
-                  <TextField size="small" fullWidth label="Откуда пришел" value={cardFields.source} onChange={(e) => setCardFields((f) => ({ ...f, source: e.target.value }))} placeholder="например: рекомендация, сайт, соцсети" />
+                  <Autocomplete
+                    size="small"
+                    freeSolo
+                    options={sourcesList}
+                    value={cardFields.source}
+                    onInputChange={(_, v) => setCardFields((f) => ({ ...f, source: v ?? '' }))}
+                    onChange={(_, v) => setCardFields((f) => ({ ...f, source: (typeof v === 'string' ? v : v ?? '').trim() }))}
+                    renderInput={(params) => <TextField {...params} label="Откуда пришел" placeholder="Выберите из списка или введите свой вариант" />}
+                  />
                   <TextField size="small" fullWidth label="Комментарий" value={cardFields.comment} onChange={(e) => setCardFields((f) => ({ ...f, comment: e.target.value }))} multiline minRows={2} />
                   {isAdminLike && (
-                    <TextField
-                      size="small"
-                      fullWidth
-                      label="Ссылка для оплаты"
-                      value={cardFields.payment_link}
-                      onChange={(e) => setCardFields((f) => ({ ...f, payment_link: e.target.value }))}
-                      placeholder="https://..."
-                    />
+                    <FormControl size="small" fullWidth>
+                      <InputLabel>Ссылка для оплаты</InputLabel>
+                      <Select
+                        value={cardFields.payment_link}
+                        label="Ссылка для оплаты"
+                        onChange={(e) => setCardFields((f) => ({ ...f, payment_link: e.target.value }))}
+                      >
+                        <MenuItem value="">—</MenuItem>
+                        {paymentLinksList.map((link) => (
+                          <MenuItem key={link.id} value={link.url}>{link.name}</MenuItem>
+                        ))}
+                        {cardFields.payment_link && !paymentLinksList.some((link) => link.url === cardFields.payment_link) && (
+                          <MenuItem value={cardFields.payment_link}>{cardFields.payment_link}</MenuItem>
+                        )}
+                      </Select>
+                    </FormControl>
                   )}
                 </Stack>
               )}
@@ -1854,10 +1875,11 @@ const StudentsPage: React.FC = () => {
               <FormControlLabel control={<Switch checked={cardFields.on_grant} onChange={(e) => setCardFields((f) => ({ ...f, on_grant: e.target.checked }))} />} label="На гранте" />
               <FormControl size="small" fullWidth>
                 <InputLabel>Формат</InputLabel>
-                <Select value={cardFields.format_type} label="Формат" onChange={(e) => setCardFields((f) => ({ ...f, format_type: e.target.value as '' | 'group' | 'individual' }))}>
+                <Select value={cardFields.format_type} label="Формат" onChange={(e) => setCardFields((f) => ({ ...f, format_type: e.target.value as '' | 'group' | 'individual' | 'hybrid' }))}>
                   <MenuItem value="">—</MenuItem>
                   <MenuItem value="group">Группа</MenuItem>
                   <MenuItem value="individual">Индивидуальное</MenuItem>
+                  <MenuItem value="hybrid">Гибрид (индивидуальный + групповой)</MenuItem>
                 </Select>
               </FormControl>
               <Autocomplete
@@ -1899,17 +1921,33 @@ const StudentsPage: React.FC = () => {
                   <MenuItem value="sms">SMS</MenuItem>
                 </Select>
               </FormControl>
-              <TextField size="small" fullWidth label="Откуда пришел" value={cardFields.source} onChange={(e) => setCardFields((f) => ({ ...f, source: e.target.value }))} placeholder="например: рекомендация, сайт, соцсети" />
+              <Autocomplete
+                size="small"
+                freeSolo
+                options={sourcesList}
+                value={cardFields.source}
+                onInputChange={(_, v) => setCardFields((f) => ({ ...f, source: v ?? '' }))}
+                onChange={(_, v) => setCardFields((f) => ({ ...f, source: (typeof v === 'string' ? v : v ?? '').trim() }))}
+                renderInput={(params) => <TextField {...params} label="Откуда пришел" placeholder="Выберите из списка или введите свой вариант" />}
+              />
               <TextField size="small" fullWidth label="Комментарий" value={cardFields.comment} onChange={(e) => setCardFields((f) => ({ ...f, comment: e.target.value }))} multiline minRows={2} />
               {isAdminLike && (
-                <TextField
-                  size="small"
-                  fullWidth
-                  label="Ссылка для оплаты"
-                  value={cardFields.payment_link}
-                  onChange={(e) => setCardFields((f) => ({ ...f, payment_link: e.target.value }))}
-                  placeholder="https://..."
-                />
+                <FormControl size="small" fullWidth>
+                  <InputLabel>Ссылка для оплаты</InputLabel>
+                  <Select
+                    value={cardFields.payment_link}
+                    label="Ссылка для оплаты"
+                    onChange={(e) => setCardFields((f) => ({ ...f, payment_link: e.target.value }))}
+                  >
+                    <MenuItem value="">—</MenuItem>
+                    {paymentLinksList.map((link) => (
+                      <MenuItem key={link.id} value={link.url}>{link.name}</MenuItem>
+                    ))}
+                    {cardFields.payment_link && !paymentLinksList.some((link) => link.url === cardFields.payment_link) && (
+                      <MenuItem value={cardFields.payment_link}>{cardFields.payment_link}</MenuItem>
+                    )}
+                  </Select>
+                </FormControl>
               )}
               <Typography variant="subtitle2" color="text.secondary" sx={{ mt: 1 }}>Кабинет родителя</Typography>
               {editingCardId && (cardFields.parent_email?.trim() || studentCards.find((c) => c.id === editingCardId)?.parent_email) ? (

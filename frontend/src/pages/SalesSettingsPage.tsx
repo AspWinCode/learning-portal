@@ -68,6 +68,7 @@ import {
   FinanceTemplateArticleNode,
   FinanceTemplateMetric,
   LearningLink,
+  PaymentLink,
   LeadPipelineStage,
 } from '../types';
 
@@ -292,6 +293,13 @@ const SalesSettingsPage: React.FC = () => {
   const [editingLearningLinkName, setEditingLearningLinkName] = useState('');
   const [editingLearningLinkUrl, setEditingLearningLinkUrl] = useState('');
   const [copiedLearningLinkId, setCopiedLearningLinkId] = useState<string | null>(null);
+  const [paymentLinks, setPaymentLinks] = useState<PaymentLink[]>([]);
+  const [newPaymentLinkName, setNewPaymentLinkName] = useState('');
+  const [newPaymentLinkUrl, setNewPaymentLinkUrl] = useState('');
+  const [editingPaymentLinkId, setEditingPaymentLinkId] = useState<string | null>(null);
+  const [editingPaymentLinkName, setEditingPaymentLinkName] = useState('');
+  const [editingPaymentLinkUrl, setEditingPaymentLinkUrl] = useState('');
+  const [copiedPaymentLinkId, setCopiedPaymentLinkId] = useState<string | null>(null);
   const [maxPersonalConfigured, setMaxPersonalConfigured] = useState(false);
   const [maxPersonalProvider, setMaxPersonalProvider] = useState<'greenapi' | 'api_messenger' | null>(null);
   const [maxQrImg, setMaxQrImg] = useState<string | null>(null);
@@ -332,6 +340,7 @@ const SalesSettingsPage: React.FC = () => {
         (items) => setPipelineStageDraft([...items].sort((a, b) => a.position - b.position))
       ),
       load('Ссылки на обучение', async () => (await settingsApi.getLearningLinks()).items, setLearningLinks),
+      load('Ссылки для оплаты', async () => (await settingsApi.getPaymentLinks()).items, setPaymentLinks),
       load('Доступ к заметкам', async () => (await settingsApi.getNotesEnabledRoles()).enabled_roles, setNotesEnabledRoles),
     ]);
     maxApi.isConfigured().then((r) => {
@@ -872,6 +881,7 @@ const SalesSettingsPage: React.FC = () => {
           <Tab value="questionnaires" label="Анкеты" />
           <Tab value="cities" label="Города" />
           <Tab value="learningLinks" label="Ссылки на обучение" />
+          <Tab value="paymentLinks" label="Ссылки для оплаты" />
           <Tab value="classes" label="Классы" />
           <Tab value="b2b" label="Районы" />
           <Tab value="schoolWork" label="Работа со школами" />
@@ -1067,6 +1077,155 @@ const SalesSettingsPage: React.FC = () => {
                                 const next = learningLinks.filter((l) => l.id !== link.id);
                                 const res = await settingsApi.setLearningLinks(next);
                                 setLearningLinks(res.items);
+                              })
+                            }
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </TableCell>
+                      </>
+                    )}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </Paper>
+
+        <Paper sx={sectionPaperSx('paymentLinks')}>
+          <Typography variant="h6" mb={1}>Ссылки для оплаты</Typography>
+          <Box sx={{ display: 'flex', gap: 1, mb: 1, flexWrap: 'wrap' }}>
+            <TextField
+              size="small"
+              label="Название"
+              value={newPaymentLinkName}
+              onChange={(e) => setNewPaymentLinkName(e.target.value)}
+            />
+            <TextField
+              size="small"
+              label="Ссылка"
+              value={newPaymentLinkUrl}
+              onChange={(e) => setNewPaymentLinkUrl(e.target.value)}
+              sx={{ minWidth: 320 }}
+            />
+            <Button
+              variant="contained"
+              onClick={() =>
+                safeAction(async () => {
+                  const name = newPaymentLinkName.trim();
+                  const url = newPaymentLinkUrl.trim();
+                  if (!name || !url) return;
+                  const next = [...paymentLinks, { id: '', name, url }];
+                  const res = await settingsApi.setPaymentLinks(next);
+                  setPaymentLinks(res.items);
+                  setNewPaymentLinkName('');
+                  setNewPaymentLinkUrl('');
+                })
+              }
+            >
+              Добавить
+            </Button>
+          </Box>
+          {paymentLinks.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              Пока нет ни одной ссылки.
+            </Typography>
+          ) : (
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Название</TableCell>
+                  <TableCell>Ссылка</TableCell>
+                  <TableCell width={160} />
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {paymentLinks.map((link) => (
+                  <TableRow key={link.id}>
+                    {editingPaymentLinkId === link.id ? (
+                      <>
+                        <TableCell>
+                          <TextField
+                            size="small"
+                            value={editingPaymentLinkName}
+                            onChange={(e) => setEditingPaymentLinkName(e.target.value)}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <TextField
+                            size="small"
+                            fullWidth
+                            value={editingPaymentLinkUrl}
+                            onChange={(e) => setEditingPaymentLinkUrl(e.target.value)}
+                          />
+                        </TableCell>
+                        <TableCell align="right">
+                          <Button
+                            size="small"
+                            onClick={() =>
+                              safeAction(async () => {
+                                const name = editingPaymentLinkName.trim();
+                                const url = editingPaymentLinkUrl.trim();
+                                if (!name || !url) return;
+                                const next = paymentLinks.map((l) =>
+                                  l.id === link.id ? { ...l, name, url } : l
+                                );
+                                const res = await settingsApi.setPaymentLinks(next);
+                                setPaymentLinks(res.items);
+                                setEditingPaymentLinkId(null);
+                              })
+                            }
+                          >
+                            Сохранить
+                          </Button>
+                          <Button size="small" onClick={() => setEditingPaymentLinkId(null)}>
+                            Отмена
+                          </Button>
+                        </TableCell>
+                      </>
+                    ) : (
+                      <>
+                        <TableCell>{link.name}</TableCell>
+                        <TableCell>
+                          <a href={link.url} target="_blank" rel="noopener noreferrer">
+                            {link.url}
+                          </a>
+                        </TableCell>
+                        <TableCell align="right">
+                          <Tooltip title={copiedPaymentLinkId === link.id ? 'Скопировано' : 'Скопировать ссылку'}>
+                            <IconButton
+                              size="small"
+                              onClick={async () => {
+                                try {
+                                  await navigator.clipboard.writeText(link.url);
+                                  setCopiedPaymentLinkId(link.id);
+                                  setTimeout(() => setCopiedPaymentLinkId(null), 1500);
+                                } catch {
+                                  /* clipboard unavailable */
+                                }
+                              }}
+                            >
+                              <ContentCopyIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                          <IconButton
+                            size="small"
+                            onClick={() => {
+                              setEditingPaymentLinkId(link.id);
+                              setEditingPaymentLinkName(link.name);
+                              setEditingPaymentLinkUrl(link.url);
+                            }}
+                          >
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={() =>
+                              safeAction(async () => {
+                                const next = paymentLinks.filter((l) => l.id !== link.id);
+                                const res = await settingsApi.setPaymentLinks(next);
+                                setPaymentLinks(res.items);
                               })
                             }
                           >

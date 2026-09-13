@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import {
+  Autocomplete,
   Box,
   Button,
   Card,
@@ -29,8 +30,8 @@ import {
   TableHead,
   TableRow,
 } from '@mui/material';
-import { studentCardsApi, abonementsApi, salesApi } from '../services/api';
-import { StudentCard as StudentCardType, Abonement } from '../types';
+import { studentCardsApi, abonementsApi, salesApi, settingsApi } from '../services/api';
+import { StudentCard as StudentCardType, Abonement, PaymentLink } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { getEffectiveRole } from '../utils/permissions';
 
@@ -85,6 +86,8 @@ const StudentCardsPage: React.FC = () => {
   const [discountValue, setDiscountValue] = useState('');
   const [studentId, setStudentId] = useState<number | ''>('');
   const [studentsForCards, setStudentsForCards] = useState<{ id: number; full_name: string }[]>([]);
+  const [sourcesList, setSourcesList] = useState<string[]>([]);
+  const [paymentLinksList, setPaymentLinksList] = useState<PaymentLink[]>([]);
   const [cabinetInviteLink, setCabinetInviteLink] = useState<string | null>(null);
   const [cabinetOpening, setCabinetOpening] = useState(false);
 
@@ -147,6 +150,11 @@ const StudentCardsPage: React.FC = () => {
   useEffect(() => {
     void loadAbonements();
   }, [isOwner]);
+
+  useEffect(() => {
+    salesApi.listLeadSources(true).then((list) => setSourcesList(list.map((s) => s.name).filter(Boolean))).catch(() => setSourcesList([]));
+    settingsApi.getPaymentLinks().then((res) => setPaymentLinksList(res.items)).catch(() => setPaymentLinksList([]));
+  }, []);
 
   const openCreate = () => {
     resetForm();
@@ -388,7 +396,7 @@ const StudentCardsPage: React.FC = () => {
                   <TableCell>{card.student_phone || card.parent_phone || '—'}</TableCell>
                   <TableCell>{card.city || '—'}</TableCell>
                   <TableCell>{card.grade || '—'}</TableCell>
-                  <TableCell>{card.format_type === 'group' ? 'Группа' : card.format_type === 'individual' ? 'Индивидуальное' : '—'}</TableCell>
+                  <TableCell>{card.format_type === 'group' ? 'Группа' : card.format_type === 'individual' ? 'Индивидуальное' : card.format_type === 'hybrid' ? 'Гибрид' : '—'}</TableCell>
                   <TableCell>{card.on_grant ? 'Да' : 'Нет'}</TableCell>
                   <TableCell>{card.source || '—'}</TableCell>
                   <TableCell>{ANKETA_STATUS_LABELS[card.anketa_status || ''] || card.anketa_status || '—'}</TableCell>
@@ -453,6 +461,7 @@ const StudentCardsPage: React.FC = () => {
                   <MenuItem value="">—</MenuItem>
                   <MenuItem value="group">Группа</MenuItem>
                   <MenuItem value="individual">Индивидуальное</MenuItem>
+                  <MenuItem value="hybrid">Гибрид (индивидуальный + групповой)</MenuItem>
                 </Select>
               </FormControl>
               <TextField label="Город" value={city} onChange={(e) => setCity(e.target.value)} fullWidth />
@@ -474,7 +483,14 @@ const StudentCardsPage: React.FC = () => {
                 </Select>
               </FormControl>
               <TextField label="Комментарий" value={comment} onChange={(e) => setComment(e.target.value)} fullWidth multiline minRows={2} />
-              <TextField label="Откуда пришел" value={source} onChange={(e) => setSource(e.target.value)} fullWidth placeholder="например: рекомендация, сайт, соцсети" />
+              <Autocomplete
+                freeSolo
+                options={sourcesList}
+                value={source}
+                onInputChange={(_, v) => setSource(v ?? '')}
+                onChange={(_, v) => setSource((typeof v === 'string' ? v : v ?? '').trim())}
+                renderInput={(params) => <TextField {...params} label="Откуда пришел" placeholder="Выберите из списка или введите свой вариант" fullWidth />}
+              />
 
               {isOwner && (
                 <>
@@ -502,13 +518,18 @@ const StudentCardsPage: React.FC = () => {
               {isOwnerOrAdmin && (
                 <>
                   <Typography variant="subtitle2" color="primary">Оплата</Typography>
-                  <TextField
-                    label="Ссылка для оплаты"
-                    value={paymentLink}
-                    onChange={(e) => setPaymentLink(e.target.value)}
-                    fullWidth
-                    placeholder="https://..."
-                  />
+                  <FormControl fullWidth>
+                    <InputLabel>Ссылка для оплаты</InputLabel>
+                    <Select value={paymentLink} label="Ссылка для оплаты" onChange={(e) => setPaymentLink(e.target.value)}>
+                      <MenuItem value="">—</MenuItem>
+                      {paymentLinksList.map((link) => (
+                        <MenuItem key={link.id} value={link.url}>{link.name}</MenuItem>
+                      ))}
+                      {paymentLink && !paymentLinksList.some((link) => link.url === paymentLink) && (
+                        <MenuItem value={paymentLink}>{paymentLink}</MenuItem>
+                      )}
+                    </Select>
+                  </FormControl>
                 </>
               )}
             </Stack>

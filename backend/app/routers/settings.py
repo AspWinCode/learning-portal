@@ -22,6 +22,9 @@ from app.schemas.settings import (
     LearningLink,
     LearningLinksResponse,
     LearningLinksUpdate,
+    PaymentLink,
+    PaymentLinksResponse,
+    PaymentLinksUpdate,
     LogoResponse,
     LogoUpdate,
     OwnerWorkspaceNotificationConfigResponse,
@@ -94,6 +97,7 @@ DISTRICTS_KEY = "b2b_districts"
 REFUSED_REASONS_KEY = "sales_refused_reasons"
 LEAD_PIPELINE_STAGES_KEY = "sales_lead_pipeline_stages"
 LEARNING_LINKS_KEY = "learning_links"
+PAYMENT_LINKS_KEY = "payment_links"
 STUDENT_QUESTIONNAIRES_KEY = "student_questionnaires"
 OWNER_WS_TASK_CONFIG_KEY = "owner_workspace_task_config"
 OWNER_WS_PROJECT_CONFIG_KEY = "owner_workspace_project_config"
@@ -1310,6 +1314,48 @@ async def set_learning_links(
     db.commit()
     db.refresh(setting)
     return LearningLinksResponse(items=items)
+
+
+@router.get("/payment-links", response_model=PaymentLinksResponse)
+async def get_payment_links(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    setting = db.query(AppSetting).filter(AppSetting.key == PAYMENT_LINKS_KEY).first()
+    if not setting or not (setting.value or "").strip():
+        return PaymentLinksResponse(items=[])
+    try:
+        data = json.loads(setting.value)
+        items = [PaymentLink(**x) for x in data] if isinstance(data, list) else []
+    except Exception:
+        items = []
+    return PaymentLinksResponse(items=items)
+
+
+@router.post("/payment-links", response_model=PaymentLinksResponse)
+async def set_payment_links(
+    body: PaymentLinksUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("settings.manage")),
+):
+    items = []
+    for link in body.items:
+        name = link.name.strip()
+        url = link.url.strip()
+        if not name or not url:
+            continue
+        items.append(PaymentLink(id=link.id or str(uuid4()), name=name, url=url))
+    raw = json.dumps([item.model_dump() for item in items], ensure_ascii=False)
+    setting = db.query(AppSetting).filter(AppSetting.key == PAYMENT_LINKS_KEY).first()
+    if not setting:
+        setting = AppSetting(key=PAYMENT_LINKS_KEY, value=raw)
+        db.add(setting)
+    else:
+        setting.value = raw
+        db.add(setting)
+    db.commit()
+    db.refresh(setting)
+    return PaymentLinksResponse(items=items)
 
 
 @router.get("/student-questionnaires", response_model=StudentQuestionnairesResponse)

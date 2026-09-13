@@ -49,6 +49,8 @@ from app.schemas.sales import (
     EgeTrialQuestionnaireResponse,
     IndividualLessonsQuestionnaireRequest,
     IndividualLessonsQuestionnaireResponse,
+    PixelForgeQuestionnaireRequest,
+    PixelForgeQuestionnaireResponse,
     TildaLeadRequest,
     TildaLeadResponse,
 )
@@ -820,6 +822,88 @@ async def submit_individual_lessons_questionnaire(
     db.commit()
     db.refresh(lead)
     return IndividualLessonsQuestionnaireResponse(lead_id=lead.id)
+
+
+@router.post(
+    "/public/leads/pixelforge-questionnaire",
+    response_model=PixelForgeQuestionnaireResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def submit_pixelforge_questionnaire(
+    payload: PixelForgeQuestionnaireRequest,
+    db: Session = Depends(get_db),
+):
+    owner = (
+        db.query(User)
+        .filter(User.role.in_([UserRole.SALES, UserRole.OWNER, UserRole.ADMIN]))
+        .order_by(User.id)
+        .first()
+    )
+    if not owner:
+        raise HTTPException(status_code=500, detail="No sales/owner/admin user configured")
+
+    max_comment = None
+    if payload.has_max is not None:
+        max_comment = f"Есть MAX: {'Да' if payload.has_max else 'Нет'}"
+
+    base_comment = payload.comment or ""
+    full_comment = base_comment
+    if max_comment:
+        full_comment = (base_comment + "\n\n" if base_comment else "") + max_comment
+
+    card = StudentCard(
+        student_full_name=payload.child_full_name,
+        birth_date=payload.birth_date,
+        student_phone=payload.child_phone,
+        phone_normalized=normalize_phone(payload.parent_phone or payload.child_phone or "") or None,
+        gender=payload.gender,
+        on_grant=False,
+        format_type=None,
+        city=payload.city,
+        school=payload.school_name,
+        grade=payload.school_class,
+        parent_full_name=payload.parent_full_name,
+        parent_phone=payload.parent_phone,
+        parent_phone_2=payload.parent_phone_2,
+        parent_email=payload.parent_email,
+        student_email=payload.student_email,
+        comment=full_comment or None,
+        source=payload.source or "Анкета PixelForge",
+        discount_type=DiscountType.NONE,
+        discount_value=0.0,
+        anketa_status="filled",
+    )
+
+    questionnaire_data = payload.model_dump(mode="json")
+    lead = Lead(
+        owner_id=owner.id,
+        contact_name=payload.parent_full_name,
+        phone=payload.parent_phone,
+        phone_normalized=normalize_phone(payload.parent_phone or payload.child_phone or "") or None,
+        parent_full_name=payload.parent_full_name,
+        child_full_name=payload.child_full_name,
+        parent_phone=payload.parent_phone,
+        child_phone=payload.child_phone,
+        email=payload.parent_email or payload.student_email,
+        city=payload.city,
+        school_name=payload.school_name,
+        school_class=payload.school_class,
+        comment=full_comment or None,
+        source=payload.source or "Анкета PixelForge",
+        tags=["direction:pixelforge"],
+        status=LeadStatus.NEW,
+        questionnaire_filled=True,
+        questionnaire_data=questionnaire_data,
+    )
+    db.add(card)
+    db.add(lead)
+    db.flush()
+    sync_student_card_person(db, card)
+    lead.student_card_id = card.id
+    sync_lead_person(db, lead)
+    db.commit()
+    db.refresh(lead)
+    return PixelForgeQuestionnaireResponse(lead_id=lead.id)
 
 
 @router.post("/public/leads/tilda-lead", response_model=TildaLeadResponse, status_code=status.HTTP_201_CREATED)

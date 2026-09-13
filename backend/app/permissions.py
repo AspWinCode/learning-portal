@@ -321,6 +321,12 @@ PERMISSION_CATALOG: List[Dict[str, str]] = [
         "description": "Назначить программу группе или ученику.",
     },
     {
+        "key": "programs.delete",
+        "module": "programs",
+        "label": "Удаление программ",
+        "description": "Безвозвратно удалить программу (только если по ней нет оценок и она никому не назначена).",
+    },
+    {
         "key": "abonements.access",
         "module": "abonements",
         "label": "Просмотр абонементов",

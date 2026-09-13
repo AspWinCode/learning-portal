@@ -1282,6 +1282,9 @@ export const programsApi = {
   assignToStudent: async (programId: number, studentId: number): Promise<void> => {
     await api.post(`/api/programs/${programId}/assign-to-student/${studentId}`);
   },
+  delete: async (id: number): Promise<void> => {
+    await api.delete(`/api/programs/${id}`);
+  },
 };
 
 export const gradesApi = {

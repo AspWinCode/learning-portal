@@ -23,7 +23,7 @@ import { programsApi } from '../services/api';
 import { Program } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { hasPermission } from '../utils/permissions';
-import { EmptyState, FormDialog, StatusChip } from '../components/ui';
+import { ConfirmDialog, EmptyState, FormDialog, StatusChip } from '../components/ui';
 
 interface TopicForm {
   name: string;
@@ -70,6 +70,7 @@ const ProgramsPage: React.FC = () => {
   const [versionModules, setVersionModules] = useState<ModuleForm[]>([
     { name: 'Основной модуль', topics: [{ name: '', description: '', final_result: '' }] },
   ]);
+  const [deleteProgram, setDeleteProgram] = useState<Program | null>(null);
   const { user } = useAuth();
   const canManagePrograms = hasPermission(user, 'programs.manage');
 
@@ -271,6 +272,19 @@ const ProgramsPage: React.FC = () => {
     }
   };
 
+  const handleDeleteProgram = async () => {
+    if (!deleteProgram) return;
+    try {
+      await programsApi.delete(deleteProgram.id);
+      setInfo('Программа удалена');
+      setDeleteProgram(null);
+      loadPrograms();
+    } catch (err: any) {
+      setDeleteProgram(null);
+      setError(err.response?.data?.detail || 'Ошибка удаления программы');
+    }
+  };
+
   const handleSaveProgramName = async () => {
     if (!editNameProgram || !editNameValue.trim()) return;
     try {
@@ -411,6 +425,14 @@ const ProgramsPage: React.FC = () => {
                         <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
                           <Button variant="outlined" onClick={() => openNewVersionDialog(program)}>
                             Создать новую версию от v{program.version}
+                          </Button>
+                          <Button
+                            variant="outlined"
+                            color="error"
+                            startIcon={<DeleteIcon />}
+                            onClick={() => setDeleteProgram(program)}
+                          >
+                            Удалить версию
                           </Button>
                         </Box>
                       )}
@@ -781,6 +803,19 @@ const ProgramsPage: React.FC = () => {
           </Button>
         </DialogActions>
       </FormDialog>
+
+      <ConfirmDialog
+        open={!!deleteProgram}
+        title="Удалить версию программы?"
+        description={
+          deleteProgram
+            ? `Версия v${deleteProgram.version} программы «${deleteProgram.name}» будет удалена безвозвратно. Удаление возможно, только если по программе нет оценок и она нигде не назначена.`
+            : ''
+        }
+        confirmLabel="Удалить"
+        onClose={() => setDeleteProgram(null)}
+        onConfirm={handleDeleteProgram}
+      />
     </Layout>
   );
 };

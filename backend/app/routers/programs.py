@@ -98,6 +98,10 @@ async def create_program(
                 status=TopicStatus.ACTIVE
             )
             db.add(db_topic)
+            # Флаш поштучно: батч из 2+ Topic в одном INSERT triggers SQLAlchemy
+            # insertmanyvalues, который кастует status как ::VARCHAR — Postgres
+            # это не приводит к enum topicstatus и падает с DatatypeMismatch.
+            db.flush()
     
     # Привязка тренеров
     if program.trainer_ids:
@@ -360,6 +364,9 @@ async def update_program(
                     order=topic_data.get("order", 0),
                     status=TopicStatus.ACTIVE
                 ))
+                # См. комментарий в create_program: батч из 2+ Topic в одном
+                # INSERT падает на кастовании status в ::VARCHAR вместо enum.
+                db.flush()
 
         # Автоматически архивируем ВСЕ предыдущие версии в семействе (активной остаётся только новая).
         family_ids = _get_program_family_ids(db, db_program.id)
@@ -409,10 +416,70 @@ async def update_program(
         
         db.commit()
         db.refresh(db_program)
-        
+
         log_action(db, current_user.id, "update", "program", program_id, update_data)
         await invalidate_namespace(CACHE_NS_PROGRAMS)
         return db_program
+
+
+@router.delete("/{program_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_program(
+    program_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("programs.delete"))
+):
+    """
+    Безвозвратное удаление программы. В отличие от архивации, разрешено только
+    если по программе нет истории (оценок) и она нигде не используется —
+    иначе теряются данные. Во всех остальных случаях используйте архивацию.
+    """
+    db_program = db.query(Program).filter(Program.id == program_id).first()
+    if db_program is None:
+        raise HTTPException(status_code=404, detail="Program not found")
+
+    module_ids = [m.id for m in db.query(Module.id).filter(Module.program_id == program_id).all()]
+    topic_ids = [t.id for t in db.query(Topic.id).filter(Topic.module_id.in_(module_ids)).all()] if module_ids else []
+
+    if topic_ids and check_topics_have_grades(db, topic_ids):
+        raise HTTPException(
+            status_code=400,
+            detail="Нельзя удалить программу: по её темам уже выставлены оценки. Заархивируйте программу вместо удаления."
+        )
+
+    if db.query(GroupProgram).filter(GroupProgram.program_id == program_id).first():
+        raise HTTPException(
+            status_code=400,
+            detail="Нельзя удалить программу: она назначена группе. Сначала снимите назначение."
+        )
+
+    if db.query(StudentProgram).filter(
+        StudentProgram.program_id == program_id,
+        StudentProgram.status == StudentProgramLinkStatus.ACTIVE,
+    ).first():
+        raise HTTPException(
+            status_code=400,
+            detail="Нельзя удалить программу: она назначена ученику. Сначала снимите назначение."
+        )
+
+    if db.query(Program).filter(Program.parent_program_id == program_id).first():
+        raise HTTPException(
+            status_code=400,
+            detail="Нельзя удалить программу: существуют более новые версии, ссылающиеся на неё."
+        )
+
+    program_name = db_program.name
+
+    db.query(StudentProgram).filter(StudentProgram.program_id == program_id).delete(synchronize_session=False)
+    db.query(ProgramTrainer).filter(ProgramTrainer.program_id == program_id).delete(synchronize_session=False)
+    if module_ids:
+        db.query(Topic).filter(Topic.module_id.in_(module_ids)).delete(synchronize_session=False)
+        db.query(Module).filter(Module.program_id == program_id).delete(synchronize_session=False)
+    db.delete(db_program)
+    db.commit()
+
+    log_action(db, current_user.id, "delete", "program", program_id, {"name": program_name})
+    await invalidate_namespace(CACHE_NS_PROGRAMS)
+    return None
 
 
 @router.post("/{program_id}/archive-topic/{topic_id}")

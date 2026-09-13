@@ -2676,6 +2676,7 @@ const SalesLeadsPage: React.FC = () => {
                           { key: 'parent_phone_2', label: 'Второй телефон' },
                           { key: 'parent_email', label: 'Email родителя' },
                           { key: 'preferred_messenger', label: 'Мессенджер' },
+                          { key: 'has_max', label: 'Есть MAX?' },
                           { key: 'comment', label: 'Комментарий (цели обучения, уровень, удобное время и т.п.)' },
                           { key: 'source', label: 'Откуда о нас узнали' },
                         ].map(({ key, label }) => {
@@ -2687,9 +2688,11 @@ const SalesLeadsPage: React.FC = () => {
                                   const d = parseISO(value);
                                   return isValid(d) ? format(d, 'dd.MM.yyyy') : value;
                                 })()
-                              : typeof value === 'string'
-                                ? value
-                                : String(value);
+                              : typeof value === 'boolean'
+                                ? (value ? 'Да' : 'Нет')
+                                : typeof value === 'string'
+                                  ? value
+                                  : String(value);
                           return (
                             <Grid item xs={12} sm={6} key={key}>
                               <Typography variant="caption" color="text.secondary" display="block">

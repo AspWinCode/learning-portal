@@ -33,6 +33,7 @@ import {
   Menu,
   IconButton,
   Grid,
+  TableSortLabel,
 } from '@mui/material';
 import { Add as AddIcon, Edit as EditIcon, AccountBalance as AccountBalanceIcon, Person as PersonIcon, MoreVert as MoreVertIcon } from '@mui/icons-material';
 import { studentsApi, usersApi, groupsApi, programsApi, abonementsApi, studentAccountsApi, studentCardsApi, salesApi } from '../services/api';
@@ -174,6 +175,7 @@ const StudentsPage: React.FC = () => {
 
   const [quickFilterNoGroup, setQuickFilterNoGroup] = useState(false);
   const [quickFilterFromLead, setQuickFilterFromLead] = useState(false);
+  const [studentSortOrder, setStudentSortOrder] = useState<'asc' | 'desc'>('asc');
   const [rowMenuAnchor, setRowMenuAnchor] = useState<{ el: HTMLElement; student: Student } | null>(null);
   const [parentSearch, setParentSearch] = useState('');
   const [archiveConfirmOpen, setArchiveConfirmOpen] = useState<Student | null>(null);
@@ -963,8 +965,12 @@ const StudentsPage: React.FC = () => {
         return hasInStudent || hasInGroup;
       });
     }
+    list = [...list].sort((a, b) => {
+      const cmp = a.full_name.localeCompare(b.full_name, 'ru');
+      return studentSortOrder === 'asc' ? cmp : -cmp;
+    });
     return list;
-  }, [students, typeFilter, groupFilter, trainerFilter, programFilter, grantStudentIds, individualFormatStudentIds, groups, quickFilterNoGroup, quickFilterFromLead]);
+  }, [students, typeFilter, groupFilter, trainerFilter, programFilter, grantStudentIds, individualFormatStudentIds, groups, quickFilterNoGroup, quickFilterFromLead, studentSortOrder]);
 
   const studentsMetrics = useMemo(() => {
     const active = students.filter((s) => s.status === 'active').length;
@@ -1256,7 +1262,15 @@ const StudentsPage: React.FC = () => {
               <TableHead>
                 <TableRow>
                   <TableCell width={48}>№</TableCell>
-                  <TableCell>Ученик</TableCell>
+                  <TableCell sortDirection={studentSortOrder}>
+                    <TableSortLabel
+                      active
+                      direction={studentSortOrder}
+                      onClick={() => setStudentSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
+                    >
+                      Ученик
+                    </TableSortLabel>
+                  </TableCell>
                   <TableCell>Родитель</TableCell>
                   <TableCell>Группа / формат</TableCell>
                   <TableCell>Программа</TableCell>

@@ -63,7 +63,7 @@ def decode_makeup_selection_token(token: str) -> MakeupSelectionTokenPayload:
 
 
 def build_makeup_selection_link(token: str) -> str:
-    frontend_url = (os.getenv("FRONTEND_URL") or "http://localhost:3000").rstrip("/")
+    frontend_url = (os.getenv("PORTAL_BASE_URL") or "https://tirskix.space").rstrip("/")
     return f"{frontend_url}/select-makeup?token={token}"
 
 

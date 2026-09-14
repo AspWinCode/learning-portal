@@ -53,7 +53,7 @@ def create_invite_for_existing_parent(db: Session, user: User) -> str:
     user.invite_token_hash = token_hash
     user.invite_token_expires_at = expires_at
     db.add(user)
-    frontend_url = (os.getenv("FRONTEND_URL") or "http://localhost:3000").rstrip("/")
+    frontend_url = (os.getenv("PORTAL_BASE_URL") or "https://tirskix.space").rstrip("/")
     invite_link = f"{frontend_url}/set-password?token={token}"
     send_invite_email(user.email, user.full_name or "Родитель", invite_link)
     return invite_link
@@ -110,7 +110,7 @@ def create_parent_with_invite(db: Session, email: str, full_name: str) -> Tuple[
     )
     db.add(db_user)
     db.flush()
-    frontend_url = (os.getenv("FRONTEND_URL") or "http://localhost:3000").rstrip("/")
+    frontend_url = (os.getenv("PORTAL_BASE_URL") or "https://tirskix.space").rstrip("/")
     invite_link = f"{frontend_url}/set-password?token={token}"
     send_invite_email(email, full_name, invite_link)
     return db_user, invite_link

@@ -20,7 +20,7 @@ def send_account_credentials_email(*, to_email: str, full_name: str, password: s
             return False
 
         school_name = (os.getenv("SCHOOL_NAME") or "Учебный портал").strip()
-        frontend_url = (os.getenv("FRONTEND_URL") or "http://localhost:3000").rstrip("/")
+        frontend_url = (os.getenv("PORTAL_BASE_URL") or "https://tirskix.space").rstrip("/")
         greeting_name = (full_name or "").strip() or "пользователь"
         subject = f"Доступ в {school_name}"
         body = (

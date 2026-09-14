@@ -270,10 +270,10 @@ const StudentsPage: React.FC = () => {
 
   const loadStudents = async () => {
     try {
-      const params: Record<string, string> = {};
+      const params: Record<string, string> = { limit: '2000' };
       if (statusFilter !== 'all') params.status = statusFilter;
       if (searchQuery.trim()) params.q = searchQuery.trim();
-      const data = await studentsApi.getAll(Object.keys(params).length ? params : undefined);
+      const data = await studentsApi.getAll(params);
       // Один ученик — одна строка (дедупликация по id на случай дублей из API)
       const byId = new Map<number, Student>();
       (Array.isArray(data) ? data : []).forEach((s: Student) => {

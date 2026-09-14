@@ -30,7 +30,7 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
-import { Add as AddIcon, ArrowForward as ArrowForwardIcon, ContentCopy as ContentCopyIcon, Delete as DeleteIcon, DragIndicator as DragIndicatorIcon, Edit as EditIcon, Lock as LockIcon } from '@mui/icons-material';
+import { Add as AddIcon, ContentCopy as ContentCopyIcon, Delete as DeleteIcon, DragIndicator as DragIndicatorIcon, Edit as EditIcon, Lock as LockIcon } from '@mui/icons-material';
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -1069,23 +1069,6 @@ const SalesSettingsPage: React.FC = () => {
                           >
                             <EditIcon fontSize="small" />
                           </IconButton>
-                          <Tooltip title="Перенести в «Ссылки для оплаты»">
-                            <IconButton
-                              size="small"
-                              onClick={() =>
-                                safeAction(async () => {
-                                  const remainingLearningLinks = learningLinks.filter((l) => l.id !== link.id);
-                                  const nextPaymentLinks = [...paymentLinks, { id: '', name: link.name, url: link.url }];
-                                  const paymentRes = await settingsApi.setPaymentLinks(nextPaymentLinks);
-                                  setPaymentLinks(paymentRes.items);
-                                  const learningRes = await settingsApi.setLearningLinks(remainingLearningLinks);
-                                  setLearningLinks(learningRes.items);
-                                })
-                              }
-                            >
-                              <ArrowForwardIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
                           <IconButton
                             size="small"
                             color="error"

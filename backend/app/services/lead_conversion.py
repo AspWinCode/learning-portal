@@ -9,6 +9,7 @@ Use case: конвертация лида в ученика (convert_lead_to_stu
 from dataclasses import dataclass
 from typing import Optional
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -84,16 +85,32 @@ def _find_or_create_student_card_for_lead(
     )
     student_phone = (getattr(lead, "child_phone", None) or "").strip() or (q.get("child_phone") or "")
     parent_email = (getattr(lead, "email", None) or "").strip().lower()
-    card = (
-        db.query(StudentCard)
-        .filter(
-            StudentCard.student_id.is_(None),
-            StudentCard.anketa_status == "filled",
-            StudentCard.parent_email == parent_email,
-            StudentCard.student_full_name == student_full_name,
+    phone_normalized = normalize_phone(parent_phone or student_phone or "") or None
+    card = None
+    if parent_email:
+        card = (
+            db.query(StudentCard)
+            .filter(
+                StudentCard.student_id.is_(None),
+                StudentCard.anketa_status == "filled",
+                func.lower(StudentCard.parent_email) == parent_email,
+                StudentCard.student_full_name == student_full_name,
+            )
+            .first()
         )
-        .first()
-    )
+    if not card and phone_normalized:
+        # Запасной поиск по телефону — email мог отличаться по регистру/значению,
+        # но карточка уже существует (например, создана из публичной анкеты) и
+        # уникальность phone_normalized не позволит создать дубликат ниже.
+        card = (
+            db.query(StudentCard)
+            .filter(
+                StudentCard.student_id.is_(None),
+                StudentCard.anketa_status == "filled",
+                StudentCard.phone_normalized == phone_normalized,
+            )
+            .first()
+        )
     if card:
         card.student_id = student.id
         card.anketa_status = "converted"

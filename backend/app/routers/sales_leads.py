@@ -1,4 +1,3 @@
-import logging
 from datetime import date, datetime, time as dt_time
 from io import BytesIO
 from typing import Dict, List, Optional, Tuple
@@ -63,7 +62,6 @@ from app.services.person_sync import sync_lead_person, sync_student_card_person
 from app.utils.phone import normalize_phone, validate_phone_for_lead
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
 
 TILDA_SOURCE_START = "Тильда_Первый Шаг"
 TILDA_SOURCE_BASE = "Тильда_Специалист"
@@ -1310,10 +1308,6 @@ async def convert_lead_to_student(
         if "не найден" in message.lower():
             raise HTTPException(status_code=404, detail=message)
         raise HTTPException(status_code=400, detail=message)
-    except Exception as exc:
-        import traceback
-        logger.error("convert_lead_to_student failed for lead_id=%s: %s\n%s", lead_id, exc, traceback.format_exc())
-        raise HTTPException(status_code=500, detail=f"[DEBUG] {type(exc).__name__}: {exc}")
     return LeadConvertToStudentResponse(
         student_id=result.student_id,
         lead=_fix_lead_strings(result.lead),

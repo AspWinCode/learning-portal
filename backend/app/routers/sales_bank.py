@@ -1,5 +1,6 @@
 import hashlib
 import json
+import logging
 import os
 from datetime import date
 from typing import Any, Dict, List, Optional
@@ -35,6 +36,8 @@ from app.schemas.finance import (
 )
 from app.services.bank_operation import apply_bank_operation_to_student as bank_operation_apply
 from app.services.finance_ledger import ensure_finance_transaction_for_bank_transaction
+
+logger = logging.getLogger(__name__)
 
 
 def _sync_ft(db, bank_tx, description: str = "") -> None:
@@ -445,248 +448,257 @@ def do_tochka_import_and_apply(
     no_match: List[dict] = []
     ambiguous: List[dict] = []
 
-    with db_transaction(db):
-        for idx, transaction in enumerate(transactions):
-            payer_name = (transaction.get("payer_name") or "").strip()
-            amount = abs(float(transaction.get("amount") or 0))
-            tx_date = transaction.get("date") or ""
-            payer_phone = normalize_phone(transaction.get("payer_phone_raw") or "")
-            direction = str(transaction.get("direction") or "income").strip().lower()
-            is_expense = direction == "expense"
+    for idx, transaction in enumerate(transactions):
+        try:
+            with db_transaction(db):
+                payer_name = (transaction.get("payer_name") or "").strip()
+                amount = abs(float(transaction.get("amount") or 0))
+                tx_date = transaction.get("date") or ""
+                payer_phone = normalize_phone(transaction.get("payer_phone_raw") or "")
+                direction = str(transaction.get("direction") or "income").strip().lower()
+                is_expense = direction == "expense"
 
-            operation_id = (transaction.get("operation_id") or "").strip()
-            if not operation_id:
-                operation_id = _stable_tochka_fallback_operation_id(account_id, transaction)
+                operation_id = (transaction.get("operation_id") or "").strip()
+                if not operation_id:
+                    operation_id = _stable_tochka_fallback_operation_id(account_id, transaction)
 
-            bank_transaction = (
-                db.query(BankTransaction)
-                .filter(BankTransaction.operation_id == operation_id)
-                .first()
-            )
-            if bank_transaction is None:
-                bank_transaction = _find_semantic_tochka_candidate(
-                    db,
-                    account_id,
-                    amount,
-                    tx_date,
-                    payer_name,
-                    payer_phone,
-                    is_expense=is_expense,
+                bank_transaction = (
+                    db.query(BankTransaction)
+                    .filter(BankTransaction.operation_id == operation_id)
+                    .first()
                 )
-            if (
-                bank_transaction is None
-                and not is_expense
-                and not payer_phone
-                and _is_generic_tochka_counterparty(payer_name)
-            ):
-                bank_transaction = _find_single_tochka_candidate(
-                    db,
-                    account_id,
-                    amount,
-                    tx_date,
-                    require_enriched=True,
-                )
-            # Выписка содержит реальное имя плательщика, но вебхук ранее создал запись
-            # с именем-заглушкой «ООО Банк Точка» и другим operation_id — ищем её.
-            if bank_transaction is None and not is_expense:
-                bank_transaction = _find_tochka_income_candidate_by_real_name(
-                    db, account_id, amount, tx_date, payer_name
-                )
-            # Обратный случай: выписка/вебхук вернули заглушку «ООО Банк Точка», а запись
-            # с реальным именем плательщика уже была создана раньше другим источником.
-            if bank_transaction is None and not is_expense and _is_generic_tochka_counterparty(payer_name):
-                bank_transaction = _find_tochka_real_income_candidate_for_generic(
-                    db, account_id, amount, tx_date
-                )
-            if bank_transaction is not None and bank_transaction.status == BankTransactionStatus.IGNORED.value:
-                continue
-            if bank_transaction is None:
-                bank_transaction = BankTransaction(
-                    operation_id=operation_id,
-                    tochka_account_id=account_id,
-                    amount=amount,
-                    payer_phone=(payer_phone or None) if not is_expense else None,
-                    payer_name=payer_name[:512] if payer_name else None,
-                    payment_date=tx_date,
-                    status=BankTransactionStatus.EXPENSE.value if is_expense else BankTransactionStatus.NEW.value,
-                )
-                db.add(bank_transaction)
-                db.flush()
-            else:
-                bank_transaction.amount = amount
-                if is_expense:
+                if bank_transaction is None:
+                    bank_transaction = _find_semantic_tochka_candidate(
+                        db,
+                        account_id,
+                        amount,
+                        tx_date,
+                        payer_name,
+                        payer_phone,
+                        is_expense=is_expense,
+                    )
+                if (
+                    bank_transaction is None
+                    and not is_expense
+                    and not payer_phone
+                    and _is_generic_tochka_counterparty(payer_name)
+                ):
+                    bank_transaction = _find_single_tochka_candidate(
+                        db,
+                        account_id,
+                        amount,
+                        tx_date,
+                        require_enriched=True,
+                    )
+                # Выписка содержит реальное имя плательщика, но вебхук ранее создал запись
+                # с именем-заглушкой «ООО Банк Точка» и другим operation_id — ищем её.
+                if bank_transaction is None and not is_expense:
+                    bank_transaction = _find_tochka_income_candidate_by_real_name(
+                        db, account_id, amount, tx_date, payer_name
+                    )
+                # Обратный случай: выписка/вебхук вернули заглушку «ООО Банк Точка», а запись
+                # с реальным именем плательщика уже была создана раньше другим источником.
+                if bank_transaction is None and not is_expense and _is_generic_tochka_counterparty(payer_name):
+                    bank_transaction = _find_tochka_real_income_candidate_for_generic(
+                        db, account_id, amount, tx_date
+                    )
+                if bank_transaction is not None and bank_transaction.status == BankTransactionStatus.IGNORED.value:
+                    continue
+                if bank_transaction is None:
+                    bank_transaction = BankTransaction(
+                        operation_id=operation_id,
+                        tochka_account_id=account_id,
+                        amount=amount,
+                        payer_phone=(payer_phone or None) if not is_expense else None,
+                        payer_name=payer_name[:512] if payer_name else None,
+                        payment_date=tx_date,
+                        status=BankTransactionStatus.EXPENSE.value if is_expense else BankTransactionStatus.NEW.value,
+                    )
+                    db.add(bank_transaction)
+                    db.flush()
+                else:
+                    bank_transaction.amount = amount
+                    if is_expense:
+                        bank_transaction.payer_phone = None
+                    elif payer_phone:
+                        bank_transaction.payer_phone = payer_phone
+                    if payer_name and not _should_keep_existing_payer_name(bank_transaction.payer_name, payer_name):
+                        bank_transaction.payer_name = payer_name[:512]
+                    bank_transaction.payment_date = tx_date or bank_transaction.payment_date
+                    if not is_expense:
+                        payer_phone = normalize_phone(bank_transaction.payer_phone or "") or payer_phone
+                        payer_name = (bank_transaction.payer_name or payer_name or "").strip()
+
+                if bank_transaction is not None and is_expense and bank_transaction.status != BankTransactionStatus.APPLIED.value:
+                    bank_transaction.amount = amount
                     bank_transaction.payer_phone = None
-                elif payer_phone:
-                    bank_transaction.payer_phone = payer_phone
-                if payer_name and not _should_keep_existing_payer_name(bank_transaction.payer_name, payer_name):
-                    bank_transaction.payer_name = payer_name[:512]
-                bank_transaction.payment_date = tx_date or bank_transaction.payment_date
-                if not is_expense:
-                    payer_phone = normalize_phone(bank_transaction.payer_phone or "") or payer_phone
-                    payer_name = (bank_transaction.payer_name or payer_name or "").strip()
+                    bank_transaction.payer_name = payer_name[:512] if payer_name else bank_transaction.payer_name
+                    bank_transaction.payment_date = tx_date or bank_transaction.payment_date
+                    bank_transaction.status = BankTransactionStatus.EXPENSE.value
+                    bank_transaction.student_id = None
+                    bank_transaction.student_account_id = None
 
-            if bank_transaction is not None and is_expense and bank_transaction.status != BankTransactionStatus.APPLIED.value:
-                bank_transaction.amount = amount
-                bank_transaction.payer_phone = None
-                bank_transaction.payer_name = payer_name[:512] if payer_name else bank_transaction.payer_name
-                bank_transaction.payment_date = tx_date or bank_transaction.payment_date
-                bank_transaction.status = BankTransactionStatus.EXPENSE.value
-                bank_transaction.student_id = None
-                bank_transaction.student_account_id = None
+                _sync_ft(db, bank_transaction, (transaction.get("description") or "").strip())
+                if bank_transaction.status == BankTransactionStatus.EXPENSE.value:
+                    continue
+                if bank_transaction.status == BankTransactionStatus.APPLIED.value:
+                    continue
 
-            _sync_ft(db, bank_transaction, (transaction.get("description") or "").strip())
-            if bank_transaction.status == BankTransactionStatus.EXPENSE.value:
-                continue
-            if bank_transaction.status == BankTransactionStatus.APPLIED.value:
-                continue
+                student_ids: List[int] = []
+                if payer_phone:
+                    parent_id = bindings.get(payer_phone)
+                    if parent_id is not None:
+                        student_ids = [
+                            row[0]
+                            for row in db.query(Student.id).filter(Student.parent_id == parent_id).all()
+                        ]
+                    if not student_ids:
+                        for card in cards:
+                            if normalize_phone(card.parent_phone or "") == payer_phone or normalize_phone(
+                                getattr(card, "parent_phone_2", None) or ""
+                            ) == payer_phone:
+                                if card.student_id:
+                                    student_ids.append(card.student_id)
+                        student_ids = list(dict.fromkeys(student_ids))
 
-            student_ids: List[int] = []
-            if payer_phone:
-                parent_id = bindings.get(payer_phone)
-                if parent_id is not None:
-                    student_ids = [
-                        row[0]
-                        for row in db.query(Student.id).filter(Student.parent_id == parent_id).all()
-                    ]
-                if not student_ids:
+                if not student_ids and payer_name:
+                    payer_norm = _normalize_name(payer_name)
+                    # Точное совпадение с tochka_payer_name (приоритет)
                     for card in cards:
-                        if normalize_phone(card.parent_phone or "") == payer_phone or normalize_phone(
-                            getattr(card, "parent_phone_2", None) or ""
-                        ) == payer_phone:
+                        if card.tochka_payer_name and _normalize_name(card.tochka_payer_name) == payer_norm:
                             if card.student_id:
                                 student_ids.append(card.student_id)
                     student_ids = list(dict.fromkeys(student_ids))
 
-            if not student_ids and payer_name:
-                payer_norm = _normalize_name(payer_name)
-                # Точное совпадение с tochka_payer_name (приоритет)
-                for card in cards:
-                    if card.tochka_payer_name and _normalize_name(card.tochka_payer_name) == payer_norm:
-                        if card.student_id:
-                            student_ids.append(card.student_id)
-                student_ids = list(dict.fromkeys(student_ids))
-
-            if not student_ids and payer_name:
-                # Нечёткое совпадение с parent_full_name / user.full_name (запасной вариант)
-                for card in cards:
-                    if _payer_matches_parent(payer_name, card.parent_full_name):
-                        if card.student_id:
-                            student_ids.append(card.student_id)
-                    elif card.student and card.student.parent and card.student.parent.full_name:
-                        if _payer_matches_parent(payer_name, card.student.parent.full_name):
+                if not student_ids and payer_name:
+                    # Нечёткое совпадение с parent_full_name / user.full_name (запасной вариант)
+                    for card in cards:
+                        if _payer_matches_parent(payer_name, card.parent_full_name):
                             if card.student_id:
                                 student_ids.append(card.student_id)
-                student_ids = list(dict.fromkeys(student_ids))
+                        elif card.student and card.student.parent and card.student.parent.full_name:
+                            if _payer_matches_parent(payer_name, card.student.parent.full_name):
+                                if card.student_id:
+                                    student_ids.append(card.student_id)
+                    student_ids = list(dict.fromkeys(student_ids))
 
-            if not student_ids:
-                bank_transaction.status = BankTransactionStatus.NO_MATCH.value
+                if not student_ids:
+                    bank_transaction.status = BankTransactionStatus.NO_MATCH.value
+                    _sync_ft(db, bank_transaction, (transaction.get("description") or "").strip())
+                    no_match.append(
+                        {
+                            "payer_name": payer_name,
+                            "amount": amount,
+                            "date": tx_date,
+                            "payer_phone": payer_phone or None,
+                        }
+                    )
+                    continue
+
+                chosen_student_id = _resolve_student_for_bank_payment(db, student_ids)
+                if chosen_student_id is None:
+                    bank_transaction.status = BankTransactionStatus.AMBIGUOUS.value
+                    _sync_ft(db, bank_transaction, (transaction.get("description") or "").strip())
+                    ambiguous.append(
+                        {
+                            "payer_name": payer_name,
+                            "amount": amount,
+                            "date": tx_date,
+                            "payer_phone": payer_phone or None,
+                            "candidates": [
+                                {
+                                    "student_id": student_id,
+                                    "student_name": get_student_display_name(
+                                        db,
+                                        db.query(Student).filter(Student.id == student_id).first(),
+                                    ),
+                                    "parent_full_name": next(
+                                        (card.parent_full_name or "" for card in cards if card.student_id == student_id),
+                                        "",
+                                    ),
+                                }
+                                for student_id in student_ids
+                            ],
+                        }
+                    )
+                    continue
+
+                student = db.query(Student).filter(Student.id == chosen_student_id).first()
+                if student is None:
+                    bank_transaction.status = BankTransactionStatus.NO_MATCH.value
+                    _sync_ft(db, bank_transaction, (transaction.get("description") or "").strip())
+                    no_match.append(
+                        {
+                            "payer_name": payer_name,
+                            "amount": amount,
+                            "date": tx_date,
+                            "payer_phone": payer_phone or None,
+                        }
+                    )
+                    continue
+
+                account = (
+                    db.query(StudentAccount)
+                    .filter(StudentAccount.student_id == chosen_student_id)
+                    .order_by(StudentAccount.id)
+                    .first()
+                )
+                if account is None:
+                    account = StudentAccount(student_id=chosen_student_id, name="Основной", balance=0.0)
+                    db.add(account)
+                    db.flush()
+
+                note = f"Оплата из банка, плательщик: {payer_name}, дата: {tx_date}"
+                db.add(
+                    StudentAccountTransaction(
+                        account_id=account.id,
+                        amount=amount,
+                        kind=StudentAccountTransactionKind.PAYMENT,
+                        note=note,
+                    )
+                )
+                account.balance += amount
+                db.add(
+                    TochkaAppliedPayment(
+                        tochka_account_id=account_id,
+                        payment_date=tx_date,
+                        amount=amount,
+                        payer_name=(payer_name or "")[:512],
+                        student_id=chosen_student_id,
+                        student_account_id=account.id,
+                    )
+                )
+
+                try:
+                    pay_date = date.fromisoformat(tx_date[:10]) if tx_date else date.today()
+                except (ValueError, TypeError):
+                    pay_date = date.today()
+
+                update_card_payment_dates(db, chosen_student_id, pay_date)
+
+                bank_transaction.status = BankTransactionStatus.APPLIED.value
+                bank_transaction.student_id = chosen_student_id
+                bank_transaction.student_account_id = account.id
                 _sync_ft(db, bank_transaction, (transaction.get("description") or "").strip())
-                no_match.append(
+
+                applied.append(
                     {
                         "payer_name": payer_name,
                         "amount": amount,
                         "date": tx_date,
-                        "payer_phone": payer_phone or None,
+                        "student_id": chosen_student_id,
+                        "account_id": account.id,
+                        "student_name": get_student_display_name(db, student),
                     }
                 )
-                continue
 
-            chosen_student_id = _resolve_student_for_bank_payment(db, student_ids)
-            if chosen_student_id is None:
-                bank_transaction.status = BankTransactionStatus.AMBIGUOUS.value
-                _sync_ft(db, bank_transaction, (transaction.get("description") or "").strip())
-                ambiguous.append(
-                    {
-                        "payer_name": payer_name,
-                        "amount": amount,
-                        "date": tx_date,
-                        "payer_phone": payer_phone or None,
-                        "candidates": [
-                            {
-                                "student_id": student_id,
-                                "student_name": get_student_display_name(
-                                    db,
-                                    db.query(Student).filter(Student.id == student_id).first(),
-                                ),
-                                "parent_full_name": next(
-                                    (card.parent_full_name or "" for card in cards if card.student_id == student_id),
-                                    "",
-                                ),
-                            }
-                            for student_id in student_ids
-                        ],
-                    }
-                )
-                continue
-
-            student = db.query(Student).filter(Student.id == chosen_student_id).first()
-            if student is None:
-                bank_transaction.status = BankTransactionStatus.NO_MATCH.value
-                _sync_ft(db, bank_transaction, (transaction.get("description") or "").strip())
-                no_match.append(
-                    {
-                        "payer_name": payer_name,
-                        "amount": amount,
-                        "date": tx_date,
-                        "payer_phone": payer_phone or None,
-                    }
-                )
-                continue
-
-            account = (
-                db.query(StudentAccount)
-                .filter(StudentAccount.student_id == chosen_student_id)
-                .order_by(StudentAccount.id)
-                .first()
+        except Exception:
+            logger.exception(
+                "Tochka import: failed to process transaction %s (idx=%s), skipping",
+                (transaction.get("operation_id") or "").strip() or "?",
+                idx,
             )
-            if account is None:
-                account = StudentAccount(student_id=chosen_student_id, name="Основной", balance=0.0)
-                db.add(account)
-                db.flush()
-
-            note = f"Оплата из банка, плательщик: {payer_name}, дата: {tx_date}"
-            db.add(
-                StudentAccountTransaction(
-                    account_id=account.id,
-                    amount=amount,
-                    kind=StudentAccountTransactionKind.PAYMENT,
-                    note=note,
-                )
-            )
-            account.balance += amount
-            db.add(
-                TochkaAppliedPayment(
-                    tochka_account_id=account_id,
-                    payment_date=tx_date,
-                    amount=amount,
-                    payer_name=(payer_name or "")[:512],
-                    student_id=chosen_student_id,
-                    student_account_id=account.id,
-                )
-            )
-
-            try:
-                pay_date = date.fromisoformat(tx_date[:10]) if tx_date else date.today()
-            except (ValueError, TypeError):
-                pay_date = date.today()
-
-            update_card_payment_dates(db, chosen_student_id, pay_date)
-
-            bank_transaction.status = BankTransactionStatus.APPLIED.value
-            bank_transaction.student_id = chosen_student_id
-            bank_transaction.student_account_id = account.id
-            _sync_ft(db, bank_transaction, (transaction.get("description") or "").strip())
-
-            applied.append(
-                {
-                    "payer_name": payer_name,
-                    "amount": amount,
-                    "date": tx_date,
-                    "student_id": chosen_student_id,
-                    "account_id": account.id,
-                    "student_name": get_student_display_name(db, student),
-                }
-            )
+            continue
 
     if actor_user_id is not None:
         log_action(

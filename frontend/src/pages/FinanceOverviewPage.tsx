@@ -716,7 +716,7 @@ const FinanceOverviewPageContent: React.FC = () => {
   const needsAssignment = (row: FinanceLedgerBankRow) =>
     row.direction === 'income' &&
     !row.student_id &&
-    (row.bank_transaction_status === 'no_match' || row.bank_transaction_status === 'ambiguous');
+    (row.bank_transaction_status === 'no_match' || row.bank_transaction_status === 'ambiguous' || row.bank_transaction_status === 'new');
 
   const matchStatusChip = (row: FinanceLedgerBankRow) => {
     if (row.direction !== 'income') return null;
@@ -735,6 +735,9 @@ const FinanceOverviewPageContent: React.FC = () => {
     }
     if (row.bank_transaction_status === 'ambiguous') {
       return <Chip size="small" color="warning" variant="outlined" label="Несколько кандидатов" />;
+    }
+    if (row.bank_transaction_status === 'new') {
+      return <Chip size="small" color="default" variant="outlined" label="Ожидает сопоставления" />;
     }
     return null;
   };

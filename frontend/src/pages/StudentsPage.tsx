@@ -106,6 +106,8 @@ const StudentsPage: React.FC = () => {
   const [editParentCabinetLink, setEditParentCabinetLink] = useState<string | null>(null);
   const [editParentCabinetMessage, setEditParentCabinetMessage] = useState<string | null>(null);
   const [editParentCabinetLoading, setEditParentCabinetLoading] = useState(false);
+  const [resendInviteLink, setResendInviteLink] = useState<string | null>(null);
+  const [resendInviteLoading, setResendInviteLoading] = useState(false);
   const [parents, setParents] = useState<User[]>([]);
   const [trainers, setTrainers] = useState<User[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
@@ -722,6 +724,7 @@ const StudentsPage: React.FC = () => {
 
   const handleEdit = async (student: Student) => {
     setEditingStudent(student);
+    setResendInviteLink(null);
     const studentGroup = getStudentGroup(student);
     setNewStudent({
       full_name: student.full_name,
@@ -1777,7 +1780,7 @@ const StudentsPage: React.FC = () => {
       </Dialog>
 
       {/* Диалог редактирования */}
-      <Dialog open={editOpen} onClose={() => { setEditOpen(false); setEditingCardId(null); setEditParentCabinetLink(null); setEditParentCabinetMessage(null); }} maxWidth="sm" fullWidth>
+      <Dialog open={editOpen} onClose={() => { setEditOpen(false); setEditingCardId(null); setEditParentCabinetLink(null); setEditParentCabinetMessage(null); setResendInviteLink(null); }} maxWidth="sm" fullWidth>
         <DialogTitle>Редактировать ученика</DialogTitle>
         <DialogContent>
           <TextField
@@ -1984,6 +1987,33 @@ const StudentsPage: React.FC = () => {
                   )}
                   {editParentCabinetMessage && !editParentCabinetLink && (
                     <Alert severity="info" sx={{ py: 0 }}>{editParentCabinetMessage}</Alert>
+                  )}
+                  <Button
+                    size="small"
+                    variant="text"
+                    disabled={resendInviteLoading || !editingStudent}
+                    onClick={async () => {
+                      if (!editingStudent) return;
+                      setResendInviteLoading(true);
+                      setError('');
+                      setResendInviteLink(null);
+                      try {
+                        const res = await salesApi.resendParentInvite(editingStudent.id);
+                        setResendInviteLink(res.invite_link);
+                      } catch (err: any) {
+                        setError(err.response?.data?.detail || 'Не удалось отправить ссылку повторно');
+                      } finally {
+                        setResendInviteLoading(false);
+                      }
+                    }}
+                  >
+                    {resendInviteLoading ? 'Отправляю…' : 'Прислать новую ссылку родителю ещё раз'}
+                  </Button>
+                  {resendInviteLink && (
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <TextField size="small" fullWidth value={resendInviteLink} InputProps={{ readOnly: true }} sx={{ fontFamily: 'monospace', fontSize: '0.85rem' }} />
+                      <Button size="small" onClick={() => { navigator.clipboard.writeText(resendInviteLink); }}>Копировать</Button>
+                    </Stack>
                   )}
                 </Stack>
               ) : (

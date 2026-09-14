@@ -1770,6 +1770,15 @@ export type LessonTaskItem = {
 
 // Sales API
 export const salesApi = {
+  resendParentInvite: async (studentId: number): Promise<{
+    invite_link: string;
+    parent_email: string | null;
+    parent_id: number;
+    email_sent: boolean;
+  }> => {
+    const response = await api.post(`/api/sales/students/${studentId}/resend-parent-invite`);
+    return response.data;
+  },
   listLessonTasksToday: async (): Promise<{ items: LessonTaskItem[] }> => {
     const response = await api.get('/api/sales/lesson-tasks/today');
     return response.data;

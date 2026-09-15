@@ -1,4 +1,16 @@
+from datetime import date, datetime, time
 from typing import Any, Optional
+
+
+def lesson_duration_hours(start_time: Optional[time], end_time: Optional[time]) -> float:
+    """Длительность занятия в часах по времени начала/конца (0, если не задано или некорректно)."""
+    if not start_time or not end_time:
+        return 0.0
+    start_dt = datetime.combine(date.min, start_time)
+    end_dt = datetime.combine(date.min, end_time)
+    if end_dt <= start_dt:
+        return 0.0
+    return (end_dt - start_dt).total_seconds() / 3600.0
 
 
 def apply_discount(price: float, discount_type: Any, discount_value: Optional[float]) -> float:

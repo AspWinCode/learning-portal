@@ -709,6 +709,8 @@ async def save_attendance(
     window_start, window_end = get_academic_window(payload.lesson_date)
     effective_trainer = db.query(User).filter(User.id == effective_trainer_id).first() if effective_trainer_id else None
 
+    from app.services.pricing import student_abonement_price, lesson_duration_hours
+
     for att in attendances_saved:
         is_present = att.attended and (not att.absence_reason or att.absence_reason == "was")
         is_absence = not att.attended or (att.absence_reason and att.absence_reason != "was")
@@ -722,109 +724,61 @@ async def save_attendance(
             if stale_absence:
                 db.delete(stale_absence)
 
-        existing_txs = list(
-            db.query(StudentAccountTransaction).filter(
-                StudentAccountTransaction.lesson_attendance_id == att.id,
-            )
-        )
-        if existing_txs:
-            if is_absence:
-                in_freeze = db.query(StudentFreeze).filter(
-                    StudentFreeze.student_id == att.student_id,
-                    StudentFreeze.freeze_start <= att.lesson_date,
-                    StudentFreeze.freeze_end >= att.lesson_date,
-                ).first()
-                if not in_freeze:
-                    absence = db.query(AbsenceFollowUp).filter(
-                        AbsenceFollowUp.lesson_attendance_id == att.id,
-                    ).first()
-                    if not absence:
-                        absence = AbsenceFollowUp(
-                            lesson_attendance_id=att.id,
-                            student_id=att.student_id,
-                            group_id=att.group_id,
-                            lesson_date=att.lesson_date,
-                            stage="missed",
-                            absence_reason=att.absence_reason,
-                            absence_comment=att.absence_comment,
-                        )
-                        db.add(absence)
-                        new_absence_notifications.append(absence)
-            continue
-
         student = db.query(Student).filter(Student.id == att.student_id).first()
         if not student:
             continue
-        if is_present and not is_individual:
-            all_in_window = (
-                db.query(LessonAttendance)
-                .filter(
-                    LessonAttendance.group_id == att.group_id,
-                    LessonAttendance.student_id == att.student_id,
-                    LessonAttendance.lesson_date >= window_start,
-                    LessonAttendance.lesson_date <= window_end,
-                )
-                .all()
-            )
-            current_key = _slot_key(att)
-            base_used = sum(
-                (att2.base_units_applied or 0)
-                for att2 in all_in_window
-                if _slot_key(att2) < current_key
-            )
-            base_left = max(0, BASE_UNITS - base_used)
-            base_units_to_apply = min(base_left, U)
-            extra_units_to_apply = U - base_units_to_apply
-            att.base_units_applied = base_units_to_apply
-            att.extra_units_applied = extra_units_to_apply
 
+        # Списание начисляется за сам факт проведённого по расписанию занятия
+        # (присутствие, болезнь, прогул и т.п. — кроме периода заморозки).
+        in_freeze = db.query(StudentFreeze).filter(
+            StudentFreeze.student_id == att.student_id,
+            StudentFreeze.freeze_start <= att.lesson_date,
+            StudentFreeze.freeze_end >= att.lesson_date,
+        ).first()
+
+        target_base = 0.0
+        target_extra = 0.0
+        base_units_to_apply = 0
+        extra_units_to_apply = 0
+        price_per_unit = 0.0
+
+        if not in_freeze:
             abonement = getattr(student, "abonement", None)
-            if not abonement:
+            if not abonement and student.abonement_id:
                 abonement = db.query(Abonement).filter(Abonement.id == student.abonement_id).first()
-            price_per_unit = 0.0
-            if abonement and abonement.price is not None and BASE_UNITS > 0:
-                from app.services.pricing import student_abonement_price
-                price_per_unit = student_abonement_price(student, abonement) / BASE_UNITS
 
-            account = None
-            accounts = db.query(StudentAccount).filter(
-                StudentAccount.student_id == att.student_id
-            ).order_by(StudentAccount.id).all()
-            if accounts:
-                direction_hint = None
-                gr = att.group
-                if gr:
-                    try:
-                        programs = list(getattr(gr, "programs", []) or [])
-                    except Exception:
-                        programs = []
-                    if programs:
-                        prog_name = (programs[0].name or "").strip()
-                        if prog_name:
-                            direction_hint = prog_name.lower()
-                    if not direction_hint and getattr(gr, "direction", None):
-                        direction_hint = str(gr.direction).strip().lower()
-                for acc in accounts:
-                    acc_name = (acc.name or "").strip().lower()
-                    if acc_name and direction_hint and direction_hint in acc_name:
-                        account = acc
-                        break
-                if account is None:
-                    account = accounts[0]
-
-            if account:
-                if base_units_to_apply > 0 and price_per_unit > 0:
-                    deduct_base = price_per_unit * base_units_to_apply
-                    account.balance -= deduct_base
-                    db.add(
-                        StudentAccountTransaction(
-                            account_id=account.id,
-                            amount=-deduct_base,
-                            kind=StudentAccountTransactionKind.LESSON_DEDUCTION,
-                            note=f"Занятие {att.lesson_date} (база)",
-                            lesson_attendance_id=att.id,
-                        )
+            if is_individual:
+                # Индивидуальный абонемент тарифицируется почасово: цена абонемента — ставка за час.
+                duration_hours = lesson_duration_hours(att.lesson_start_time, att.lesson_end_time)
+                hourly_rate = student_abonement_price(student, abonement) if abonement else 0.0
+                target_base = round(hourly_rate * duration_hours, 2)
+                base_units_to_apply = 1 if target_base > 0 else 0
+            else:
+                all_in_window = (
+                    db.query(LessonAttendance)
+                    .filter(
+                        LessonAttendance.group_id == att.group_id,
+                        LessonAttendance.student_id == att.student_id,
+                        LessonAttendance.lesson_date >= window_start,
+                        LessonAttendance.lesson_date <= window_end,
                     )
+                    .all()
+                )
+                current_key = _slot_key(att)
+                base_used = sum(
+                    (att2.base_units_applied or 0)
+                    for att2 in all_in_window
+                    if _slot_key(att2) < current_key
+                )
+                base_left = max(0, BASE_UNITS - base_used)
+                base_units_to_apply = min(base_left, U)
+                extra_units_to_apply = U - base_units_to_apply
+
+                if abonement and abonement.price is not None and BASE_UNITS > 0:
+                    price_per_unit = student_abonement_price(student, abonement) / BASE_UNITS
+                if base_units_to_apply > 0 and price_per_unit > 0:
+                    target_base = round(price_per_unit * base_units_to_apply, 2)
+
                 if extra_units_to_apply > 0:
                     try:
                         policy = (
@@ -850,55 +804,118 @@ async def save_attendance(
                             extra_rate = price_per_unit
                         deduct_extra = extra_rate * extra_units_to_apply
                         if deduct_extra > 0:
-                            account.balance -= deduct_extra
-                            db.add(
-                                StudentAccountTransaction(
-                                    account_id=account.id,
-                                    amount=-deduct_extra,
-                                    kind=StudentAccountTransactionKind.EXTRA_LESSON_DEDUCTION,
-                                    note=f"Доп. занятие (сверх 8) {att.lesson_date}",
-                                    lesson_attendance_id=att.id,
-                                )
-                            )
-        if is_absence:
-            in_freeze = db.query(StudentFreeze).filter(
-                StudentFreeze.student_id == att.student_id,
-                StudentFreeze.freeze_start <= att.lesson_date,
-                StudentFreeze.freeze_end >= att.lesson_date,
-            ).first()
-            if not in_freeze:
-                absence = db.query(AbsenceFollowUp).filter(
-                    AbsenceFollowUp.lesson_attendance_id == att.id,
-                ).first()
-                if not absence:
-                    absence = AbsenceFollowUp(
+                            target_extra = round(deduct_extra, 2)
+
+        att.base_units_applied = base_units_to_apply
+        att.extra_units_applied = extra_units_to_apply
+
+        account = None
+        accounts = db.query(StudentAccount).filter(
+            StudentAccount.student_id == att.student_id
+        ).order_by(StudentAccount.id).all()
+        if accounts:
+            direction_hint = None
+            gr = att.group
+            if gr:
+                try:
+                    programs = list(getattr(gr, "programs", []) or [])
+                except Exception:
+                    programs = []
+                if programs:
+                    prog_name = (programs[0].name or "").strip()
+                    if prog_name:
+                        direction_hint = prog_name.lower()
+                if not direction_hint and getattr(gr, "direction", None):
+                    direction_hint = str(gr.direction).strip().lower()
+            for acc in accounts:
+                acc_name = (acc.name or "").strip().lower()
+                if acc_name and direction_hint and direction_hint in acc_name:
+                    account = acc
+                    break
+            if account is None:
+                account = accounts[0]
+
+        # Существующие проводки за это же занятие — обновляем (сторно), а не дублируем,
+        # если сумма к списанию изменилась (правка времени, скидки, заморозки и т.п.).
+        existing_txs = list(
+            db.query(StudentAccountTransaction).filter(
+                StudentAccountTransaction.lesson_attendance_id == att.id,
+            )
+        )
+        base_tx = next((t for t in existing_txs if t.kind == StudentAccountTransactionKind.LESSON_DEDUCTION), None)
+        extra_tx = next((t for t in existing_txs if t.kind == StudentAccountTransactionKind.EXTRA_LESSON_DEDUCTION), None)
+
+        new_base_amount = -target_base if target_base > 0 else 0.0
+        new_extra_amount = -target_extra if target_extra > 0 else 0.0
+
+        if account:
+            lesson_label = "Индивидуальное занятие" if is_individual else "Занятие"
+            if base_tx:
+                diff = round(new_base_amount - float(base_tx.amount or 0.0), 2)
+                if abs(diff) >= 0.01:
+                    base_tx.amount = new_base_amount
+                    base_tx.note = f"{lesson_label} {att.lesson_date} (корректировка)"
+                    account.balance += diff
+            elif new_base_amount < 0:
+                account.balance += new_base_amount
+                db.add(
+                    StudentAccountTransaction(
+                        account_id=account.id,
+                        amount=new_base_amount,
+                        kind=StudentAccountTransactionKind.LESSON_DEDUCTION,
+                        note=f"{lesson_label} {att.lesson_date}",
                         lesson_attendance_id=att.id,
-                        student_id=att.student_id,
-                        group_id=att.group_id,
-                        lesson_date=att.lesson_date,
-                        stage="missed",
-                        absence_reason=att.absence_reason,
-                        absence_comment=att.absence_comment,
                     )
-                    db.add(absence)
-                    new_absence_notifications.append(absence)
-                student_for_notification = student or db.query(Student).filter(Student.id == att.student_id).first()
-                if student_for_notification:
-                    CommunicationService.send(
-                        db,
-                        channel="email",
-                        recipient_type="student",
-                        recipient_id=student_for_notification.id,
-                        event_key="student_absent",
-                        created_by=current_user.id,
-                        context={
-                            "student_name": student_for_notification.full_name,
-                            "group_name": group.name,
-                            "lesson_date": att.lesson_date.isoformat(),
-                            "lesson_time": start_t.strftime("%H:%M") if start_t else "",
-                            "trainer_name": effective_trainer.full_name if effective_trainer else "",
-                        },
+                )
+
+            if extra_tx:
+                diff = round(new_extra_amount - float(extra_tx.amount or 0.0), 2)
+                if abs(diff) >= 0.01:
+                    extra_tx.amount = new_extra_amount
+                    account.balance += diff
+            elif new_extra_amount < 0:
+                account.balance += new_extra_amount
+                db.add(
+                    StudentAccountTransaction(
+                        account_id=account.id,
+                        amount=new_extra_amount,
+                        kind=StudentAccountTransactionKind.EXTRA_LESSON_DEDUCTION,
+                        note=f"Доп. занятие (сверх 8) {att.lesson_date}",
+                        lesson_attendance_id=att.id,
                     )
+                )
+
+        if is_absence and not in_freeze:
+            absence = db.query(AbsenceFollowUp).filter(
+                AbsenceFollowUp.lesson_attendance_id == att.id,
+            ).first()
+            if not absence:
+                absence = AbsenceFollowUp(
+                    lesson_attendance_id=att.id,
+                    student_id=att.student_id,
+                    group_id=att.group_id,
+                    lesson_date=att.lesson_date,
+                    stage="missed",
+                    absence_reason=att.absence_reason,
+                    absence_comment=att.absence_comment,
+                )
+                db.add(absence)
+                new_absence_notifications.append(absence)
+                CommunicationService.send(
+                    db,
+                    channel="email",
+                    recipient_type="student",
+                    recipient_id=student.id,
+                    event_key="student_absent",
+                    created_by=current_user.id,
+                    context={
+                        "student_name": student.full_name,
+                        "group_name": group.name,
+                        "lesson_date": att.lesson_date.isoformat(),
+                        "lesson_time": start_t.strftime("%H:%M") if start_t else "",
+                        "trainer_name": effective_trainer.full_name if effective_trainer else "",
+                    },
+                )
     db.commit()
 
     attended_student_ids = {
@@ -1120,9 +1137,16 @@ async def remove_student_from_lesson(
     if not attendances:
         raise HTTPException(status_code=404, detail="Student not found on this lesson")
     for att in attendances:
-        db.query(StudentAccountTransaction).filter(
+        txs = db.query(StudentAccountTransaction).filter(
             StudentAccountTransaction.lesson_attendance_id == att.id,
-        ).update({StudentAccountTransaction.lesson_attendance_id: None}, synchronize_session=False)
+        ).all()
+        for tx in txs:
+            amount = float(tx.amount or 0.0)
+            if amount < 0:
+                account = db.query(StudentAccount).filter(StudentAccount.id == tx.account_id).first()
+                if account:
+                    account.balance -= amount  # amount отрицательный — возвращаем на баланс
+            tx.lesson_attendance_id = None
         db.query(AbsenceFollowUp).filter(AbsenceFollowUp.lesson_attendance_id == att.id).delete(
             synchronize_session=False
         )

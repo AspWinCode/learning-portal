@@ -85,9 +85,10 @@ def _recalculate_current_period_lesson_deductions(db: Session, account: StudentA
     if not abonement or not getattr(abonement, "price", None):
         return
 
-    from app.services.pricing import student_abonement_price
+    from app.services.pricing import student_abonement_price, lesson_duration_hours
 
-    price_per_unit = student_abonement_price(student, abonement) / 8
+    full_price = student_abonement_price(student, abonement)
+    price_per_unit = full_price / 8
     rows = (
         db.query(StudentAccountTransaction, LessonAttendance)
         .join(LessonAttendance, LessonAttendance.id == StudentAccountTransaction.lesson_attendance_id)
@@ -99,8 +100,14 @@ def _recalculate_current_period_lesson_deductions(db: Session, account: StudentA
         .all()
     )
     for tx, attendance in rows:
-        units = float(getattr(attendance, "base_units_applied", None) or 1)
-        new_amount = -round(price_per_unit * units, 2)
+        group = attendance.group
+        is_individual = bool(group) and (getattr(group, "lesson_format", None) or "group").strip().lower() == "individual"
+        if is_individual:
+            duration_hours = lesson_duration_hours(attendance.lesson_start_time, attendance.lesson_end_time)
+            new_amount = -round(full_price * duration_hours, 2)
+        else:
+            units = float(getattr(attendance, "base_units_applied", None) or 1)
+            new_amount = -round(price_per_unit * units, 2)
         old_amount = float(tx.amount or 0.0)
         if round(old_amount, 2) == new_amount:
             continue

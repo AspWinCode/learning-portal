@@ -42,6 +42,7 @@ const GroupsPage: React.FC = () => {
   const [students, setStudents] = useState<Student[]>([]);
   const [studentToAddId, setStudentToAddId] = useState('');
   const [newSchedule, setNewSchedule] = useState({ day_of_week: 1, start_time: '09:00', end_time: '11:00' });
+  const [scheduleDraftDirty, setScheduleDraftDirty] = useState(false);
   const [error, setError] = useState('');
   const [newGroup, setNewGroup] = useState({
     name: '',
@@ -152,6 +153,8 @@ const GroupsPage: React.FC = () => {
           end_time: typeof s.end_time === 'string' ? s.end_time.slice(0, 5) : '11:00',
         }))
       );
+      setNewSchedule({ day_of_week: 1, start_time: '09:00', end_time: '11:00' });
+      setScheduleDraftDirty(false);
       setEditOpen(true);
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Не удалось загрузить группу');
@@ -171,6 +174,13 @@ const GroupsPage: React.FC = () => {
   };
 
   const normalizeTime = (t: string) => (t.length === 5 ? t + ':00' : t);
+
+  // Если пользователь выбрал день/время слота, но не нажал «Добавить слот»,
+  // черновик всё равно нужно сохранить — не заставлять кликать лишнюю кнопку.
+  const getEffectiveSchedules = () =>
+    scheduleDraftDirty
+      ? [...formSchedules, { day_of_week: newSchedule.day_of_week, start_time: newSchedule.start_time, end_time: newSchedule.end_time }]
+      : formSchedules;
 
   const handleCreate = async () => {
     if (!newGroup.name.trim()) {
@@ -192,7 +202,7 @@ const GroupsPage: React.FC = () => {
         start_date: newGroup.start_date || undefined,
         lesson_format: newGroup.lesson_format,
         online_url: newGroup.online_url || undefined,
-        schedules: formSchedules.map((s) => ({
+        schedules: getEffectiveSchedules().map((s) => ({
           day_of_week: s.day_of_week,
           start_time: normalizeTime(s.start_time),
           end_time: normalizeTime(s.end_time),
@@ -201,6 +211,7 @@ const GroupsPage: React.FC = () => {
       setOpen(false);
       setNewGroup({ name: '', trainer_id: '', direction: '', units_per_session: 1, extra_rate_per_unit: '', start_date: '', lesson_format: 'group', online_url: '' });
       setFormSchedules([]);
+      setScheduleDraftDirty(false);
       setError('');
       loadGroups();
     } catch (err: any) {
@@ -229,7 +240,7 @@ const GroupsPage: React.FC = () => {
         start_date: newGroup.start_date || null,
         lesson_format: newGroup.lesson_format,
         online_url: newGroup.online_url || null,
-        schedules: formSchedules.map((s) => ({
+        schedules: getEffectiveSchedules().map((s) => ({
           day_of_week: s.day_of_week,
           start_time: normalizeTime(s.start_time),
           end_time: normalizeTime(s.end_time),
@@ -239,6 +250,7 @@ const GroupsPage: React.FC = () => {
       setSelectedGroup(null);
       setNewGroup({ name: '', trainer_id: '', direction: '', units_per_session: 1, extra_rate_per_unit: '', start_date: '', lesson_format: 'group', online_url: '' });
       setFormSchedules([]);
+      setScheduleDraftDirty(false);
       setError('');
       loadGroups();
     } catch (err: any) {
@@ -367,6 +379,8 @@ const GroupsPage: React.FC = () => {
               setOpen(true);
               setNewGroup({ name: '', trainer_id: '', direction: '', units_per_session: 1, extra_rate_per_unit: '', start_date: '', lesson_format: 'group', online_url: '' });
               setFormSchedules([]);
+              setNewSchedule({ day_of_week: 1, start_time: '09:00', end_time: '11:00' });
+              setScheduleDraftDirty(false);
             }}
           >
             Создать группу
@@ -561,7 +575,10 @@ const GroupsPage: React.FC = () => {
                 <Select
                   value={newSchedule.day_of_week}
                   label="День"
-                  onChange={(e) => setNewSchedule({ ...newSchedule, day_of_week: Number(e.target.value) })}
+                  onChange={(e) => {
+                    setNewSchedule({ ...newSchedule, day_of_week: Number(e.target.value) });
+                    setScheduleDraftDirty(true);
+                  }}
                 >
                   {WEEKDAY_OPTIONS.map((opt) => (
                     <MenuItem key={opt.value} value={opt.value}>
@@ -576,7 +593,10 @@ const GroupsPage: React.FC = () => {
                 type="time"
                 InputLabelProps={{ shrink: true }}
                 value={newSchedule.start_time}
-                onChange={(e) => setNewSchedule({ ...newSchedule, start_time: e.target.value })}
+                onChange={(e) => {
+                  setNewSchedule({ ...newSchedule, start_time: e.target.value });
+                  setScheduleDraftDirty(true);
+                }}
                 sx={{ width: 120 }}
               />
               <TextField
@@ -585,7 +605,10 @@ const GroupsPage: React.FC = () => {
                 type="time"
                 InputLabelProps={{ shrink: true }}
                 value={newSchedule.end_time}
-                onChange={(e) => setNewSchedule({ ...newSchedule, end_time: e.target.value })}
+                onChange={(e) => {
+                  setNewSchedule({ ...newSchedule, end_time: e.target.value });
+                  setScheduleDraftDirty(true);
+                }}
                 sx={{ width: 120 }}
               />
               <Button
@@ -599,6 +622,7 @@ const GroupsPage: React.FC = () => {
                       end_time: newSchedule.end_time,
                     },
                   ]);
+                  setScheduleDraftDirty(false);
                 }}
               >
                 Добавить слот
@@ -754,7 +778,10 @@ const GroupsPage: React.FC = () => {
                 <Select
                   value={newSchedule.day_of_week}
                   label="День"
-                  onChange={(e) => setNewSchedule({ ...newSchedule, day_of_week: Number(e.target.value) })}
+                  onChange={(e) => {
+                    setNewSchedule({ ...newSchedule, day_of_week: Number(e.target.value) });
+                    setScheduleDraftDirty(true);
+                  }}
                 >
                   {WEEKDAY_OPTIONS.map((opt) => (
                     <MenuItem key={opt.value} value={opt.value}>
@@ -769,7 +796,10 @@ const GroupsPage: React.FC = () => {
                 type="time"
                 InputLabelProps={{ shrink: true }}
                 value={newSchedule.start_time}
-                onChange={(e) => setNewSchedule({ ...newSchedule, start_time: e.target.value })}
+                onChange={(e) => {
+                  setNewSchedule({ ...newSchedule, start_time: e.target.value });
+                  setScheduleDraftDirty(true);
+                }}
                 sx={{ width: 120 }}
               />
               <TextField
@@ -778,7 +808,10 @@ const GroupsPage: React.FC = () => {
                 type="time"
                 InputLabelProps={{ shrink: true }}
                 value={newSchedule.end_time}
-                onChange={(e) => setNewSchedule({ ...newSchedule, end_time: e.target.value })}
+                onChange={(e) => {
+                  setNewSchedule({ ...newSchedule, end_time: e.target.value });
+                  setScheduleDraftDirty(true);
+                }}
                 sx={{ width: 120 }}
               />
               <Button
@@ -792,6 +825,7 @@ const GroupsPage: React.FC = () => {
                       end_time: newSchedule.end_time,
                     },
                   ]);
+                  setScheduleDraftDirty(false);
                 }}
               >
                 Добавить слот

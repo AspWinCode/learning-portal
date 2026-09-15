@@ -98,6 +98,7 @@ import {
   CommunicationQueueItem,
   TrainerCockpitSummary,
   OwnerDashboardSummary,
+  AcademyMetricsResponse,
   AdminDashboardSummary,
   ParentDashboardSummary,
   ParentQuestion,
@@ -423,6 +424,10 @@ export const parentDashboardApi = {
 export const ownerDashboardApi = {
   getSummary: async (): Promise<OwnerDashboardSummary> => {
     const response = await api.get('/api/owner-dashboard/summary');
+    return response.data;
+  },
+  getAcademyMetrics: async (params?: { date_from?: string; date_to?: string }): Promise<AcademyMetricsResponse> => {
+    const response = await api.get('/api/owner-dashboard/academy-metrics', { params });
     return response.data;
   },
 };

@@ -34,6 +34,7 @@ import { hasPermission, getEffectiveRole } from '../utils/permissions';
 import { extractApiError } from '../utils/extractApiError';
 import { ReportsPageContent } from './ReportsPage';
 import OperationalReportsTab from './OperationalReportsTab';
+import AcademyMetricsTab from './AcademyMetricsTab';
 
 const MetricCard: React.FC<{
   title: string;
@@ -95,7 +96,7 @@ const TrendPanel: React.FC<{
 
 const DashboardOwnerTabs: React.FC = () => {
   const { user } = useAuth();
-  const [tab, setTab] = React.useState<'overview' | 'characteristics' | 'operational'>('overview');
+  const [tab, setTab] = React.useState<'overview' | 'characteristics' | 'operational' | 'academy_metrics'>('overview');
   const canAccessOwnerMetrics = hasPermission(user, 'owner_dashboard.access');
 
   const summaryQuery = useQuery({
@@ -110,6 +111,7 @@ const DashboardOwnerTabs: React.FC = () => {
         <Tab value="overview" label="Главная" />
         <Tab value="characteristics" label="Характеристики" />
         <Tab value="operational" label="Операционные отчёты" />
+        <Tab value="academy_metrics" label="Показатели Академии" />
       </Tabs>
 
       {tab === 'overview' && (
@@ -262,6 +264,12 @@ const DashboardOwnerTabs: React.FC = () => {
       {tab === 'operational' && (
         <Box sx={{ mt: 1 }}>
           <OperationalReportsTab />
+        </Box>
+      )}
+
+      {tab === 'academy_metrics' && (
+        <Box sx={{ mt: 1 }}>
+          <AcademyMetricsTab />
         </Box>
       )}
     </Box>

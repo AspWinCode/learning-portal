@@ -72,4 +72,21 @@ class OwnerDashboardSummaryResponse(BaseModel):
     ai_insights: List[OwnerAIInsightResponse] = Field(default_factory=list)
 
 
+class AcademyMetricsFormatBreakdown(BaseModel):
+    abonement_format: str
+    format_label: str
+    students_count: int
+    total_amount: float
+    average_check: float
+
+
+class AcademyMetricsResponse(BaseModel):
+    period_start: datetime
+    period_end: datetime
+    students_count: int
+    total_amount: float
+    average_check: float
+    breakdown_by_format: List[AcademyMetricsFormatBreakdown]
+
+
 __all__ = [name for name in globals() if not name.startswith("_")]

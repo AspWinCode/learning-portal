@@ -14,6 +14,7 @@ from app.models import (
     LeadStatus,
     OwnerWorkspaceTask,
     Student,
+    StudentAccount,
     StudentAccountTransaction,
     StudentAccountTransactionKind,
     StudentStatus,
@@ -22,7 +23,15 @@ from app.models import (
 )
 from app.services.ai_insights import build_owner_ai_insights
 from app.services.payment_status import get_payment_status_summary
+from app.services.pricing import student_abonement_price
 from app.utils.datetime import utcnow
+
+ABONEMENT_FORMAT_LABELS = {
+    "individual": "Индивидуальный",
+    "package": "Пакетный",
+    "group": "Групповой",
+}
+UNKNOWN_FORMAT_LABEL = "Не указан"
 
 
 def _month_bounds(now: datetime) -> Tuple[datetime, datetime]:
@@ -231,3 +240,61 @@ def build_owner_dashboard_summary(db: Session) -> Dict[str, object]:
     }
     summary["ai_insights"] = build_owner_ai_insights(summary)
     return summary
+
+
+def build_academy_metrics(
+    db: Session,
+    *,
+    period_start: datetime,
+    period_end: datetime,
+) -> Dict[str, object]:
+    """Показатели академии за период: средний чек = цена абонемента (с учётом
+    персональной скидки ученика), засчитанная один раз на ученика за период,
+    если у него была хотя бы одна оплата — независимо от того, сколькими
+    платежами (рассрочкой) он её вносил."""
+
+    paying_student_ids = (
+        db.query(StudentAccount.student_id)
+        .join(StudentAccountTransaction, StudentAccountTransaction.account_id == StudentAccount.id)
+        .filter(
+            StudentAccountTransaction.kind == StudentAccountTransactionKind.PAYMENT,
+            StudentAccountTransaction.created_at >= period_start,
+            StudentAccountTransaction.created_at < period_end,
+        )
+        .distinct()
+    )
+
+    students = db.query(Student).filter(Student.id.in_(paying_student_ids)).all()
+
+    format_buckets: Dict[str, List[float]] = {}
+    for student in students:
+        abonement = student.abonement
+        check_amount = student_abonement_price(student, abonement)
+        format_key = getattr(abonement, "abonement_format", None) or "unknown"
+        format_buckets.setdefault(format_key, []).append(check_amount)
+
+    breakdown = []
+    total_sum = 0.0
+    total_count = 0
+    for format_key, amounts in format_buckets.items():
+        bucket_sum = round(sum(amounts), 2)
+        bucket_count = len(amounts)
+        total_sum += bucket_sum
+        total_count += bucket_count
+        breakdown.append({
+            "abonement_format": format_key,
+            "format_label": ABONEMENT_FORMAT_LABELS.get(format_key, UNKNOWN_FORMAT_LABEL),
+            "students_count": bucket_count,
+            "total_amount": bucket_sum,
+            "average_check": round(bucket_sum / bucket_count, 2) if bucket_count else 0.0,
+        })
+    breakdown.sort(key=lambda row: row["total_amount"], reverse=True)
+
+    return {
+        "period_start": period_start,
+        "period_end": period_end,
+        "students_count": total_count,
+        "total_amount": round(total_sum, 2),
+        "average_check": round(total_sum / total_count, 2) if total_count else 0.0,
+        "breakdown_by_format": breakdown,
+    }

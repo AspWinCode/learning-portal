@@ -225,6 +225,23 @@ export interface OwnerDashboardSummary {
   ai_insights: OwnerAIInsight[];
 }
 
+export interface AcademyMetricsFormatBreakdown {
+  abonement_format: string;
+  format_label: string;
+  students_count: number;
+  total_amount: number;
+  average_check: number;
+}
+
+export interface AcademyMetricsResponse {
+  period_start: string;
+  period_end: string;
+  students_count: number;
+  total_amount: number;
+  average_check: number;
+  breakdown_by_format: AcademyMetricsFormatBreakdown[];
+}
+
 export interface AdminDashboardSummary {
   generated_at: string;
   active_students: number;

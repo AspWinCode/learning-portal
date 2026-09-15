@@ -2359,8 +2359,12 @@ export const salesApi = {
     const response = await api.get('/api/sales/payment-status', { params: params || {} });
     return response.data;
   },
-  getPaymentStatusSummary: async (): Promise<{ overdue_3_count: number; overdue_10_count: number }> => {
+  getPaymentStatusSummary: async (): Promise<{ overdue_3_count: number; overdue_10_count: number; negative_balance_count: number }> => {
     const response = await api.get('/api/sales/payment-status-summary');
+    return response.data;
+  },
+  getNegativeBalance: async (): Promise<Array<{ student_id: number; student_name: string; balance: number }>> => {
+    const response = await api.get('/api/sales/negative-balance');
     return response.data;
   },
   getProgramMakeupCompatibility: async (): Promise<

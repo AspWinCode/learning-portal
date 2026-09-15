@@ -164,6 +164,13 @@ class PaymentStatusItem(BaseModel):
 class PaymentStatusSummary(BaseModel):
     overdue_3_count: int
     overdue_10_count: int
+    negative_balance_count: int = 0
+
+
+class NegativeBalanceItem(BaseModel):
+    student_id: int
+    student_name: str
+    balance: float
 
 
 class StudentFreezeCreate(BaseModel):

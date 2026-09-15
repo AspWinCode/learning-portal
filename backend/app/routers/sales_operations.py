@@ -31,6 +31,7 @@ from app.schemas.sales import (
     CustomLessonCreate,
     CustomLessonResponse,
     CustomLessonUpdate,
+    NegativeBalanceItem,
     PaymentStatusItem,
     PaymentStatusSummary,
     ProgramMakeupCompatibilityCreate,
@@ -40,6 +41,7 @@ from app.schemas.sales import (
 )
 from app.services.manual_lesson import create_manual_lesson as manual_lesson_create
 from app.services.payment_status import (
+    get_negative_balance_list as negative_balance_list_svc,
     get_payment_status_list as payment_status_list_svc,
     get_payment_status_summary as payment_status_summary_svc,
 )
@@ -148,6 +150,16 @@ async def get_payment_status_summary(
 ):
     data = payment_status_summary_svc(db)
     return PaymentStatusSummary(**data)
+
+
+@router.get("/negative-balance", response_model=List[NegativeBalanceItem])
+async def list_negative_balance(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("sales.access")),
+):
+    """Ученики с отрицательным балансом счёта — независимо от даты следующей оплаты."""
+    items = negative_balance_list_svc(db)
+    return [NegativeBalanceItem(**item) for item in items]
 
 
 @router.post("/custom-lessons", response_model=CustomLessonResponse, status_code=status.HTTP_201_CREATED)

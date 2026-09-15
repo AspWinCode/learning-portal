@@ -92,6 +92,32 @@ def get_payment_status_list(
     return result
 
 
+def get_negative_balance_list(db: Session) -> List[dict]:
+    """Ученики с суммарно отрицательным балансом счетов (независимо от next_payment_date)."""
+    from sqlalchemy import func
+
+    rows = (
+        db.query(StudentAccount.student_id, func.sum(StudentAccount.balance).label("balance"))
+        .join(Student, Student.id == StudentAccount.student_id)
+        .filter(Student.status != StudentStatus.ARCHIVED)
+        .group_by(StudentAccount.student_id)
+        .having(func.sum(StudentAccount.balance) < 0)
+        .all()
+    )
+    result = []
+    for student_id, balance in rows:
+        student = db.query(Student).filter(Student.id == student_id).first()
+        if not student:
+            continue
+        result.append({
+            "student_id": student_id,
+            "student_name": get_student_display_name(db, student),
+            "balance": round(float(balance), 2),
+        })
+    result.sort(key=lambda x: x["balance"])
+    return result
+
+
 def get_payment_status_summary(
     db: Session,
     today: Optional[date] = None,
@@ -127,4 +153,9 @@ def get_payment_status_summary(
             overdue_3_count += 1
         if next_pay <= day_10:
             overdue_10_count += 1
-    return {"overdue_3_count": overdue_3_count, "overdue_10_count": overdue_10_count}
+    negative_balance_count = len(get_negative_balance_list(db))
+    return {
+        "overdue_3_count": overdue_3_count,
+        "overdue_10_count": overdue_10_count,
+        "negative_balance_count": negative_balance_count,
+    }

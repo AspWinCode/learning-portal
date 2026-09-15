@@ -34,6 +34,12 @@ interface PaymentStatusRow {
   status: string;
 }
 
+interface NegativeBalanceRow {
+  student_id: number;
+  student_name: string;
+  balance: number;
+}
+
 const LESSON_THRESHOLD = 8;
 
 const STATUS_LABELS: Record<string, { label: string; color: 'default' | 'warning' | 'error' | 'success' | 'info' }> = {
@@ -46,26 +52,34 @@ const STATUS_LABELS: Record<string, { label: string; color: 'default' | 'warning
 const SalesDebtsPage: React.FC = () => {
   const navigate = useNavigate();
   const [items, setItems] = useState<PaymentStatusRow[]>([]);
+  const [negativeItems, setNegativeItems] = useState<NegativeBalanceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState(0);
-  const [paymentSummary, setPaymentSummary] = useState<{ overdue_3_count: number; overdue_10_count: number } | null>(null);
+  const [paymentSummary, setPaymentSummary] = useState<{ overdue_3_count: number; overdue_10_count: number; negative_balance_count: number } | null>(null);
 
   const statusFilter = tab === 0 ? undefined : tab === 1 ? 'overdue' : tab === 2 ? 'due_soon' : undefined;
+  const isNegativeBalanceTab = tab === 3;
 
   const loadDebts = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await salesApi.getPaymentStatus(statusFilter ? { status: statusFilter } : {});
-      setItems(data);
+      if (isNegativeBalanceTab) {
+        const data = await salesApi.getNegativeBalance();
+        setNegativeItems(data);
+      } else {
+        const data = await salesApi.getPaymentStatus(statusFilter ? { status: statusFilter } : {});
+        setItems(data);
+      }
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось загрузить оплаты'));
       setItems([]);
+      setNegativeItems([]);
     } finally {
       setLoading(false);
     }
-  }, [statusFilter]);
+  }, [statusFilter, isNegativeBalanceTab]);
 
   const loadPaymentSummary = useCallback(async () => {
     try {
@@ -124,6 +138,12 @@ const SalesDebtsPage: React.FC = () => {
             variant="outlined"
             sx={{ fontWeight: 500 }}
           />
+          <Chip
+            label={`С отрицательным балансом: ${paymentSummary?.negative_balance_count ?? '—'}`}
+            color={paymentSummary && paymentSummary.negative_balance_count > 0 ? 'error' : 'default'}
+            variant="outlined"
+            sx={{ fontWeight: 500 }}
+          />
         </Box>
 
         {error && (
@@ -136,12 +156,53 @@ const SalesDebtsPage: React.FC = () => {
           <Tab label="Все" />
           <Tab label="Просрочено" />
           <Tab label="Скоро (3 дня)" />
+          <Tab label="Отрицательный баланс" />
         </Tabs>
 
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
             <CircularProgress />
           </Box>
+        ) : isNegativeBalanceTab ? (
+          <Card variant="outlined">
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Ученик</TableCell>
+                  <TableCell>Баланс</TableCell>
+                  <TableCell />
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {negativeItems.map((row) => (
+                  <TableRow key={row.student_id} hover>
+                    <TableCell sx={{ fontWeight: 500 }}>{row.student_name}</TableCell>
+                    <TableCell>
+                      <Typography color="error" sx={{ fontWeight: 600 }}>
+                        {row.balance.toFixed(2)} ₽
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Typography
+                        component="button"
+                        variant="body2"
+                        color="primary"
+                        sx={{ background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
+                        onClick={() => navigate(`/students?detail=${row.student_id}`)}
+                      >
+                        Карточка
+                      </Typography>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            {negativeItems.length === 0 && (
+              <CardContent>
+                <Typography color="text.secondary">Нет учеников с отрицательным балансом.</Typography>
+              </CardContent>
+            )}
+          </Card>
         ) : (
           <Card variant="outlined">
             <Table size="small">

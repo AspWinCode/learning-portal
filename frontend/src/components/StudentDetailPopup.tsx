@@ -41,6 +41,7 @@ import StarIcon from '@mui/icons-material/Star';
 import DescriptionIcon from '@mui/icons-material/Description';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import { format, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { studentsApi, salesApi, studentCardsApi, studentAccountsApi, abonementsApi, financeApi, studentPortalAdminApi } from '../services/api';
@@ -570,6 +571,23 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
       setTransactions([]);
     } finally {
       setTransactionsLoading(false);
+    }
+  };
+
+  const handleDeleteTransaction = async (accountId: number, transactionId: number) => {
+    if (!window.confirm('Удалить эту операцию? Баланс счёта будет пересчитан. Действие необратимо.')) return;
+    try {
+      await studentAccountsApi.deleteTransaction(accountId, transactionId);
+      if (studentId) {
+        const updated = await studentsApi.getAccounts(studentId);
+        setAccounts(updated);
+      }
+      if (transactionsAccountId === accountId) {
+        const txs = await studentAccountsApi.getTransactions(accountId);
+        setTransactions(txs);
+      }
+    } catch (err: any) {
+      window.alert(err.response?.data?.detail || 'Не удалось удалить операцию');
     }
   };
 
@@ -1142,6 +1160,7 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
                                       <TableCell>Тип</TableCell>
                                       <TableCell align="right">Сумма</TableCell>
                                       <TableCell>Примечание</TableCell>
+                                      {canManageAccounts && <TableCell align="right" />}
                                     </TableRow>
                                   </TableHead>
                                   <TableBody>
@@ -1172,6 +1191,17 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
                                             </Typography>
                                           ) : null}
                                         </TableCell>
+                                        {canManageAccounts && (
+                                          <TableCell align="right">
+                                            <IconButton
+                                              size="small"
+                                              title="Удалить операцию"
+                                              onClick={() => handleDeleteTransaction(acc.id, tx.id)}
+                                            >
+                                              <DeleteOutlineIcon fontSize="small" />
+                                            </IconButton>
+                                          </TableCell>
+                                        )}
                                       </TableRow>
                                     ))}
                                   </TableBody>

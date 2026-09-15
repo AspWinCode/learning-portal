@@ -101,6 +101,8 @@ DEFAULT_ROLE_PERMISSIONS: Dict[str, Set[str]] = {
         "technolab.manage",
         "pixelforge.access",
         "pixelforge.manage",
+        "programs.access",
+        "programs.manage",
     },
     UserRole.DEVELOPER.value: {
         "agile.access",

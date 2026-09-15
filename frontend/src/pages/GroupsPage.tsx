@@ -290,6 +290,19 @@ const GroupsPage: React.FC = () => {
     },
     { key: 'trainer', header: 'Тренер', render: (group: Group) => group.trainer?.full_name || '-' },
     {
+      key: 'schedule',
+      header: 'Расписание',
+      render: (group: Group) =>
+        group.schedules?.length
+          ? group.schedules
+              .map((s) => {
+                const day = WEEKDAY_OPTIONS.find((o) => o.value === s.day_of_week)?.label ?? '';
+                return `${day} ${s.start_time.slice(0, 5)}–${s.end_time.slice(0, 5)}`;
+              })
+              .join(', ')
+          : '-',
+    },
+    {
       key: 'units',
       header: 'Юниты',
       render: (group: Group) =>

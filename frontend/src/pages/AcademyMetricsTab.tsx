@@ -141,6 +141,45 @@ const AcademyMetricsTab: React.FC = () => {
             )}
           </Paper>
 
+          <Paper variant="outlined" sx={{ p: 2, mt: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              Выручка по группам
+            </Typography>
+            {metricsQuery.data.breakdown_by_group.length === 0 ? (
+              <Typography variant="body2" color="text.secondary">
+                Нет данных: ни у одной группы нет учеников с оплатой за выбранный период.
+              </Typography>
+            ) : (
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Группа</TableCell>
+                    <TableCell>Тренер</TableCell>
+                    <TableCell align="right">Учеников</TableCell>
+                    <TableCell align="right">Выручка</TableCell>
+                    <TableCell align="right">Средний чек</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {metricsQuery.data.breakdown_by_group.map((row) => (
+                    <TableRow key={row.group_id}>
+                      <TableCell>{row.group_name}</TableCell>
+                      <TableCell>{row.trainer_name || '—'}</TableCell>
+                      <TableCell align="right">{row.students_count}</TableCell>
+                      <TableCell align="right">{rub(row.total_amount)}</TableCell>
+                      <TableCell align="right">{rub(row.average_check)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+            <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+              Выручка группы = сумма чеков учеников, у которых сейчас активное членство в этой группе и
+              которые заплатили в выбранном периоде. Ученик без активной группы (например, чисто
+              индивидуальный) сюда не попадает, но учтён в общей цифре и разбивке по форматам выше.
+            </Typography>
+          </Paper>
+
           <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block' }}>
             Средний чек = цена абонемента ученика (с учётом персональной скидки), засчитанная один раз за
             период на ученика — вне зависимости от того, одним платежом или в рассрочку он вносил оплату.

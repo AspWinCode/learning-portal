@@ -80,6 +80,15 @@ class AcademyMetricsFormatBreakdown(BaseModel):
     average_check: float
 
 
+class AcademyMetricsGroupBreakdown(BaseModel):
+    group_id: int
+    group_name: str
+    trainer_name: Optional[str] = None
+    students_count: int
+    total_amount: float
+    average_check: float
+
+
 class AcademyMetricsResponse(BaseModel):
     period_start: datetime
     period_end: datetime
@@ -87,6 +96,7 @@ class AcademyMetricsResponse(BaseModel):
     total_amount: float
     average_check: float
     breakdown_by_format: List[AcademyMetricsFormatBreakdown]
+    breakdown_by_group: List[AcademyMetricsGroupBreakdown]
 
 
 __all__ = [name for name in globals() if not name.startswith("_")]

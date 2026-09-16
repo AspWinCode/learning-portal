@@ -10,6 +10,7 @@ from app.models import (
     EventRegistrationStatus,
     Group,
     GroupStatus,
+    GroupStudent,
     Lead,
     LeadStatus,
     OwnerWorkspaceTask,
@@ -267,9 +268,11 @@ def build_academy_metrics(
     students = db.query(Student).filter(Student.id.in_(paying_student_ids)).all()
 
     format_buckets: Dict[str, List[float]] = {}
+    student_checks: Dict[int, float] = {}
     for student in students:
         abonement = student.abonement
         check_amount = student_abonement_price(student, abonement)
+        student_checks[student.id] = check_amount
         format_key = getattr(abonement, "abonement_format", None) or "unknown"
         format_buckets.setdefault(format_key, []).append(check_amount)
 
@@ -290,6 +293,8 @@ def build_academy_metrics(
         })
     breakdown.sort(key=lambda row: row["total_amount"], reverse=True)
 
+    groups_breakdown = _build_groups_revenue(db, student_checks=student_checks)
+
     return {
         "period_start": period_start,
         "period_end": period_end,
@@ -297,4 +302,55 @@ def build_academy_metrics(
         "total_amount": round(total_sum, 2),
         "average_check": round(total_sum / total_count, 2) if total_count else 0.0,
         "breakdown_by_format": breakdown,
+        "breakdown_by_group": groups_breakdown,
     }
+
+
+def _build_groups_revenue(db: Session, *, student_checks: Dict[int, float]) -> List[dict]:
+    """Выручка группы = сумма чеков (см. build_academy_metrics) учеников,
+    у которых сейчас активное членство в этой группе (GroupStudent.left_at IS NULL)
+    и которые заплатили в выбранном периоде. Ученик без активной группы
+    (например, чисто индивидуальный) в этот срез не попадает."""
+
+    if not student_checks:
+        return []
+
+    memberships = (
+        db.query(GroupStudent.group_id, GroupStudent.student_id)
+        .filter(
+            GroupStudent.student_id.in_(student_checks.keys()),
+            GroupStudent.left_at.is_(None),
+        )
+        .all()
+    )
+
+    group_student_map: Dict[int, List[int]] = {}
+    for group_id, student_id in memberships:
+        group_student_map.setdefault(group_id, []).append(student_id)
+
+    if not group_student_map:
+        return []
+
+    groups = db.query(Group).filter(Group.id.in_(group_student_map.keys())).all()
+    trainer_ids = {group.trainer_id for group in groups if group.trainer_id}
+    trainers = {
+        user.id: user.full_name
+        for user in db.query(User).filter(User.id.in_(trainer_ids)).all()
+    } if trainer_ids else {}
+
+    rows = []
+    for group in groups:
+        student_ids = group_student_map.get(group.id, [])
+        amounts = [student_checks[sid] for sid in student_ids]
+        bucket_sum = round(sum(amounts), 2)
+        bucket_count = len(amounts)
+        rows.append({
+            "group_id": group.id,
+            "group_name": group.name,
+            "trainer_name": trainers.get(group.trainer_id),
+            "students_count": bucket_count,
+            "total_amount": bucket_sum,
+            "average_check": round(bucket_sum / bucket_count, 2) if bucket_count else 0.0,
+        })
+    rows.sort(key=lambda row: row["total_amount"], reverse=True)
+    return rows

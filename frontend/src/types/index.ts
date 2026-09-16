@@ -233,6 +233,15 @@ export interface AcademyMetricsFormatBreakdown {
   average_check: number;
 }
 
+export interface AcademyMetricsGroupBreakdown {
+  group_id: number;
+  group_name: string;
+  trainer_name?: string | null;
+  students_count: number;
+  total_amount: number;
+  average_check: number;
+}
+
 export interface AcademyMetricsResponse {
   period_start: string;
   period_end: string;
@@ -240,6 +249,7 @@ export interface AcademyMetricsResponse {
   total_amount: number;
   average_check: number;
   breakdown_by_format: AcademyMetricsFormatBreakdown[];
+  breakdown_by_group: AcademyMetricsGroupBreakdown[];
 }
 
 export interface AdminDashboardSummary {

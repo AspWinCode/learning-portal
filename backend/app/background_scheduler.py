@@ -10,6 +10,7 @@ from app.background_tasks import (
     task_academy_scheduled_content,
     task_communication_queue,
     task_daily_task_digest,
+    task_lesson_deduction_reconcile,
     task_owner_workspace_max_sync,
     task_owner_workspace_notification_email_dispatch,
     task_owner_workspace_notification_web_push_dispatch,
@@ -48,6 +49,7 @@ def main() -> None:
     scheduler.add_job(lambda: task_owner_workspace_task_reminders.send(), "interval", minutes=1, id="owner_workspace_task_reminders", max_instances=1)
     scheduler.add_job(lambda: task_student_class_autopromo.send(), "cron", month=9, day=1, hour=3, id="student_class_autopromo", max_instances=1)
     scheduler.add_job(lambda: task_absence_link_tasks.send(), "cron", hour=8, minute=0, id="absence_link_tasks", max_instances=1)
+    scheduler.add_job(lambda: task_lesson_deduction_reconcile.send(), "interval", hours=1, id="lesson_deduction_reconcile", max_instances=1)
     scheduler.add_job(lambda: task_daily_task_digest.send(), "cron", hour=9, minute=0, id="daily_task_digest", max_instances=1)
     scheduler.add_job(lambda: task_academy_scheduled_content.send(), "interval", minutes=15, id="academy_scheduled_content", max_instances=1)
     scheduler.add_job(lambda: task_academy_proactivity_scan.send(), "cron", hour=7, minute=30, id="academy_proactivity_scan", max_instances=1)

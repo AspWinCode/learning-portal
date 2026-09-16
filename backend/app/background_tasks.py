@@ -7,6 +7,7 @@ from app.background_jobs import (
     run_absence_link_tasks,
     run_communication_queue,
     run_daily_task_digest,
+    run_lesson_deduction_reconcile,
     run_owner_workspace_max_sync,
     run_owner_workspace_notification_email_dispatch,
     run_owner_workspace_notification_web_push_dispatch,
@@ -53,6 +54,11 @@ def task_student_class_autopromo() -> None:
 @dramatiq.actor(queue_name="periodic")
 def task_absence_link_tasks() -> None:
     run_absence_link_tasks()
+
+
+@dramatiq.actor(queue_name="periodic")
+def task_lesson_deduction_reconcile() -> None:
+    run_lesson_deduction_reconcile()
 
 
 @dramatiq.actor(queue_name="delivery")

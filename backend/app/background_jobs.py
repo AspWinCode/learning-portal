@@ -73,6 +73,17 @@ def run_student_class_autopromo() -> None:
     _run_db_job("student_class_autopromo", auto_promote_student_classes)
 
 
+def run_lesson_deduction_reconcile() -> None:
+    import asyncio
+
+    from app.services.lesson_deduction_reconcile import reconcile_missing_lesson_deductions
+
+    def _job(db) -> None:
+        asyncio.run(reconcile_missing_lesson_deductions(db))
+
+    _run_db_job("lesson_deduction_reconcile", _job)
+
+
 def run_absence_link_tasks() -> None:
     from app.services.absence_link_tasks import create_morning_link_tasks
 

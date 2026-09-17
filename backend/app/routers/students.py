@@ -137,6 +137,10 @@ def _build_students_query(
     return query
 
 
+def _normalize_name_key(full_name: str) -> str:
+    return " ".join((full_name or "").strip().lower().split())
+
+
 def _apply_card_parent_display(resp_data: dict, card_info: Optional[dict]) -> dict:
     """Дополняет данные ответа контактами родителя из карточки ученика.
 
@@ -244,6 +248,25 @@ async def create_student_with_parent(
         abonement_id = abonement.id
 
     _validate_student_discount(payload.student.discount_type, float(payload.student.discount_value or 0))
+
+    new_name_key = _normalize_name_key(payload.student.full_name)
+    duplicate = next(
+        (
+            s
+            for s in db.query(Student).filter(
+                Student.parent_id == parent_user.id,
+                Student.status == StudentStatus.ACTIVE,
+            )
+            if _normalize_name_key(s.full_name) == new_name_key
+        ),
+        None,
+    )
+    if duplicate:
+        raise HTTPException(
+            status_code=409,
+            detail=f"У этого родителя уже есть активный ученик с таким же ФИО (id={duplicate.id}). "
+            "Откройте существующую карточку ученика вместо создания новой.",
+        )
 
     db_student = Student(
         full_name=payload.student.full_name.strip(),
@@ -651,6 +674,26 @@ async def create_student(
         abonement_id = abonement.id
 
     _validate_student_discount(student.discount_type, float(student.discount_value or 0))
+
+    if student.parent_id:
+        new_name_key = _normalize_name_key(student.full_name)
+        duplicate = next(
+            (
+                s
+                for s in db.query(Student).filter(
+                    Student.parent_id == student.parent_id,
+                    Student.status == StudentStatus.ACTIVE,
+                )
+                if _normalize_name_key(s.full_name) == new_name_key
+            ),
+            None,
+        )
+        if duplicate:
+            raise HTTPException(
+                status_code=409,
+                detail=f"У этого родителя уже есть активный ученик с таким же ФИО (id={duplicate.id}). "
+                "Откройте существующую карточку ученика вместо создания новой.",
+            )
 
     profile_data = student.model_dump(include=set(StudentProfileFields.model_fields.keys()))
     db_student = Student(

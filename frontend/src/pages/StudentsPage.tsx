@@ -628,13 +628,8 @@ const StudentsPage: React.FC = () => {
       loadStudents();
       loadGroups();
     } catch (err: any) {
-      const status = err.response?.status;
       const detail = err.response?.data?.detail || err.message || 'Ошибка создания ученика';
-      if (status === 409) {
-        setError('Найдено несколько родителей с таким email. Выберите родителя из списка (режим «Выбрать существующего»).');
-      } else {
-        setError(detail);
-      }
+      setError(detail);
     }
   };
 

@@ -1332,6 +1332,14 @@ const StudentsPage: React.FC = () => {
                             <Typography variant="body2">{student.parent.full_name}</Typography>
                             <Typography variant="caption" color="text.secondary">{[student.parent.email, student.parent.phone].filter(Boolean).join(' · ') || '—'}</Typography>
                           </Box>
+                        ) : student.card_parent_full_name ? (
+                          <Box>
+                            <Typography variant="body2">{student.card_parent_full_name}</Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {[student.card_parent_email, student.card_parent_phone].filter(Boolean).join(' · ') || '—'}
+                            </Typography>
+                            <Chip size="small" label="Кабинет не открыт" color="default" variant="outlined" sx={{ mt: 0.25, display: 'block', width: 'fit-content' }} />
+                          </Box>
                         ) : (
                           <Chip size="small" label="Нет родителя" color="default" variant="outlined" />
                         )}

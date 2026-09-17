@@ -75,6 +75,9 @@ class StudentResponse(StudentBase, StudentProfileFields):
     abonement: Optional[AbonementResponse] = None
     programs: Optional[List[ProgramSummaryResponse]] = []
     in_group: bool = False
+    card_parent_full_name: Optional[str] = None
+    card_parent_email: Optional[str] = None
+    card_parent_phone: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

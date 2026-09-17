@@ -52,3 +52,35 @@ def get_students_display_names(db: Session, student_ids: List[int], students: Op
         if card.student_id and card.student_full_name:
             result[card.student_id] = (card.student_full_name or "").strip() or result.get(card.student_id, "—")
     return result
+
+
+def get_students_card_parent_info(
+    db: Session, student_ids: List[int], students: Optional[List[Student]] = None
+) -> Dict[int, dict]:
+    """Контактные данные родителя из карточки ученика (не архивной) по каждому student_id.
+
+    Возвращает {student_id: {"full_name": ..., "email": ..., "phone": ...}} только для карточек,
+    в которых заполнено хотя бы ФИО родителя. Используется, чтобы список учеников показывал
+    ФИО/контакты родителя из карточки, даже если кабинет родителя ещё не открыт (нет Student.parent_id),
+    и чтобы актуализировать отображаемые данные, если они отличаются от учётной записи.
+    """
+    if not student_ids:
+        return {}
+
+    cards = (
+        db.query(StudentCard)
+        .filter(
+            StudentCard.student_id.in_(student_ids),
+            StudentCard.archived.is_(False),
+        )
+        .all()
+    )
+    result: Dict[int, dict] = {}
+    for card in cards:
+        if card.student_id and (card.parent_full_name or "").strip():
+            result[card.student_id] = {
+                "full_name": (card.parent_full_name or "").strip(),
+                "email": (card.parent_email or "").strip() or None,
+                "phone": (card.parent_phone or "").strip() or None,
+            }
+    return result

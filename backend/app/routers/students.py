@@ -29,7 +29,11 @@ from app.models import (
     Characteristic, ParentQuestion, AbsenceFollowUp, Lead,
 )
 from app.routers.action_log import log_action
-from app.student_display import get_student_display_name, get_students_display_names
+from app.student_display import (
+    get_student_display_name,
+    get_students_card_parent_info,
+    get_students_display_names,
+)
 from app.services.parent_invite import create_parent_user_no_invite, create_invite_for_existing_parent
 from app.services.student_activity import log_student_activity
 from app.services.student_account_finance import ensure_default_student_account
@@ -133,6 +137,28 @@ def _build_students_query(
     return query
 
 
+def _apply_card_parent_display(resp_data: dict, card_info: Optional[dict]) -> dict:
+    """Дополняет данные ответа контактами родителя из карточки ученика.
+
+    Карточка (StudentCard) заполняется отделом продаж и может содержать более полное/актуальное
+    ФИО и контакты родителя, чем связанный аккаунт User (или родитель может ещё не иметь кабинета
+    вовсе). Как и с ФИО ученика (см. get_student_display_name), карточка имеет приоритет для отображения.
+    """
+    if not card_info:
+        return resp_data
+    resp_data["card_parent_full_name"] = card_info.get("full_name")
+    resp_data["card_parent_email"] = card_info.get("email")
+    resp_data["card_parent_phone"] = card_info.get("phone")
+    if resp_data.get("parent"):
+        if card_info.get("full_name"):
+            resp_data["parent"]["full_name"] = card_info["full_name"]
+        if card_info.get("email"):
+            resp_data["parent"]["email"] = card_info["email"]
+        if card_info.get("phone"):
+            resp_data["parent"]["phone"] = card_info["phone"]
+    return resp_data
+
+
 def _serialize_students(db: Session, students: List[Student]) -> List[StudentResponse]:
     seen_ids = set()
     unique_students: List[Student] = []
@@ -144,13 +170,17 @@ def _serialize_students(db: Session, students: List[Student]) -> List[StudentRes
         return []
 
     display_names = get_students_display_names(db, [student.id for student in unique_students])
+    card_parent_info = get_students_card_parent_info(db, [student.id for student in unique_students])
     return [
         StudentResponse(
-            **{
-                **StudentResponse.model_validate(student).model_dump(),
-                "full_name": display_names.get(student.id, student.full_name),
-                "in_group": any(getattr(group_student, "left_at", None) is None for group_student in (student.group_students or [])),
-            }
+            **_apply_card_parent_display(
+                {
+                    **StudentResponse.model_validate(student).model_dump(),
+                    "full_name": display_names.get(student.id, student.full_name),
+                    "in_group": any(getattr(group_student, "left_at", None) is None for group_student in (student.group_students or [])),
+                },
+                card_parent_info.get(student.id),
+            )
         )
         for student in unique_students
     ]
@@ -750,13 +780,17 @@ async def read_students(
         return []
     # Pass pre-loaded students to avoid N+1 query
     display_names = get_students_display_names(db, [s.id for s in students], students=students)
+    card_parent_info = get_students_card_parent_info(db, [s.id for s in students], students=students)
     return [
         StudentResponse(
-            **{
-                **StudentResponse.model_validate(s).model_dump(),
-                "full_name": display_names.get(s.id, s.full_name),
-                "in_group": any(getattr(gs, "left_at", None) is None for gs in (s.group_students or [])),
-            }
+            **_apply_card_parent_display(
+                {
+                    **StudentResponse.model_validate(s).model_dump(),
+                    "full_name": display_names.get(s.id, s.full_name),
+                    "in_group": any(getattr(gs, "left_at", None) is None for gs in (s.group_students or [])),
+                },
+                card_parent_info.get(s.id),
+            )
         )
         for s in students
     ]
@@ -785,8 +819,12 @@ async def read_student(
     _ensure_student_read_access(db, current_user, student)
     display_name = get_student_display_name(db, student)
     in_group = any(getattr(gs, "left_at", None) is None for gs in (student.group_students or []))
+    card_parent_info = get_students_card_parent_info(db, [student.id]).get(student.id)
     return StudentResponse(
-        **{**StudentResponse.model_validate(student).model_dump(), "full_name": display_name, "in_group": in_group}
+        **_apply_card_parent_display(
+            {**StudentResponse.model_validate(student).model_dump(), "full_name": display_name, "in_group": in_group},
+            card_parent_info,
+        )
     )
 
 

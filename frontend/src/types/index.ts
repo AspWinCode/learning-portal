@@ -296,6 +296,10 @@ export interface Student {
   preferred_messenger?: 'max' | 'sms' | string | null;
   comment?: string | null;
   source?: string | null;
+  /** Контакты родителя из карточки ученика (даже если кабинет родителя ещё не открыт) */
+  card_parent_full_name?: string | null;
+  card_parent_email?: string | null;
+  card_parent_phone?: string | null;
 }
 
 export interface StudentTimelineEvent {

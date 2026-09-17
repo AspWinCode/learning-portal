@@ -137,7 +137,7 @@ const PixelForgeQuestionnairePage: React.FC = () => {
     <Container maxWidth="sm">
       <Box sx={{ py: 6 }}>
         <Typography variant="h4" gutterBottom>
-          Анкета — направление «PixelForge»
+          Новичок
         </Typography>
         <Typography variant="body1" sx={{ mb: 3 }}>
           Заполните, пожалуйста, анкету. Это поможет нам связаться с вами и подобрать подходящий

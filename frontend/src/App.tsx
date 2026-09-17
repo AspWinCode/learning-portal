@@ -274,7 +274,8 @@ function App() {
             />
             <Route path="/anketa/specialist" element={<SpecialistQuestionnairePage />} />
             <Route path="/anketa/individual" element={<IndividualLessonsQuestionnairePage />} />
-            <Route path="/anketa/pixelforge" element={<PixelForgeQuestionnairePage />} />
+            <Route path="/anketa/novichok" element={<PixelForgeQuestionnairePage />} />
+            <Route path="/anketa/pixelforge" element={<Navigate to="/anketa/novichok" replace />} />
             <Route path="/anketa/ege-trial" element={<EgeTrialQuestionnairePage />} />
             <Route path="/anketa/student/:questionnaireId" element={<PublicStudentQuestionnairePage />} />
             <Route

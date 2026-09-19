@@ -310,7 +310,8 @@ def _build_groups_revenue(db: Session, *, student_checks: Dict[int, float]) -> L
     """Выручка группы = сумма чеков (см. build_academy_metrics) учеников,
     у которых сейчас активное членство в этой группе (GroupStudent.left_at IS NULL)
     и которые заплатили в выбранном периоде. Ученик без активной группы
-    (например, чисто индивидуальный) в этот срез не попадает."""
+    (например, чисто индивидуальный) в этот срез не попадает.
+    Группы «Летний интенсив» из этой разбивки исключены по запросу владельца."""
 
     if not student_checks:
         return []
@@ -332,6 +333,7 @@ def _build_groups_revenue(db: Session, *, student_checks: Dict[int, float]) -> L
         return []
 
     groups = db.query(Group).filter(Group.id.in_(group_student_map.keys())).all()
+    groups = [group for group in groups if "летний интенсив" not in (group.name or "").strip().lower()]
     trainer_ids = {group.trainer_id for group in groups if group.trainer_id}
     trainers = {
         user.id: user.full_name

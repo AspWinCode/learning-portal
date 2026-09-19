@@ -40,6 +40,7 @@ import {
   Add,
   AccountTree,
   Assessment,
+  Close,
   Dashboard,
   Hub,
   Delete,
@@ -722,12 +723,19 @@ const FinanceOverviewPageContent: React.FC = () => {
     if (row.direction !== 'income') return null;
     if (row.student_id) {
       return (
-        <Chip
-          size="small"
-          color="success"
-          variant="outlined"
-          label={row.student_name ? `Ученику: ${row.student_name}` : 'Зачислено'}
-        />
+        <Stack direction="row" spacing={0.5} alignItems="center">
+          <Chip
+            size="small"
+            color="success"
+            variant="outlined"
+            label={row.student_name ? `Ученику: ${row.student_name}` : 'Зачислено'}
+          />
+          <Tooltip title="Отменить зачисление (выбран не тот ученик)">
+            <IconButton size="small" onClick={() => handleCancelAssignment(row)}>
+              <Close fontSize="inherit" />
+            </IconButton>
+          </Tooltip>
+        </Stack>
       );
     }
     if (row.bank_transaction_status === 'no_match') {
@@ -797,6 +805,18 @@ const FinanceOverviewPageContent: React.FC = () => {
       const updated = await financeApi.ignoreTransactionAssignment(row.id);
       setJournalRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
     } catch { /* silent */ }
+  };
+
+  const handleCancelAssignment = async (row: FinanceLedgerBankRow) => {
+    if (!window.confirm(`Отменить зачисление платежа ученику «${row.student_name || ''}»?`)) return;
+    try {
+      const updated = await financeApi.cancelTransactionAssignment(row.id);
+      setJournalRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+      setMessage('Зачисление отменено');
+      if (selectedTargetId) await loadModelData(selectedTargetId);
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || err?.message || 'Не удалось отменить зачисление');
+    }
   };
 
   useEffect(() => {

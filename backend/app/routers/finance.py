@@ -33,6 +33,9 @@ from app.models import (
     BudgetEntry,
     MetricDefinition,
     DashboardWidget,
+    StudentAccount,
+    StudentAccountTransaction,
+    StudentAccountTransactionKind,
 )
 from app.schemas.finance import (
     BankTransactionApplyRequest,
@@ -3309,7 +3312,9 @@ async def apply_finance_transaction_to_student(
     note = tx.counterparty_name or tx.description_raw or "Платёж из журнала"
     try:
         from app.services.student_account_payment import add_payment_to_student_account
-        payment_result = add_payment_to_student_account(db, payload.student_id, amount, note, pay_date)
+        payment_result = add_payment_to_student_account(
+            db, payload.student_id, amount, note, pay_date, finance_transaction_id=tx.id
+        )
     except ValueError as e:
         if "не найден" in str(e).lower():
             raise HTTPException(status_code=404, detail=str(e))
@@ -3363,6 +3368,124 @@ async def apply_finance_transaction_to_student(
         student_name=_student_name_map(db, [tx.student_id]).get(tx.student_id) if tx.student_id else None,
         bank_transaction_status=(
             BankTransactionStatus.APPLIED.value if tx.bank_source and tx.bank_operation_id else None
+        ),
+    )
+
+
+@router.post("/transactions/{transaction_id}/cancel-assignment", response_model=FinanceLedgerBankRow)
+async def cancel_finance_transaction_assignment(
+    transaction_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> FinanceLedgerBankRow:
+    """
+    Отменить ошибочное зачисление операции ученику (например, выбрали не того ученика).
+
+    Удаляет созданную проводку по счёту ученика, откатывает баланс и возвращает
+    операцию журнала в статус «требует зачисления».
+    """
+    _require_finance_manage(current_user)
+
+    tx = (
+        db.query(FinanceTransaction)
+        .options(
+            joinedload(FinanceTransaction.account),
+            joinedload(FinanceTransaction.to_account),
+            joinedload(FinanceTransaction.target),
+            joinedload(FinanceTransaction.article),
+        )
+        .filter(FinanceTransaction.id == transaction_id)
+        .first()
+    )
+    if not tx:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Транзакция не найдена")
+    if not tx.student_id:
+        raise HTTPException(status_code=400, detail="Операция не зачислена ученику")
+
+    student_id = tx.student_id
+    amount = float(tx.amount or 0.0)
+
+    sat = (
+        db.query(StudentAccountTransaction)
+        .filter(StudentAccountTransaction.finance_transaction_id == tx.id)
+        .first()
+    )
+    if sat is None:
+        # Старые записи (до появления связи finance_transaction_id) —
+        # ищем по счёту ученика, сумме и отсутствию привязки к другой операции.
+        sat = (
+            db.query(StudentAccountTransaction)
+            .join(StudentAccount, StudentAccount.id == StudentAccountTransaction.account_id)
+            .filter(
+                StudentAccount.student_id == student_id,
+                StudentAccountTransaction.kind == StudentAccountTransactionKind.PAYMENT,
+                StudentAccountTransaction.amount == amount,
+                StudentAccountTransaction.finance_transaction_id.is_(None),
+            )
+            .order_by(StudentAccountTransaction.created_at.desc())
+            .first()
+        )
+    if sat is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Не найдена проводка по счёту ученика для этой операции — отмените зачисление вручную",
+        )
+
+    account = db.query(StudentAccount).filter(StudentAccount.id == sat.account_id).first()
+
+    with db_transaction(db):
+        if account is not None:
+            account.balance -= float(sat.amount or 0.0)
+        db.delete(sat)
+        tx.student_id = None
+        tx.status = FinanceTransactionStatus.CLASSIFIED
+        if tx.bank_source and tx.bank_operation_id:
+            bank_transaction = (
+                db.query(BankTransaction)
+                .filter(BankTransaction.operation_id == tx.bank_operation_id)
+                .first()
+            )
+            if bank_transaction is not None:
+                bank_transaction.status = BankTransactionStatus.NEW.value
+                bank_transaction.student_id = None
+                bank_transaction.student_account_id = None
+        if account is not None:
+            from app.services.student_card_period import update_card_payment_dates
+
+            update_card_payment_dates(db, account.student_id, date.today())
+    db.refresh(tx)
+
+    account_obj: Optional[FinanceAccount] = getattr(tx, "account", None)
+    to_account_obj: Optional[FinanceAccount] = getattr(tx, "to_account", None)
+    target_obj: Optional[FinanceTarget] = getattr(tx, "target", None)
+    article_obj: Optional[FinanceArticle] = getattr(tx, "article", None)
+
+    return FinanceLedgerBankRow(
+        id=tx.id,
+        occurred_at=tx.occurred_at,
+        amount=float(tx.amount or 0.0),
+        direction=str(getattr(tx.direction, "value", tx.direction)),
+        status=str(getattr(tx.status, "value", tx.status)),
+        account_id=tx.account_id,
+        account_code=getattr(account_obj, "code", None),
+        account_name=getattr(account_obj, "name", None),
+        to_account_id=tx.to_account_id,
+        to_account_code=getattr(to_account_obj, "code", None),
+        to_account_name=getattr(to_account_obj, "name", None),
+        transfer_group_id=tx.transfer_group_id,
+        counterparty_name=tx.counterparty_name,
+        counterparty_phone=tx.counterparty_phone,
+        bank_source=tx.bank_source,
+        bank_operation_id=tx.bank_operation_id,
+        target_id=tx.target_id,
+        target_code=getattr(target_obj, "code", None),
+        target_name=getattr(target_obj, "name", None),
+        article_id=tx.article_id,
+        article_name=getattr(article_obj, "name", None),
+        student_id=None,
+        student_name=None,
+        bank_transaction_status=(
+            BankTransactionStatus.NEW.value if tx.bank_source and tx.bank_operation_id else None
         ),
     )
 

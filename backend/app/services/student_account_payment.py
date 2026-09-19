@@ -23,6 +23,7 @@ from app.services.student_card_period import update_card_payment_dates
 class AddPaymentResult:
     """Результат зачисления на счёт ученика."""
     account: StudentAccount
+    transaction: StudentAccountTransaction
 
 
 def add_payment_to_student_account(
@@ -31,6 +32,7 @@ def add_payment_to_student_account(
     amount: float,
     note: str,
     payment_date: date,
+    finance_transaction_id: int | None = None,
 ) -> AddPaymentResult:
     """
     Зачисляет платёж на счёт ученика: получает/создаёт StudentAccount,
@@ -55,14 +57,14 @@ def add_payment_to_student_account(
         db.add(account)
         db.flush()
 
-    db.add(
-        StudentAccountTransaction(
-            account_id=account.id,
-            amount=amount,
-            kind=StudentAccountTransactionKind.PAYMENT,
-            note=(note or "")[:512] if note else None,
-        )
+    transaction = StudentAccountTransaction(
+        account_id=account.id,
+        amount=amount,
+        kind=StudentAccountTransactionKind.PAYMENT,
+        note=(note or "")[:512] if note else None,
+        finance_transaction_id=finance_transaction_id,
     )
+    db.add(transaction)
     account.balance += amount
     update_card_payment_dates(db, student_id, payment_date)
-    return AddPaymentResult(account=account)
+    return AddPaymentResult(account=account, transaction=transaction)

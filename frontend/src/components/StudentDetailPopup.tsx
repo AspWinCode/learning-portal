@@ -48,6 +48,7 @@ import { studentsApi, salesApi, studentCardsApi, studentAccountsApi, abonementsA
 import { getStudentKodexDetail, KodexStudentDetail } from '../services/kodexApi';
 import { getStudentTechnoLabProgress, TechnoLabStudentProgress } from '../services/technolabApi';
 import { getStudentPixelForgeProgress, PixelForgeStudentProgress } from '../services/pixelforgeApi';
+import { getStudentCodelabProgress, CodelabStudentProgress } from '../services/codelabApi';
 import { Student, Abonement, AbsenceFollowUp, AbsenceFollowUpStage, StudentAccount, StudentAccountTransaction, StudentCard, StudentTimelineEvent, CourseCatalogItemOut, StudentPortalAdminView } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { getEffectiveRole, hasPermission } from '../utils/permissions';
@@ -183,6 +184,12 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
   const [pixelforgeDetailOpen, setPixelforgeDetailOpen] = useState(false);
   const [pixelforgeDetailLoading, setPixelforgeDetailLoading] = useState(false);
   const [pixelforgeDetailError, setPixelforgeDetailError] = useState<string | null>(null);
+
+  const canViewCodelabDetail = hasPermission(user, 'codelab.access');
+  const [codelabDetail, setCodelabDetail] = useState<CodelabStudentProgress | null>(null);
+  const [codelabDetailOpen, setCodelabDetailOpen] = useState(false);
+  const [codelabDetailLoading, setCodelabDetailLoading] = useState(false);
+  const [codelabDetailError, setCodelabDetailError] = useState<string | null>(null);
   const [portalView, setPortalView] = useState<StudentPortalAdminView | null>(null);
   const [catalog, setCatalog] = useState<CourseCatalogItemOut[]>([]);
   const [portalLoading, setPortalLoading] = useState(false);
@@ -460,6 +467,25 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
       setPixelforgeDetailError(err.response?.data?.detail || err.message || 'Не удалось загрузить прогресс из PixelForge');
     } finally {
       setPixelforgeDetailLoading(false);
+    }
+  };
+
+  const handleToggleCodelabDetail = async () => {
+    if (codelabDetailOpen) {
+      setCodelabDetailOpen(false);
+      return;
+    }
+    setCodelabDetailOpen(true);
+    if (!studentId || codelabDetail) return;
+    setCodelabDetailLoading(true);
+    setCodelabDetailError(null);
+    try {
+      const detail = await getStudentCodelabProgress(studentId);
+      setCodelabDetail(detail);
+    } catch (err: any) {
+      setCodelabDetailError(err.response?.data?.detail || err.message || 'Не удалось загрузить прогресс из Codelab');
+    } finally {
+      setCodelabDetailLoading(false);
     }
   };
 
@@ -1610,6 +1636,85 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
                                             size="small"
                                             label={s.verdict || s.status}
                                             color={s.verdict === 'AC' ? 'success' : s.verdict ? 'error' : 'default'}
+                                            variant="outlined"
+                                          />
+                                        </Stack>
+                                      ))}
+                                    </Stack>
+                                  </Box>
+                                )}
+                              </Stack>
+                            )}
+                          </Box>
+                        </Collapse>
+                      </Box>
+                    )}
+
+                    {canViewCodelabDetail && (
+                      <Box>
+                        <Stack
+                          direction="row"
+                          justifyContent="space-between"
+                          alignItems="center"
+                          sx={{ cursor: 'pointer' }}
+                          onClick={handleToggleCodelabDetail}
+                        >
+                          <Typography variant="body2" fontWeight={600}>Прогресс по Codelab</Typography>
+                          <IconButton size="small">
+                            {codelabDetailOpen ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
+                          </IconButton>
+                        </Stack>
+                        <Collapse in={codelabDetailOpen}>
+                          <Box sx={{ mt: 1 }}>
+                            {codelabDetailLoading && (
+                              <Stack direction="row" justifyContent="center" sx={{ py: 2 }}>
+                                <CircularProgress size={20} />
+                              </Stack>
+                            )}
+                            {codelabDetailError && (
+                              <Alert severity="error" sx={{ mb: 1 }}>{codelabDetailError}</Alert>
+                            )}
+                            {!codelabDetailLoading && !codelabDetailError && codelabDetail && !codelabDetail.started && (
+                              <Typography variant="caption" color="text.secondary">
+                                Ученик ещё не заходил в Codelab.
+                              </Typography>
+                            )}
+                            {!codelabDetailLoading && codelabDetail?.started && (
+                              <Stack spacing={1.5}>
+                                <Typography variant="caption" color="text.secondary">
+                                  Баллы: {codelabDetail.points_total}
+                                  {codelabDetail.rank_name ? ` · ${codelabDetail.rank_name}` : ''}
+                                </Typography>
+                                {codelabDetail.courses.length === 0 ? (
+                                  <Typography variant="caption" color="text.secondary">Курсов ещё не открывал.</Typography>
+                                ) : (
+                                  <Stack spacing={1}>
+                                    {codelabDetail.courses.map((c) => (
+                                      <Box key={c.course_id} sx={{ p: 1, border: '1px solid', borderColor: 'divider', borderRadius: 1.5 }}>
+                                        <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                          <Typography variant="body2" fontWeight={500}>{c.course_title}</Typography>
+                                          <Chip size="small" label={`${c.points} б.`} variant="outlined" />
+                                        </Stack>
+                                        <Typography variant="caption" color="text.secondary">
+                                          Решено задач: {c.tasks_solved} / {c.tasks_total}
+                                        </Typography>
+                                      </Box>
+                                    ))}
+                                  </Stack>
+                                )}
+                                {codelabDetail.recent_submissions.length > 0 && (
+                                  <Box>
+                                    <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                                      Последние посылки
+                                    </Typography>
+                                    <Stack spacing={0.5}>
+                                      {codelabDetail.recent_submissions.map((s) => (
+                                        <Stack key={s.id} direction="row" justifyContent="space-between" alignItems="center" sx={{ px: 1, py: 0.5, bgcolor: 'action.hover', borderRadius: 1 }}>
+                                          <Typography variant="caption">{s.task_title}</Typography>
+                                          <Chip
+                                            size="small"
+                                            label={s.verdict || s.status}
+                                            color={s.verdict === 'Accepted' ? 'success' : s.verdict ? 'error' : 'default'}
                                             variant="outlined"
                                           />
                                         </Stack>

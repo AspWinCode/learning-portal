@@ -621,6 +621,18 @@ PERMISSION_CATALOG: List[Dict[str, str]] = [
         "description": "Управление контентом и настройками интеграции PixelForge.",
     },
     {
+        "key": "codelab.access",
+        "module": "codelab",
+        "label": "Codelab: просмотр",
+        "description": "Просмотр прогресса учеников на платформе Codelab (Python, автопроверка).",
+    },
+    {
+        "key": "codelab.manage",
+        "module": "codelab",
+        "label": "Codelab: управление",
+        "description": "Управление настройками интеграции Codelab.",
+    },
+    {
         "key": "academy_ai.access",
         "module": "academy_ai",
         "label": "ИИ-консультант: доступ",

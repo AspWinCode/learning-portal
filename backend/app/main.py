@@ -29,6 +29,7 @@ from app.routers import (
     b2b,
     campaigns,
     characteristics,
+    codelab,
     communications,
     course_studio,
     disk,
@@ -467,6 +468,7 @@ app.include_router(notes.router, prefix="/api/v1/notes", tags=["notes"])
 app.include_router(kodex.router, prefix="/api/v1/kodex/cases", tags=["kodex"])
 app.include_router(technolab.router, prefix="/api/v1/technolab", tags=["technolab"])
 app.include_router(pixelforge.router, prefix="/api/v1/pixelforge", tags=["pixelforge"])
+app.include_router(codelab.router, prefix="/api/v1/codelab", tags=["codelab"])
 app.include_router(academy_ai.router, prefix="/api/v1/academy-ai", tags=["academy-ai"])
 app.include_router(methodist_studio.router, prefix="/api/v1/methodist-studio", tags=["methodist-studio"])
 app.include_router(course_studio.router, prefix="/api/v1/course-studio", tags=["course-studio"])

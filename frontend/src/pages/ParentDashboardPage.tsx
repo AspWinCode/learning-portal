@@ -58,6 +58,7 @@ import {
 import { extractApiError } from '../utils/extractApiError';
 import { getStudentTechnoLabProgress, TechnoLabStudentProgress } from '../services/technolabApi';
 import { getStudentPixelForgeProgress, PixelForgeStudentProgress } from '../services/pixelforgeApi';
+import { getStudentCodelabProgress, CodelabStudentProgress } from '../services/codelabApi';
 
 type ComparisonResponse = {
   current: any | null;
@@ -101,6 +102,7 @@ const ParentDashboardPage: React.FC = () => {
   const [webPushBusy, setWebPushBusy] = useState(false);
   const [technolabByStudentId, setTechnolabByStudentId] = useState<Record<number, TechnoLabStudentProgress>>({});
   const [pixelforgeByStudentId, setPixelforgeByStudentId] = useState<Record<number, PixelForgeStudentProgress>>({});
+  const [codelabByStudentId, setCodelabByStudentId] = useState<Record<number, CodelabStudentProgress>>({});
 
   useEffect(() => {
     loadData();
@@ -182,6 +184,13 @@ const ParentDashboardPage: React.FC = () => {
             if (pf.started) setPixelforgeByStudentId((prev) => ({ ...prev, [student.id]: pf }));
           } catch (err) {
             console.error(`Ошибка загрузки прогресса PixelForge для ученика ${student.id}`, err);
+          }
+
+          try {
+            const cl = await getStudentCodelabProgress(student.id);
+            if (cl.started) setCodelabByStudentId((prev) => ({ ...prev, [student.id]: cl }));
+          } catch (err) {
+            console.error(`Ошибка загрузки прогресса Codelab для ученика ${student.id}`, err);
           }
         })
       );
@@ -552,6 +561,35 @@ const ParentDashboardPage: React.FC = () => {
                             <LinearProgress variant="determinate" value={Math.min(c.progress_percent, 100)} sx={{ mt: 0.5, mb: 0.5, borderRadius: 1, height: 6 }} />
                             <Typography variant="caption" color="text.secondary">
                               Пройдено уроков: {c.completed_lessons} / {c.total_lessons}
+                            </Typography>
+                          </Box>
+                        ))
+                      )}
+                    </Stack>
+                  </Paper>
+                ) : null}
+                {codelabByStudentId[student.id] ? (
+                  <Paper variant="outlined" sx={{ p: 1.5, mt: 1.5 }}>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                      <Typography variant="subtitle2">Codelab</Typography>
+                      <Chip
+                        size="small"
+                        label={`${codelabByStudentId[student.id].points_total} б.${codelabByStudentId[student.id].rank_name ? ` · ${codelabByStudentId[student.id].rank_name}` : ''}`}
+                        variant="outlined"
+                      />
+                    </Stack>
+                    <Stack spacing={1} sx={{ mt: 1 }}>
+                      {codelabByStudentId[student.id].courses.length === 0 ? (
+                        <Typography variant="caption" color="text.secondary">Курсов ещё не открывал.</Typography>
+                      ) : (
+                        codelabByStudentId[student.id].courses.map((c) => (
+                          <Box key={c.course_id}>
+                            <Stack direction="row" justifyContent="space-between" alignItems="center">
+                              <Typography variant="body2" fontWeight={500}>{c.course_title}</Typography>
+                              <Typography variant="caption" color="text.secondary">{c.points} б.</Typography>
+                            </Stack>
+                            <Typography variant="caption" color="text.secondary">
+                              Решено задач: {c.tasks_solved} / {c.tasks_total}
                             </Typography>
                           </Box>
                         ))

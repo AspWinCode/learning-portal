@@ -82,6 +82,28 @@ async def _sync_pixelforge_enrollment(item: "CourseCatalogItem", student_id: int
         _logger.warning("PixelForge enroll sync failed (course=%s ref=%s enroll=%s): %s", course_id, ref, enroll, e)
 
 
+async def _sync_codelab_enrollment(item: "CourseCatalogItem", student_id: int, *, enroll: bool) -> None:
+    """Курсы Codelab — пункты витрины code=codelab-<course_id>. При выдаче/
+    отзыве доступа синхронизируем зачисление ученика на курс в Codelab.
+    Best-effort: сбой не ломает выдачу доступа в портале."""
+    if not item.code or not item.code.startswith("codelab-"):
+        return
+    try:
+        course_id = int(item.code.rsplit("-", 1)[1])
+    except (ValueError, IndexError):
+        return
+    from app.services import codelab_sso as _cl
+
+    ref = f"lp-student-{student_id}"
+    try:
+        if enroll:
+            await _cl.enroll_student(course_id, ref)
+        else:
+            await _cl.unenroll_student(course_id, ref)
+    except Exception as e:  # noqa: BLE001
+        _logger.warning("Codelab enroll sync failed (course=%s ref=%s enroll=%s): %s", course_id, ref, enroll, e)
+
+
 def _verify_kodex_signature(raw_body: bytes, signature_header: str) -> bool:
     secret = SSO_KODEX_SHARED_SECRET.encode("utf-8")
     if not secret or not signature_header:
@@ -645,6 +667,7 @@ async def admin_grant_course_access(
         db.commit()
         db.refresh(existing)
         await _sync_pixelforge_enrollment(item, student.id, enroll=True)
+        await _sync_codelab_enrollment(item, student.id, enroll=True)
         return StudentCourseAccessOut.model_validate(existing)
 
     grant = StudentCourseAccess(
@@ -656,6 +679,7 @@ async def admin_grant_course_access(
     db.commit()
     db.refresh(grant)
     await _sync_pixelforge_enrollment(item, student.id, enroll=True)
+    await _sync_codelab_enrollment(item, student.id, enroll=True)
     return StudentCourseAccessOut.model_validate(grant)
 
 
@@ -677,4 +701,5 @@ async def admin_revoke_course_access(
     item = db.query(CourseCatalogItem).filter(CourseCatalogItem.id == grant.catalog_item_id).first()
     if item:
         await _sync_pixelforge_enrollment(item, grant.student_id, enroll=False)
+        await _sync_codelab_enrollment(item, grant.student_id, enroll=False)
     return {"ok": True}

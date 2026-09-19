@@ -30,9 +30,14 @@ def build_launch_redirect_url(student: Student, catalog_item: CourseCatalogItem)
 
     now = datetime.now(timezone.utc)
     # Внешние площадки проверяют aud по фиксированному имени сервиса. У PixelForge
-    # каждый курс — отдельный пункт витрины (code=pixelforge-<id>), но SSO-фильтр
-    # ждёт aud="pixelforge"; курс передаётся отдельным query-параметром ?course=.
-    aud = "pixelforge" if catalog_item.code.startswith("pixelforge") else catalog_item.code
+    # и Codelab каждый курс — отдельный пункт витрины (code=<platform>-<id>), но
+    # SSO-фильтр ждёт фиксированный aud; курс передаётся query-параметром ?course=.
+    if catalog_item.code.startswith("pixelforge"):
+        aud = "pixelforge"
+    elif catalog_item.code.startswith("codelab"):
+        aud = "codelab"
+    else:
+        aud = catalog_item.code
     payload = {
         "iss": "tirskix-lms",
         "aud": aud,

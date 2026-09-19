@@ -38,12 +38,16 @@ def build_launch_redirect_url(student: Student, catalog_item: CourseCatalogItem)
         aud = "codelab"
     else:
         aud = catalog_item.code
+    active_groups = [gs.group for gs in student.group_students if gs.left_at is None and gs.group]
     payload = {
         "iss": "tirskix-lms",
         "aud": aud,
         "external_ref": f"lp-student-{student.id}",
         "full_name": student.full_name,
         "catalog_item_code": catalog_item.code,
+        "role": "student",
+        "groups": [g.name for g in active_groups],
+        "directions": sorted({g.direction for g in active_groups if g.direction}),
         "iat": now,
         "exp": now + timedelta(seconds=SSO_TOKEN_TTL_SECONDS),
         "jti": str(uuid4()),

@@ -473,6 +473,7 @@ export const studentsApi = {
       abonement_id?: number | null;
       discount_type?: 'none' | 'amount' | 'percent';
       discount_value?: number;
+      discount_valid_until?: string | null;
     };
     parent: { id?: number | null; full_name: string; email?: string | null };
   }): Promise<{ student: Student; parent: { id: number; full_name: string; email: string } }> => {
@@ -556,6 +557,7 @@ export const studentAccountsApi = {
       finance_account_id?: number | null;
       discount_type?: 'none' | 'amount' | 'percent';
       discount_value?: number;
+      discount_valid_until?: string | null;
       apply_personal_discount?: boolean;
       note?: string;
     }
@@ -568,6 +570,7 @@ export const studentAccountsApi = {
     data: {
       discount_type: 'none' | 'amount' | 'percent';
       discount_value: number;
+      discount_valid_until?: string | null;
       period_start?: string;
     }
   ): Promise<StudentAccount> => {

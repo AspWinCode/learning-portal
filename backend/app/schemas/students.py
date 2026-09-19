@@ -35,6 +35,7 @@ class StudentCreate(StudentBase, StudentProfileFields):
     abonement_id: Optional[int] = None
     discount_type: DiscountType = DiscountType.NONE
     discount_value: float = 0.0
+    discount_valid_until: Optional[date] = None
 
 
 class StudentUpdate(BaseModel):
@@ -44,6 +45,7 @@ class StudentUpdate(BaseModel):
     abonement_id: Optional[int] = None
     discount_type: Optional[DiscountType] = None
     discount_value: Optional[float] = None
+    discount_valid_until: Optional[date] = None
     training_start_date: Optional[date] = None
     birth_date: Optional[date] = None
     phone: Optional[str] = None
@@ -68,6 +70,7 @@ class StudentResponse(StudentBase, StudentProfileFields):
     abonement_id: Optional[int] = None
     discount_type: DiscountType = DiscountType.NONE
     discount_value: float = 0.0
+    discount_valid_until: Optional[date] = None
     status: StudentStatus
     training_start_date: Optional[date] = None
     created_at: datetime
@@ -107,6 +110,7 @@ class StudentWithParentStudentPayload(BaseModel):
     abonement_id: Optional[int] = None
     discount_type: DiscountType = DiscountType.NONE
     discount_value: float = 0.0
+    discount_valid_until: Optional[date] = None
 
 
 class StudentWithParentCreate(BaseModel):
@@ -178,6 +182,7 @@ class StudentAccountPaymentRequest(BaseModel):
     finance_account_id: Optional[int] = None
     discount_type: str = "none"
     discount_value: float = 0.0
+    discount_valid_until: Optional[date] = None
     apply_personal_discount: bool = False
     note: Optional[str] = None
 
@@ -185,6 +190,7 @@ class StudentAccountPaymentRequest(BaseModel):
 class StudentAccountDiscountRecalculateRequest(BaseModel):
     discount_type: str = "none"
     discount_value: float = 0.0
+    discount_valid_until: Optional[date] = None
     period_start: Optional[date] = None
 
 

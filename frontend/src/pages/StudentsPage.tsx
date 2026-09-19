@@ -69,6 +69,7 @@ const StudentsPage: React.FC = () => {
     abonement_id: '',
     discount_type: 'none' as 'none' | 'amount' | 'percent',
     discount_value: '',
+    discount_valid_until: '',
     training_start_date: '',
   });
   const [parentCreateMode, setParentCreateMode] = useState<'none' | 'existing' | 'new'>('new');
@@ -534,6 +535,10 @@ const StudentsPage: React.FC = () => {
           abonement_id: abonementId ?? undefined,
           discount_type: canAssignAbonement ? newStudent.discount_type : 'none',
           discount_value: canAssignAbonement && newStudent.discount_type !== 'none' ? discountValue : 0,
+          discount_valid_until:
+            canAssignAbonement && newStudent.discount_type !== 'none' && newStudent.discount_valid_until
+              ? newStudent.discount_valid_until
+              : undefined,
         };
         const createdStudent = await studentsApi.create(studentData);
         await assignProgramAndGroup(createdStudent.id);
@@ -591,6 +596,10 @@ const StudentsPage: React.FC = () => {
           abonement_id: abonementId ?? undefined,
           discount_type: canAssignAbonement ? newStudent.discount_type : 'none',
           discount_value: canAssignAbonement && newStudent.discount_type !== 'none' ? discountValue : 0,
+          discount_valid_until:
+            canAssignAbonement && newStudent.discount_type !== 'none' && newStudent.discount_valid_until
+              ? newStudent.discount_valid_until
+              : undefined,
         },
         parent: parentPayload,
       });
@@ -707,7 +716,7 @@ const StudentsPage: React.FC = () => {
   });
 
   const resetCreateForm = () => {
-    setNewStudent({ full_name: '', parent_id: '', trainer_id: '', group_id: '', program_id: '', abonement_id: '', discount_type: 'none', discount_value: '', training_start_date: '' });
+    setNewStudent({ full_name: '', parent_id: '', trainer_id: '', group_id: '', program_id: '', abonement_id: '', discount_type: 'none', discount_value: '', discount_valid_until: '', training_start_date: '' });
     setParentCreateMode('new');
     setParentSearchQuery('');
     setParentSearchResults([]);
@@ -730,6 +739,7 @@ const StudentsPage: React.FC = () => {
       abonement_id: student.abonement_id?.toString() || '',
       discount_type: student.discount_type || 'none',
       discount_value: student.discount_value ? String(student.discount_value) : '',
+      discount_valid_until: student.discount_valid_until ? String(student.discount_valid_until).slice(0, 10) : '',
       training_start_date: student.training_start_date ? String(student.training_start_date).slice(0, 10) : '',
     });
     setParentCreateMode(student.parent_id ? 'existing' : 'none');
@@ -791,6 +801,8 @@ const StudentsPage: React.FC = () => {
         }
         updateData.discount_type = newStudent.discount_type;
         updateData.discount_value = newStudent.discount_type !== 'none' ? Number(newStudent.discount_value) || 0 : 0;
+        updateData.discount_valid_until =
+          newStudent.discount_type !== 'none' && newStudent.discount_valid_until ? newStudent.discount_valid_until : null;
       }
       updateData.training_start_date = newStudent.training_start_date?.trim() ? newStudent.training_start_date.trim() : null;
 
@@ -882,6 +894,7 @@ const StudentsPage: React.FC = () => {
         abonement_id: '',
         discount_type: 'none',
         discount_value: '',
+        discount_valid_until: '',
         training_start_date: '',
       });
     } catch (err: any) {
@@ -1001,8 +1014,20 @@ const StudentsPage: React.FC = () => {
     const type = student.discount_type || 'none';
     const value = student.discount_value || 0;
     if (type === 'none' || value <= 0) return '—';
-    if (type === 'percent') return `${value}%`;
-    return `${value} ₽`;
+    const base = type === 'percent' ? `${value}%` : `${value} ₽`;
+    if (student.discount_valid_until) {
+      const untilDate = new Date(student.discount_valid_until);
+      const expired = untilDate < new Date(new Date().toDateString());
+      const formatted = untilDate.toLocaleDateString('ru-RU');
+      return `${base} (${expired ? 'истекла' : `до ${formatted}`})`;
+    }
+    return base;
+  };
+
+  const addMonthsToToday = (months: number): string => {
+    const d = new Date();
+    d.setMonth(d.getMonth() + months);
+    return d.toISOString().slice(0, 10);
   };
 
   const getPriceWithDiscount = (student: Student, ab?: Abonement): number => {
@@ -1033,6 +1058,7 @@ const StudentsPage: React.FC = () => {
     const previewStudent = {
       discount_type: newStudent.discount_type,
       discount_value: discountValue,
+      discount_valid_until: newStudent.discount_valid_until || null,
     } as Student;
     const finalPrice = selectedAbonement ? getPriceWithDiscount(previewStudent, selectedAbonement) : 0;
 
@@ -1061,6 +1087,43 @@ const StudentsPage: React.FC = () => {
             onChange={(e) => setNewStudent({ ...newStudent, discount_value: e.target.value })}
             disabled={newStudent.discount_type === 'none'}
             inputProps={{ min: 0, max: newStudent.discount_type === 'percent' ? 100 : undefined }}
+          />
+        </Stack>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'center' }}>
+          <Stack direction="row" spacing={1}>
+            <Button
+              size="small"
+              variant={newStudent.discount_valid_until === addMonthsToToday(1) ? 'contained' : 'outlined'}
+              disabled={newStudent.discount_type === 'none'}
+              onClick={() => setNewStudent({ ...newStudent, discount_valid_until: addMonthsToToday(1) })}
+            >
+              На 1 месяц
+            </Button>
+            <Button
+              size="small"
+              variant={newStudent.discount_valid_until === addMonthsToToday(3) ? 'contained' : 'outlined'}
+              disabled={newStudent.discount_type === 'none'}
+              onClick={() => setNewStudent({ ...newStudent, discount_valid_until: addMonthsToToday(3) })}
+            >
+              На 3 месяца
+            </Button>
+            <Button
+              size="small"
+              disabled={newStudent.discount_type === 'none' || !newStudent.discount_valid_until}
+              onClick={() => setNewStudent({ ...newStudent, discount_valid_until: '' })}
+            >
+              Постоянная
+            </Button>
+          </Stack>
+          <TextField
+            size="small"
+            type="date"
+            label="Скидка действует до"
+            value={newStudent.discount_valid_until}
+            onChange={(e) => setNewStudent({ ...newStudent, discount_valid_until: e.target.value })}
+            disabled={newStudent.discount_type === 'none'}
+            InputLabelProps={{ shrink: true }}
+            helperText="Оставьте пустым — скидка постоянная"
           />
         </Stack>
         {selectedAbonement && (

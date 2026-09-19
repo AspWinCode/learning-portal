@@ -635,6 +635,7 @@ class StudentCardBase(BaseModel):
     abonement_id: Optional[int] = None
     discount_type: DiscountType = DiscountType.NONE
     discount_value: float = 0.0
+    discount_valid_until: Optional[date] = None
     learning_period_start: Optional[date] = None
     next_payment_date: Optional[date] = None
     anketa_status: Optional[str] = None
@@ -671,6 +672,7 @@ class StudentCardUpdate(BaseModel):
     abonement_id: Optional[int] = None
     discount_type: Optional[DiscountType] = None
     discount_value: Optional[float] = None
+    discount_valid_until: Optional[date] = None
     learning_period_start: Optional[date] = None
     next_payment_date: Optional[date] = None
     anketa_status: Optional[str] = None

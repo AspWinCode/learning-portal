@@ -18,6 +18,7 @@ from app.background_jobs import (
     run_academy_ingest_expertise,
     run_academy_proactivity_scan,
     run_academy_scheduled_content,
+    run_expire_student_discounts,
     run_scheduled_messages,
     run_student_class_autopromo,
     run_tochka_auto_import,
@@ -104,6 +105,11 @@ def task_academy_scheduled_content() -> None:
 @dramatiq.actor(queue_name="periodic")
 def task_academy_proactivity_scan() -> None:
     run_academy_proactivity_scan()
+
+
+@dramatiq.actor(queue_name="periodic")
+def task_expire_student_discounts() -> None:
+    run_expire_student_discounts()
 
 
 @dramatiq.actor(queue_name="delivery", max_retries=1, time_limit=3_600_000)

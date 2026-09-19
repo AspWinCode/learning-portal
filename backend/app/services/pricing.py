@@ -24,11 +24,26 @@ def apply_discount(price: float, discount_type: Any, discount_value: Optional[fl
     return round(amount, 2)
 
 
+def effective_student_discount(student: Any) -> tuple[Any, float]:
+    """Тип и значение скидки ученика с учётом срока действия (discount_valid_until).
+
+    Если срок истёк, скидка считается неприменённой — даже если поля
+    discount_type/discount_value в БД ещё не обнулены фоновой задачей.
+    """
+    discount_type = getattr(student, "discount_type", "none")
+    discount_value = getattr(student, "discount_value", 0.0)
+    valid_until = getattr(student, "discount_valid_until", None)
+    if valid_until and valid_until < date.today():
+        return "none", 0.0
+    return discount_type, discount_value
+
+
 def student_abonement_price(student: Any, abonement: Any) -> float:
     if not abonement:
         return 0.0
+    discount_type, discount_value = effective_student_discount(student)
     return apply_discount(
         float(getattr(abonement, "price", 0.0) or 0.0),
-        getattr(student, "discount_type", "none"),
-        getattr(student, "discount_value", 0.0),
+        discount_type,
+        discount_value,
     )

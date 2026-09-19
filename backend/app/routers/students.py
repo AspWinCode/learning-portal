@@ -54,6 +54,13 @@ def _normalized_discount_value(discount_type: DiscountType, discount_value: Opti
     return 0.0 if discount_kind in (None, DiscountType.NONE.value) else value
 
 
+def _normalized_discount_valid_until(discount_type: DiscountType, discount_valid_until):
+    discount_kind = getattr(discount_type, "value", discount_type)
+    if discount_kind in (None, DiscountType.NONE.value):
+        return None
+    return discount_valid_until
+
+
 def _student_effective_role(current_user: User) -> UserRole:
     return auth.resolve_effective_role(current_user)
 
@@ -274,6 +281,7 @@ async def create_student_with_parent(
         abonement_id=abonement_id,
         discount_type=payload.student.discount_type,
         discount_value=_normalized_discount_value(payload.student.discount_type, payload.student.discount_value),
+        discount_valid_until=_normalized_discount_valid_until(payload.student.discount_type, payload.student.discount_valid_until),
         status=StudentStatus.ACTIVE,
     )
     db.add(db_student)
@@ -304,6 +312,7 @@ async def create_student_with_parent(
         abonement_id=db_student.abonement_id,
         discount_type=db_student.discount_type,
         discount_value=db_student.discount_value,
+        discount_valid_until=db_student.discount_valid_until,
         status=db_student.status,
         created_at=db_student.created_at,
         parent=parent_user,
@@ -702,6 +711,7 @@ async def create_student(
         abonement_id=abonement_id,
         discount_type=student.discount_type,
         discount_value=_normalized_discount_value(student.discount_type, student.discount_value),
+        discount_valid_until=_normalized_discount_valid_until(student.discount_type, student.discount_valid_until),
         status=StudentStatus.ACTIVE,
         **profile_data,
     )
@@ -1128,12 +1138,14 @@ async def update_student(
         else:
             update_data["abonement_id"] = None
 
-    if "discount_type" in update_data or "discount_value" in update_data:
+    if "discount_type" in update_data or "discount_value" in update_data or "discount_valid_until" in update_data:
         discount_type = update_data.get("discount_type", db_student.discount_type) or DiscountType.NONE
         discount_value = update_data.get("discount_value", db_student.discount_value)
+        discount_valid_until = update_data.get("discount_valid_until", db_student.discount_valid_until)
         _validate_student_discount(discount_type, float(discount_value or 0))
         update_data["discount_type"] = discount_type
         update_data["discount_value"] = _normalized_discount_value(discount_type, discount_value)
+        update_data["discount_valid_until"] = _normalized_discount_valid_until(discount_type, discount_valid_until)
     
     # При архивации проверяем, нужно ли деактивировать родителя
     if "status" in update_data and update_data["status"] == StudentStatus.ARCHIVED:

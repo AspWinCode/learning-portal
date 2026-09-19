@@ -147,6 +147,7 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
   const [discountDialog, setDiscountDialog] = useState<{ account: StudentAccount } | null>(null);
   const [discountType, setDiscountType] = useState<'none' | 'amount' | 'percent'>('none');
   const [discountValue, setDiscountValue] = useState('');
+  const [discountValidUntil, setDiscountValidUntil] = useState('');
   const [discountPeriodStart, setDiscountPeriodStart] = useState(getLocalDateInputValue());
   const [discountLoading, setDiscountLoading] = useState(false);
   const [discountError, setDiscountError] = useState<string | null>(null);
@@ -500,6 +501,12 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
     return studentCard?.abonement || student?.abonement || abonements.find((a) => a.id === abonementId);
   };
 
+  const addMonthsToToday = (months: number): string => {
+    const d = new Date();
+    d.setMonth(d.getMonth() + months);
+    return d.toISOString().slice(0, 10);
+  };
+
   const getCurrentPaymentDiscount = () => {
     const type = paymentDiscountType;
     const value = Number(paymentDiscountValue.replace(',', '.')) || 0;
@@ -541,6 +548,7 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
     setDiscountDialog({ account });
     setDiscountType(currentDiscount.type);
     setDiscountValue(currentDiscount.value);
+    setDiscountValidUntil((studentCard || student)?.discount_valid_until?.slice(0, 10) || '');
     setDiscountPeriodStart(studentCard?.learning_period_start || getLocalDateInputValue());
     setDiscountError(null);
   };
@@ -661,6 +669,7 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
       await studentAccountsApi.applyPersonalDiscount(discountDialog.account.id, {
         discount_type: discountType,
         discount_value: discountType === 'none' ? 0 : value,
+        discount_valid_until: discountType !== 'none' && discountValidUntil ? discountValidUntil : null,
         period_start: discountPeriodStart || undefined,
       });
       const [updatedAccounts, freshStudent, freshCards] = await Promise.all([
@@ -1912,7 +1921,10 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
                   onChange={(e) => {
                     const next = e.target.value as 'none' | 'amount' | 'percent';
                     setDiscountType(next);
-                    if (next === 'none') setDiscountValue('');
+                    if (next === 'none') {
+                      setDiscountValue('');
+                      setDiscountValidUntil('');
+                    }
                   }}
                 >
                   <MenuItem value="none">Нет</MenuItem>
@@ -1931,8 +1943,43 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
                 fullWidth
               />
             </Box>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'center' }}>
+              <Stack direction="row" spacing={1}>
+                <Button
+                  size="small"
+                  variant={discountValidUntil === addMonthsToToday(1) ? 'contained' : 'outlined'}
+                  disabled={discountType === 'none'}
+                  onClick={() => setDiscountValidUntil(addMonthsToToday(1))}
+                >
+                  На 1 месяц
+                </Button>
+                <Button
+                  size="small"
+                  variant={discountValidUntil === addMonthsToToday(3) ? 'contained' : 'outlined'}
+                  disabled={discountType === 'none'}
+                  onClick={() => setDiscountValidUntil(addMonthsToToday(3))}
+                >
+                  На 3 месяца
+                </Button>
+                <Button size="small" disabled={discountType === 'none' || !discountValidUntil} onClick={() => setDiscountValidUntil('')}>
+                  Постоянная
+                </Button>
+              </Stack>
+              <TextField
+                label="Скидка действует до"
+                value={discountValidUntil}
+                onChange={(e) => setDiscountValidUntil(e.target.value)}
+                type="date"
+                size="small"
+                disabled={discountType === 'none'}
+                InputLabelProps={{ shrink: true }}
+                helperText="Оставьте пустым — скидка постоянная"
+                fullWidth
+              />
+            </Stack>
             <Alert severity="info">
               Система обновит персональную скидку ученика и пересчитает уже созданные базовые списания по этому счету начиная с выбранной даты.
+              {discountValidUntil ? ' Скидка будет автоматически снята после выбранной даты.' : ''}
             </Alert>
           </Stack>
         </DialogContent>

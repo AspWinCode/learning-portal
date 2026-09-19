@@ -274,6 +274,8 @@ export interface Student {
   abonement_id?: number | null;
   discount_type?: 'none' | 'amount' | 'percent';
   discount_value?: number;
+  /** Если задано — скидка разовая и перестаёт действовать после этой даты */
+  discount_valid_until?: string | null;
   status: 'active' | 'archived';
   training_start_date?: string | null;
   created_at: string;
@@ -992,6 +994,7 @@ export interface StudentCard {
   abonement_id?: number | null;
   discount_type: 'none' | 'amount' | 'percent';
   discount_value: number;
+  discount_valid_until?: string | null;
   learning_period_start?: string | null;
   next_payment_date?: string | null;
   prepaid_periods?: number;

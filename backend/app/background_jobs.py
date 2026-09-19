@@ -73,6 +73,12 @@ def run_student_class_autopromo() -> None:
     _run_db_job("student_class_autopromo", auto_promote_student_classes)
 
 
+def run_expire_student_discounts() -> None:
+    from app.services.expire_student_discounts import expire_student_discounts
+
+    _run_db_job("expire_student_discounts", expire_student_discounts)
+
+
 def run_lesson_deduction_reconcile() -> None:
     import asyncio
 

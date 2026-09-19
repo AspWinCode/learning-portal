@@ -64,12 +64,21 @@ def _get_or_create_student_card(db: Session, student: Student) -> StudentCard:
     return card
 
 
-def _apply_student_discount(db: Session, student: Student, discount_type: DiscountType, discount_value: float) -> StudentCard:
+def _apply_student_discount(
+    db: Session,
+    student: Student,
+    discount_type: DiscountType,
+    discount_value: float,
+    discount_valid_until: date | None = None,
+) -> StudentCard:
+    normalized_valid_until = discount_valid_until if discount_type != DiscountType.NONE else None
     student.discount_type = discount_type
     student.discount_value = discount_value
+    student.discount_valid_until = normalized_valid_until
     card = _get_or_create_student_card(db, student)
     card.discount_type = discount_type
     card.discount_value = discount_value
+    card.discount_valid_until = normalized_valid_until
     return card
 
 
@@ -255,7 +264,7 @@ async def add_payment(
         if apply_personal_discount:
             student = db.query(Student).filter(Student.id == account.student_id).first()
             if student:
-                _apply_student_discount(db, student, discount_enum, discount_value)
+                _apply_student_discount(db, student, discount_enum, discount_value, payload.discount_valid_until)
         from app.services.student_card_period import update_card_payment_dates
 
         update_card_payment_dates(db, account.student_id, payment_date)
@@ -318,7 +327,7 @@ async def apply_personal_discount_and_recalculate(
     period_start = payload.period_start or (card.learning_period_start if card and card.learning_period_start else date.today())
 
     with db_transaction(db):
-        _apply_student_discount(db, student, discount_enum, discount_value)
+        _apply_student_discount(db, student, discount_enum, discount_value, payload.discount_valid_until)
         _recalculate_current_period_lesson_deductions(db, account, period_start)
 
     db.refresh(account)

@@ -259,6 +259,7 @@ class Student(Base):
         nullable=False,
     )
     discount_value = Column(Float, default=0.0, nullable=False)
+    discount_valid_until = Column(Date, nullable=True)  # если задано — скидка разовая, действует только до этой даты
     status = Column(_StudentStatusType(), default=StudentStatus.ACTIVE)
     training_start_date = Column(Date, nullable=True)  # с этой даты ученик в уроках; от неё считаются оплата и напоминания
     # Профиль ученика (заполняется вручную или Excel-импортом)
@@ -847,6 +848,7 @@ class StudentCard(Base):
         nullable=False,
     )
     discount_value = Column(Float, default=0.0, nullable=False)
+    discount_valid_until = Column(Date, nullable=True)  # зеркало Student.discount_valid_until
     learning_period_start = Column(Date, nullable=True)  # дата старта периода (ТЗ п.2.2)
     next_payment_date = Column(Date, nullable=True)  # дата следующей оплаты
     prepaid_periods = Column(Integer, default=0, nullable=False, server_default="0")  # оплачено вперёд периодов (родитель заплатил раньше срока)

@@ -46,3 +46,21 @@ class CodelabWebhookCourse(BaseModel):
 class CodelabCourseWebhook(BaseModel):
     event: str  # published | unpublished | deleted
     course: CodelabWebhookCourse
+
+
+# ─── Студия методиста / кабинет преподавателя — проксирование admin-API Codelab ─
+# Портал ничего не хранит, только прокидывает в /api/lms-admin/** Codelab
+# (codelab_client.py). Поля намеренно нетипизированы построчно (dict) там, где
+# Codelab и так уже валидирует форму запроса — дублировать его pydantic-схемы
+# один в один здесь не даёт дополнительной защиты, только рассинхронизацию.
+
+
+class CodelabCourseCreate(BaseModel):
+    title: str
+    slug: Optional[str] = None
+    description: Optional[str] = None
+
+
+class CodelabGradeIn(BaseModel):
+    score: float
+    comment: str

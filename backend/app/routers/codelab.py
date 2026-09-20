@@ -8,7 +8,15 @@ from sqlalchemy.orm import Session
 from app import auth
 from app.database import get_db
 from app.models import CourseCatalogItem, CourseCatalogItemKind, Student, StudentStatus, User
-from app.schemas.codelab import CodelabCourseWebhook, CodelabStudentProgress
+from app.routers.action_log import log_action
+from app.schemas.codelab import (
+    CodelabCourseCreate,
+    CodelabCourseWebhook,
+    CodelabGradeIn,
+    CodelabStudentProgress,
+)
+from app.services import codelab_client as cl
+from app.services.codelab_client import CodelabError
 from app.services.codelab_sso import CODELAB_EXTERNAL_BASE, fetch_student_codelab_progress
 from app.services.kodex_sso import SSO_KODEX_SHARED_SECRET
 
@@ -105,3 +113,135 @@ async def codelab_course_webhook(request: Request, db: Session = Depends(get_db)
         logger.warning("codelab webhook: unknown event %r", payload.event)
 
     return {"ok": True}
+
+
+# ══════════ Студия методиста / кабинет преподавателя — проксирование Codelab ═══
+# Методист создаёт/публикует курсы, преподаватель смотрит и оценивает посылки —
+# из своего аккаунта портала, не заходя в Codelab напрямую (как у PixelForge/Kodex).
+# Портал ничего не хранит, только прокидывает в /api/lms-admin/** Codelab с
+# HMAC-подписью (codelab_client). Курс создаёт методист (codelab.manage);
+# посылки смотрит и оценивает любой, у кого есть codelab.access (тренер тоже).
+
+def _raise(e: CodelabError):
+    raise HTTPException(
+        status_code=e.status_code if e.status_code < 500 else 502,
+        detail=e.detail if e.status_code < 500 else f"Codelab недоступен: {e.detail}",
+    )
+
+
+def _manage(current_user: User = Depends(auth.require_permission("codelab.manage"))) -> User:
+    return current_user
+
+
+def _access(current_user: User = Depends(auth.require_permission("codelab.access"))) -> User:
+    return current_user
+
+
+@router.get("/admin/courses")
+async def admin_list_courses(current_user: User = Depends(_manage)):
+    try:
+        return await cl.list_courses(current_user)
+    except CodelabError as e:
+        _raise(e)
+
+
+@router.post("/admin/courses", status_code=status.HTTP_201_CREATED)
+async def admin_create_course(
+    payload: CodelabCourseCreate,
+    current_user: User = Depends(_manage),
+    db: Session = Depends(get_db),
+):
+    try:
+        course = await cl.create_course(current_user, payload.model_dump(exclude_unset=True))
+    except CodelabError as e:
+        _raise(e)
+        return
+    log_action(db, current_user.id, "create", "codelab_course", course.get("id"), {"title": course.get("title")})
+    return course
+
+
+@router.post("/admin/courses/{course_id}/tasks", status_code=status.HTTP_201_CREATED)
+async def admin_create_task(course_id: int, payload: dict, current_user: User = Depends(_manage)):
+    try:
+        return await cl.create_task(current_user, course_id, payload)
+    except CodelabError as e:
+        _raise(e)
+
+
+@router.post("/admin/courses/{course_id}/items", status_code=status.HTTP_201_CREATED)
+async def admin_create_item(course_id: int, payload: dict, current_user: User = Depends(_manage)):
+    try:
+        return await cl.create_item(current_user, course_id, payload)
+    except CodelabError as e:
+        _raise(e)
+
+
+@router.put("/admin/items/{item_id}")
+async def admin_update_item(item_id: int, payload: dict, current_user: User = Depends(_manage)):
+    try:
+        return await cl.update_item(current_user, item_id, payload)
+    except CodelabError as e:
+        _raise(e)
+
+
+@router.delete("/admin/items/{item_id}")
+async def admin_delete_item(item_id: int, current_user: User = Depends(_manage)):
+    try:
+        await cl.delete_item(current_user, item_id)
+    except CodelabError as e:
+        _raise(e)
+        return
+    return {"ok": True}
+
+
+@router.get("/admin/courses/{course_id}/tree")
+async def admin_get_course_tree(course_id: int, current_user: User = Depends(_manage)):
+    try:
+        return await cl.get_course_tree(current_user, course_id)
+    except CodelabError as e:
+        _raise(e)
+
+
+@router.post("/admin/courses/{course_id}/publish")
+async def admin_publish_course(course_id: int, current_user: User = Depends(_manage), db: Session = Depends(get_db)):
+    try:
+        course = await cl.publish_course(current_user, course_id)
+    except CodelabError as e:
+        _raise(e)
+        return
+    log_action(db, current_user.id, "publish", "codelab_course", course_id, {})
+    return course
+
+
+@router.post("/admin/courses/{course_id}/unpublish")
+async def admin_unpublish_course(course_id: int, current_user: User = Depends(_manage), db: Session = Depends(get_db)):
+    try:
+        return await cl.unpublish_course(current_user, course_id)
+    except CodelabError as e:
+        _raise(e)
+
+
+# ─── Кабинет преподавателя (TCH-001/003/004) ───────────────────────────────────
+
+@router.get("/admin/courses/{course_id}/submissions")
+async def admin_list_submissions(course_id: int, current_user: User = Depends(_access)):
+    try:
+        return await cl.list_course_submissions(current_user, course_id)
+    except CodelabError as e:
+        _raise(e)
+
+
+@router.put("/admin/submissions/{submission_id}/grade")
+async def admin_grade_submission(
+    submission_id: int,
+    payload: CodelabGradeIn,
+    current_user: User = Depends(_access),
+    db: Session = Depends(get_db),
+):
+    try:
+        result = await cl.grade_submission(current_user, submission_id, payload.score, payload.comment)
+    except CodelabError as e:
+        _raise(e)
+        return
+    log_action(db, current_user.id, "grade", "codelab_submission", submission_id, {"score": payload.score})
+    return result

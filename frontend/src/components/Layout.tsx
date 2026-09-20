@@ -85,7 +85,7 @@ const DRAWER_MINI = 64;
 
 // Пути студий методиста: при переходе интерфейс разворачивается на весь экран,
 // а боковое меню скрывается (доступно по кнопке-гамбургеру в шапке).
-const STUDIO_FULLSCREEN_PATHS = new Set(['/kodex', '/kodex-menu', '/technolab', '/pixelforge']);
+const STUDIO_FULLSCREEN_PATHS = new Set(['/kodex', '/kodex-menu', '/technolab', '/pixelforge', '/codelab']);
 const SIDEBAR_SCROLL_STORAGE_KEY = 'sb_scroll_top';
 
 // Группы меню: id → массив путей
@@ -125,6 +125,7 @@ const EXTRA_ROLE_NAV_ITEMS: Record<string, Array<{ text: string; icon: React.Rea
     { text: 'Уроки', icon: <EventAvailable sx={{ fontSize: 18 }} />, path: '/lessons' },
     { text: 'Программы', icon: <Book sx={{ fontSize: 18 }} />, path: '/programs' },
     { text: 'Задачи', icon: <Assignment sx={{ fontSize: 18 }} />, path: '/tasks' },
+    { text: 'Codelab', icon: <EditNoteIcon sx={{ fontSize: 18 }} />, path: '/codelab' },
   ],
   sales: [
     { text: 'Ученики', icon: <People sx={{ fontSize: 18 }} />, path: '/students' },
@@ -142,6 +143,7 @@ const EXTRA_ROLE_NAV_ITEMS: Record<string, Array<{ text: string; icon: React.Rea
     { text: 'Kodex Studio', icon: <EditNoteIcon sx={{ fontSize: 18 }} />, path: '/kodex' },
     { text: 'ТехноЛаб Studio', icon: <EditNoteIcon sx={{ fontSize: 18 }} />, path: '/technolab' },
     { text: 'PixelForge Studio', icon: <EditNoteIcon sx={{ fontSize: 18 }} />, path: '/pixelforge' },
+    { text: 'Codelab Studio', icon: <EditNoteIcon sx={{ fontSize: 18 }} />, path: '/codelab' },
   ],
 };
 

@@ -79,6 +79,7 @@ DEFAULT_ROLE_PERMISSIONS: Dict[str, Set[str]] = {
         "student_portal.manage",
         "technolab.access",
         "pixelforge.access",
+        "codelab.access",
     },
     UserRole.PARENT.value: {
         "programs.access",
@@ -101,6 +102,8 @@ DEFAULT_ROLE_PERMISSIONS: Dict[str, Set[str]] = {
         "technolab.manage",
         "pixelforge.access",
         "pixelforge.manage",
+        "codelab.access",
+        "codelab.manage",
         "programs.access",
         "programs.manage",
     },

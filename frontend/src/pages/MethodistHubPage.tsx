@@ -16,6 +16,7 @@ import {
   SportsEsports as GameIcon,
   School as SchoolIcon,
   Science as ScienceIcon,
+  Code as CodeIcon,
   Add as AddIcon,
   CheckCircleOutline as CheckIcon,
   RateReview as ReviewIcon,
@@ -26,6 +27,7 @@ import Layout from '../components/Layout';
 import { AuthoringSummary, kodexExternalApi, KodexExternalSummary } from '../services/kodexApi';
 import { technolabApi } from '../services/technolabApi';
 import { pixelforgeStudioApi } from '../services/pixelforgeApi';
+import { codelabStudioApi } from '../services/codelabApi';
 
 interface Direction {
   id: string;
@@ -68,6 +70,15 @@ const DIRECTIONS: Direction[] = [
     route: '/pixelforge',
   },
   {
+    id: 'codelab',
+    name: 'Codelab',
+    desc: 'Python-задачи с автопроверкой (браузерная IDE, sandbox-Judge).',
+    icon: <CodeIcon />,
+    status: 'live',
+    color: 'info',
+    route: '/codelab',
+  },
+  {
     id: 'oge',
     name: 'ОГЭ / ЕГЭ',
     desc: 'Тестовые задания и разборы по информатике и математике.',
@@ -103,6 +114,7 @@ const SUMMARY_FETCHERS: Record<string, () => Promise<AuthoringSummary>> = {
   kodex: kodexExternalApi.summary,
   technolab: technolabApi.authoringSummary,
   game: pixelforgeStudioApi.authoringSummary,
+  codelab: codelabStudioApi.authoringSummary,
 };
 
 const EMPTY_AGG = { total: 0, active: 0, inReview: 0, attention: 0, draft: 0 };

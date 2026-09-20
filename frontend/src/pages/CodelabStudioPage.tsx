@@ -1,0 +1,355 @@
+import React, { useEffect, useState } from 'react';
+import {
+  Alert, Box, Button, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
+  DialogTitle, Divider, List, ListItemButton, ListItemText, MenuItem, Paper, Select,
+  Snackbar, Stack, Tab, Table, TableBody, TableCell, TableHead, TableRow, Tabs, TextField, Typography,
+} from '@mui/material';
+import { Publish as PublishIcon, UnpublishedOutlined as UnpublishIcon } from '@mui/icons-material';
+import Layout from '../components/Layout';
+import { useAuth } from '../contexts/AuthContext';
+import { hasPermission } from '../utils/permissions';
+import {
+  CodelabCourse, CodelabLearningItem, CodelabSubmissionReview, codelabStudioApi as api,
+} from '../services/codelabApi';
+
+type Toast = { msg: string; err?: boolean } | null;
+
+/** Студия методиста (создание/публикация курсов) и кабинет преподавателя
+ * (просмотр и оценка посылок) — оба через прокси в Codelab, из своего
+ * аккаунта портала, по образцу PixelForge/Kodex (см. README интеграции). */
+export default function CodelabStudioPage() {
+  const { user } = useAuth();
+  const canManage = hasPermission(user, 'codelab.manage');
+  const [tab, setTab] = useState(canManage ? 0 : 1);
+  const [toast, setToast] = useState<Toast>(null);
+
+  return (
+    <Layout>
+      <Box sx={{ p: 3, maxWidth: 1100, mx: 'auto' }}>
+        <Typography variant="h5" sx={{ mb: 2 }}>Codelab</Typography>
+        <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
+          {canManage && <Tab label="Курсы" />}
+          <Tab label="Посылки учеников" />
+        </Tabs>
+        {canManage && tab === 0 && <CoursesTab onToast={setToast} />}
+        {(tab === 1 || !canManage) && <SubmissionsTab onToast={setToast} />}
+      </Box>
+      <Snackbar open={!!toast} autoHideDuration={4000} onClose={() => setToast(null)}>
+        {toast ? <Alert severity={toast.err ? 'error' : 'success'}>{toast.msg}</Alert> : undefined}
+      </Snackbar>
+    </Layout>
+  );
+}
+
+// ─────────────────────────── Курсы (методист) ───────────────────────────
+
+function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
+  const [courses, setCourses] = useState<CodelabCourse[]>([]);
+  const [selected, setSelected] = useState<CodelabCourse | null>(null);
+  const [tree, setTree] = useState<CodelabLearningItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [newTitle, setNewTitle] = useState('');
+  const [itemDialog, setItemDialog] = useState<'theory' | 'task' | null>(null);
+  const [itemTitle, setItemTitle] = useState('');
+  const [itemContent, setItemContent] = useState('');
+  const [testsText, setTestsText] = useState('2 3=>5');
+
+  const loadCourses = () => api.listCourses().then(setCourses).catch((e) => onToast({ msg: e.message, err: true }));
+
+  useEffect(() => { loadCourses(); }, []);
+
+  const selectCourse = async (c: CodelabCourse) => {
+    setSelected(c);
+    setLoading(true);
+    try {
+      setTree(await api.getTree(c.id));
+    } catch (e: any) {
+      onToast({ msg: e.message, err: true });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const createCourse = async () => {
+    try {
+      const course = await api.createCourse({ title: newTitle });
+      setCreateOpen(false);
+      setNewTitle('');
+      onToast({ msg: 'Курс создан' });
+      await loadCourses();
+      selectCourse(course);
+    } catch (e: any) {
+      onToast({ msg: e.message, err: true });
+    }
+  };
+
+  const addTheoryItem = async () => {
+    if (!selected) return;
+    try {
+      await api.createItem(selected.id, { type: 'theory', title: itemTitle, content: itemContent, position: tree.length });
+      setItemDialog(null);
+      setItemTitle('');
+      setItemContent('');
+      onToast({ msg: 'Материал добавлен' });
+      selectCourse(selected);
+    } catch (e: any) {
+      onToast({ msg: e.message, err: true });
+    }
+  };
+
+  const addTaskItem = async () => {
+    if (!selected) return;
+    try {
+      const tests = testsText.split('\n').filter(Boolean).map((line) => {
+        const [input, expected] = line.split('=>');
+        return { input: `${(input || '').trim()}\n`, expected: `${(expected || '').trim()}\n` };
+      });
+      const task = await api.createTask(selected.id, { title: itemTitle, tests });
+      await api.createItem(selected.id, { type: 'task', title: itemTitle, problem_revision_id: task.id, position: tree.length });
+      setItemDialog(null);
+      setItemTitle('');
+      setTestsText('2 3=>5');
+      onToast({ msg: 'Задача добавлена' });
+      selectCourse(selected);
+    } catch (e: any) {
+      onToast({ msg: e.message, err: true });
+    }
+  };
+
+  const publish = async () => {
+    if (!selected) return;
+    try {
+      const updated = await api.publishCourse(selected.id);
+      onToast({ msg: 'Курс опубликован' });
+      setSelected(updated);
+      await loadCourses();
+    } catch (e: any) {
+      onToast({ msg: e.message, err: true });
+    }
+  };
+
+  const unpublish = async () => {
+    if (!selected) return;
+    try {
+      const updated = await api.unpublishCourse(selected.id);
+      onToast({ msg: 'Курс снят с публикации' });
+      setSelected(updated);
+      await loadCourses();
+    } catch (e: any) {
+      onToast({ msg: e.message, err: true });
+    }
+  };
+
+  return (
+    <Stack direction="row" spacing={3}>
+      <Paper variant="outlined" sx={{ width: 260, flexShrink: 0, p: 1.5 }}>
+        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+          <Typography variant="subtitle2">Курсы</Typography>
+          <Button size="small" onClick={() => setCreateOpen(true)}>+ Новый</Button>
+        </Stack>
+        <List dense>
+          {courses.map((c) => (
+            <ListItemButton key={c.id} selected={selected?.id === c.id} onClick={() => selectCourse(c)}>
+              <ListItemText
+                primary={c.title}
+                secondary={<Chip size="small" label={c.status} color={c.status === 'published' ? 'success' : 'default'} />}
+              />
+            </ListItemButton>
+          ))}
+          {courses.length === 0 && <Typography variant="caption" color="text.secondary">Пока нет курсов</Typography>}
+        </List>
+      </Paper>
+
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        {!selected && <Typography color="text.secondary">Выберите курс слева или создайте новый.</Typography>}
+        {selected && (
+          <>
+            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+              <Typography variant="h6">{selected.title}</Typography>
+              <Stack direction="row" spacing={1}>
+                <Button size="small" variant="outlined" onClick={() => setItemDialog('theory')}>+ Материал</Button>
+                <Button size="small" variant="outlined" onClick={() => setItemDialog('task')}>+ Задача</Button>
+                {selected.status === 'published' ? (
+                  <Button size="small" startIcon={<UnpublishIcon />} onClick={unpublish}>Снять с публикации</Button>
+                ) : (
+                  <Button size="small" variant="contained" startIcon={<PublishIcon />} onClick={publish}>Опубликовать</Button>
+                )}
+              </Stack>
+            </Stack>
+
+            {loading ? <CircularProgress size={24} /> : (
+              <Stack spacing={1}>
+                {tree.map((item) => (
+                  <Paper key={item.id} variant="outlined" sx={{ p: 1.5 }}>
+                    <Chip size="small" label={item.type} sx={{ mr: 1 }} />
+                    {item.title}
+                  </Paper>
+                ))}
+                {tree.length === 0 && <Typography variant="caption" color="text.secondary">В черновике пока пусто.</Typography>}
+              </Stack>
+            )}
+          </>
+        )}
+      </Box>
+
+      <Dialog open={createOpen} onClose={() => setCreateOpen(false)}>
+        <DialogTitle>Новый курс</DialogTitle>
+        <DialogContent>
+          <TextField autoFocus fullWidth label="Название" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} sx={{ mt: 1 }} />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCreateOpen(false)}>Отмена</Button>
+          <Button variant="contained" disabled={!newTitle.trim()} onClick={createCourse}>Создать</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={itemDialog === 'theory'} onClose={() => setItemDialog(null)} fullWidth maxWidth="sm">
+        <DialogTitle>Новый материал</DialogTitle>
+        <DialogContent>
+          <TextField autoFocus fullWidth label="Заголовок" value={itemTitle} onChange={(e) => setItemTitle(e.target.value)} sx={{ mt: 1, mb: 2 }} />
+          <TextField fullWidth multiline rows={6} label="Текст (Markdown)" value={itemContent} onChange={(e) => setItemContent(e.target.value)} />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setItemDialog(null)}>Отмена</Button>
+          <Button variant="contained" disabled={!itemTitle.trim()} onClick={addTheoryItem}>Добавить</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={itemDialog === 'task'} onClose={() => setItemDialog(null)} fullWidth maxWidth="sm">
+        <DialogTitle>Новая задача (Python, stdin/stdout)</DialogTitle>
+        <DialogContent>
+          <TextField autoFocus fullWidth label="Название" value={itemTitle} onChange={(e) => setItemTitle(e.target.value)} sx={{ mt: 1, mb: 2 }} />
+          <TextField
+            fullWidth multiline rows={5} label="Тесты — по одному на строку: вход=>ожидаемый вывод"
+            value={testsText} onChange={(e) => setTestsText(e.target.value)} helperText="Пример: 2 3=>5"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setItemDialog(null)}>Отмена</Button>
+          <Button variant="contained" disabled={!itemTitle.trim()} onClick={addTaskItem}>Добавить</Button>
+        </DialogActions>
+      </Dialog>
+    </Stack>
+  );
+}
+
+// ────────────────────── Посылки учеников (преподаватель) ──────────────────────
+
+function SubmissionsTab({ onToast }: { onToast: (t: Toast) => void }) {
+  const [courses, setCourses] = useState<CodelabCourse[]>([]);
+  const [courseId, setCourseId] = useState<number | ''>('');
+  const [submissions, setSubmissions] = useState<CodelabSubmissionReview[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [grading, setGrading] = useState<CodelabSubmissionReview | null>(null);
+  const [gradeScore, setGradeScore] = useState('');
+  const [gradeComment, setGradeComment] = useState('');
+
+  useEffect(() => {
+    api.listCourses()
+      .then((cs) => setCourses(cs.filter((c) => c.status === 'published')))
+      .catch((e) => onToast({ msg: e.message, err: true }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const loadSubmissions = async (id: number) => {
+    setLoading(true);
+    try {
+      setSubmissions(await api.listSubmissions(id));
+    } catch (e: any) {
+      onToast({ msg: e.message, err: true });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const submitGrade = async () => {
+    if (!grading) return;
+    try {
+      await api.gradeSubmission(grading.submission_id, Number(gradeScore), gradeComment);
+      onToast({ msg: 'Оценка сохранена' });
+      setGrading(null);
+      if (courseId) loadSubmissions(courseId);
+    } catch (e: any) {
+      onToast({ msg: e.message, err: true });
+    }
+  };
+
+  return (
+    <Box>
+      <Select
+        size="small"
+        displayEmpty
+        value={courseId}
+        onChange={(e) => {
+          const id = e.target.value as number;
+          setCourseId(id);
+          loadSubmissions(id);
+        }}
+        sx={{ minWidth: 260, mb: 2 }}
+      >
+        <MenuItem value="" disabled>Выберите опубликованный курс</MenuItem>
+        {courses.map((c) => <MenuItem key={c.id} value={c.id}>{c.title}</MenuItem>)}
+      </Select>
+
+      {loading ? <CircularProgress size={24} /> : courseId && (
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell>Ученик</TableCell>
+              <TableCell>Задача</TableCell>
+              <TableCell>Статус</TableCell>
+              <TableCell>Балл</TableCell>
+              <TableCell />
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {submissions.map((s) => (
+              <TableRow key={s.submission_id}>
+                <TableCell>{s.student_full_name}</TableCell>
+                <TableCell>{s.item_title}</TableCell>
+                <TableCell>{s.verdict || s.status}</TableCell>
+                <TableCell>
+                  {s.manual_score_override !== null ? `${s.manual_score_override} (ручная)` : s.score ?? '—'}
+                  {s.manual_comment && (
+                    <Typography variant="caption" color="text.secondary" display="block">{s.manual_comment}</Typography>
+                  )}
+                </TableCell>
+                <TableCell>
+                  <Button size="small" onClick={() => { setGrading(s); setGradeScore(String(s.score ?? '')); setGradeComment(''); }}>
+                    Оценить
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+            {submissions.length === 0 && (
+              <TableRow><TableCell colSpan={5}><Typography variant="caption" color="text.secondary">Посылок пока нет</Typography></TableCell></TableRow>
+            )}
+          </TableBody>
+        </Table>
+      )}
+
+      <Dialog open={!!grading} onClose={() => setGrading(null)} fullWidth maxWidth="sm">
+        <DialogTitle>Ручная оценка — {grading?.student_full_name}</DialogTitle>
+        <DialogContent>
+          <Paper variant="outlined" sx={{ p: 1.5, mb: 2, maxHeight: 200, overflow: 'auto' }}>
+            <Typography component="pre" variant="body2" sx={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace' }}>
+              {grading?.code}
+            </Typography>
+          </Paper>
+          <TextField
+            fullWidth type="number" label="Балл" value={gradeScore} onChange={(e) => setGradeScore(e.target.value)} sx={{ mb: 2 }}
+          />
+          <TextField
+            fullWidth multiline rows={3} label="Комментарий (обязателен)" value={gradeComment}
+            onChange={(e) => setGradeComment(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setGrading(null)}>Отмена</Button>
+          <Button variant="contained" disabled={!gradeComment.trim() || gradeScore === ''} onClick={submitGrade}>Сохранить</Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+}

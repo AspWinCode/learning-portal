@@ -369,6 +369,12 @@ class StudentCourseAccess(Base):
     status = Column(SQLEnum(StudentCourseAccessStatus, name="studentcourseaccessstatus", values_callable=lambda e: [i.value for i in e]), nullable=False, default=StudentCourseAccessStatus.ACTIVE)
     granted_at = Column(DateTime(timezone=True), server_default=func.now())
     revoked_at = Column(DateTime(timezone=True), nullable=True)
+    # MGR-002: даты назначения — не проверяются автоматически нигде (нет
+    # шедулера, который сам открывал/закрывал бы доступ по датам), это пока
+    # только информационные поля для отчётов и ручного контроля менеджера.
+    starts_at = Column(DateTime(timezone=True), nullable=True)
+    deadline_at = Column(DateTime(timezone=True), nullable=True)
+    closes_at = Column(DateTime(timezone=True), nullable=True)
 
     student = relationship("Student", back_populates="course_access")
     catalog_item = relationship("CourseCatalogItem", back_populates="access_grants")

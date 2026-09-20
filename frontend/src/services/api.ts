@@ -126,6 +126,8 @@ import {
   CourseCatalogItemOut,
   StudentCredentialOut,
   StudentCourseAccessOut,
+  BulkGrantCourseAccessRequest,
+  BulkGrantCourseAccessResponse,
   LearningLink,
   PaymentLink,
   LeadPipelineStage,
@@ -621,6 +623,10 @@ export const studentPortalAdminApi = {
   },
   revokeAccess: async (accessId: number): Promise<void> => {
     await api.delete(`/api/student-portal/admin/access/${accessId}`);
+  },
+  bulkGrantAccess: async (payload: BulkGrantCourseAccessRequest): Promise<BulkGrantCourseAccessResponse> => {
+    const response = await api.post('/api/student-portal/admin/access/bulk', payload);
+    return response.data;
   },
   getPortalSettings: async (): Promise<{ show_abonement: boolean }> => {
     const response = await api.get('/api/student-portal/admin/portal-settings');

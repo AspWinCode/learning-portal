@@ -70,7 +70,7 @@ export interface KodexExternalFull extends KodexExternalSummary {
  *  Сегменты воронки (active/in_review/changes_requested/draft) взаимоисключающие
  *  и в сумме дают total. У направлений без ревью in_review и changes_requested = 0. */
 export interface AuthoringSummary {
-  direction: 'kodex' | 'technolab' | 'pixelforge';
+  direction: 'kodex' | 'technolab' | 'pixelforge' | 'codelab';
   total: number;
   active: number;
   in_review: number;

@@ -2493,6 +2493,41 @@ export interface StudentCourseAccessOut {
   catalog_item_id: number;
   status: 'active' | 'revoked';
   granted_at?: string | null;
+  starts_at?: string | null;
+  deadline_at?: string | null;
+  closes_at?: string | null;
+}
+
+// MGR-001/002/005: массовое назначение курса группе/списку учеников.
+export interface BulkGrantCourseAccessRequest {
+  catalog_item_id: number;
+  group_id?: number;
+  student_ids?: number[];
+  starts_at?: string;
+  deadline_at?: string;
+  closes_at?: string;
+  reset_progress?: boolean;
+  dry_run?: boolean;
+}
+
+export interface BulkGrantAffectedStudent {
+  student_id: number;
+  full_name: string;
+  already_active: boolean;
+}
+
+export interface BulkGrantOutcome {
+  student_id: number;
+  full_name: string;
+  outcome: 'granted' | 'reactivated' | 'already_active' | 'error';
+  detail?: string | null;
+}
+
+export interface BulkGrantCourseAccessResponse {
+  dry_run: boolean;
+  catalog_item_id: number;
+  affected: BulkGrantAffectedStudent[];
+  results: BulkGrantOutcome[];
 }
 
 export interface StudentCourseProgressOut {

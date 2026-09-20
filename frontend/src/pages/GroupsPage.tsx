@@ -29,6 +29,7 @@ import { Group, User, Student } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { getEffectiveRole, hasPermission } from '../utils/permissions';
 import { ConfirmDialog, DataTable, EmptyState, FormDialog, StatusChip } from '../components/ui';
+import AssignCourseToGroupDialog from '../components/AssignCourseToGroupDialog';
 
 const GroupsPage: React.FC = () => {
   const [groups, setGroups] = useState<Group[]>([]);
@@ -37,6 +38,7 @@ const GroupsPage: React.FC = () => {
   const [editOpen, setEditOpen] = useState(false);
   const [membersOpen, setMembersOpen] = useState(false);
   const [archiveTarget, setArchiveTarget] = useState<Group | null>(null);
+  const [assignCourseOpen, setAssignCourseOpen] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
   const [groupDetails, setGroupDetails] = useState<Group | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
@@ -877,6 +879,14 @@ const GroupsPage: React.FC = () => {
           <DialogContent>
             {canManageGroups && (
               <>
+                <Button
+                  variant="outlined"
+                  sx={{ mb: 2 }}
+                  disabled={!(groupDetails?.students || []).length}
+                  onClick={() => setAssignCourseOpen(true)}
+                >
+                  Назначить курс всей группе
+                </Button>
                 <FormControl fullWidth sx={{ mt: 2 }}>
                   <InputLabel>Добавить ученика</InputLabel>
                   <Select
@@ -953,6 +963,15 @@ const GroupsPage: React.FC = () => {
             <Button onClick={() => setMembersOpen(false)}>Закрыть</Button>
           </DialogActions>
         </Dialog>
+      )}
+
+      {selectedGroup && (
+        <AssignCourseToGroupDialog
+          open={assignCourseOpen}
+          groupId={selectedGroup.id}
+          groupName={groupDetails?.name || selectedGroup.name}
+          onClose={() => setAssignCourseOpen(false)}
+        />
       )}
 
       <ConfirmDialog

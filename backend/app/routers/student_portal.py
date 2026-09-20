@@ -31,6 +31,10 @@ from app.models import (
     User,
 )
 from app.schemas.student_portal import (
+    BulkGrantAffectedStudent,
+    BulkGrantCourseAccessRequest,
+    BulkGrantCourseAccessResponse,
+    BulkGrantOutcome,
     CourseCatalogItemCreate,
     CourseCatalogItemOut,
     CourseCatalogItemUpdate,
@@ -664,6 +668,19 @@ async def admin_grant_course_access(
         existing.status = StudentCourseAccessStatus.ACTIVE
         existing.granted_by_user_id = current_user.id
         existing.revoked_at = None
+        existing.starts_at = payload.starts_at
+        existing.deadline_at = payload.deadline_at
+        existing.closes_at = payload.closes_at
+        if payload.reset_progress:
+            # MGR-004: "начать заново" — явный выбор менеджера, а не поведение
+            # по умолчанию. Прогресс — локальный кэш последнего снимка внешней
+            # площадки (перезапишется при следующей синхронизации); сам сброс
+            # прогресса на стороне площадки (Codelab/PixelForge) не выполняется,
+            # это только локальная витрина.
+            db.query(StudentCourseProgress).filter(
+                StudentCourseProgress.student_id == student.id,
+                StudentCourseProgress.catalog_item_id == item.id,
+            ).delete()
         db.commit()
         db.refresh(existing)
         await _sync_pixelforge_enrollment(item, student.id, enroll=True)
@@ -674,6 +691,9 @@ async def admin_grant_course_access(
         student_id=student.id,
         catalog_item_id=item.id,
         granted_by_user_id=current_user.id,
+        starts_at=payload.starts_at,
+        deadline_at=payload.deadline_at,
+        closes_at=payload.closes_at,
     )
     db.add(grant)
     db.commit()
@@ -681,6 +701,102 @@ async def admin_grant_course_access(
     await _sync_pixelforge_enrollment(item, student.id, enroll=True)
     await _sync_codelab_enrollment(item, student.id, enroll=True)
     return StudentCourseAccessOut.model_validate(grant)
+
+
+@router.post("/admin/access/bulk", response_model=BulkGrantCourseAccessResponse)
+async def admin_bulk_grant_course_access(
+    payload: BulkGrantCourseAccessRequest,
+    current_user: User = Depends(auth.require_permission("student_portal.manage")),
+    db: Session = Depends(get_db),
+):
+    """MGR-001/002/005: назначение курса группе или явному списку учеников
+    одним действием. dry_run=True (по умолчанию) — только предпросмотр
+    затрагиваемых учеников, без реальной выдачи доступа."""
+    item = db.query(CourseCatalogItem).filter(CourseCatalogItem.id == payload.catalog_item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Курс не найден")
+
+    student_ids = set(payload.student_ids)
+    if payload.group_id is not None:
+        group_student_ids = (
+            db.query(GroupStudent.student_id)
+            .filter(GroupStudent.group_id == payload.group_id, GroupStudent.left_at.is_(None))
+            .all()
+        )
+        student_ids |= {row[0] for row in group_student_ids}
+
+    if not student_ids:
+        raise HTTPException(status_code=422, detail="Не указаны ни группа, ни ученики")
+
+    students = db.query(Student).filter(Student.id.in_(student_ids)).all()
+    students_by_id = {s.id: s for s in students}
+
+    existing_grants = {
+        g.student_id: g
+        for g in db.query(StudentCourseAccess).filter(
+            StudentCourseAccess.catalog_item_id == item.id,
+            StudentCourseAccess.student_id.in_(student_ids),
+        )
+    }
+
+    if payload.dry_run:
+        affected = [
+            BulkGrantAffectedStudent(
+                student_id=sid,
+                full_name=students_by_id[sid].full_name if sid in students_by_id else f"#{sid} (не найден)",
+                already_active=existing_grants.get(sid) is not None and existing_grants[sid].status == StudentCourseAccessStatus.ACTIVE,
+            )
+            for sid in sorted(student_ids)
+        ]
+        return BulkGrantCourseAccessResponse(dry_run=True, catalog_item_id=item.id, affected=affected)
+
+    results: list[BulkGrantOutcome] = []
+    for sid in sorted(student_ids):
+        student = students_by_id.get(sid)
+        if not student:
+            results.append(BulkGrantOutcome(student_id=sid, full_name=f"#{sid}", outcome="error", detail="Ученик не найден"))
+            continue
+        try:
+            existing = existing_grants.get(sid)
+            if existing:
+                was_active = existing.status == StudentCourseAccessStatus.ACTIVE
+                existing.status = StudentCourseAccessStatus.ACTIVE
+                existing.granted_by_user_id = current_user.id
+                existing.revoked_at = None
+                existing.starts_at = payload.starts_at
+                existing.deadline_at = payload.deadline_at
+                existing.closes_at = payload.closes_at
+                if payload.reset_progress:
+                    db.query(StudentCourseProgress).filter(
+                        StudentCourseProgress.student_id == sid,
+                        StudentCourseProgress.catalog_item_id == item.id,
+                    ).delete()
+                db.commit()
+                await _sync_pixelforge_enrollment(item, sid, enroll=True)
+                await _sync_codelab_enrollment(item, sid, enroll=True)
+                results.append(BulkGrantOutcome(
+                    student_id=sid, full_name=student.full_name,
+                    outcome="already_active" if was_active else "reactivated",
+                ))
+            else:
+                db.add(StudentCourseAccess(
+                    student_id=sid,
+                    catalog_item_id=item.id,
+                    granted_by_user_id=current_user.id,
+                    starts_at=payload.starts_at,
+                    deadline_at=payload.deadline_at,
+                    closes_at=payload.closes_at,
+                ))
+                db.commit()
+                await _sync_pixelforge_enrollment(item, sid, enroll=True)
+                await _sync_codelab_enrollment(item, sid, enroll=True)
+                results.append(BulkGrantOutcome(student_id=sid, full_name=student.full_name, outcome="granted"))
+        except Exception as e:  # noqa: BLE001
+            db.rollback()
+            _logger.warning("Bulk grant failed for student %s: %s", sid, e)
+            results.append(BulkGrantOutcome(student_id=sid, full_name=student.full_name, outcome="error", detail=str(e)))
+
+    return BulkGrantCourseAccessResponse(dry_run=False, catalog_item_id=item.id, results=results)
 
 
 @router.delete("/admin/access/{access_id}")

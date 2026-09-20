@@ -106,6 +106,12 @@ class StudentCredentialOut(BaseModel):
 class GrantCourseAccessRequest(BaseModel):
     student_id: int
     catalog_item_id: int
+    starts_at: Optional[datetime] = None
+    deadline_at: Optional[datetime] = None
+    closes_at: Optional[datetime] = None
+    # MGR-004: при повторной выдаче ранее отозванного доступа — явный выбор,
+    # продолжить с прежним прогрессом (по умолчанию) или начать заново.
+    reset_progress: bool = False
 
 
 class StudentCourseAccessOut(BaseModel):
@@ -116,6 +122,44 @@ class StudentCourseAccessOut(BaseModel):
     catalog_item_id: int
     status: StudentCourseAccessStatus
     granted_at: Optional[datetime] = None
+    starts_at: Optional[datetime] = None
+    deadline_at: Optional[datetime] = None
+    closes_at: Optional[datetime] = None
+
+
+class BulkGrantCourseAccessRequest(BaseModel):
+    """MGR-001/002/005: назначение курса группе или явному списку учеников
+    одним действием. dry_run=True (по умолчанию) — только предпросмотр
+    затрагиваемых учеников, без реальной выдачи доступа."""
+
+    catalog_item_id: int
+    group_id: Optional[int] = None
+    student_ids: List[int] = Field(default_factory=list)
+    starts_at: Optional[datetime] = None
+    deadline_at: Optional[datetime] = None
+    closes_at: Optional[datetime] = None
+    reset_progress: bool = False
+    dry_run: bool = True
+
+
+class BulkGrantAffectedStudent(BaseModel):
+    student_id: int
+    full_name: str
+    already_active: bool
+
+
+class BulkGrantOutcome(BaseModel):
+    student_id: int
+    full_name: str
+    outcome: Literal["granted", "reactivated", "already_active", "error"]
+    detail: Optional[str] = None
+
+
+class BulkGrantCourseAccessResponse(BaseModel):
+    dry_run: bool
+    catalog_item_id: int
+    affected: List[BulkGrantAffectedStudent] = Field(default_factory=list)
+    results: List[BulkGrantOutcome] = Field(default_factory=list)
 
 
 class StudentCourseProgressOut(BaseModel):

@@ -117,6 +117,10 @@ DEFAULT_ROLE_PERMISSIONS: Dict[str, Set[str]] = {
     UserRole.MANAGER.value: {
         "students.access",
         "student_portal.manage",
+        # MGR-001: менеджер создаёт группы, назначает ответственного тренера,
+        # добавляет учеников по одному или массово, назначает/отзывает курсы.
+        "groups.access",
+        "groups.manage",
     },
 }
 

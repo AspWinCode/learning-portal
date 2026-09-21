@@ -150,9 +150,11 @@ async def read_users(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
-    """Список пользователей. Admin, owner — любые; sales — только тренеры (role=trainer)."""
+    """Список пользователей. Admin, owner — любые; sales/manager — только тренеры (role=trainer)."""
     effective_role = auth.resolve_effective_role(current_user)
-    if effective_role == UserRole.SALES:
+    if effective_role in (UserRole.SALES, UserRole.MANAGER):
+        # MGR-001: менеджер назначает ответственного тренера при создании
+        # группы — нужен список тренеров, но не полный доступ к пользователям.
         role = "trainer"
     elif not auth.has_permission(current_user, "users.access"):
         raise HTTPException(status_code=403, detail="Not enough permissions")

@@ -42,7 +42,7 @@ def _build_ssl_context() -> ssl.SSLContext:
 _SSL_CONTEXT = _build_ssl_context()
 
 PHONE_PATTERN = re.compile(r"(?<!\d)(?:\+?7|8)[\s\-()]*\d[\s\-()]*\d[\s\-()]*\d[\s\-()]*\d[\s\-()]*\d[\s\-()]*\d[\s\-()]*\d[\s\-()]*\d[\s\-()]*\d[\s\-()]*\d(?!\d)")
-LABELED_PHONE_PATTERN = re.compile(r"(?:тел(?:ефон)?|phone|mobile|сбп|sbp)\D{0,20}(\d[\d\s\-()]{9,}\d)", re.IGNORECASE)
+LABELED_PHONE_PATTERN = re.compile(r"(?:тел(?:ефон)?|phone|mobile|сбп|sbp)\D{0,20}(\d[\d\s\-()]{8,13}\d)", re.IGNORECASE)
 
 
 def _get_jwt() -> str:
@@ -273,22 +273,6 @@ def _extract_phone_from_text(value: Any) -> str:
     return ""
 
 
-def _iter_strings(value: Any) -> List[str]:
-    if isinstance(value, str):
-        return [value]
-    if isinstance(value, dict):
-        result: List[str] = []
-        for nested in value.values():
-            result.extend(_iter_strings(nested))
-        return result
-    if isinstance(value, list):
-        result: List[str] = []
-        for nested in value:
-            result.extend(_iter_strings(nested))
-        return result
-    return []
-
-
 def _extract_phone_from_transaction_text(tx: Dict[str, Any]) -> str:
     priority_values = [
         tx.get("paymentPurpose"),
@@ -301,11 +285,6 @@ def _extract_phone_from_transaction_text(tx: Dict[str, Any]) -> str:
         tx.get("Details"),
     ]
     for value in priority_values:
-        phone = _extract_phone_from_text(value)
-        if phone:
-            return phone
-
-    for value in _iter_strings(tx):
         phone = _extract_phone_from_text(value)
         if phone:
             return phone

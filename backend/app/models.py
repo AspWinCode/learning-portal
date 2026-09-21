@@ -3939,6 +3939,48 @@ class AcademyInsight(Base):
     resolved_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
 
+class AcademyBusinessProfile(Base):
+    """Профиль бизнеса академии — структурированный контекст (миссия, ЦА, УТП,
+    цены, тон голоса, конкуренты), который консультант и генератор контента
+    подмешивают в системный промпт ЦЕЛИКОМ и ВСЕГДА (не через retrieval), в
+    отличие от базы знаний/экспертизы. Практически singleton: одна действующая
+    запись (первая по id), редактируется владельцем через настройки модуля."""
+
+    __tablename__ = "academy_business_profile"
+
+    id = Column(Integer, primary_key=True, index=True)
+    mission = Column(Text, nullable=True)
+    target_audience = Column(Text, nullable=True)
+    usp = Column(Text, nullable=True)
+    pricing_policy = Column(Text, nullable=True)
+    tone_of_voice = Column(Text, nullable=True)
+    competitors = Column(Text, nullable=True)
+    key_facts = Column(Text, nullable=True)
+    brand_visual_style = Column(Text, nullable=True)  # палитра/стиль иллюстраций/чего избегать — для консистентности картинок
+    updated_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class AcademyContentExample(Base):
+    """Банк образцовых текстов, которые владелец отметил как «удачный пример
+    нашего стиля» (реальный опубликованный пост, письмо и т.п.). Используется
+    как few-shot при генерации нового контента — эталон тона, ритма и длины
+    фраз, а НЕ источник фактов (факты по-прежнему берутся из профиля/БЗ/LMS)."""
+
+    __tablename__ = "academy_content_examples"
+
+    id = Column(Integer, primary_key=True, index=True)
+    kind = Column(String(32), nullable=False, default="post", index=True)  # post/summary/image_prompt/newsletter/script
+    direction = Column(String(32), nullable=True, index=True)
+    title = Column(String(256), nullable=True)
+    body = Column(Text, nullable=False)
+    is_active = Column(Boolean, nullable=False, default=True, index=True)
+    created_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
 class AiGatewayCallLog(Base):
     """Учёт расхода токенов и централизованное логирование вызовов AI Tunnel."""
 

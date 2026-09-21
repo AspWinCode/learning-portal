@@ -13,8 +13,8 @@ from sqlalchemy.orm import Session
 
 from app.models import AcademyContentDraft, AcademyContentDraftStatus
 from app.services import ai_gateway
-from app.services.academy_ai import lms_context, retrieval
-from app.services.academy_ai.orchestrator import _select_lms_tools
+from app.services.academy_ai import business_profile, content_examples, lms_context, retrieval
+from app.services.academy_ai.orchestrator import _select_lms_tools_llm
 
 # kind -> (инструкция, ждём JSON {title,body,image_prompt}?, max_tokens)
 _KIND_SPECS: Dict[str, Dict[str, Any]] = {
@@ -66,10 +66,18 @@ VALID_KINDS = tuple(_KIND_SPECS)
 _SYSTEM = (
     "Ты — генератор контента онлайн-академии программирования и подготовки к "
     "ОГЭ/ЕГЭ. Пиши по-русски. Факты (цены, числа учеников, результаты, названия "
-    "курсов) бери ТОЛЬКО из предоставленного контекста базы знаний и данных LMS. "
-    "Если факта нет — не выдумывай, используй нейтральную формулировку. В конце "
-    "ответа добавь строку «Источники фактов: ...» — перечисли, что взято из базы "
-    "знаний, а что является типовой формулировкой."
+    "курсов) бери ТОЛЬКО из предоставленного контекста: профиля академии, базы "
+    "знаний, методики и данных LMS. Если факта нет — не выдумывай, используй "
+    "нейтральную формулировку. Профиль академии (миссия, ЦА, УТП, тон голоса) — "
+    "самый надёжный источник для позиционирования и стиля, используй его всегда, "
+    "даже если пост не про конкретные цифры. Если в профиле указан визуальный "
+    "стиль бренда (палитра, стиль иллюстраций, чего избегать) — обязательно "
+    "заложи его в image_prompt для консистентности картинок между постами. "
+    "Если приложены образцы удачных "
+    "постов — они задают ТОЛЬКО стиль (тон, ритм, длину фраз, эмодзи), а не "
+    "факты: не переноси числа и названия из образцов, если их нет в контексте. "
+    "В конце ответа добавь строку «Источники фактов: ...» — перечисли, что "
+    "взято из профиля/базы знаний, а что является типовой формулировкой."
 )
 
 
@@ -94,6 +102,10 @@ async def _build_context(db: Session, user, query: str) -> Dict[str, Any]:
         "lms": [],
     }
     blocks: List[str] = []
+    profile_block = business_profile.as_prompt_block(business_profile.get_or_create(db))
+    used["profile"] = bool(profile_block)
+    if profile_block:
+        blocks.append(profile_block)
     kb_hits = [h for h in hits if h.scope == "kb"]
     if kb_hits:
         blocks.append("=== БАЗА ЗНАНИЙ АКАДЕМИИ ===\n" + "\n\n".join(f"[{h.title}] {h.text[:900]}" for h in kb_hits[:5]))
@@ -102,7 +114,7 @@ async def _build_context(db: Session, user, query: str) -> Dict[str, Any]:
         blocks.append("=== МЕТОДИКА ===\n" + "\n\n".join(f"[{h.title}] {h.text[:700]}" for h in exp_hits[:3]))
 
     if user is not None and getattr(user, "role", None):
-        for tool_name in _select_lms_tools(query, user)[:2]:
+        for tool_name in (await _select_lms_tools_llm(query, user))[:2]:
             result = lms_context.run_tool(tool_name, db, user)
             if "data" in result:
                 used["lms"].append(tool_name)
@@ -129,6 +141,9 @@ async def generate(
     query = " ".join(p for p in (brief, direction or "") if p)
     ctx = await _build_context(db, user, query)
 
+    examples = content_examples.list_for_kind(db, kind, direction=direction)
+    examples_block = content_examples.as_prompt_block(examples)
+
     tone_line = _tone_hint(tone)
     prompt = (
         f"{spec['instruction']}\n\n"
@@ -136,6 +151,7 @@ async def generate(
         f"{'Пожелания к стилю: ' + tone_line if tone_line else ''}\n\n"
         f"Задание: {brief}\n\n"
         f"Контекст:\n{ctx['context_text']}"
+        + (f"\n\n{examples_block}" if examples_block else "")
     )
 
     title: Optional[str] = None
@@ -166,13 +182,16 @@ async def generate(
     if kind == "image_prompt" and not image_prompt:
         image_prompt = body
 
+    based_on = {k: v for k, v in ctx.items() if k != "context_text"}
+    based_on["style_examples"] = [e.id for e in examples]
+
     draft = AcademyContentDraft(
         kind=kind,
         status=AcademyContentDraftStatus.DRAFT.value,
         title=title or brief.strip()[:256],
         body=body,
         image_prompt=image_prompt,
-        based_on={k: v for k, v in ctx.items() if k != "context_text"},
+        based_on=based_on,
         direction=direction,
         schedule_rule_id=schedule_rule_id,
         created_by_id=getattr(user, "id", None),
@@ -185,13 +204,24 @@ async def generate(
 
 async def render_image(db: Session, draft: AcademyContentDraft, *, user_id: Optional[int] = None) -> Dict[str, Any]:
     """Сгенерировать картинку по draft.image_prompt через AI Tunnel и сохранить
-    ссылку/ключ. Возвращает {ok, detail}."""
+    ссылку/ключ. Возвращает {ok, detail}.
+
+    Бренд-гайд (business_profile.brand_visual_style) добавляется к промпту
+    здесь, а не только на этапе генерации текста — так консистентность стиля
+    не зависит от того, отредактировал ли человек image_prompt вручную."""
     from app.services.academy_ai import storage
 
     prompt = (draft.image_prompt or draft.body or "").strip()
     if not prompt:
         return {"ok": False, "detail": "нет image_prompt"}
-    result = await ai_gateway.generate_image(feature="academy_content_image", prompt=prompt, user_id=user_id)
+
+    brand_style = business_profile.brand_visual_style(business_profile.get_or_create(db))
+    full_prompt = (
+        f"{prompt}\n\nВизуальный стиль бренда академии (соблюдай для консистентности): {brand_style}"
+        if brand_style
+        else prompt
+    )
+    result = await ai_gateway.generate_image(feature="academy_content_image", prompt=full_prompt, user_id=user_id)
     if not result.ok or not result.data:
         return {"ok": False, "detail": result.error or "генератор изображений недоступен"}
 

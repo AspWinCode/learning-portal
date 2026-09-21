@@ -339,3 +339,68 @@ class ReindexResult(BaseModel):
     indexed: int
     backend: str
     reason: Optional[str] = None
+
+
+# ─── Профиль бизнеса ────────────────────────────────────────────────────────
+
+class BusinessProfileOut(BaseModel):
+    id: int
+    mission: Optional[str]
+    target_audience: Optional[str]
+    usp: Optional[str]
+    pricing_policy: Optional[str]
+    tone_of_voice: Optional[str]
+    competitors: Optional[str]
+    key_facts: Optional[str]
+    brand_visual_style: Optional[str]
+    updated_by_id: Optional[int]
+    updated_at: Optional[datetime]
+
+    model_config = _ORM
+
+
+class BusinessProfileUpdate(BaseModel):
+    mission: Optional[str] = None
+    target_audience: Optional[str] = None
+    usp: Optional[str] = None
+    pricing_policy: Optional[str] = None
+    tone_of_voice: Optional[str] = None
+    competitors: Optional[str] = None
+    key_facts: Optional[str] = None
+    brand_visual_style: Optional[str] = None
+
+
+# ─── Банк образцовых постов (few-shot для генератора) ──────────────────────
+
+class ContentExampleCreate(BaseModel):
+    kind: str = "post"
+    direction: Optional[str] = None
+    title: Optional[str] = Field(None, max_length=256)
+    body: str = Field(..., min_length=1)
+
+
+class ContentExampleUpdate(BaseModel):
+    kind: Optional[str] = None
+    direction: Optional[str] = None
+    title: Optional[str] = Field(None, max_length=256)
+    body: Optional[str] = Field(None, min_length=1)
+    is_active: Optional[bool] = None
+
+
+class ContentExampleOut(BaseModel):
+    id: int
+    kind: str
+    direction: Optional[str]
+    title: Optional[str]
+    body: str
+    is_active: bool
+    created_by_id: Optional[int]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+
+    model_config = _ORM
+
+
+class ContentExampleList(BaseModel):
+    items: List[ContentExampleOut]
+    total: int

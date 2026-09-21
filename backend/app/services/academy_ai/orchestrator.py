@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.models import AcademyDialog, AcademyMessage
 from app.services import ai_gateway
-from app.services.academy_ai import lms_context, retrieval
+from app.services.academy_ai import business_profile, lms_context, retrieval
 
 _HISTORY_LIMIT = 6
 _RETRIEVAL_K = 8
@@ -31,16 +31,22 @@ _SYSTEM_PROMPT = (
     "Ты — персональный консультант онлайн-академии программирования и подготовки "
     "к ОГЭ/ЕГЭ по вопросам управления: стратегия, финансы, маркетинг, продажи, "
     "команда. Отвечай по-русски, конкретно и структурно.\n\n"
-    "Тебе даны три вида контекста. В ответе ЯВНО помечай, откуда факт:\n"
+    "Тебе даны четыре вида контекста. В ответе ЯВНО помечай, откуда факт:\n"
+    "  [профиль] — постоянные факты о бизнесе (миссия, ЦА, УТП, цены, тон, конкуренты);\n"
     "  [методика] — общие принципы из библиотеки экспертизы;\n"
     "  [база знаний] — сохранённые факты об этой академии;\n"
     "  [LMS] — актуальные цифры из системы (финансы, ученики, школы и т.п.).\n"
+    "Опирайся на [профиль] как на самые надёжные и неизменные факты о бизнесе — "
+    "используй их для любых вопросов о стратегии, позиционировании и маркетинге, "
+    "даже если явного совпадения по ключевым словам с вопросом нет.\n"
     "Если по вопросу нет данных в контексте — так и скажи, не выдумывай цифры, "
     "имена и даты. Типовые формулировки помечать не нужно."
 )
 
 
 def _select_lms_tools(message: str, user) -> List[str]:
+    """Быстрый выбор инструментов по ключевым словам — фолбэк, если AI Tunnel
+    недоступен или LLM-маршрутизация не смогла разобрать ответ."""
     text = (message or "").lower()
     picked: List[str] = []
     for tool_name, keywords in _LMS_KEYWORDS:
@@ -48,6 +54,46 @@ def _select_lms_tools(message: str, user) -> List[str]:
             picked.append(tool_name)
     available = {t["name"] for t in lms_context.available_tools(user)}
     return [t for t in picked if t in available][:3]
+
+
+async def _select_lms_tools_llm(message: str, user) -> List[str]:
+    """Выбор LMS-инструментов через LLM вместо жёстких ключевых слов: модель
+    видит описание каждого инструмента и решает, какие реально нужны для
+    ответа — это ловит перефразированные и составные вопросы, которые
+    keyword-matching пропускает. При недоступности/ошибке AI Tunnel — фолбэк
+    на _select_lms_tools (ключевые слова)."""
+    available = lms_context.available_tools(user)
+    if not available:
+        return []
+    if not ai_gateway.is_configured("text"):
+        return _select_lms_tools(message, user)
+
+    catalog = "\n".join(f"- {t['name']}: {t['description']}" for t in available)
+    prompt = (
+        f"Вопрос владельца академии:\n{message}\n\n"
+        f"Доступные инструменты данных LMS:\n{catalog}\n\n"
+        "Выбери не более 3 инструментов, которые реально нужны, чтобы ответить по "
+        "существу. Если ни один не нужен — верни пустой список. Верни JSON без "
+        "markdown: {\"tools\": [\"имя_инструмента\", ...]} — имена ТОЧНО как в списке."
+    )
+    try:
+        result = await ai_gateway.complete_text(
+            feature="academy_tool_router",
+            system="Ты — маршрутизатор инструментов данных для ИИ-консультанта академии. Отвечай только JSON.",
+            prompt=prompt,
+            max_tokens=200,
+            temperature=0.0,
+            json_mode=True,
+            user_id=getattr(user, "id", None),
+        )
+        if result.ok and result.text:
+            parsed = result.json_object()
+            if isinstance(parsed, dict) and isinstance(parsed.get("tools"), list):
+                available_names = {t["name"] for t in available}
+                return [str(name) for name in parsed["tools"] if str(name) in available_names][:3]
+    except Exception:  # noqa: BLE001 — маршрутизация не должна ронять консультацию
+        pass
+    return _select_lms_tools(message, user)
 
 
 def _get_or_create_dialog(db: Session, user, dialog_id: Optional[int]) -> AcademyDialog:
@@ -113,6 +159,10 @@ async def _gather_context(
     }
 
     blocks: List[str] = []
+    profile_block = business_profile.as_prompt_block(business_profile.get_or_create(db))
+    used["profile"] = bool(profile_block)
+    if profile_block:
+        blocks.append(profile_block)
     if expertise_hits:
         joined = "\n\n".join(f"[{h.title}] {h.text[:900]}" for h in expertise_hits[:5])
         blocks.append(f"=== МЕТОДИКА (библиотека экспертизы) ===\n{joined}")
@@ -121,7 +171,7 @@ async def _gather_context(
         blocks.append(f"=== БАЗА ЗНАНИЙ АКАДЕМИИ ===\n{joined}")
 
     lms_blocks: List[str] = []
-    for tool_name in _select_lms_tools(contextual_query, user):
+    for tool_name in await _select_lms_tools_llm(contextual_query, user):
         result = lms_context.run_tool(tool_name, db, user)
         if "data" in result:
             used["lms"].append(tool_name)
@@ -134,6 +184,8 @@ async def _gather_context(
 
 def _degraded_answer(context_used: Dict[str, Any]) -> str:
     parts = ["AI Tunnel не настроен — не могу дать развёрнутый ответ. Что нашлось по запросу:"]
+    if context_used.get("profile"):
+        parts.append("• профиль академии учтён")
     if context_used["expertise"]:
         parts.append("• методика: " + ", ".join(s["title"] for s in context_used["expertise"][:5]))
     if context_used["kb"]:

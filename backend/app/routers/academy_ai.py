@@ -22,6 +22,7 @@ from app.models import (
     AcademyAuditSessionStatus,
     AcademyContentDraft,
     AcademyContentDraftStatus,
+    AcademyContentExample,
     AcademyDialog,
     AcademyExpertiseChunk,
     AcademyExpertiseSource,
@@ -37,12 +38,18 @@ from app.schemas.academy_ai import (
     AuditAnswerOut,
     AuditQuestionOut,
     AuditSessionOut,
+    BusinessProfileOut,
+    BusinessProfileUpdate,
     ConsultRequest,
     ConsultResponse,
     ContentDraftList,
     ContentDraftOut,
     ContentDraftStatusUpdate,
     ContentDraftUpdate,
+    ContentExampleCreate,
+    ContentExampleList,
+    ContentExampleOut,
+    ContentExampleUpdate,
     ContentGenerateRequest,
     DialogDetail,
     DialogOut,
@@ -67,6 +74,8 @@ from app.schemas.academy_ai import (
     ScheduleRunResult,
     SearchResponse,
 )
+from app.services.academy_ai import business_profile as business_profile_svc
+from app.services.academy_ai import content_examples
 from app.services.academy_ai import content_gen
 from app.services.academy_ai import proactivity
 from app.services.academy_ai import scheduler as post_scheduler
@@ -124,6 +133,30 @@ def get_status(
         pending_embeddings=retrieval.pending_embeddings(db),
         open_insights=db.query(AcademyInsight).filter(AcademyInsight.status == "open").count(),
     )
+
+
+# ─── Профиль бизнеса (постоянный контекст консультанта) ─────────────────────
+
+@router.get("/business-profile", response_model=BusinessProfileOut)
+def get_business_profile(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("academy_ai.access")),
+):
+    return business_profile_svc.get_or_create(db)
+
+
+@router.patch("/business-profile", response_model=BusinessProfileOut)
+def update_business_profile(
+    payload: BusinessProfileUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("academy_ai.settings")),
+):
+    profile = business_profile_svc.get_or_create(db)
+    profile = business_profile_svc.update(
+        db, profile, payload.model_dump(exclude_unset=True), user_id=current_user.id
+    )
+    log_action(db, current_user.id, "update", "academy_business_profile", profile.id, None)
+    return profile
 
 
 # ─── Проактивность (подсказки консультанта) ─────────────────────────────────
@@ -859,6 +892,80 @@ def delete_content_draft(
         kb_storage.delete(draft.image_storage_key)
     db.delete(draft)
     db.commit()
+
+
+# ─── Банк образцовых постов (few-shot для генератора) ───────────────────────
+
+@router.get("/content/examples", response_model=ContentExampleList)
+def list_content_examples(
+    kind: Optional[str] = None,
+    include_inactive: bool = False,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("academy_ai.generate")),
+):
+    query = db.query(AcademyContentExample)
+    if not include_inactive:
+        query = query.filter(AcademyContentExample.is_active.is_(True))
+    if kind:
+        query = query.filter(AcademyContentExample.kind == kind)
+    items = query.order_by(AcademyContentExample.created_at.desc()).all()
+    return ContentExampleList(items=items, total=len(items))
+
+
+@router.post("/content/examples", response_model=ContentExampleOut, status_code=status.HTTP_201_CREATED)
+def create_content_example(
+    payload: ContentExampleCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("academy_ai.generate")),
+):
+    if payload.kind not in content_gen.VALID_KINDS:
+        raise HTTPException(status_code=422, detail=f"kind must be one of {content_gen.VALID_KINDS}")
+    example = AcademyContentExample(
+        kind=payload.kind,
+        direction=payload.direction,
+        title=payload.title,
+        body=payload.body,
+        created_by_id=current_user.id,
+    )
+    db.add(example)
+    db.commit()
+    db.refresh(example)
+    log_action(db, current_user.id, "create", "academy_content_example", example.id, {"kind": example.kind})
+    return example
+
+
+@router.patch("/content/examples/{example_id}", response_model=ContentExampleOut)
+def update_content_example(
+    example_id: int,
+    payload: ContentExampleUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("academy_ai.generate")),
+):
+    example = db.query(AcademyContentExample).filter(AcademyContentExample.id == example_id).first()
+    if not example:
+        raise HTTPException(status_code=404, detail="Пример не найден")
+    updates = payload.model_dump(exclude_unset=True)
+    if "kind" in updates and updates["kind"] not in content_gen.VALID_KINDS:
+        raise HTTPException(status_code=422, detail=f"kind must be one of {content_gen.VALID_KINDS}")
+    for field, value in updates.items():
+        setattr(example, field, value)
+    db.commit()
+    db.refresh(example)
+    return example
+
+
+@router.delete("/content/examples/{example_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_content_example(
+    example_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("academy_ai.generate")),
+):
+    example = db.query(AcademyContentExample).filter(AcademyContentExample.id == example_id).first()
+    if not example:
+        raise HTTPException(status_code=404, detail="Пример не найден")
+    db.delete(example)
+    db.commit()
+    log_action(db, current_user.id, "delete", "academy_content_example", example_id, None)
 
 
 # ─── Планировщик регулярных постов ─────────────────────────────────────────

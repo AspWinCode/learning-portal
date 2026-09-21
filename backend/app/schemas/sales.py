@@ -833,6 +833,28 @@ class PixelForgeQuestionnaireResponse(BaseModel):
     lead_id: int
 
 
+class ProgrammerQuestionnaireRequest(BaseModel):
+    child_full_name: str = Field(..., min_length=1)
+    birth_date: date
+    child_phone: str = Field(..., min_length=1)
+    student_email: EmailStr
+    gender: Optional[str] = None
+    city: str = Field(..., min_length=1)
+    school_name: str = Field(..., min_length=1)
+    school_class: str = Field(..., min_length=1)
+    parent_full_name: str = Field(..., min_length=1)
+    parent_phone: str = Field(..., min_length=1)
+    parent_phone_2: Optional[str] = None
+    parent_email: EmailStr
+    has_max: Optional[bool] = None
+    comment: Optional[str] = None
+    source: Optional[str] = None
+
+
+class ProgrammerQuestionnaireResponse(BaseModel):
+    lead_id: int
+
+
 class TildaLeadRequest(BaseModel):
     parent_full_name: str = Field(..., min_length=1, description="ФИО родителя")
     parent_phone: str = Field(..., min_length=1, description="Контактный телефон родителя")

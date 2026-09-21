@@ -245,3 +245,12 @@ async def admin_grade_submission(
         return
     log_action(db, current_user.id, "grade", "codelab_submission", submission_id, {"score": payload.score})
     return result
+
+
+@router.get("/admin/courses/{course_id}/analytics")
+async def admin_get_course_analytics(course_id: int, current_user: User = Depends(_access)):
+    """ANA-001/002/005: агрегаты курса и рейтинг задач по сложности."""
+    try:
+        return await cl.get_course_analytics(current_user, course_id)
+    except CodelabError as e:
+        _raise(e)

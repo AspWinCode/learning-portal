@@ -72,6 +72,35 @@ export interface CodelabSubmissionReview {
   created_at: string;
 }
 
+export interface CodelabCourseOverview {
+  course_id: number;
+  enrolled_count: number;
+  completed_count: number;
+  completion_percent: number;
+  avg_score: number;
+  median_score: number;
+  total_attempts: number;
+  overdue_count: number;
+}
+
+export interface CodelabTaskDifficulty {
+  item_id: number;
+  title: string;
+  attempts_total: number;
+  students_attempted: number;
+  students_solved: number;
+  students_not_attempted: number;
+  failure_rate_percent: number;
+  avg_attempts_to_solve: number | null;
+  most_common_failure_verdict: string | null;
+}
+
+export interface CodelabCourseAnalytics {
+  generated_at: string;
+  overview: CodelabCourseOverview;
+  tasks: CodelabTaskDifficulty[];
+}
+
 const B = '/codelab/admin';
 
 export const codelabStudioApi = {
@@ -93,6 +122,8 @@ export const codelabStudioApi = {
     api.get(`${B}/courses/${courseId}/submissions`).then((r) => r.data),
   gradeSubmission: (submissionId: number, score: number, comment: string) =>
     api.put(`${B}/submissions/${submissionId}/grade`, { score, comment }).then((r) => r.data),
+  getAnalytics: (courseId: number): Promise<CodelabCourseAnalytics> =>
+    api.get(`${B}/courses/${courseId}/analytics`).then((r) => r.data),
 
   // Для карточки на MethodistHubPage — статусов "на ревью"/"правки" у Codelab нет, всегда 0.
   authoringSummary: async (): Promise<AuthoringSummary> => {

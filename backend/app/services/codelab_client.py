@@ -125,3 +125,9 @@ async def grade_submission(user, submission_id: int, score: float, comment: str)
         "PUT", f"/api/lms-admin/submissions/{submission_id}/grade", user,
         json={"score": score, "comment": comment},
     )
+
+
+# ─── Аналитика курса (ANA-001/002/005) ──────────────────────────────────────
+
+async def get_course_analytics(user, course_id: int) -> dict:
+    return await _request("GET", f"/api/lms-admin/courses/{course_id}/analytics", user)

@@ -9,18 +9,20 @@ import Layout from '../components/Layout';
 import { useAuth } from '../contexts/AuthContext';
 import { hasPermission } from '../utils/permissions';
 import {
-  CodelabCourse, CodelabLearningItem, CodelabSubmissionReview, codelabStudioApi as api,
+  CodelabCourse, CodelabCourseAnalytics, CodelabLearningItem, CodelabSubmissionReview, codelabStudioApi as api,
 } from '../services/codelabApi';
 
 type Toast = { msg: string; err?: boolean } | null;
+type TabKey = 'courses' | 'submissions' | 'analytics';
 
-/** Студия методиста (создание/публикация курсов) и кабинет преподавателя
- * (просмотр и оценка посылок) — оба через прокси в Codelab, из своего
- * аккаунта портала, по образцу PixelForge/Kodex (см. README интеграции). */
+/** Студия методиста (создание/публикация курсов), кабинет преподавателя
+ * (просмотр и оценка посылок) и аналитика курса — всё через прокси в
+ * Codelab, из своего аккаунта портала, по образцу PixelForge/Kodex
+ * (см. README интеграции). */
 export default function CodelabStudioPage() {
   const { user } = useAuth();
   const canManage = hasPermission(user, 'codelab.manage');
-  const [tab, setTab] = useState(canManage ? 0 : 1);
+  const [tab, setTab] = useState<TabKey>(canManage ? 'courses' : 'submissions');
   const [toast, setToast] = useState<Toast>(null);
 
   return (
@@ -28,11 +30,13 @@ export default function CodelabStudioPage() {
       <Box sx={{ p: 3, maxWidth: 1100, mx: 'auto' }}>
         <Typography variant="h5" sx={{ mb: 2 }}>Codelab</Typography>
         <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
-          {canManage && <Tab label="Курсы" />}
-          <Tab label="Посылки учеников" />
+          {canManage && <Tab value="courses" label="Курсы" />}
+          <Tab value="submissions" label="Посылки учеников" />
+          <Tab value="analytics" label="Аналитика" />
         </Tabs>
-        {canManage && tab === 0 && <CoursesTab onToast={setToast} />}
-        {(tab === 1 || !canManage) && <SubmissionsTab onToast={setToast} />}
+        {tab === 'courses' && canManage && <CoursesTab onToast={setToast} />}
+        {tab === 'submissions' && <SubmissionsTab onToast={setToast} />}
+        {tab === 'analytics' && <AnalyticsTab onToast={setToast} />}
       </Box>
       <Snackbar open={!!toast} autoHideDuration={4000} onClose={() => setToast(null)}>
         {toast ? <Alert severity={toast.err ? 'error' : 'success'}>{toast.msg}</Alert> : undefined}
@@ -350,6 +354,106 @@ function SubmissionsTab({ onToast }: { onToast: (t: Toast) => void }) {
           <Button variant="contained" disabled={!gradeComment.trim() || gradeScore === ''} onClick={submitGrade}>Сохранить</Button>
         </DialogActions>
       </Dialog>
+    </Box>
+  );
+}
+
+// ─────────────────────────── Аналитика (ANA-001/002/005) ───────────────────────
+
+function AnalyticsTab({ onToast }: { onToast: (t: Toast) => void }) {
+  const [courses, setCourses] = useState<CodelabCourse[]>([]);
+  const [courseId, setCourseId] = useState<number | ''>('');
+  const [data, setData] = useState<CodelabCourseAnalytics | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    api.listCourses()
+      .then((cs) => setCourses(cs.filter((c) => c.status === 'published')))
+      .catch((e) => onToast({ msg: e.message, err: true }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const load = async (id: number) => {
+    setCourseId(id);
+    setLoading(true);
+    try {
+      setData(await api.getAnalytics(id));
+    } catch (e: any) {
+      onToast({ msg: e.message, err: true });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Box>
+      <Select
+        size="small"
+        displayEmpty
+        value={courseId}
+        onChange={(e) => load(e.target.value as number)}
+        sx={{ minWidth: 260, mb: 2 }}
+      >
+        <MenuItem value="" disabled>Выберите опубликованный курс</MenuItem>
+        {courses.map((c) => <MenuItem key={c.id} value={c.id}>{c.title}</MenuItem>)}
+      </Select>
+
+      {loading && <CircularProgress size={24} />}
+
+      {data && !loading && (
+        <>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
+            Данные на {new Date(data.generated_at).toLocaleString('ru-RU')}
+          </Typography>
+
+          <Stack direction="row" spacing={2} flexWrap="wrap" sx={{ mb: 3 }}>
+            {[
+              ['Зачислено', data.overview.enrolled_count],
+              ['Завершили', `${data.overview.completed_count} (${data.overview.completion_percent}%)`],
+              ['Средний балл', data.overview.avg_score],
+              ['Медианный балл', data.overview.median_score],
+              ['Всего попыток', data.overview.total_attempts],
+              ['Просрочено', data.overview.overdue_count],
+            ].map(([label, value]) => (
+              <Paper key={label as string} variant="outlined" sx={{ p: 1.5, minWidth: 140 }}>
+                <Typography variant="caption" color="text.secondary">{label}</Typography>
+                <Typography variant="h6">{value}</Typography>
+              </Paper>
+            ))}
+          </Stack>
+
+          <Typography variant="subtitle2" sx={{ mb: 1 }}>Рейтинг задач по сложности</Typography>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Задача</TableCell>
+                <TableCell>Пытались</TableCell>
+                <TableCell>Решили</TableCell>
+                <TableCell>Отказались</TableCell>
+                <TableCell>Доля ошибок</TableCell>
+                <TableCell>Ср. попыток до решения</TableCell>
+                <TableCell>Частая ошибка</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {data.tasks.map((t) => (
+                <TableRow key={t.item_id}>
+                  <TableCell>{t.title}</TableCell>
+                  <TableCell>{t.students_attempted}</TableCell>
+                  <TableCell>{t.students_solved}</TableCell>
+                  <TableCell>{t.students_not_attempted}</TableCell>
+                  <TableCell>{t.failure_rate_percent}%</TableCell>
+                  <TableCell>{t.avg_attempts_to_solve ?? '—'}</TableCell>
+                  <TableCell>{t.most_common_failure_verdict ?? '—'}</TableCell>
+                </TableRow>
+              ))}
+              {data.tasks.length === 0 && (
+                <TableRow><TableCell colSpan={7}><Typography variant="caption" color="text.secondary">Нет задач или посылок</Typography></TableCell></TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </>
+      )}
     </Box>
   );
 }

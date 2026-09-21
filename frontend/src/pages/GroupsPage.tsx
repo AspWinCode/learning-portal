@@ -30,6 +30,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { getEffectiveRole, hasPermission } from '../utils/permissions';
 import { ConfirmDialog, DataTable, EmptyState, FormDialog, StatusChip } from '../components/ui';
 import AssignCourseToGroupDialog from '../components/AssignCourseToGroupDialog';
+import GroupActivityDialog from '../components/GroupActivityDialog';
 
 const GroupsPage: React.FC = () => {
   const [groups, setGroups] = useState<Group[]>([]);
@@ -39,6 +40,7 @@ const GroupsPage: React.FC = () => {
   const [membersOpen, setMembersOpen] = useState(false);
   const [archiveTarget, setArchiveTarget] = useState<Group | null>(null);
   const [assignCourseOpen, setAssignCourseOpen] = useState(false);
+  const [activityOpen, setActivityOpen] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
   const [groupDetails, setGroupDetails] = useState<Group | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
@@ -881,11 +883,19 @@ const GroupsPage: React.FC = () => {
               <>
                 <Button
                   variant="outlined"
-                  sx={{ mb: 2 }}
+                  sx={{ mb: 2, mr: 1 }}
                   disabled={!(groupDetails?.students || []).length}
                   onClick={() => setAssignCourseOpen(true)}
                 >
                   Назначить курс всей группе
+                </Button>
+                <Button
+                  variant="outlined"
+                  sx={{ mb: 2 }}
+                  disabled={!(groupDetails?.students || []).length}
+                  onClick={() => setActivityOpen(true)}
+                >
+                  Активность по курсу
                 </Button>
                 <FormControl fullWidth sx={{ mt: 2 }}>
                   <InputLabel>Добавить ученика</InputLabel>
@@ -971,6 +981,15 @@ const GroupsPage: React.FC = () => {
           groupId={selectedGroup.id}
           groupName={groupDetails?.name || selectedGroup.name}
           onClose={() => setAssignCourseOpen(false)}
+        />
+      )}
+
+      {selectedGroup && (
+        <GroupActivityDialog
+          open={activityOpen}
+          groupId={selectedGroup.id}
+          groupName={groupDetails?.name || selectedGroup.name}
+          onClose={() => setActivityOpen(false)}
         />
       )}
 

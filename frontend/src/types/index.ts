@@ -2530,6 +2530,26 @@ export interface BulkGrantCourseAccessResponse {
   results: BulkGrantOutcome[];
 }
 
+// ANA-003/004/005: активность группы по курсу для менеджера/тренера.
+export interface GroupActivityRow {
+  student_id: number;
+  full_name: string;
+  status: 'not_started' | 'in_progress' | 'behind' | 'overdue' | 'completed';
+  percent_complete: number;
+  cases_solved: number;
+  cases_total: number;
+  granted_at?: string | null;
+  deadline_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface GroupActivityResponse {
+  generated_at: string;
+  group_id: number;
+  catalog_item_id: number;
+  rows: GroupActivityRow[];
+}
+
 export interface StudentCourseProgressOut {
   course_code: string;
   course_name: string;

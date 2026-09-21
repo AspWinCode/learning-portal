@@ -162,6 +162,29 @@ class BulkGrantCourseAccessResponse(BaseModel):
     results: List[BulkGrantOutcome] = Field(default_factory=list)
 
 
+class GroupActivityRow(BaseModel):
+    """ANA-003: активность одного ученика по курсу для менеджера/тренера."""
+
+    student_id: int
+    full_name: str
+    status: Literal["not_started", "in_progress", "behind", "overdue", "completed"]
+    percent_complete: float
+    cases_solved: int
+    cases_total: int
+    granted_at: Optional[datetime] = None
+    deadline_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class GroupActivityResponse(BaseModel):
+    # ANA-005: дата актуальности метрик — когда считали, а не только когда
+    # синхронизировался прогресс отдельного ученика.
+    generated_at: datetime
+    group_id: int
+    catalog_item_id: int
+    rows: List[GroupActivityRow]
+
+
 class StudentCourseProgressOut(BaseModel):
     course_code: str
     course_name: str

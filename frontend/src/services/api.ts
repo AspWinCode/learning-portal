@@ -128,6 +128,7 @@ import {
   StudentCourseAccessOut,
   BulkGrantCourseAccessRequest,
   BulkGrantCourseAccessResponse,
+  GroupActivityResponse,
   LearningLink,
   PaymentLink,
   LeadPipelineStage,
@@ -634,6 +635,28 @@ export const studentPortalAdminApi = {
   bulkGrantAccess: async (payload: BulkGrantCourseAccessRequest): Promise<BulkGrantCourseAccessResponse> => {
     const response = await api.post('/api/student-portal/admin/access/bulk', payload);
     return response.data;
+  },
+  getGroupActivity: async (groupId: number, catalogItemId: number): Promise<GroupActivityResponse> => {
+    const response = await api.get('/api/student-portal/admin/analytics/group-activity', {
+      params: { group_id: groupId, catalog_item_id: catalogItemId },
+    });
+    return response.data;
+  },
+  downloadGroupActivityCsv: async (groupId: number, catalogItemId: number, filename: string): Promise<void> => {
+    // Bearer-токен идёт заголовком (см. интерсептор ниже), не cookie —
+    // обычная <a href="..."> ссылка на этот эндпоинт получила бы 401.
+    const response = await api.get('/api/student-portal/admin/analytics/group-activity.csv', {
+      params: { group_id: groupId, catalog_item_id: catalogItemId },
+      responseType: 'blob',
+    });
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
   },
   getPortalSettings: async (): Promise<{ show_abonement: boolean }> => {
     const response = await api.get('/api/student-portal/admin/portal-settings');

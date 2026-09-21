@@ -6,6 +6,7 @@ from datetime import date, timedelta
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, selectinload
 
 from app import auth
@@ -35,6 +36,8 @@ from app.schemas.student_portal import (
     BulkGrantCourseAccessRequest,
     BulkGrantCourseAccessResponse,
     BulkGrantOutcome,
+    GroupActivityResponse,
+    GroupActivityRow,
     CourseCatalogItemCreate,
     CourseCatalogItemOut,
     CourseCatalogItemUpdate,
@@ -819,3 +822,70 @@ async def admin_revoke_course_access(
         await _sync_pixelforge_enrollment(item, grant.student_id, enroll=False)
         await _sync_codelab_enrollment(item, grant.student_id, enroll=False)
     return {"ok": True}
+
+
+# ─── Аналитика: активность группы по курсу (ANA-003/004/005) ─────────────────
+
+@router.get("/admin/analytics/group-activity", response_model=GroupActivityResponse)
+def admin_group_activity(
+    group_id: int,
+    catalog_item_id: int,
+    current_user: User = Depends(auth.require_permission("student_portal.manage")),
+    db: Session = Depends(get_db),
+):
+    from datetime import datetime, timezone
+
+    from app.services.group_activity import compute_group_activity
+
+    rows = compute_group_activity(db, group_id, catalog_item_id)
+    return GroupActivityResponse(
+        generated_at=datetime.now(timezone.utc),
+        group_id=group_id,
+        catalog_item_id=catalog_item_id,
+        rows=[GroupActivityRow(**r) for r in rows],
+    )
+
+
+@router.get("/admin/analytics/group-activity.csv")
+def admin_group_activity_csv(
+    group_id: int,
+    catalog_item_id: int,
+    current_user: User = Depends(auth.require_permission("student_portal.manage")),
+    db: Session = Depends(get_db),
+):
+    """ANA-004: та же выборка, что и group-activity, в CSV с учётом тех же
+    прав доступа и фильтров (group_id/catalog_item_id)."""
+    import csv
+    import io
+
+    from app.services.group_activity import compute_group_activity
+
+    rows = compute_group_activity(db, group_id, catalog_item_id)
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["Ученик", "Статус", "% выполнено", "Решено", "Всего", "Выдано", "Дедлайн", "Обновлено"])
+    status_labels = {
+        "not_started": "Не приступил",
+        "in_progress": "В процессе",
+        "behind": "Отстаёт",
+        "overdue": "Просрочено",
+        "completed": "Завершено",
+    }
+    for r in rows:
+        writer.writerow([
+            r["full_name"],
+            status_labels.get(r["status"], r["status"]),
+            r["percent_complete"],
+            r["cases_solved"],
+            r["cases_total"],
+            r["granted_at"].isoformat() if r["granted_at"] else "",
+            r["deadline_at"].isoformat() if r["deadline_at"] else "",
+            r["updated_at"].isoformat() if r["updated_at"] else "",
+        ])
+    buf.seek(0)
+    # BOM — иначе Excel открывает кириллицу в UTF-8 CSV как кракозябры.
+    return StreamingResponse(
+        iter(["﻿" + buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=group_{group_id}_course_{catalog_item_id}_activity.csv"},
+    )

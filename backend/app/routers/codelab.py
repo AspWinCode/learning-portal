@@ -335,3 +335,66 @@ async def admin_get_system_status(current_user: User = Depends(_manage)):
         return await cl.get_system_status(current_user)
     except CodelabError as e:
         _raise(e)
+
+
+def _require_admin_or_owner(current_user: User) -> None:
+    """IAM-004: как admin/status выше — не методисту с его codelab.manage,
+    только admin/owner (эксплуатационное управление учётками, не учебное)."""
+    effective_role = auth.resolve_effective_role(current_user)
+    if effective_role not in (UserRole.ADMIN, UserRole.OWNER):
+        raise HTTPException(status_code=403, detail="Доступно только администратору")
+
+
+@router.get("/admin/users")
+async def admin_list_codelab_users(q: str | None = None, current_user: User = Depends(_manage)):
+    """IAM-004: поиск пользователей Codelab для блокировки/просмотра истории входов."""
+    _require_admin_or_owner(current_user)
+    try:
+        return await cl.list_codelab_users(current_user, q)
+    except CodelabError as e:
+        _raise(e)
+
+
+@router.put("/admin/users/{codelab_user_id}/block")
+async def admin_set_codelab_user_blocked(
+    codelab_user_id: int,
+    payload: dict,
+    current_user: User = Depends(_manage),
+    db: Session = Depends(get_db),
+):
+    """IAM-004: блокировка/разблокировка учётной записи Codelab."""
+    _require_admin_or_owner(current_user)
+    try:
+        result = await cl.set_codelab_user_blocked(current_user, codelab_user_id, bool(payload.get("blocked")))
+    except CodelabError as e:
+        _raise(e)
+        return
+    log_action(db, current_user.id, "block" if payload.get("blocked") else "unblock", "codelab_user", codelab_user_id, {})
+    return result
+
+
+@router.post("/admin/users/{codelab_user_id}/terminate-sessions")
+async def admin_terminate_codelab_user_sessions(
+    codelab_user_id: int,
+    current_user: User = Depends(_manage),
+    db: Session = Depends(get_db),
+):
+    """IAM-004: завершить все активные сессии пользователя Codelab."""
+    _require_admin_or_owner(current_user)
+    try:
+        result = await cl.terminate_codelab_user_sessions(current_user, codelab_user_id)
+    except CodelabError as e:
+        _raise(e)
+        return
+    log_action(db, current_user.id, "terminate_sessions", "codelab_user", codelab_user_id, {})
+    return result
+
+
+@router.get("/admin/users/{codelab_user_id}/login-history")
+async def admin_get_codelab_user_login_history(codelab_user_id: int, current_user: User = Depends(_manage)):
+    """IAM-004: история входов пользователя Codelab."""
+    _require_admin_or_owner(current_user)
+    try:
+        return await cl.get_codelab_user_login_history(current_user, codelab_user_id)
+    except CodelabError as e:
+        _raise(e)

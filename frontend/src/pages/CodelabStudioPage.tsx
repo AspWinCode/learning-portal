@@ -9,8 +9,8 @@ import Layout from '../components/Layout';
 import { useAuth } from '../contexts/AuthContext';
 import { getEffectiveRole, hasPermission } from '../utils/permissions';
 import {
-  CodelabCourse, CodelabCourseAnalytics, CodelabLearningItem, CodelabSubmissionReview,
-  CodelabSystemStatus, codelabStudioApi as api,
+  CodelabCourse, CodelabCourseAnalytics, CodelabLearningItem, CodelabLoginEvent, CodelabSubmissionReview,
+  CodelabSystemStatus, CodelabUser, codelabStudioApi as api,
 } from '../services/codelabApi';
 
 type Toast = { msg: string; err?: boolean } | null;
@@ -563,6 +563,113 @@ function StatusTab({ onToast }: { onToast: (t: Toast) => void }) {
           </Paper>
         ))}
       </Stack>
+
+      <Divider sx={{ my: 3 }} />
+      <UsersPanel onToast={onToast} />
+    </Box>
+  );
+}
+
+// ─────────────────────────── Пользователи Codelab (IAM-004, admin/owner) ────
+
+function UsersPanel({ onToast }: { onToast: (t: Toast) => void }) {
+  const [q, setQ] = useState('');
+  const [users, setUsers] = useState<CodelabUser[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [historyFor, setHistoryFor] = useState<CodelabUser | null>(null);
+  const [history, setHistory] = useState<CodelabLoginEvent[]>([]);
+
+  const search = () => {
+    setLoading(true);
+    api.listUsers(q || undefined)
+      .then(setUsers)
+      .catch((e) => onToast({ msg: e.message, err: true }))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { search(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const toggleBlocked = (u: CodelabUser) => {
+    api.setUserBlocked(u.id, !u.is_blocked)
+      .then((updated) => {
+        setUsers((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
+        onToast({ msg: updated.is_blocked ? 'Аккаунт заблокирован' : 'Аккаунт разблокирован' });
+      })
+      .catch((e) => onToast({ msg: e.message, err: true }));
+  };
+
+  const terminateSessions = (u: CodelabUser) => {
+    api.terminateUserSessions(u.id)
+      .then(() => onToast({ msg: 'Активные сессии завершены' }))
+      .catch((e) => onToast({ msg: e.message, err: true }));
+  };
+
+  const openHistory = (u: CodelabUser) => {
+    setHistoryFor(u);
+    api.getUserLoginHistory(u.id)
+      .then(setHistory)
+      .catch((e) => onToast({ msg: e.message, err: true }));
+  };
+
+  return (
+    <Box>
+      <Typography variant="subtitle1" sx={{ mb: 1 }}>Пользователи Codelab</Typography>
+      <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+        <TextField
+          size="small" placeholder="Поиск по имени или external_ref" value={q}
+          onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && search()}
+        />
+        <Button size="small" onClick={search}>Найти</Button>
+      </Stack>
+      {loading ? <CircularProgress size={24} /> : (
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell>Имя</TableCell>
+              <TableCell>Роль</TableCell>
+              <TableCell>Последний вход</TableCell>
+              <TableCell>Статус</TableCell>
+              <TableCell align="right">Действия</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {users.map((u) => (
+              <TableRow key={u.id}>
+                <TableCell>{u.full_name}</TableCell>
+                <TableCell>{u.role}</TableCell>
+                <TableCell>{u.last_login_at ? new Date(u.last_login_at).toLocaleString('ru-RU') : '—'}</TableCell>
+                <TableCell>{u.is_blocked ? <Chip size="small" color="error" label="Заблокирован" /> : <Chip size="small" label="Активен" />}</TableCell>
+                <TableCell align="right">
+                  <Button size="small" onClick={() => openHistory(u)}>История входов</Button>
+                  <Button size="small" onClick={() => terminateSessions(u)}>Завершить сессии</Button>
+                  <Button size="small" color={u.is_blocked ? 'success' : 'error'} onClick={() => toggleBlocked(u)}>
+                    {u.is_blocked ? 'Разблокировать' : 'Заблокировать'}
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+
+      <Dialog open={!!historyFor} onClose={() => setHistoryFor(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>История входов — {historyFor?.full_name}</DialogTitle>
+        <DialogContent>
+          {history.length === 0 ? (
+            <Typography color="text.secondary">Входов не зафиксировано.</Typography>
+          ) : (
+            <List dense>
+              {history.map((h, i) => (
+                <ListItemText key={i} primary={new Date(h.created_at).toLocaleString('ru-RU')} />
+              ))}
+            </List>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setHistoryFor(null)}>Закрыть</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

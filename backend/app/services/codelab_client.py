@@ -56,9 +56,11 @@ def _sign(external_ref: str) -> str:
     return hmac.new(SSO_KODEX_SHARED_SECRET.encode(), external_ref.encode(), hashlib.sha256).hexdigest()
 
 
-async def _request(method: str, path: str, user, *, json: Any = None) -> Any:
+async def _request(method: str, path: str, user, *, json: Any = None, extra_params: Optional[Dict[str, str]] = None) -> Any:
     params = _staff_params(user)
     signature = _sign(params["staff_external_ref"])
+    if extra_params:
+        params.update(extra_params)
     url = f"{CODELAB_ADMIN_BASE}{path}?{urlencode(params)}"
 
     async with httpx.AsyncClient(timeout=20) as client:
@@ -147,3 +149,24 @@ async def grade_submission(user, course_id: int, submission_id: int, score: floa
 
 async def get_course_analytics(user, course_id: int) -> dict:
     return await _request("GET", f"/api/lms-admin/courses/{course_id}/analytics", user)
+
+
+# ─── Пользователи Codelab: блокировка/сессии/история входов (IAM-004) ──────
+
+async def list_codelab_users(user, q: Optional[str] = None) -> List[dict]:
+    return await _request("GET", "/api/lms-admin/admin/users", user, extra_params={"q": q} if q else None)
+
+
+async def set_codelab_user_blocked(user, codelab_user_id: int, blocked: bool) -> dict:
+    return await _request(
+        "PUT", f"/api/lms-admin/admin/users/{codelab_user_id}/block", user,
+        json={"blocked": blocked},
+    )
+
+
+async def terminate_codelab_user_sessions(user, codelab_user_id: int) -> dict:
+    return await _request("POST", f"/api/lms-admin/admin/users/{codelab_user_id}/terminate-sessions", user)
+
+
+async def get_codelab_user_login_history(user, codelab_user_id: int) -> List[dict]:
+    return await _request("GET", f"/api/lms-admin/admin/users/{codelab_user_id}/login-history", user)

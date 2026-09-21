@@ -113,6 +113,19 @@ export interface CodelabCourseAnalytics {
   tasks: CodelabTaskDifficulty[];
 }
 
+export interface CodelabUser {
+  id: number;
+  external_ref: string;
+  full_name: string;
+  role: string;
+  is_blocked: boolean;
+  last_login_at: string | null;
+}
+
+export interface CodelabLoginEvent {
+  created_at: string;
+}
+
 const B = '/codelab/admin';
 
 export const codelabStudioApi = {
@@ -139,6 +152,15 @@ export const codelabStudioApi = {
   getAnalytics: (courseId: number): Promise<CodelabCourseAnalytics> =>
     api.get(`${B}/courses/${courseId}/analytics`).then((r) => r.data),
   getSystemStatus: (): Promise<CodelabSystemStatus> => api.get(`${B}/status`).then((r) => r.data),
+
+  listUsers: (q?: string): Promise<CodelabUser[]> =>
+    api.get(`${B}/users`, { params: q ? { q } : undefined }).then((r) => r.data),
+  setUserBlocked: (userId: number, blocked: boolean): Promise<CodelabUser> =>
+    api.put(`${B}/users/${userId}/block`, { blocked }).then((r) => r.data),
+  terminateUserSessions: (userId: number): Promise<CodelabUser> =>
+    api.post(`${B}/users/${userId}/terminate-sessions`).then((r) => r.data),
+  getUserLoginHistory: (userId: number): Promise<CodelabLoginEvent[]> =>
+    api.get(`${B}/users/${userId}/login-history`).then((r) => r.data),
 
   // Для карточки на MethodistHubPage — статусов "на ревью"/"правки" у Codelab нет, всегда 0.
   authoringSummary: async (): Promise<AuthoringSummary> => {

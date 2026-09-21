@@ -120,8 +120,8 @@ export const codelabStudioApi = {
 
   listSubmissions: (courseId: number): Promise<CodelabSubmissionReview[]> =>
     api.get(`${B}/courses/${courseId}/submissions`).then((r) => r.data),
-  gradeSubmission: (submissionId: number, score: number, comment: string) =>
-    api.put(`${B}/submissions/${submissionId}/grade`, { score, comment }).then((r) => r.data),
+  gradeSubmission: (courseId: number, submissionId: number, score: number, comment: string) =>
+    api.put(`${B}/courses/${courseId}/submissions/${submissionId}/grade`, { score, comment }).then((r) => r.data),
   getAnalytics: (courseId: number): Promise<CodelabCourseAnalytics> =>
     api.get(`${B}/courses/${courseId}/analytics`).then((r) => r.data),
 

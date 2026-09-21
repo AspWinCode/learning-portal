@@ -268,9 +268,9 @@ function SubmissionsTab({ onToast }: { onToast: (t: Toast) => void }) {
   };
 
   const submitGrade = async () => {
-    if (!grading) return;
+    if (!grading || !courseId) return;
     try {
-      await api.gradeSubmission(grading.submission_id, Number(gradeScore), gradeComment);
+      await api.gradeSubmission(courseId, grading.submission_id, Number(gradeScore), gradeComment);
       onToast({ msg: 'Оценка сохранена' });
       setGrading(null);
       if (courseId) loadSubmissions(courseId);

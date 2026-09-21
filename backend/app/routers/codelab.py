@@ -37,6 +37,15 @@ def _student_id_from_external_ref(ref: str) -> int | None:
         return None
 
 
+def _trainer_student_ids(db: Session, trainer_id: int) -> set[int]:
+    return {
+        row[0]
+        for row in db.query(GroupStudent.student_id)
+        .join(Group, Group.id == GroupStudent.group_id)
+        .filter(Group.trainer_id == trainer_id, GroupStudent.left_at.is_(None))
+    }
+
+
 @router.get("/students/{student_id}/progress", response_model=CodelabStudentProgress)
 async def get_student_progress(
     student_id: int,
@@ -244,12 +253,7 @@ async def admin_list_submissions(course_id: int, current_user: User = Depends(_a
         return
 
     if auth.resolve_effective_role(current_user) == UserRole.TRAINER:
-        my_student_ids = {
-            row[0]
-            for row in db.query(GroupStudent.student_id)
-            .join(Group, Group.id == GroupStudent.group_id)
-            .filter(Group.trainer_id == current_user.id, GroupStudent.left_at.is_(None))
-        }
+        my_student_ids = _trainer_student_ids(db, current_user.id)
         rows = [
             r for r in rows
             if _student_id_from_external_ref(r.get("student_external_ref", "")) in my_student_ids
@@ -257,15 +261,33 @@ async def admin_list_submissions(course_id: int, current_user: User = Depends(_a
     return rows
 
 
-@router.put("/admin/submissions/{submission_id}/grade")
+@router.put("/admin/courses/{course_id}/submissions/{submission_id}/grade")
 async def admin_grade_submission(
+    course_id: int,
     submission_id: int,
     payload: CodelabGradeIn,
     current_user: User = Depends(_access),
     db: Session = Depends(get_db),
 ):
+    """RBAC-002: тренер может оценивать только посылки учеников своих групп.
+    Раньше эндпоинт не принимал course_id вообще, и эту проверку сделать
+    было нечем (мог оценить чужую посылку, если угадал её id) — теперь
+    сверяем через список посылок курса, который и так фильтруется по группе."""
+    if auth.resolve_effective_role(current_user) == UserRole.TRAINER:
+        try:
+            course_rows = await cl.list_course_submissions(current_user, course_id)
+        except CodelabError as e:
+            _raise(e)
+            return
+        target = next((r for r in course_rows if r.get("submission_id") == submission_id), None)
+        if not target:
+            raise HTTPException(status_code=404, detail="Посылка не найдена в этом курсе")
+        my_student_ids = _trainer_student_ids(db, current_user.id)
+        if _student_id_from_external_ref(target.get("student_external_ref", "")) not in my_student_ids:
+            raise HTTPException(status_code=403, detail="Ученик не из ваших групп")
+
     try:
-        result = await cl.grade_submission(current_user, submission_id, payload.score, payload.comment)
+        result = await cl.grade_submission(current_user, course_id, submission_id, payload.score, payload.comment)
     except CodelabError as e:
         _raise(e)
         return

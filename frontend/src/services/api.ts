@@ -617,7 +617,14 @@ export const studentPortalAdminApi = {
     const response = await api.patch(`/api/student-portal/admin/credentials/${credentialId}`, payload);
     return response.data;
   },
-  grantAccess: async (payload: { student_id: number; catalog_item_id: number }): Promise<StudentCourseAccessOut> => {
+  grantAccess: async (payload: {
+    student_id: number;
+    catalog_item_id: number;
+    starts_at?: string;
+    deadline_at?: string;
+    closes_at?: string;
+    reset_progress?: boolean;
+  }): Promise<StudentCourseAccessOut> => {
     const response = await api.post('/api/student-portal/admin/access', payload);
     return response.data;
   },

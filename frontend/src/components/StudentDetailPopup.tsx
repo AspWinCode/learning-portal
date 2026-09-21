@@ -197,6 +197,9 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
   const [newLogin, setNewLogin] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [creatingCredential, setCreatingCredential] = useState(false);
+  const [grantDialogItem, setGrantDialogItem] = useState<CourseCatalogItemOut | null>(null);
+  const [grantDeadline, setGrantDeadline] = useState('');
+  const [grantResetProgress, setGrantResetProgress] = useState(false);
   const [accessBusyId, setAccessBusyId] = useState<number | null>(null);
   const [editCredentialOpen, setEditCredentialOpen] = useState(false);
   const [editLogin, setEditLogin] = useState('');
@@ -378,12 +381,17 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
     }
   };
 
-  const handleGrantAccess = async (catalogItemId: number) => {
+  const handleGrantAccess = async (catalogItemId: number, options?: { deadline_at?: string; reset_progress?: boolean }) => {
     if (!studentId) return;
     setAccessBusyId(catalogItemId);
     setPortalError(null);
     try {
-      const grant = await studentPortalAdminApi.grantAccess({ student_id: studentId, catalog_item_id: catalogItemId });
+      const grant = await studentPortalAdminApi.grantAccess({
+        student_id: studentId,
+        catalog_item_id: catalogItemId,
+        deadline_at: options?.deadline_at || undefined,
+        reset_progress: options?.reset_progress,
+      });
       setPortalView((prev) =>
         prev
           ? { ...prev, access_grants: [...prev.access_grants.filter((g) => g.catalog_item_id !== catalogItemId), grant] }
@@ -394,6 +402,21 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
     } finally {
       setAccessBusyId(null);
     }
+  };
+
+  const openGrantDialog = (item: CourseCatalogItemOut) => {
+    setGrantDialogItem(item);
+    setGrantDeadline('');
+    setGrantResetProgress(false);
+  };
+
+  const confirmGrantAccess = async () => {
+    if (!grantDialogItem) return;
+    await handleGrantAccess(grantDialogItem.id, {
+      deadline_at: grantDeadline ? new Date(grantDeadline).toISOString() : undefined,
+      reset_progress: grantResetProgress,
+    });
+    setGrantDialogItem(null);
   };
 
   const handleRevokeAccess = async (accessId: number, catalogItemId: number) => {
@@ -1428,7 +1451,7 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
                                     size="small"
                                     variant="outlined"
                                     disabled={!portalView?.credential || accessBusyId === item.id}
-                                    onClick={() => handleGrantAccess(item.id)}
+                                    onClick={() => openGrantDialog(item)}
                                   >
                                     Выдать доступ
                                   </Button>
@@ -2122,6 +2145,35 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
           <Button onClick={() => setEditCredentialOpen(false)} disabled={savingCredential}>Отмена</Button>
           <Button variant="contained" onClick={handleSaveCredential} disabled={!editLogin.trim() || savingCredential}>
             {savingCredential ? 'Сохранение…' : 'Сохранить'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={!!grantDialogItem} onClose={() => setGrantDialogItem(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Выдать доступ: {grantDialogItem?.name}</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField
+              type="datetime-local"
+              label="Дедлайн (необязательно)"
+              InputLabelProps={{ shrink: true }}
+              value={grantDeadline}
+              onChange={(e) => setGrantDeadline(e.target.value)}
+              fullWidth
+              size="small"
+            />
+            {portalView?.access_grants.some((g) => g.catalog_item_id === grantDialogItem?.id) && (
+              <FormControlLabel
+                control={<Checkbox checked={grantResetProgress} onChange={(e) => setGrantResetProgress(e.target.checked)} />}
+                label="Начать заново (сбросить сохранённый прогресс по этому курсу)"
+              />
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setGrantDialogItem(null)}>Отмена</Button>
+          <Button variant="contained" onClick={confirmGrantAccess} disabled={accessBusyId === grantDialogItem?.id}>
+            Выдать доступ
           </Button>
         </DialogActions>
       </Dialog>

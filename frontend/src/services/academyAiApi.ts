@@ -210,6 +210,55 @@ export interface InsightList {
   total: number;
 }
 
+export interface BusinessProfile {
+  id: number;
+  mission: string | null;
+  target_audience: string | null;
+  usp: string | null;
+  pricing_policy: string | null;
+  tone_of_voice: string | null;
+  competitors: string | null;
+  key_facts: string | null;
+  brand_visual_style: string | null;
+  updated_by_id: number | null;
+  updated_at: string | null;
+}
+
+export interface BusinessProfileUpdate {
+  mission?: string | null;
+  target_audience?: string | null;
+  usp?: string | null;
+  pricing_policy?: string | null;
+  tone_of_voice?: string | null;
+  competitors?: string | null;
+  key_facts?: string | null;
+  brand_visual_style?: string | null;
+}
+
+export interface ContentExample {
+  id: number;
+  kind: ContentKind;
+  direction: string | null;
+  title: string | null;
+  body: string;
+  is_active: boolean;
+  created_by_id: number | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface ContentExampleList {
+  items: ContentExample[];
+  total: number;
+}
+
+export interface ContentExampleCreate {
+  kind: ContentKind;
+  direction?: string | null;
+  title?: string | null;
+  body: string;
+}
+
 // ─── Статус ────────────────────────────────────────────────────────────────
 export const getStatus = (): Promise<AcademyModuleStatus> => api.get(`${BASE}/status`).then((r) => r.data);
 
@@ -366,3 +415,21 @@ export const dismissInsight = (id: number): Promise<Insight> =>
   api.post(`${BASE}/insights/${id}/dismiss`).then((r) => r.data);
 export const scanInsights = (): Promise<{ created: string[]; resolved: string[]; open_after: number }> =>
   api.post(`${BASE}/insights/scan`).then((r) => r.data);
+
+// ─── Профиль бизнеса ───────────────────────────────────────────────────────
+export const getBusinessProfile = (): Promise<BusinessProfile> =>
+  api.get(`${BASE}/business-profile`).then((r) => r.data);
+export const updateBusinessProfile = (payload: BusinessProfileUpdate): Promise<BusinessProfile> =>
+  api.patch(`${BASE}/business-profile`, payload).then((r) => r.data);
+
+// ─── Банк образцовых постов ────────────────────────────────────────────────
+export const listContentExamples = (params?: { kind?: string; include_inactive?: boolean }): Promise<ContentExampleList> =>
+  api.get(`${BASE}/content/examples`, { params }).then((r) => r.data);
+export const createContentExample = (payload: ContentExampleCreate): Promise<ContentExample> =>
+  api.post(`${BASE}/content/examples`, payload).then((r) => r.data);
+export const updateContentExample = (
+  id: number,
+  payload: Partial<ContentExampleCreate> & { is_active?: boolean },
+): Promise<ContentExample> => api.patch(`${BASE}/content/examples/${id}`, payload).then((r) => r.data);
+export const deleteContentExample = (id: number): Promise<void> =>
+  api.delete(`${BASE}/content/examples/${id}`).then(() => undefined);

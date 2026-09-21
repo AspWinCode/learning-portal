@@ -670,7 +670,200 @@ const AuditTab: React.FC = () => {
   );
 };
 
+// ─── Профиль бизнеса ───────────────────────────────────────────────────────
+
+const PROFILE_FIELDS: Array<{ key: keyof academyAi.BusinessProfileUpdate; label: string; hint?: string }> = [
+  { key: 'mission', label: 'Миссия / позиционирование' },
+  { key: 'target_audience', label: 'Целевая аудитория' },
+  { key: 'usp', label: 'УТП', hint: 'Чем отличаемся от конкурентов' },
+  { key: 'pricing_policy', label: 'Ценовая политика' },
+  { key: 'tone_of_voice', label: 'Тон общения / голос бренда' },
+  { key: 'competitors', label: 'Конкуренты и отличия от них' },
+  { key: 'key_facts', label: 'Прочие важные факты о бизнесе' },
+  {
+    key: 'brand_visual_style',
+    label: 'Визуальный стиль бренда',
+    hint: 'Палитра, стиль иллюстраций, чего избегать в картинках — используется при генерации изображений',
+  },
+];
+
+const ProfileTab: React.FC = () => {
+  const { error, setError, message, setMessage } = useToast();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [values, setValues] = useState<academyAi.BusinessProfileUpdate>({});
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const profile = await academyAi.getBusinessProfile();
+      setValues({
+        mission: profile.mission || '',
+        target_audience: profile.target_audience || '',
+        usp: profile.usp || '',
+        pricing_policy: profile.pricing_policy || '',
+        tone_of_voice: profile.tone_of_voice || '',
+        competitors: profile.competitors || '',
+        key_facts: profile.key_facts || '',
+        brand_visual_style: profile.brand_visual_style || '',
+      });
+    } catch (err) {
+      setError(extractApiError(err, 'Не удалось загрузить профиль бизнеса'));
+    } finally {
+      setLoading(false);
+    }
+  }, [setError]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const save = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      await academyAi.updateBusinessProfile(values);
+      setMessage('Профиль сохранён');
+    } catch (err) {
+      setError(extractApiError(err, 'Не удалось сохранить профиль'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <CircularProgress />;
+
+  return (
+    <Stack spacing={2}>
+      {error && <Alert severity="error">{error}</Alert>}
+      {message && <Alert severity="success" onClose={() => setMessage(null)}>{message}</Alert>}
+      <Alert severity="info">
+        Эти поля консультант и генератор контента используют всегда, целиком — как самый надёжный
+        источник фактов о бизнесе, в отличие от базы знаний (которая ищется по релевантности).
+      </Alert>
+      <Stack spacing={2}>
+        {PROFILE_FIELDS.map((f) => (
+          <TextField
+            key={f.key}
+            label={f.label}
+            helperText={f.hint}
+            multiline
+            minRows={2}
+            fullWidth
+            value={values[f.key] || ''}
+            onChange={(e) => setValues((prev) => ({ ...prev, [f.key]: e.target.value }))}
+          />
+        ))}
+      </Stack>
+      <Box>
+        <Button variant="contained" onClick={save} disabled={saving} startIcon={saving ? <CircularProgress size={16} /> : undefined}>
+          Сохранить профиль
+        </Button>
+      </Box>
+    </Stack>
+  );
+};
+
 // ─── Контент ───────────────────────────────────────────────────────────────
+
+const ContentExamplesSection: React.FC = () => {
+  const { error, setError, message, setMessage } = useToast();
+  const [examples, setExamples] = useState<academyAi.ContentExample[]>([]);
+  const [kind, setKind] = useState<academyAi.ContentKind>('post');
+  const [direction, setDirection] = useState('');
+  const [title, setTitle] = useState('');
+  const [body, setBody] = useState('');
+  const [expanded, setExpanded] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const data = await academyAi.listContentExamples();
+      setExamples(data.items);
+    } catch (err) {
+      setError(extractApiError(err, 'Не удалось загрузить банк примеров'));
+    }
+  }, [setError]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const add = async () => {
+    if (!body.trim()) return;
+    try {
+      await academyAi.createContentExample({
+        kind,
+        body: body.trim(),
+        direction: direction || undefined,
+        title: title || undefined,
+      });
+      setBody('');
+      setTitle('');
+      setMessage('Пример добавлен');
+      load();
+    } catch (err) {
+      setError(extractApiError(err, 'Не удалось добавить пример'));
+    }
+  };
+
+  const remove = async (id: number) => {
+    if (!window.confirm('Удалить пример?')) return;
+    try {
+      await academyAi.deleteContentExample(id);
+      load();
+    } catch (err) {
+      setError(extractApiError(err, 'Не удалось удалить пример'));
+    }
+  };
+
+  return (
+    <Paper variant="outlined" sx={{ p: 2 }}>
+      <Stack direction="row" justifyContent="space-between" alignItems="center" onClick={() => setExpanded((v) => !v)} sx={{ cursor: 'pointer' }}>
+        <Typography variant="subtitle2">Банк образцовых постов ({examples.length})</Typography>
+        <Button size="small">{expanded ? 'Свернуть' : 'Развернуть'}</Button>
+      </Stack>
+      <Typography variant="caption" color="text.secondary">
+        Реальные посты, которые вам нравятся — задают стиль (тон, ритм, эмодзи) при генерации нового контента, а не факты.
+      </Typography>
+      {expanded && (
+        <Stack spacing={2} sx={{ mt: 2 }}>
+          {error && <Alert severity="error">{error}</Alert>}
+          {message && <Alert severity="success" onClose={() => setMessage(null)}>{message}</Alert>}
+          <Stack spacing={1}>
+            <Stack direction="row" spacing={1}>
+              <TextField select size="small" label="Тип" value={kind} onChange={(e) => setKind(e.target.value as academyAi.ContentKind)} sx={{ minWidth: 220 }}>
+                {Object.entries(CONTENT_KIND_LABELS).map(([k, v]) => (
+                  <MenuItem key={k} value={k}>{v}</MenuItem>
+                ))}
+              </TextField>
+              <TextField size="small" label="Направление (необязательно)" value={direction} onChange={(e) => setDirection(e.target.value)} />
+              <TextField size="small" label="Заголовок (необязательно)" value={title} onChange={(e) => setTitle(e.target.value)} />
+            </Stack>
+            <TextField size="small" label="Текст примера" multiline minRows={3} value={body} onChange={(e) => setBody(e.target.value)} />
+            <Box><Button variant="contained" onClick={add}>Добавить пример</Button></Box>
+          </Stack>
+          <Stack spacing={1}>
+            {examples.map((ex) => (
+              <Paper key={ex.id} variant="outlined" sx={{ p: 1.5 }}>
+                <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+                  <Box sx={{ flex: 1 }}>
+                    <Stack direction="row" spacing={0.5} sx={{ mb: 0.5 }}>
+                      <Chip size="small" label={CONTENT_KIND_LABELS[ex.kind] || ex.kind} />
+                      {ex.direction && <Chip size="small" variant="outlined" label={ex.direction} />}
+                    </Stack>
+                    {ex.title && <Typography variant="subtitle2">{ex.title}</Typography>}
+                    <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'pre-wrap' }}>{ex.body.slice(0, 300)}</Typography>
+                  </Box>
+                  <IconButton size="small" onClick={() => remove(ex.id)}><DeleteOutlineIcon fontSize="small" /></IconButton>
+                </Stack>
+              </Paper>
+            ))}
+          </Stack>
+        </Stack>
+      )}
+    </Paper>
+  );
+};
 
 const ContentTab: React.FC = () => {
   const { error, setError, message, setMessage } = useToast();
@@ -742,6 +935,8 @@ const ContentTab: React.FC = () => {
           </Button>
         </Stack>
       </Paper>
+
+      <ContentExamplesSection />
 
       <Typography variant="subtitle2">Очередь черновиков</Typography>
       <Stack spacing={1}>
@@ -924,6 +1119,7 @@ const TABS = [
   { label: 'База знаний', component: <KnowledgeTab /> },
   { label: 'Экспертиза', component: <ExpertiseTab /> },
   { label: 'Аудит', component: <AuditTab /> },
+  { label: 'Профиль', component: <ProfileTab /> },
   { label: 'Контент', component: <ContentTab /> },
   { label: 'Расписание', component: <ScheduleTab /> },
   { label: 'Подсказки', component: <InsightsTab /> },

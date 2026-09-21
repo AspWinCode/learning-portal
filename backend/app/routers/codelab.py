@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app import auth
 from app.database import get_db
-from app.models import CourseCatalogItem, CourseCatalogItemKind, Student, StudentStatus, User
+from app.models import CourseCatalogItem, CourseCatalogItemKind, Group, GroupStudent, Student, StudentStatus, User, UserRole
 from app.routers.action_log import log_action
 from app.schemas.codelab import (
     CodelabCourseCreate,
@@ -26,6 +26,15 @@ router = APIRouter()
 
 def codelab_course_code(course_id: int) -> str:
     return f"codelab-{course_id}"
+
+
+def _student_id_from_external_ref(ref: str) -> int | None:
+    if not ref.startswith("lp-student-"):
+        return None
+    try:
+        return int(ref.rsplit("-", 1)[1])
+    except ValueError:
+        return None
 
 
 @router.get("/students/{student_id}/progress", response_model=CodelabStudentProgress)
@@ -224,11 +233,28 @@ async def admin_unpublish_course(course_id: int, current_user: User = Depends(_m
 # ─── Кабинет преподавателя (TCH-001/003/004) ───────────────────────────────────
 
 @router.get("/admin/courses/{course_id}/submissions")
-async def admin_list_submissions(course_id: int, current_user: User = Depends(_access)):
+async def admin_list_submissions(course_id: int, current_user: User = Depends(_access), db: Session = Depends(get_db)):
+    """RBAC-002: методист/админ видят все посылки курса; тренер — только
+    учеников своих групп. Codelab не знает про группы LMS, поэтому список
+    приходит целиком, а фильтрация по группе — здесь."""
     try:
-        return await cl.list_course_submissions(current_user, course_id)
+        rows = await cl.list_course_submissions(current_user, course_id)
     except CodelabError as e:
         _raise(e)
+        return
+
+    if auth.resolve_effective_role(current_user) == UserRole.TRAINER:
+        my_student_ids = {
+            row[0]
+            for row in db.query(GroupStudent.student_id)
+            .join(Group, Group.id == GroupStudent.group_id)
+            .filter(Group.trainer_id == current_user.id, GroupStudent.left_at.is_(None))
+        }
+        rows = [
+            r for r in rows
+            if _student_id_from_external_ref(r.get("student_external_ref", "")) in my_student_ids
+        ]
+    return rows
 
 
 @router.put("/admin/submissions/{submission_id}/grade")

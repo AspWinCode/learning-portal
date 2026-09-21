@@ -122,6 +122,8 @@ export const codelabStudioApi = {
     api.get(`${B}/courses/${courseId}/submissions`).then((r) => r.data),
   gradeSubmission: (courseId: number, submissionId: number, score: number, comment: string) =>
     api.put(`${B}/courses/${courseId}/submissions/${submissionId}/grade`, { score, comment }).then((r) => r.data),
+  rerunSubmissions: (courseId: number, submissionIds: number[]): Promise<{ requeued: number }> =>
+    api.post(`${B}/courses/${courseId}/submissions/rerun`, { submission_ids: submissionIds }).then((r) => r.data),
   getAnalytics: (courseId: number): Promise<CodelabCourseAnalytics> =>
     api.get(`${B}/courses/${courseId}/analytics`).then((r) => r.data),
 

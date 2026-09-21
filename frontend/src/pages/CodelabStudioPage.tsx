@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
-  Alert, Box, Button, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
+  Alert, Box, Button, Checkbox, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
   DialogTitle, Divider, List, ListItemButton, ListItemText, MenuItem, Paper, Select,
   Snackbar, Stack, Tab, Table, TableBody, TableCell, TableHead, TableRow, Tabs, TextField, Typography,
 } from '@mui/material';
@@ -241,6 +241,8 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
 // ────────────────────── Посылки учеников (преподаватель) ──────────────────────
 
 function SubmissionsTab({ onToast }: { onToast: (t: Toast) => void }) {
+  const { user } = useAuth();
+  const canRerun = hasPermission(user, 'codelab.manage'); // TASK-007 — авторское действие, не тренеру
   const [courses, setCourses] = useState<CodelabCourse[]>([]);
   const [courseId, setCourseId] = useState<number | ''>('');
   const [submissions, setSubmissions] = useState<CodelabSubmissionReview[]>([]);
@@ -248,6 +250,7 @@ function SubmissionsTab({ onToast }: { onToast: (t: Toast) => void }) {
   const [grading, setGrading] = useState<CodelabSubmissionReview | null>(null);
   const [gradeScore, setGradeScore] = useState('');
   const [gradeComment, setGradeComment] = useState('');
+  const [selected, setSelected] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     api.listCourses()
@@ -258,12 +261,32 @@ function SubmissionsTab({ onToast }: { onToast: (t: Toast) => void }) {
 
   const loadSubmissions = async (id: number) => {
     setLoading(true);
+    setSelected(new Set());
     try {
       setSubmissions(await api.listSubmissions(id));
     } catch (e: any) {
       onToast({ msg: e.message, err: true });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const toggleSelected = (id: number) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const rerunSelected = async () => {
+    if (!courseId || selected.size === 0) return;
+    try {
+      const res = await api.rerunSubmissions(courseId, Array.from(selected));
+      onToast({ msg: `Поставлено в очередь: ${res.requeued}` });
+      loadSubmissions(courseId);
+    } catch (e: any) {
+      onToast({ msg: e.message, err: true });
     }
   };
 
@@ -296,10 +319,23 @@ function SubmissionsTab({ onToast }: { onToast: (t: Toast) => void }) {
         {courses.map((c) => <MenuItem key={c.id} value={c.id}>{c.title}</MenuItem>)}
       </Select>
 
+      {canRerun && courseId && (
+        <Button
+          size="small"
+          variant="outlined"
+          disabled={selected.size === 0}
+          onClick={rerunSelected}
+          sx={{ ml: 2, mb: 2 }}
+        >
+          Перепроверить выбранные ({selected.size})
+        </Button>
+      )}
+
       {loading ? <CircularProgress size={24} /> : courseId && (
         <Table size="small">
           <TableHead>
             <TableRow>
+              {canRerun && <TableCell padding="checkbox" />}
               <TableCell>Ученик</TableCell>
               <TableCell>Задача</TableCell>
               <TableCell>Статус</TableCell>
@@ -310,6 +346,11 @@ function SubmissionsTab({ onToast }: { onToast: (t: Toast) => void }) {
           <TableBody>
             {submissions.map((s) => (
               <TableRow key={s.submission_id}>
+                {canRerun && (
+                  <TableCell padding="checkbox">
+                    <Checkbox size="small" checked={selected.has(s.submission_id)} onChange={() => toggleSelected(s.submission_id)} />
+                  </TableCell>
+                )}
                 <TableCell>{s.student_full_name}</TableCell>
                 <TableCell>{s.item_title}</TableCell>
                 <TableCell>{s.verdict || s.status}</TableCell>
@@ -327,7 +368,7 @@ function SubmissionsTab({ onToast }: { onToast: (t: Toast) => void }) {
               </TableRow>
             ))}
             {submissions.length === 0 && (
-              <TableRow><TableCell colSpan={5}><Typography variant="caption" color="text.secondary">Посылок пока нет</Typography></TableCell></TableRow>
+              <TableRow><TableCell colSpan={canRerun ? 6 : 5}><Typography variant="caption" color="text.secondary">Посылок пока нет</Typography></TableCell></TableRow>
             )}
           </TableBody>
         </Table>

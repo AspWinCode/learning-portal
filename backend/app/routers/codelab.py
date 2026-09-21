@@ -295,6 +295,25 @@ async def admin_grade_submission(
     return result
 
 
+@router.post("/admin/courses/{course_id}/submissions/rerun")
+async def admin_rerun_submissions(
+    course_id: int,
+    payload: dict,
+    current_user: User = Depends(_manage),
+    db: Session = Depends(get_db),
+):
+    """TASK-007: массовая перепроверка после исправления тестов — только
+    методисту (codelab.manage), не тренеру: перезапуск проверки — авторское
+    действие над задачей, не просмотр/оценка конкретного ученика."""
+    try:
+        result = await cl.rerun_submissions(current_user, course_id, payload.get("submission_ids", []))
+    except CodelabError as e:
+        _raise(e)
+        return
+    log_action(db, current_user.id, "rerun", "codelab_submissions", course_id, {"count": len(payload.get("submission_ids", []))})
+    return result
+
+
 @router.get("/admin/courses/{course_id}/analytics")
 async def admin_get_course_analytics(course_id: int, current_user: User = Depends(_access)):
     """ANA-001/002/005: агрегаты курса и рейтинг задач по сложности."""

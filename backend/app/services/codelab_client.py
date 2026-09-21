@@ -120,6 +120,13 @@ async def list_course_submissions(user, course_id: int) -> List[dict]:
     return await _request("GET", f"/api/lms-admin/courses/{course_id}/submissions", user)
 
 
+async def rerun_submissions(user, course_id: int, submission_ids: List[int]) -> dict:
+    return await _request(
+        "POST", f"/api/lms-admin/courses/{course_id}/submissions/rerun", user,
+        json={"submission_ids": submission_ids},
+    )
+
+
 async def grade_submission(user, course_id: int, submission_id: int, score: float, comment: str) -> dict:
     # course_id в пути — Codelab проверяет, что посылка правда из этого
     # курса (RBAC-002); заодно позволяет LMS дёшево проверить группу

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
-  Alert, Box, Button, Checkbox, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
-  DialogTitle, Divider, List, ListItemButton, ListItemText, MenuItem, Paper, Select,
+  Alert, Box, Button, Card, CardActionArea, CardContent, Checkbox, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
+  DialogTitle, Divider, List, ListItemText, MenuItem, Paper, Select,
   Snackbar, Stack, Tab, Table, TableBody, TableCell, TableHead, TableRow, Tabs, TextField, Typography,
 } from '@mui/material';
 import { Publish as PublishIcon, UnpublishedOutlined as UnpublishIcon } from '@mui/icons-material';
@@ -150,27 +150,44 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
   };
 
   return (
-    <Stack direction="row" spacing={3}>
-      <Paper variant="outlined" sx={{ width: 260, flexShrink: 0, p: 1.5 }}>
-        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+    <Stack spacing={3}>
+      <Box>
+        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
           <Typography variant="subtitle2">Курсы</Typography>
           <Button size="small" onClick={() => setCreateOpen(true)}>+ Новый</Button>
         </Stack>
-        <List dense>
+        <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
           {courses.map((c) => (
-            <ListItemButton key={c.id} selected={selected?.id === c.id} onClick={() => selectCourse(c)}>
-              <ListItemText
-                primary={c.title}
-                secondary={<Chip size="small" label={c.status} color={c.status === 'published' ? 'success' : 'default'} />}
-              />
-            </ListItemButton>
+            <Card
+              key={c.id}
+              variant="outlined"
+              sx={{
+                width: 220,
+                borderColor: selected?.id === c.id ? 'primary.main' : undefined,
+                borderWidth: selected?.id === c.id ? 2 : 1,
+              }}
+            >
+              <CardActionArea onClick={() => selectCourse(c)} sx={{ height: '100%' }}>
+                <CardContent>
+                  <Typography variant="subtitle1" noWrap title={c.title} sx={{ mb: 1 }}>{c.title}</Typography>
+                  <Chip size="small" label={c.status} color={c.status === 'published' ? 'success' : 'default'} />
+                </CardContent>
+              </CardActionArea>
+            </Card>
           ))}
-          {courses.length === 0 && <Typography variant="caption" color="text.secondary">Пока нет курсов</Typography>}
-        </List>
-      </Paper>
+          <Card
+            variant="outlined"
+            sx={{ width: 220, borderStyle: 'dashed', display: 'flex' }}
+          >
+            <CardActionArea onClick={() => setCreateOpen(true)} sx={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', py: 3 }}>
+              <Typography color="text.secondary">+ Новый курс</Typography>
+            </CardActionArea>
+          </Card>
+        </Stack>
+      </Box>
 
       <Box sx={{ flex: 1, minWidth: 0 }}>
-        {!selected && <Typography color="text.secondary">Выберите курс слева или создайте новый.</Typography>}
+        {!selected && <Typography color="text.secondary">Выберите курс сверху или создайте новый.</Typography>}
         {selected && (
           <>
             <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>

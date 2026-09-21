@@ -7,6 +7,7 @@
   TOCHKA_JWT_TOKEN  — JWT токен из интернет-банка Точки
   TOCHKA_ACCOUNT_ID — номер расчётного счёта (20 цифр)
 """
+import logging
 import os
 import time
 import json
@@ -17,6 +18,7 @@ import urllib.parse
 from typing import Optional, List, Dict, Any, Tuple
 from datetime import date, timedelta
 
+logger = logging.getLogger(__name__)
 
 TOCHKA_API_BASE = "https://enter.tochka.com/uapi/"
 
@@ -381,10 +383,19 @@ def extract_incoming_transactions(statement: Dict[str, Any]) -> List[Dict[str, A
         if isinstance(amount_raw, dict):
             amount_raw = amount_raw.get("Amount") or amount_raw.get("amount")
         if amount_raw is None:
+            logger.warning(
+                "Tochka statement: transaction has no recognizable amount field, skipping. tx=%s",
+                json.dumps(tx, ensure_ascii=False, default=str)[:2000],
+            )
             continue
         try:
             amount_float = abs(float(amount_raw))
         except (TypeError, ValueError):
+            logger.warning(
+                "Tochka statement: unparseable amount %r, skipping. tx=%s",
+                amount_raw,
+                json.dumps(tx, ensure_ascii=False, default=str)[:2000],
+            )
             continue
 
         # Плательщик (у Точки поля: payerName, debtor, debtorAccount)

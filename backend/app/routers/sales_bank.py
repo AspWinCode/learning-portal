@@ -718,13 +718,23 @@ async def tochka_webhook(request: Request, db: Session = Depends(get_db)):
     if not account_id:
         raise HTTPException(status_code=400, detail="TOCHKA_ACCOUNT_ID is not configured")
 
+    raw_body = await request.body()
     try:
-        payload = _decode_tochka_webhook(await request.body())
+        payload = _decode_tochka_webhook(raw_body)
         transaction = _transaction_from_tochka_webhook(payload)
     except Exception as exc:
+        logger.warning(
+            "Tochka webhook: failed to decode payload: %s. body=%s",
+            exc,
+            raw_body[:2000],
+        )
         raise HTTPException(status_code=400, detail=f"Invalid Tochka webhook: {exc!s}")
 
     if not transaction.get("amount"):
+        logger.warning(
+            "Tochka webhook: missing amount, dropping. payload=%s",
+            json.dumps(payload, ensure_ascii=False, default=str)[:2000],
+        )
         raise HTTPException(status_code=400, detail="Invalid Tochka webhook: missing amount")
 
     with db_transaction(db):

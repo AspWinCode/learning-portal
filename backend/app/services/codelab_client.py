@@ -127,6 +127,12 @@ async def rerun_submissions(user, course_id: int, submission_ids: List[int]) -> 
     )
 
 
+# ─── Эксплуатационный статус (ADM-004) ──────────────────────────────────────
+
+async def get_system_status(user) -> dict:
+    return await _request("GET", "/api/lms-admin/admin/status", user)
+
+
 async def grade_submission(user, course_id: int, submission_id: int, score: float, comment: str) -> dict:
     # course_id в пути — Codelab проверяет, что посылка правда из этого
     # курса (RBAC-002); заодно позволяет LMS дёшево проверить группу

@@ -72,6 +72,18 @@ export interface CodelabSubmissionReview {
   created_at: string;
 }
 
+export interface CodelabSystemStatus {
+  generated_at: string;
+  queue: {
+    queued_count: number;
+    running_count: number;
+    oldest_queued_age_seconds: number | null;
+    worker_likely_stalled: boolean;
+  };
+  errors: { system_errors_last_24h: number };
+  storage: { uploads_size_bytes: number; disk_free_bytes: number; disk_total_bytes: number };
+}
+
 export interface CodelabCourseOverview {
   course_id: number;
   enrolled_count: number;
@@ -126,6 +138,7 @@ export const codelabStudioApi = {
     api.post(`${B}/courses/${courseId}/submissions/rerun`, { submission_ids: submissionIds }).then((r) => r.data),
   getAnalytics: (courseId: number): Promise<CodelabCourseAnalytics> =>
     api.get(`${B}/courses/${courseId}/analytics`).then((r) => r.data),
+  getSystemStatus: (): Promise<CodelabSystemStatus> => api.get(`${B}/status`).then((r) => r.data),
 
   // Для карточки на MethodistHubPage — статусов "на ревью"/"правки" у Codelab нет, всегда 0.
   authoringSummary: async (): Promise<AuthoringSummary> => {

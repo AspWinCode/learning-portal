@@ -321,3 +321,17 @@ async def admin_get_course_analytics(course_id: int, current_user: User = Depend
         return await cl.get_course_analytics(current_user, course_id)
     except CodelabError as e:
         _raise(e)
+
+
+@router.get("/admin/status")
+async def admin_get_system_status(current_user: User = Depends(_manage)):
+    """ADM-004: очередь, признаки зависшего воркера, системные ошибки,
+    хранилище. Не методисту (у него тоже есть codelab.manage) — только
+    admin/owner, это эксплуатационная информация, не учебная."""
+    effective_role = auth.resolve_effective_role(current_user)
+    if effective_role not in (UserRole.ADMIN, UserRole.OWNER):
+        raise HTTPException(status_code=403, detail="Доступно только администратору")
+    try:
+        return await cl.get_system_status(current_user)
+    except CodelabError as e:
+        _raise(e)

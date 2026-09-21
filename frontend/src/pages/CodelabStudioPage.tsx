@@ -7,21 +7,23 @@ import {
 import { Publish as PublishIcon, UnpublishedOutlined as UnpublishIcon } from '@mui/icons-material';
 import Layout from '../components/Layout';
 import { useAuth } from '../contexts/AuthContext';
-import { hasPermission } from '../utils/permissions';
+import { getEffectiveRole, hasPermission } from '../utils/permissions';
 import {
-  CodelabCourse, CodelabCourseAnalytics, CodelabLearningItem, CodelabSubmissionReview, codelabStudioApi as api,
+  CodelabCourse, CodelabCourseAnalytics, CodelabLearningItem, CodelabSubmissionReview,
+  CodelabSystemStatus, codelabStudioApi as api,
 } from '../services/codelabApi';
 
 type Toast = { msg: string; err?: boolean } | null;
-type TabKey = 'courses' | 'submissions' | 'analytics';
+type TabKey = 'courses' | 'submissions' | 'analytics' | 'status';
 
 /** Студия методиста (создание/публикация курсов), кабинет преподавателя
- * (просмотр и оценка посылок) и аналитика курса — всё через прокси в
- * Codelab, из своего аккаунта портала, по образцу PixelForge/Kodex
- * (см. README интеграции). */
+ * (просмотр и оценка посылок), аналитика курса и эксплуатационный статус
+ * (ADM-004, только admin/owner) — всё через прокси в Codelab, из своего
+ * аккаунта портала, по образцу PixelForge/Kodex (см. README интеграции). */
 export default function CodelabStudioPage() {
   const { user } = useAuth();
   const canManage = hasPermission(user, 'codelab.manage');
+  const isAdmin = ['admin', 'owner'].includes(getEffectiveRole(user) || '');
   const [tab, setTab] = useState<TabKey>(canManage ? 'courses' : 'submissions');
   const [toast, setToast] = useState<Toast>(null);
 
@@ -33,10 +35,12 @@ export default function CodelabStudioPage() {
           {canManage && <Tab value="courses" label="Курсы" />}
           <Tab value="submissions" label="Посылки учеников" />
           <Tab value="analytics" label="Аналитика" />
+          {isAdmin && <Tab value="status" label="Статус" />}
         </Tabs>
         {tab === 'courses' && canManage && <CoursesTab onToast={setToast} />}
         {tab === 'submissions' && <SubmissionsTab onToast={setToast} />}
         {tab === 'analytics' && <AnalyticsTab onToast={setToast} />}
+        {tab === 'status' && isAdmin && <StatusTab onToast={setToast} />}
       </Box>
       <Snackbar open={!!toast} autoHideDuration={4000} onClose={() => setToast(null)}>
         {toast ? <Alert severity={toast.err ? 'error' : 'success'}>{toast.msg}</Alert> : undefined}
@@ -495,6 +499,70 @@ function AnalyticsTab({ onToast }: { onToast: (t: Toast) => void }) {
           </Table>
         </>
       )}
+    </Box>
+  );
+}
+
+// ─────────────────────────── Статус (ADM-004, admin/owner) ─────────────────────
+
+function formatBytes(bytes: number): string {
+  const gb = bytes / (1024 ** 3);
+  if (gb >= 1) return `${gb.toFixed(1)} ГБ`;
+  return `${(bytes / (1024 ** 2)).toFixed(1)} МБ`;
+}
+
+function StatusTab({ onToast }: { onToast: (t: Toast) => void }) {
+  const [status, setStatus] = useState<CodelabSystemStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const load = () => {
+    setLoading(true);
+    api.getSystemStatus()
+      .then(setStatus)
+      .catch((e) => onToast({ msg: e.message, err: true }))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (loading) return <CircularProgress size={24} />;
+  if (!status) return null;
+
+  return (
+    <Box>
+      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+        <Typography variant="caption" color="text.secondary">
+          Данные на {new Date(status.generated_at).toLocaleString('ru-RU')}
+        </Typography>
+        <Button size="small" onClick={load}>Обновить</Button>
+      </Stack>
+
+      {status.queue.worker_likely_stalled && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          Самая старая посылка в очереди ждёт больше 5 минут — похоже, воркер (`python -m app.worker`) не запущен или завис.
+        </Alert>
+      )}
+      {status.errors.system_errors_last_24h > 0 && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          Системных ошибок проверки за 24 часа: {status.errors.system_errors_last_24h}.
+        </Alert>
+      )}
+
+      <Stack direction="row" spacing={2} flexWrap="wrap">
+        {[
+          ['В очереди', status.queue.queued_count],
+          ['Выполняется', status.queue.running_count],
+          ['Ожидание самой старой (сек)', status.queue.oldest_queued_age_seconds ?? '—'],
+          ['Ошибок за 24ч', status.errors.system_errors_last_24h],
+          ['Загрузки на диске', formatBytes(status.storage.uploads_size_bytes)],
+          ['Свободно места', formatBytes(status.storage.disk_free_bytes)],
+        ].map(([label, value]) => (
+          <Paper key={label as string} variant="outlined" sx={{ p: 1.5, minWidth: 160 }}>
+            <Typography variant="caption" color="text.secondary">{label}</Typography>
+            <Typography variant="h6">{value}</Typography>
+          </Paper>
+        ))}
+      </Stack>
     </Box>
   );
 }

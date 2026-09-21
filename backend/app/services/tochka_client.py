@@ -9,6 +9,7 @@
 """
 import logging
 import os
+import ssl
 import time
 import json
 import re
@@ -18,9 +19,27 @@ import urllib.parse
 from typing import Optional, List, Dict, Any, Tuple
 from datetime import date, timedelta
 
+import certifi
+
 logger = logging.getLogger(__name__)
 
 TOCHKA_API_BASE = "https://enter.tochka.com/uapi/"
+
+# API Точки использует TLS-цепочку, подписанную корневым УЦ Минцифры России
+# (Russian Trusted Root CA), которого нет в стандартном доверенном хранилище
+# certifi/системы. Без этого файла все запросы к Точке падают с
+# "self-signed certificate in certificate chain".
+_RUSSIAN_TRUSTED_CA_PATH = os.path.join(os.path.dirname(__file__), "certs", "russian_trusted_ca.pem")
+
+
+def _build_ssl_context() -> ssl.SSLContext:
+    context = ssl.create_default_context(cafile=certifi.where())
+    if os.path.exists(_RUSSIAN_TRUSTED_CA_PATH):
+        context.load_verify_locations(cafile=_RUSSIAN_TRUSTED_CA_PATH)
+    return context
+
+
+_SSL_CONTEXT = _build_ssl_context()
 
 PHONE_PATTERN = re.compile(r"(?<!\d)(?:\+?7|8)[\s\-()]*\d[\s\-()]*\d[\s\-()]*\d[\s\-()]*\d[\s\-()]*\d[\s\-()]*\d[\s\-()]*\d[\s\-()]*\d[\s\-()]*\d[\s\-()]*\d(?!\d)")
 LABELED_PHONE_PATTERN = re.compile(r"(?:тел(?:ефон)?|phone|mobile|сбп|sbp)\D{0,20}(\d[\d\s\-()]{9,}\d)", re.IGNORECASE)
@@ -68,7 +87,7 @@ def _api_request(
     data = json.dumps(body).encode("utf-8") if body is not None else None
     req = urllib.request.Request(url, data=data, method=method, headers=headers)
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=30, context=_SSL_CONTEXT) as resp:
             return json.loads(resp.read().decode())
     except urllib.error.HTTPError as e:
         body_err: Any = {}

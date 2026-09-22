@@ -178,6 +178,12 @@ export const codelabStudioApi = {
   getUserLoginHistory: (userId: number): Promise<CodelabLoginEvent[]> =>
     api.get(`${B}/users/${userId}/login-history`).then((r) => r.data),
 
+  uploadFile: (file: File): Promise<{ url: string }> => {
+    const form = new FormData();
+    form.append('file', file);
+    return api.post(`${B}/uploads`, form).then((r) => r.data);
+  },
+
   // Для карточки на MethodistHubPage — статусов "на ревью"/"правки" у Codelab нет, всегда 0.
   authoringSummary: async (): Promise<AuthoringSummary> => {
     const courses = await api.get(`${B}/courses`).then((r) => r.data as CodelabCourse[]);

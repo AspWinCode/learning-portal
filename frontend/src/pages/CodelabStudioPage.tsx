@@ -6,6 +6,7 @@ import {
 } from '@mui/material';
 import { MoreVert as MoreVertIcon, Publish as PublishIcon, UnpublishedOutlined as UnpublishIcon } from '@mui/icons-material';
 import Layout from '../components/Layout';
+import NotesEditor from '../components/NotesEditor';
 import { useAuth } from '../contexts/AuthContext';
 import { getEffectiveRole, hasPermission } from '../utils/permissions';
 import {
@@ -349,7 +350,11 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={!!nodeDialog && (nodeDialog.type !== 'task' || !!nodeDialog.editing)} onClose={() => setNodeDialog(null)} fullWidth maxWidth="sm">
+      <Dialog
+        open={!!nodeDialog && (nodeDialog.type !== 'task' || !!nodeDialog.editing)}
+        onClose={() => setNodeDialog(null)} fullWidth
+        maxWidth={nodeDialog?.type === 'theory' ? 'md' : 'sm'}
+      >
         <DialogTitle>
           {nodeDialog?.editing ? 'Редактирование' : STRUCTURAL_TYPE_SET.has(nodeDialog?.type || '')
             ? `Новый узел «${CODELAB_STRUCTURAL_LABEL[nodeDialog?.type as CodelabStructuralType]}»`
@@ -358,7 +363,12 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
         <DialogContent>
           <TextField autoFocus fullWidth label="Заголовок" value={nodeTitle} onChange={(e) => setNodeTitle(e.target.value)} sx={{ mt: 1, mb: 2 }} />
           {nodeDialog?.type === 'theory' && (
-            <TextField fullWidth multiline rows={6} label="Текст (Markdown)" value={nodeContent} onChange={(e) => setNodeContent(e.target.value)} />
+            <NotesEditor
+              value={nodeContent}
+              onChange={setNodeContent}
+              placeholder="Текст лекции — форматирование, изображения (вставьте через Ctrl+V), видео, ссылки…"
+              onUploadImage={async (file) => (await api.uploadFile(file)).url}
+            />
           )}
         </DialogContent>
         <DialogActions>

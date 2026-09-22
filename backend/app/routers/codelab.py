@@ -2,7 +2,7 @@ import hashlib
 import hmac
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, File as FastAPIFile, HTTPException, Request, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app import auth
@@ -218,6 +218,27 @@ async def admin_archive_item(item_id: int, payload: dict, current_user: User = D
         return await cl.archive_item(current_user, item_id, bool(payload.get("archived")))
     except CodelabError as e:
         _raise(e)
+
+
+@router.post("/admin/uploads")
+async def admin_upload_file(file: UploadFile = FastAPIFile(...), current_user: User = Depends(_manage)):
+    """EDT-002/008: изображения из rich-text редактора (вставка через Ctrl+V,
+    drag-drop или кнопку) — сохраняются в Codelab, не на портале, потому что
+    учебный контент и так живёт там (см. codelab_client.upload_file).
+
+    Codelab возвращает url относительным ("/uploads/xxx.png") — годится для
+    его собственного фронтенда (студент видит материал на codelab.tirskix.space),
+    но не для предпросмотра прямо здесь, в редакторе на портале: относительно
+    ЭТОГО домена такого файла нет. Возвращаем абсолютный URL на Codelab."""
+    data = await file.read()
+    try:
+        result = await cl.upload_file(current_user, file.filename or "upload", file.content_type or "", data)
+    except CodelabError as e:
+        _raise(e)
+        return
+    if isinstance(result, dict) and isinstance(result.get("url"), str) and result["url"].startswith("/"):
+        result["url"] = f"{CODELAB_EXTERNAL_BASE}{result['url']}"
+    return result
 
 
 @router.get("/admin/courses/{course_id}/tree")

@@ -56,7 +56,11 @@ def _sign(external_ref: str) -> str:
     return hmac.new(SSO_KODEX_SHARED_SECRET.encode(), external_ref.encode(), hashlib.sha256).hexdigest()
 
 
-async def _request(method: str, path: str, user, *, json: Any = None, extra_params: Optional[Dict[str, str]] = None) -> Any:
+async def _request(
+    method: str, path: str, user, *, json: Any = None,
+    extra_params: Optional[Dict[str, str]] = None,
+    files: Optional[Dict[str, Any]] = None,
+) -> Any:
     params = _staff_params(user)
     signature = _sign(params["staff_external_ref"])
     if extra_params:
@@ -64,7 +68,7 @@ async def _request(method: str, path: str, user, *, json: Any = None, extra_para
     url = f"{CODELAB_ADMIN_BASE}{path}?{urlencode(params)}"
 
     async with httpx.AsyncClient(timeout=20) as client:
-        res = await client.request(method, url, json=json, headers={"X-LP-Signature": signature})
+        res = await client.request(method, url, json=json, files=files, headers={"X-LP-Signature": signature})
 
     if not res.is_success:
         try:
@@ -174,3 +178,12 @@ async def terminate_codelab_user_sessions(user, codelab_user_id: int) -> dict:
 
 async def get_codelab_user_login_history(user, codelab_user_id: int) -> List[dict]:
     return await _request("GET", f"/api/lms-admin/admin/users/{codelab_user_id}/login-history", user)
+
+
+# ─── Загрузка файлов для rich-text редактора (EDT-002/008) ──────────────────
+
+async def upload_file(user, filename: str, content_type: str, data: bytes) -> dict:
+    return await _request(
+        "POST", "/api/lms-admin/uploads", user,
+        files={"file": (filename, data, content_type or "application/octet-stream")},
+    )

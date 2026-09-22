@@ -17,8 +17,9 @@ import { Table } from '@tiptap/extension-table';
 import TableRow from '@tiptap/extension-table-row';
 import TableHeader from '@tiptap/extension-table-header';
 import TableCell from '@tiptap/extension-table-cell';
-import { Extension } from '@tiptap/core';
+import { Extension, Node, mergeAttributes } from '@tiptap/core';
 import type { Editor } from '@tiptap/core';
+import { resolveVideoEmbed } from '../utils/videoEmbed';
 import {
   Box,
   Button,
@@ -68,6 +69,44 @@ import TextFieldsIcon from '@mui/icons-material/TextFields';
 import LooksOneIcon from '@mui/icons-material/LooksOne';
 import LooksTwoIcon from '@mui/icons-material/LooksTwo';
 import Looks3Icon from '@mui/icons-material/Looks3';
+import MovieIcon from '@mui/icons-material/Movie';
+
+// ─── Video embed node (EDT-004) — YouTube/VK Видео/RuTube, тот же allowlist,
+// что и Codelab (utils/videoEmbed.ts, скопирован 1:1). Хранится как настоящий
+// <div class="video-embed"><iframe src="EMBED_URL">...</iframe></div> — сам
+// embedUrl уже собран нами из id, извлечённого строгим regex'ом при вставке
+// (см. resolveVideoEmbed), поэтому это безопасно сериализовать напрямую;
+// Codelab на своей стороне всё равно перепроверяет src по тому же allowlist
+// при рендере (renderContent.ts), не доверяя одному только факту, что HTML
+// пришёл "из этого редактора" — прямой вызов API мог бы подделать content. */
+const VideoEmbed = Node.create({
+  name: 'videoEmbed',
+  group: 'block',
+  atom: true,
+  draggable: true,
+
+  addAttributes() {
+    return { src: { default: null } };
+  },
+
+  parseHTML() {
+    return [{ tag: 'div.video-embed', getAttrs: (el) => ({ src: (el as HTMLElement).querySelector('iframe')?.getAttribute('src') || null }) }];
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    return ['div', { class: 'video-embed' }, [
+      'iframe',
+      mergeAttributes({
+        src: HTMLAttributes.src,
+        loading: 'lazy',
+        allowfullscreen: 'true',
+        sandbox: 'allow-scripts allow-same-origin allow-presentation',
+        referrerpolicy: 'no-referrer',
+        frameborder: '0',
+      }),
+    ]];
+  },
+});
 
 // ─── Custom FontSize extension (no official v2 package) ──────────────────────
 const FontSize = Extension.create({
@@ -131,6 +170,12 @@ const EDITOR_STYLES = {
   '.notes-editor .ProseMirror a': { color: '#7c3aed', textDecoration: 'underline', cursor: 'pointer' },
   '.notes-editor .ProseMirror hr': { border: 'none', borderTop: '2px solid #e0e0e0', margin: '1rem 0' },
   '.notes-editor .ProseMirror img': { maxWidth: '100%', height: 'auto', borderRadius: '4px', cursor: 'pointer' },
+  // EDT-004: адаптивный контейнер 16:9 для встроенного видео — тот же класс,
+  // что Codelab использует при рендере ученику (utils/renderContent.ts),
+  // чтобы вид при редактировании и в предпросмотре ученика совпадал.
+  '.notes-editor .ProseMirror .video-embed': { position: 'relative', width: '100%', maxWidth: 480, aspectRatio: '16 / 9', margin: '0.5rem 0', border: '2px solid transparent', borderRadius: '6px' },
+  '.notes-editor .ProseMirror .video-embed.ProseMirror-selectednode': { borderColor: '#7c3aed' },
+  '.notes-editor .ProseMirror .video-embed iframe': { position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0, borderRadius: '4px', pointerEvents: 'none' },
   '.notes-editor .ProseMirror table': { borderCollapse: 'collapse', width: '100%', margin: '0.5rem 0' },
   '.notes-editor .ProseMirror td, .notes-editor .ProseMirror th': { border: '1px solid #e0e0e0', padding: '6px 10px', minWidth: 60 },
   '.notes-editor .ProseMirror th': { background: '#f5f5f5', fontWeight: 600 },
@@ -182,6 +227,11 @@ const NotesEditor: React.FC<NotesEditorProps> = ({
   const [imageOpen, setImageOpen] = useState(false);
   const [imageUrl, setImageUrl] = useState('');
 
+  // Video dialog (EDT-004)
+  const [videoOpen, setVideoOpen] = useState(false);
+  const [videoUrl, setVideoUrl] = useState('');
+  const [videoError, setVideoError] = useState('');
+
   // Table dialog
   const [tableOpen, setTableOpen] = useState(false);
   const [tableRows, setTableRows] = useState(3);
@@ -226,6 +276,7 @@ const NotesEditor: React.FC<NotesEditorProps> = ({
       TableRow,
       TableHeader,
       TableCell,
+      VideoEmbed,
     ],
     content: value || '',
     onUpdate: ({ editor: ed }) => {
@@ -311,6 +362,19 @@ const NotesEditor: React.FC<NotesEditorProps> = ({
     editor.chain().focus().setImage({ src: imageUrl.trim() }).run();
     setImageUrl('');
     setImageOpen(false);
+  };
+
+  const handleInsertVideo = () => {
+    if (!editor) return;
+    const resolved = resolveVideoEmbed(videoUrl);
+    if (!resolved) {
+      setVideoError('Ссылка не с разрешённой площадки (YouTube, VK Видео, RuTube)');
+      return;
+    }
+    (editor.chain().focus() as any).insertContent({ type: 'videoEmbed', attrs: { src: resolved.embedUrl } }).run();
+    setVideoUrl('');
+    setVideoError('');
+    setVideoOpen(false);
   };
 
   const handleImageFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -431,6 +495,7 @@ const NotesEditor: React.FC<NotesEditorProps> = ({
         <Stack direction="row" alignItems="center">
           {btn('Вставить ссылку', editor.isActive('link'), handleInsertLink, <LinkIcon fontSize="small" />)}
           {btn('Вставить изображение', false, () => setImageOpen(true), <ImageIcon fontSize="small" />)}
+          {btn('Вставить видео', false, () => { setVideoError(''); setVideoOpen(true); }, <MovieIcon fontSize="small" />)}
           {btn('Вставить таблицу', false, () => setTableOpen(true), <TableChartIcon fontSize="small" />)}
           {onUploadImage && (
             <>
@@ -515,6 +580,24 @@ const NotesEditor: React.FC<NotesEditorProps> = ({
         <DialogActions>
           <Button onClick={() => setImageOpen(false)}>Отмена</Button>
           <Button variant="contained" onClick={handleInsertImage}>Вставить</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ── Video dialog (EDT-004) ── */}
+      <Dialog open={videoOpen} onClose={() => setVideoOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Вставить видео</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus fullWidth label="Ссылка на видео (YouTube, VK Видео, RuTube)"
+            value={videoUrl} onChange={(e) => { setVideoUrl(e.target.value); setVideoError(''); }}
+            onKeyDown={(e) => e.key === 'Enter' && handleInsertVideo()}
+            error={!!videoError} helperText={videoError}
+            sx={{ mt: 1 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setVideoOpen(false)}>Отмена</Button>
+          <Button variant="contained" disabled={!videoUrl.trim()} onClick={handleInsertVideo}>Вставить</Button>
         </DialogActions>
       </Dialog>
 

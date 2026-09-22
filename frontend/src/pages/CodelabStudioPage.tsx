@@ -1,17 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import {
   Alert, Box, Button, Card, CardActionArea, CardContent, Checkbox, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
-  DialogTitle, Divider, IconButton, List, ListItemText, Menu, MenuItem, Paper, Select,
+  DialogTitle, Divider, FormControlLabel, IconButton, List, ListItemText, Menu, MenuItem, Paper, Select,
   Snackbar, Stack, Tab, Table, TableBody, TableCell, TableHead, TableRow, Tabs, TextField, Typography,
 } from '@mui/material';
-import { MoreVert as MoreVertIcon, Publish as PublishIcon, UnpublishedOutlined as UnpublishIcon } from '@mui/icons-material';
+import { Delete as DeleteIcon, MoreVert as MoreVertIcon, Publish as PublishIcon, UnpublishedOutlined as UnpublishIcon } from '@mui/icons-material';
 import Layout from '../components/Layout';
 import NotesEditor from '../components/NotesEditor';
 import { useAuth } from '../contexts/AuthContext';
 import { getEffectiveRole, hasPermission } from '../utils/permissions';
 import {
   CODELAB_CHILD_STRUCTURAL_TYPE, CODELAB_STRUCTURAL_LABEL, CodelabCourse, CodelabCourseAnalytics,
-  CodelabLearningItem, CodelabLoginEvent, CodelabStructuralType, CodelabSubmissionReview,
+  CodelabLearningItem, CodelabLoginEvent, CodelabProblemTest, CodelabStructuralType, CodelabSubmissionReview,
   CodelabSystemStatus, CodelabUser, codelabStudioApi as api,
 } from '../services/codelabApi';
 
@@ -134,8 +134,15 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
   const [nodeDialog, setNodeDialog] = useState<NodeDialogState | null>(null);
   const [nodeTitle, setNodeTitle] = useState('');
   const [nodeContent, setNodeContent] = useState('');
-  const [testsText, setTestsText] = useState('2 3=>5');
   const [deleteTarget, setDeleteTarget] = useState<CodelabLearningItem | null>(null);
+
+  // Задача: условие (rich-text), формат ввода/вывода, тесты (видимые ученику —
+  // примеры, скрытые — только для проверки решения).
+  const [taskStatement, setTaskStatement] = useState('');
+  const [taskInputFormat, setTaskInputFormat] = useState('');
+  const [taskOutputFormat, setTaskOutputFormat] = useState('');
+  const [taskTests, setTaskTests] = useState<CodelabProblemTest[]>([{ input: '', expected: '', is_hidden: false }]);
+  const [taskLoading, setTaskLoading] = useState(false);
 
   const loadCourses = () => api.listCourses().then(setCourses).catch((e) => onToast({ msg: e.message, err: true }));
 
@@ -172,14 +179,34 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
     setNodeDialog({ parentId, type });
     setNodeTitle('');
     setNodeContent('');
-    setTestsText('2 3=>5');
+    setTaskStatement('');
+    setTaskInputFormat('');
+    setTaskOutputFormat('');
+    setTaskTests([{ input: '', expected: '', is_hidden: false }]);
   };
 
   const openEdit = (item: CodelabLearningItem) => {
     setNodeDialog({ parentId: item.parent_id, type: item.type, editing: item });
     setNodeTitle(item.title);
     setNodeContent(item.content || '');
+    if (item.type === 'task' && item.problem_revision_id) {
+      setTaskLoading(true);
+      api.getTask(item.problem_revision_id)
+        .then((task) => {
+          setTaskStatement(task.statement || '');
+          setTaskInputFormat(task.input_format || '');
+          setTaskOutputFormat(task.output_format || '');
+          setTaskTests(task.tests.length > 0 ? task.tests : [{ input: '', expected: '', is_hidden: false }]);
+        })
+        .catch((e: any) => onToast({ msg: e.message, err: true }))
+        .finally(() => setTaskLoading(false));
+    }
   };
+
+  const addTestRow = () => setTaskTests((prev) => [...prev, { input: '', expected: '', is_hidden: false }]);
+  const removeTestRow = (i: number) => setTaskTests((prev) => prev.filter((_, idx) => idx !== i));
+  const updateTestRow = (i: number, patch: Partial<CodelabProblemTest>) =>
+    setTaskTests((prev) => prev.map((t, idx) => (idx === i ? { ...t, ...patch } : t)));
 
   const siblingCount = (parentId: number | null): number => {
     const siblings = parentId === null ? tree : findNode(tree, parentId)?.children ?? [];
@@ -189,22 +216,35 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
   const saveNode = async () => {
     if (!selected || !nodeDialog) return;
     try {
-      if (nodeDialog.editing) {
+      if (nodeDialog.type === 'task') {
+        const payload = {
+          title: nodeTitle,
+          statement: taskStatement,
+          input_format: taskInputFormat.trim() || null,
+          output_format: taskOutputFormat.trim() || null,
+          tests: taskTests
+            .filter((t) => t.input.trim() || t.expected.trim())
+            .map((t) => ({ input: t.input, expected: t.expected, is_hidden: t.is_hidden })),
+        };
+        if (nodeDialog.editing) {
+          if (nodeDialog.editing.problem_revision_id) {
+            await api.updateTask(nodeDialog.editing.problem_revision_id, payload);
+          }
+          await api.updateItem(nodeDialog.editing.id, { title: nodeTitle });
+          onToast({ msg: 'Задача обновлена' });
+        } else {
+          const task = await api.createTask(selected.id, payload);
+          await api.createItem(selected.id, {
+            type: 'task', title: nodeTitle, problem_revision_id: task.id,
+            parent_id: nodeDialog.parentId, position: siblingCount(nodeDialog.parentId),
+          });
+          onToast({ msg: 'Задача добавлена' });
+        }
+      } else if (nodeDialog.editing) {
         const patch: Record<string, unknown> = { title: nodeTitle };
         if (nodeDialog.type === 'theory') patch.content = nodeContent;
         await api.updateItem(nodeDialog.editing.id, patch);
         onToast({ msg: 'Сохранено' });
-      } else if (nodeDialog.type === 'task') {
-        const tests = testsText.split('\n').filter(Boolean).map((line) => {
-          const [input, expected] = line.split('=>');
-          return { input: `${(input || '').trim()}\n`, expected: `${(expected || '').trim()}\n` };
-        });
-        const task = await api.createTask(selected.id, { title: nodeTitle, tests });
-        await api.createItem(selected.id, {
-          type: 'task', title: nodeTitle, problem_revision_id: task.id,
-          parent_id: nodeDialog.parentId, position: siblingCount(nodeDialog.parentId),
-        });
-        onToast({ msg: 'Задача добавлена' });
       } else {
         await api.createItem(selected.id, {
           type: nodeDialog.type,
@@ -351,7 +391,7 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
       </Dialog>
 
       <Dialog
-        open={!!nodeDialog && (nodeDialog.type !== 'task' || !!nodeDialog.editing)}
+        open={!!nodeDialog && nodeDialog.type !== 'task'}
         onClose={() => setNodeDialog(null)} fullWidth
         maxWidth={nodeDialog?.type === 'theory' ? 'md' : 'sm'}
       >
@@ -377,18 +417,63 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={nodeDialog?.type === 'task' && !nodeDialog.editing} onClose={() => setNodeDialog(null)} fullWidth maxWidth="sm">
-        <DialogTitle>Новая задача (Python, stdin/stdout)</DialogTitle>
+      <Dialog open={nodeDialog?.type === 'task'} onClose={() => setNodeDialog(null)} fullWidth maxWidth="md">
+        <DialogTitle>{nodeDialog?.editing ? 'Редактирование задачи' : 'Новая задача (Python, stdin/stdout)'}</DialogTitle>
         <DialogContent>
-          <TextField autoFocus fullWidth label="Название" value={nodeTitle} onChange={(e) => setNodeTitle(e.target.value)} sx={{ mt: 1, mb: 2 }} />
-          <TextField
-            fullWidth multiline rows={5} label="Тесты — по одному на строку: вход=>ожидаемый вывод"
-            value={testsText} onChange={(e) => setTestsText(e.target.value)} helperText="Пример: 2 3=>5"
-          />
+          {taskLoading ? <CircularProgress size={24} sx={{ mt: 2 }} /> : (
+            <>
+              <TextField autoFocus fullWidth label="Название" value={nodeTitle} onChange={(e) => setNodeTitle(e.target.value)} sx={{ mt: 1, mb: 2 }} />
+
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>Условие задачи</Typography>
+              <NotesEditor
+                value={taskStatement}
+                onChange={setTaskStatement}
+                placeholder="Условие задачи — форматирование, изображения (Ctrl+V), видео, ссылки…"
+                onUploadImage={async (file) => (await api.uploadFile(file)).url}
+              />
+
+              <Stack direction="row" spacing={2} sx={{ mt: 2 }}>
+                <TextField fullWidth label="Формат ввода" value={taskInputFormat} onChange={(e) => setTaskInputFormat(e.target.value)} />
+                <TextField fullWidth label="Формат вывода" value={taskOutputFormat} onChange={(e) => setTaskOutputFormat(e.target.value)} />
+              </Stack>
+
+              <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 3, mb: 1 }}>
+                <Typography variant="subtitle2">Тесты</Typography>
+                <Button size="small" onClick={addTestRow}>+ Добавить тест</Button>
+              </Stack>
+              <Stack spacing={1.5}>
+                {taskTests.map((t, i) => (
+                  <Paper key={i} variant="outlined" sx={{ p: 1.5 }}>
+                    <Stack direction="row" spacing={1.5}>
+                      <TextField
+                        fullWidth multiline minRows={2} label={`Вход #${i + 1}`}
+                        value={t.input} onChange={(e) => updateTestRow(i, { input: e.target.value })}
+                      />
+                      <TextField
+                        fullWidth multiline minRows={2} label="Ожидаемый вывод"
+                        value={t.expected} onChange={(e) => updateTestRow(i, { expected: e.target.value })}
+                      />
+                    </Stack>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 0.5 }}>
+                      <FormControlLabel
+                        control={<Checkbox size="small" checked={!t.is_hidden} onChange={(e) => updateTestRow(i, { is_hidden: !e.target.checked })} />}
+                        label={<Typography variant="body2">Виден ученику (пример)</Typography>}
+                      />
+                      <IconButton size="small" onClick={() => removeTestRow(i)} disabled={taskTests.length === 1}>
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    </Stack>
+                  </Paper>
+                ))}
+              </Stack>
+            </>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setNodeDialog(null)}>Отмена</Button>
-          <Button variant="contained" disabled={!nodeTitle.trim()} onClick={saveNode}>Добавить</Button>
+          <Button variant="contained" disabled={!nodeTitle.trim() || taskLoading} onClick={saveNode}>
+            {nodeDialog?.editing ? 'Сохранить' : 'Добавить'}
+          </Button>
         </DialogActions>
       </Dialog>
 

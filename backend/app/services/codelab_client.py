@@ -96,6 +96,14 @@ async def create_task(user, course_id: int, payload: dict) -> dict:
     return await _request("POST", f"/api/lms-admin/courses/{course_id}/tasks", user, json=payload)
 
 
+async def get_task(user, task_id: int) -> dict:
+    return await _request("GET", f"/api/lms-admin/tasks/{task_id}", user)
+
+
+async def update_task(user, task_id: int, payload: dict) -> dict:
+    return await _request("PUT", f"/api/lms-admin/tasks/{task_id}", user, json=payload)
+
+
 async def create_item(user, course_id: int, payload: dict) -> dict:
     return await _request("POST", f"/api/lms-admin/courses/{course_id}/items", user, json=payload)
 

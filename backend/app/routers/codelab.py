@@ -186,6 +186,22 @@ async def admin_create_task(course_id: int, payload: dict, current_user: User = 
         _raise(e)
 
 
+@router.get("/admin/tasks/{task_id}")
+async def admin_get_task(task_id: int, current_user: User = Depends(_manage)):
+    try:
+        return await cl.get_task(current_user, task_id)
+    except CodelabError as e:
+        _raise(e)
+
+
+@router.put("/admin/tasks/{task_id}")
+async def admin_update_task(task_id: int, payload: dict, current_user: User = Depends(_manage)):
+    try:
+        return await cl.update_task(current_user, task_id, payload)
+    except CodelabError as e:
+        _raise(e)
+
+
 @router.post("/admin/courses/{course_id}/items", status_code=status.HTTP_201_CREATED)
 async def admin_create_item(course_id: int, payload: dict, current_user: User = Depends(_manage)):
     try:

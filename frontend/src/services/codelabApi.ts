@@ -72,6 +72,22 @@ export interface CodelabLearningItem {
   children: CodelabLearningItem[];
 }
 
+// Тесты — видимые ученику (примеры) и скрытые (только для проверки).
+export interface CodelabProblemTest {
+  input: string;
+  expected: string;
+  is_hidden: boolean;
+}
+
+export interface CodelabTask {
+  id: number;
+  title: string;
+  statement: string;
+  input_format: string | null;
+  output_format: string | null;
+  tests: CodelabProblemTest[];
+}
+
 export interface CodelabSubmissionReview {
   submission_id: number;
   student_external_ref: string;
@@ -146,8 +162,11 @@ export const codelabStudioApi = {
   listCourses: (): Promise<CodelabCourse[]> => api.get(`${B}/courses`).then((r) => r.data),
   createCourse: (p: { title: string; slug?: string; description?: string }): Promise<CodelabCourse> =>
     api.post(`${B}/courses`, p).then((r) => r.data),
-  createTask: (courseId: number, p: Record<string, unknown>): Promise<{ id: number; title: string }> =>
+  createTask: (courseId: number, p: Record<string, unknown>): Promise<CodelabTask> =>
     api.post(`${B}/courses/${courseId}/tasks`, p).then((r) => r.data),
+  getTask: (taskId: number): Promise<CodelabTask> => api.get(`${B}/tasks/${taskId}`).then((r) => r.data),
+  updateTask: (taskId: number, p: Record<string, unknown>): Promise<CodelabTask> =>
+    api.put(`${B}/tasks/${taskId}`, p).then((r) => r.data),
   createItem: (courseId: number, p: Record<string, unknown>): Promise<CodelabLearningItem> =>
     api.post(`${B}/courses/${courseId}/items`, p).then((r) => r.data),
   updateItem: (itemId: number, p: Record<string, unknown>): Promise<CodelabLearningItem> =>

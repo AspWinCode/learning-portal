@@ -138,6 +138,12 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
   const [nodeTitle, setNodeTitle] = useState('');
   const [nodeContent, setNodeContent] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<CodelabLearningItem | null>(null);
+  const [showArchivedCourses, setShowArchivedCourses] = useState(false);
+  const [courseMenuAnchor, setCourseMenuAnchor] = useState<{ el: HTMLElement; course: CodelabCourse } | null>(null);
+  const [editCourse, setEditCourse] = useState<CodelabCourse | null>(null);
+  const [editCourseTitle, setEditCourseTitle] = useState('');
+  const [editCourseDescription, setEditCourseDescription] = useState('');
+  const [deleteCourseTarget, setDeleteCourseTarget] = useState<CodelabCourse | null>(null);
 
   // Задача: условие (rich-text), формат ввода/вывода, тесты (видимые ученику —
   // примеры, скрытые — только для проверки решения).
@@ -312,6 +318,49 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
     }
   };
 
+  const openEditCourse = (c: CodelabCourse) => {
+    setEditCourse(c);
+    setEditCourseTitle(c.title);
+    setEditCourseDescription(c.description || '');
+  };
+
+  const saveEditCourse = async () => {
+    if (!editCourse) return;
+    try {
+      const updated = await api.updateCourse(editCourse.id, { title: editCourseTitle, description: editCourseDescription });
+      onToast({ msg: 'Курс обновлён' });
+      setEditCourse(null);
+      if (selected?.id === updated.id) setSelected(updated);
+      await loadCourses();
+    } catch (e: any) {
+      onToast({ msg: e.message, err: true });
+    }
+  };
+
+  const toggleArchiveCourse = async (c: CodelabCourse) => {
+    try {
+      const updated = await api.archiveCourse(c.id, !c.is_archived);
+      onToast({ msg: c.is_archived ? 'Курс разархивирован' : 'Курс архивирован' });
+      if (selected?.id === updated.id) setSelected(updated);
+      await loadCourses();
+    } catch (e: any) {
+      onToast({ msg: e.message, err: true });
+    }
+  };
+
+  const confirmDeleteCourse = async () => {
+    if (!deleteCourseTarget) return;
+    try {
+      await api.deleteCourse(deleteCourseTarget.id);
+      onToast({ msg: 'Курс удалён' });
+      if (selected?.id === deleteCourseTarget.id) { setSelected(null); setTree([]); }
+      setDeleteCourseTarget(null);
+      await loadCourses();
+    } catch (e: any) {
+      onToast({ msg: e.message, err: true });
+    }
+  };
+
   const publish = async () => {
     if (!selected) return;
     try {
@@ -341,10 +390,18 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
       <Box>
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
           <Typography variant="subtitle2">Курсы</Typography>
-          <Button size="small" onClick={() => setCreateOpen(true)}>+ Новый</Button>
+          <Stack direction="row" spacing={1} alignItems="center">
+            {courses.some((c) => c.is_archived) && (
+              <FormControlLabel
+                control={<Checkbox size="small" checked={showArchivedCourses} onChange={(e) => setShowArchivedCourses(e.target.checked)} />}
+                label={<Typography variant="body2">Показывать архивные</Typography>}
+              />
+            )}
+            <Button size="small" onClick={() => setCreateOpen(true)}>+ Новый</Button>
+          </Stack>
         </Stack>
         <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
-          {courses.map((c) => (
+          {courses.filter((c) => showArchivedCourses || !c.is_archived).map((c) => (
             <Card
               key={c.id}
               variant="outlined"
@@ -352,12 +409,24 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
                 width: 220,
                 borderColor: selected?.id === c.id ? 'primary.main' : undefined,
                 borderWidth: selected?.id === c.id ? 2 : 1,
+                opacity: c.is_archived ? 0.55 : 1,
+                position: 'relative',
               }}
             >
+              <IconButton
+                size="small"
+                onClick={(e) => setCourseMenuAnchor({ el: e.currentTarget, course: c })}
+                sx={{ position: 'absolute', top: 4, right: 4, zIndex: 1 }}
+              >
+                <MoreVertIcon fontSize="small" />
+              </IconButton>
               <CardActionArea onClick={() => selectCourse(c)} sx={{ height: '100%' }}>
                 <CardContent>
-                  <Typography variant="subtitle1" noWrap title={c.title} sx={{ mb: 1 }}>{c.title}</Typography>
-                  <Chip size="small" label={c.status} color={c.status === 'published' ? 'success' : 'default'} />
+                  <Typography variant="subtitle1" noWrap title={c.title} sx={{ mb: 1, pr: 3 }}>{c.title}</Typography>
+                  <Stack direction="row" spacing={0.5}>
+                    <Chip size="small" label={c.status} color={c.status === 'published' ? 'success' : 'default'} />
+                    {c.is_archived && <Chip size="small" label="в архиве" />}
+                  </Stack>
                 </CardContent>
               </CardActionArea>
             </Card>
@@ -372,6 +441,46 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
           </Card>
         </Stack>
       </Box>
+
+      <Menu anchorEl={courseMenuAnchor?.el} open={!!courseMenuAnchor} onClose={() => setCourseMenuAnchor(null)}>
+        <MenuItem onClick={() => { openEditCourse(courseMenuAnchor!.course); setCourseMenuAnchor(null); }}>Редактировать</MenuItem>
+        <MenuItem onClick={() => { toggleArchiveCourse(courseMenuAnchor!.course); setCourseMenuAnchor(null); }}>
+          {courseMenuAnchor?.course.is_archived ? 'Разархивировать' : 'Архивировать'}
+        </MenuItem>
+        <MenuItem
+          onClick={() => { setDeleteCourseTarget(courseMenuAnchor!.course); setCourseMenuAnchor(null); }}
+          disabled={courseMenuAnchor?.course.status !== 'draft'}
+          sx={{ color: 'error.main' }}
+        >
+          Удалить{courseMenuAnchor && courseMenuAnchor.course.status !== 'draft' ? ' (курс публиковался)' : ''}
+        </MenuItem>
+      </Menu>
+
+      <Dialog open={!!editCourse} onClose={() => setEditCourse(null)} fullWidth maxWidth="sm">
+        <DialogTitle>Редактирование курса</DialogTitle>
+        <DialogContent>
+          <TextField autoFocus fullWidth label="Название" value={editCourseTitle} onChange={(e) => setEditCourseTitle(e.target.value)} sx={{ mt: 1, mb: 2 }} />
+          <TextField fullWidth multiline minRows={3} label="Описание" value={editCourseDescription} onChange={(e) => setEditCourseDescription(e.target.value)} />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditCourse(null)}>Отмена</Button>
+          <Button variant="contained" disabled={!editCourseTitle.trim()} onClick={saveEditCourse}>Сохранить</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={!!deleteCourseTarget} onClose={() => setDeleteCourseTarget(null)}>
+        <DialogTitle>Удалить курс «{deleteCourseTarget?.title}»?</DialogTitle>
+        <DialogContent>
+          <Typography color="text.secondary">
+            Безвозвратно удалятся всё дерево курса, задачи и черновик. Отменить нельзя.
+            Доступно только для курсов, которые ни разу не публиковались — иначе используйте архивацию.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteCourseTarget(null)}>Отмена</Button>
+          <Button color="error" variant="contained" onClick={confirmDeleteCourse}>Удалить</Button>
+        </DialogActions>
+      </Dialog>
 
       <Box sx={{ flex: 1, minWidth: 0 }}>
         {!selected && <Typography color="text.secondary">Выберите курс сверху или создайте новый.</Typography>}

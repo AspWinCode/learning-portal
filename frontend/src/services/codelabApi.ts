@@ -41,6 +41,7 @@ export interface CodelabCourse {
   title: string;
   description: string | null;
   status: string;
+  is_archived: boolean;
 }
 
 // 4 фиксированных структурных уровня — каждый следующий только внутри
@@ -169,6 +170,11 @@ export const codelabStudioApi = {
   listCourses: (): Promise<CodelabCourse[]> => api.get(`${B}/courses`).then((r) => r.data),
   createCourse: (p: { title: string; slug?: string; description?: string }): Promise<CodelabCourse> =>
     api.post(`${B}/courses`, p).then((r) => r.data),
+  updateCourse: (courseId: number, p: { title?: string; slug?: string; description?: string }): Promise<CodelabCourse> =>
+    api.put(`${B}/courses/${courseId}`, p).then((r) => r.data),
+  archiveCourse: (courseId: number, archived: boolean): Promise<CodelabCourse> =>
+    api.put(`${B}/courses/${courseId}/archive`, { archived }).then((r) => r.data),
+  deleteCourse: (courseId: number): Promise<void> => api.delete(`${B}/courses/${courseId}`).then(() => undefined),
   createTask: (courseId: number, p: Record<string, unknown>): Promise<CodelabTask> =>
     api.post(`${B}/courses/${courseId}/tasks`, p).then((r) => r.data),
   getTask: (taskId: number): Promise<CodelabTask> => api.get(`${B}/tasks/${taskId}`).then((r) => r.data),

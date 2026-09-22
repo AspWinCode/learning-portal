@@ -10,7 +10,9 @@ from app.database import get_db
 from app.models import CourseCatalogItem, CourseCatalogItemKind, Group, GroupStudent, Student, StudentStatus, User, UserRole
 from app.routers.action_log import log_action
 from app.schemas.codelab import (
+    CodelabCourseArchiveIn,
     CodelabCourseCreate,
+    CodelabCourseUpdate,
     CodelabCourseWebhook,
     CodelabGradeIn,
     CodelabStudentProgress,
@@ -176,6 +178,44 @@ async def admin_create_course(
         return
     log_action(db, current_user.id, "create", "codelab_course", course.get("id"), {"title": course.get("title")})
     return course
+
+
+@router.put("/admin/courses/{course_id}")
+async def admin_update_course(
+    course_id: int, payload: CodelabCourseUpdate,
+    current_user: User = Depends(_manage), db: Session = Depends(get_db),
+):
+    try:
+        course = await cl.update_course(current_user, course_id, payload.model_dump(exclude_unset=True))
+    except CodelabError as e:
+        _raise(e)
+        return
+    log_action(db, current_user.id, "update", "codelab_course", course_id, {})
+    return course
+
+
+@router.put("/admin/courses/{course_id}/archive")
+async def admin_archive_course(
+    course_id: int, payload: CodelabCourseArchiveIn,
+    current_user: User = Depends(_manage), db: Session = Depends(get_db),
+):
+    try:
+        course = await cl.archive_course(current_user, course_id, payload.archived)
+    except CodelabError as e:
+        _raise(e)
+        return
+    log_action(db, current_user.id, "archive" if payload.archived else "unarchive", "codelab_course", course_id, {})
+    return course
+
+
+@router.delete("/admin/courses/{course_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def admin_delete_course(course_id: int, current_user: User = Depends(_manage), db: Session = Depends(get_db)):
+    try:
+        await cl.delete_course(current_user, course_id)
+    except CodelabError as e:
+        _raise(e)
+        return
+    log_action(db, current_user.id, "delete", "codelab_course", course_id, {})
 
 
 @router.post("/admin/courses/{course_id}/tasks", status_code=status.HTTP_201_CREATED)

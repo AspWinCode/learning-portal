@@ -92,6 +92,18 @@ async def create_course(user, payload: dict) -> dict:
     return await _request("POST", "/api/lms-admin/courses", user, json=payload)
 
 
+async def update_course(user, course_id: int, payload: dict) -> dict:
+    return await _request("PUT", f"/api/lms-admin/courses/{course_id}", user, json=payload)
+
+
+async def archive_course(user, course_id: int, archived: bool) -> dict:
+    return await _request("PUT", f"/api/lms-admin/courses/{course_id}/archive", user, json={"archived": archived})
+
+
+async def delete_course(user, course_id: int) -> None:
+    await _request("DELETE", f"/api/lms-admin/courses/{course_id}", user)
+
+
 async def create_task(user, course_id: int, payload: dict) -> dict:
     return await _request("POST", f"/api/lms-admin/courses/{course_id}/tasks", user, json=payload)
 

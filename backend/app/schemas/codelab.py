@@ -61,6 +61,16 @@ class CodelabCourseCreate(BaseModel):
     description: Optional[str] = None
 
 
+class CodelabCourseUpdate(BaseModel):
+    title: Optional[str] = None
+    slug: Optional[str] = None
+    description: Optional[str] = None
+
+
+class CodelabCourseArchiveIn(BaseModel):
+    archived: bool
+
+
 class CodelabGradeIn(BaseModel):
     score: float
     comment: str

@@ -107,7 +107,7 @@ const StudentPortalCabinetPage: React.FC = () => {
 
   if (loading) {
     return (
-      <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', gap: 2, bgcolor: '#0F0A1E' }}>
+      <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', gap: 2, bgcolor: '#211B3B' }}>
         <Box sx={{ width: 48, height: 48, borderRadius: '50%', background: 'linear-gradient(135deg,#7F23CC,#AB67E5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <SchoolIcon sx={{ color: '#fff', fontSize: 24 }} />
         </Box>
@@ -133,37 +133,37 @@ const StudentPortalCabinetPage: React.FC = () => {
   return (
     <Box sx={{
       minHeight: '100vh',
-      bgcolor: '#0F0A1E',
-      backgroundImage: 'radial-gradient(ellipse 60% 50% at 80% -10%, rgba(127,35,204,0.35) 0%, transparent 70%), radial-gradient(ellipse 50% 40% at -10% 80%, rgba(171,103,229,0.2) 0%, transparent 70%)',
+      bgcolor: '#211B3B',
+      backgroundImage: 'radial-gradient(ellipse 60% 50% at 80% -10%, rgba(127,35,204,0.3) 0%, transparent 70%), radial-gradient(ellipse 50% 40% at -10% 80%, rgba(171,103,229,0.16) 0%, transparent 70%)',
       fontFamily: '"Nunito", "Rubik", sans-serif',
     }}>
 
       {/* ── Hero ──────────────────────────────────────────────────────────── */}
       <Box sx={{
-        px: { xs: 2.5, sm: 4, md: 6 },
-        pt: { xs: 3, sm: 4 },
-        pb: { xs: 3, sm: 4 },
+        px: { xs: 2, sm: 3, md: 4 },
+        pt: { xs: 2, sm: 2.5 },
+        pb: { xs: 2, sm: 2.5 },
         position: 'relative',
         overflow: 'hidden',
       }}>
         {/* Decorative blobs */}
-        <Box sx={{ position: 'absolute', top: -60, right: -40, width: 280, height: 280, borderRadius: '50%', background: 'radial-gradient(circle, rgba(127,35,204,0.25) 0%, transparent 70%)', pointerEvents: 'none' }} />
-        <Box sx={{ position: 'absolute', bottom: -40, left: '30%', width: 200, height: 200, borderRadius: '50%', background: 'radial-gradient(circle, rgba(171,103,229,0.15) 0%, transparent 70%)', pointerEvents: 'none' }} />
+        <Box sx={{ position: 'absolute', top: -60, right: -40, width: 280, height: 280, borderRadius: '50%', background: 'radial-gradient(circle, rgba(127,35,204,0.2) 0%, transparent 70%)', pointerEvents: 'none' }} />
+        <Box sx={{ position: 'absolute', bottom: -40, left: '30%', width: 200, height: 200, borderRadius: '50%', background: 'radial-gradient(circle, rgba(171,103,229,0.12) 0%, transparent 70%)', pointerEvents: 'none' }} />
 
         <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ position: 'relative', zIndex: 1 }}>
           {/* Avatar + greeting */}
-          <Stack direction={{ xs: 'column', sm: 'row' }} gap={{ xs: 2, sm: 3 }} alignItems={{ xs: 'flex-start', sm: 'center' }}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} gap={{ xs: 1.5, sm: 2 }} alignItems={{ xs: 'flex-start', sm: 'center' }}>
             {/* Avatar */}
             <Box sx={{
-              width: { xs: 64, sm: 80 },
-              height: { xs: 64, sm: 80 },
-              borderRadius: '20px',
+              width: { xs: 48, sm: 56 },
+              height: { xs: 48, sm: 56 },
+              borderRadius: '16px',
               background: 'linear-gradient(135deg, #7F23CC 0%, #AB67E5 100%)',
-              boxShadow: '0 8px 32px rgba(127,35,204,0.5)',
+              boxShadow: '0 6px 20px rgba(127,35,204,0.45)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontSize: { xs: 24, sm: 32 },
+              fontSize: { xs: 18, sm: 22 },
               fontWeight: 900,
               color: '#fff',
               flexShrink: 0,
@@ -173,7 +173,7 @@ const StudentPortalCabinetPage: React.FC = () => {
             </Box>
             <Box>
               <Typography sx={{
-                fontSize: { xs: '1.6rem', sm: '2.2rem' },
+                fontSize: { xs: '1.2rem', sm: '1.5rem' },
                 fontWeight: 900,
                 color: '#fff',
                 lineHeight: 1.15,
@@ -181,7 +181,7 @@ const StudentPortalCabinetPage: React.FC = () => {
               }}>
                 Привет, {firstName}! 👋
               </Typography>
-              <Typography sx={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.95rem', mt: 0.5 }}>
+              <Typography sx={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.82rem', mt: 0.25 }}>
                 {abonement ? abonement.name : 'Личный кабинет ученика'}
               </Typography>
             </Box>
@@ -212,33 +212,33 @@ const StudentPortalCabinetPage: React.FC = () => {
         <Box sx={{
           display: 'grid',
           gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(4, 1fr)' },
-          gap: 1.5,
-          mt: 3,
+          gap: 1,
+          mt: 2,
           position: 'relative',
           zIndex: 1,
         }}>
           {[
-            { icon: <SchoolIcon sx={{ fontSize: 20, color: '#AB67E5' }} />, label: 'Курсов', value: courses.length },
-            { icon: <TaskAltIcon sx={{ fontSize: 20, color: '#22C55E' }} />, label: 'Задач решено', value: solvedTasks },
-            { icon: <EmojiEventsIcon sx={{ fontSize: 20, color: '#F59E0B' }} />, label: 'Значков', value: totalBadges },
-            { icon: <StarIcon sx={{ fontSize: 20, color: '#60A5FA' }} />, label: 'Прогресс', value: `${overallPct}%` },
+            { icon: <SchoolIcon sx={{ fontSize: 16, color: '#AB67E5' }} />, label: 'Курсов', value: courses.length },
+            { icon: <TaskAltIcon sx={{ fontSize: 16, color: '#22C55E' }} />, label: 'Задач решено', value: solvedTasks },
+            { icon: <EmojiEventsIcon sx={{ fontSize: 16, color: '#F59E0B' }} />, label: 'Значков', value: totalBadges },
+            { icon: <StarIcon sx={{ fontSize: 16, color: '#60A5FA' }} />, label: 'Прогресс', value: `${overallPct}%` },
           ].map(stat => (
             <Box key={stat.label} sx={{
               bgcolor: 'rgba(255,255,255,0.05)',
               border: '1px solid rgba(255,255,255,0.08)',
-              borderRadius: '14px',
-              p: { xs: 1.5, sm: 2 },
+              borderRadius: '12px',
+              p: { xs: 1, sm: 1.25 },
               backdropFilter: 'blur(8px)',
               transition: 'all 0.2s',
               '&:hover': { bgcolor: 'rgba(255,255,255,0.08)', borderColor: 'rgba(255,255,255,0.14)' },
             }}>
-              <Stack direction="row" alignItems="center" gap={1} sx={{ mb: 0.5 }}>
+              <Stack direction="row" alignItems="center" gap={0.75} sx={{ mb: 0.25 }}>
                 {stat.icon}
-                <Typography sx={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                <Typography sx={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.68rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>
                   {stat.label}
                 </Typography>
               </Stack>
-              <Typography sx={{ color: '#fff', fontSize: { xs: '1.5rem', sm: '1.8rem' }, fontWeight: 900, lineHeight: 1 }}>
+              <Typography sx={{ color: '#fff', fontSize: { xs: '1.1rem', sm: '1.3rem' }, fontWeight: 900, lineHeight: 1 }}>
                 {stat.value}
               </Typography>
             </Box>
@@ -247,30 +247,30 @@ const StudentPortalCabinetPage: React.FC = () => {
       </Box>
 
       {/* ── Content ───────────────────────────────────────────────────────── */}
-      <Box sx={{ px: { xs: 2.5, sm: 4, md: 6 }, pb: 6 }}>
-        {error && <Alert severity="error" sx={{ mb: 2.5, borderRadius: 2 }} onClose={() => setError(null)}>{error}</Alert>}
+      <Box sx={{ px: { xs: 2, sm: 3, md: 4 }, pb: 4 }}>
+        {error && <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }} onClose={() => setError(null)}>{error}</Alert>}
 
         <Box sx={{
           display: 'grid',
-          gridTemplateColumns: { xs: '1fr', lg: '1fr 360px' },
-          gap: 2.5,
+          gridTemplateColumns: { xs: '1fr', lg: '1fr 320px' },
+          gap: 2,
           alignItems: 'start',
         }}>
           {/* ── Left column ──────────────────────────────────────────────── */}
-          <Stack gap={2.5}>
+          <Stack gap={2}>
 
             {/* Schedule */}
             <Box>
-              <Typography sx={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.7rem', fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase', mb: 1.5 }}>
+              <Typography sx={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.68rem', fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', mb: 1 }}>
                 📅 Расписание занятий
               </Typography>
               {scheduleDates.length === 0 ? (
                 <EmptyCard>
-                  <CalendarTodayIcon sx={{ fontSize: 32, color: 'rgba(255,255,255,0.15)', mb: 1 }} />
-                  <Typography sx={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.9rem' }}>Ближайших занятий нет</Typography>
+                  <CalendarTodayIcon sx={{ fontSize: 28, color: 'rgba(255,255,255,0.15)', mb: 1 }} />
+                  <Typography sx={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.85rem' }}>Ближайших занятий нет</Typography>
                 </EmptyCard>
               ) : (
-                <Stack gap={1.5}>
+                <Stack gap={1}>
                   {scheduleDates.map((dateStr) => {
                     const isToday = formatDate(dateStr) === 'Сегодня';
                     const isTomorrow = formatDate(dateStr) === 'Завтра';
@@ -278,57 +278,57 @@ const StudentPortalCabinetPage: React.FC = () => {
                       <Box key={dateStr} sx={{
                         bgcolor: 'rgba(255,255,255,0.04)',
                         border: `1px solid ${isToday ? 'rgba(127,35,204,0.5)' : 'rgba(255,255,255,0.07)'}`,
-                        borderRadius: '16px',
+                        borderRadius: '14px',
                         overflow: 'hidden',
-                        boxShadow: isToday ? '0 0 0 1px rgba(127,35,204,0.2), 0 8px 24px rgba(127,35,204,0.12)' : 'none',
+                        boxShadow: isToday ? '0 0 0 1px rgba(127,35,204,0.2), 0 6px 18px rgba(127,35,204,0.1)' : 'none',
                       }}>
                         {/* Date header */}
                         <Box sx={{
-                          px: 2.5, py: 1.5,
+                          px: 1.75, py: 1,
                           borderBottom: '1px solid rgba(255,255,255,0.06)',
                           background: isToday ? 'linear-gradient(90deg, rgba(127,35,204,0.2) 0%, transparent 100%)' : 'transparent',
-                          display: 'flex', alignItems: 'center', gap: 1.5,
+                          display: 'flex', alignItems: 'center', gap: 1,
                         }}>
                           <Box sx={{
-                            width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+                            width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
                             bgcolor: isToday ? '#AB67E5' : isTomorrow ? '#60A5FA' : 'rgba(255,255,255,0.2)',
                             boxShadow: isToday ? '0 0 8px #AB67E5' : 'none',
                           }} />
                           <Typography sx={{
                             color: isToday ? '#AB67E5' : 'rgba(255,255,255,0.7)',
                             fontWeight: 700,
-                            fontSize: '0.85rem',
+                            fontSize: '0.78rem',
                             letterSpacing: 0.3,
                           }}>
                             {formatDate(dateStr)}
                           </Typography>
                           {isToday && (
                             <Box sx={{ ml: 'auto', bgcolor: 'rgba(127,35,204,0.3)', border: '1px solid rgba(171,103,229,0.4)', borderRadius: 2, px: 1, py: 0.25 }}>
-                              <Typography sx={{ color: '#AB67E5', fontSize: '0.65rem', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>сегодня</Typography>
+                              <Typography sx={{ color: '#AB67E5', fontSize: '0.62rem', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>сегодня</Typography>
                             </Box>
                           )}
                         </Box>
                         {/* Lessons */}
                         {scheduleByDate[dateStr].map((lesson, li) => (
                           <Box key={li} sx={{
-                            px: 2.5, py: 1.5,
-                            display: 'flex', alignItems: 'center', gap: 2,
+                            px: 1.75, py: 1,
+                            display: 'flex', alignItems: 'center', gap: 1.5,
                             borderBottom: li < scheduleByDate[dateStr].length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
                           }}>
                             <Box sx={{
-                              display: 'flex', alignItems: 'center', gap: 0.75,
-                              minWidth: 90, flexShrink: 0,
+                              display: 'flex', alignItems: 'center', gap: 0.5,
+                              minWidth: 80, flexShrink: 0,
                             }}>
-                              <AccessTimeIcon sx={{ fontSize: 13, color: 'rgba(255,255,255,0.3)' }} />
-                              <Typography sx={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem', fontFamily: 'monospace' }}>
+                              <AccessTimeIcon sx={{ fontSize: 12, color: 'rgba(255,255,255,0.3)' }} />
+                              <Typography sx={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem', fontFamily: 'monospace' }}>
                                 {formatTime(lesson.start_time)}{lesson.end_time ? `–${formatTime(lesson.end_time)}` : ''}
                               </Typography>
                             </Box>
-                            <Typography sx={{ color: 'rgba(255,255,255,0.85)', fontSize: '0.9rem', fontWeight: 600, flexGrow: 1 }}>
+                            <Typography sx={{ color: 'rgba(255,255,255,0.85)', fontSize: '0.85rem', fontWeight: 600, flexGrow: 1 }}>
                               {lesson.group_name ?? 'Доп. занятие'}
                             </Typography>
                             {lesson.trainer_name && (
-                              <Typography sx={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.78rem', flexShrink: 0 }}>
+                              <Typography sx={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.74rem', flexShrink: 0 }}>
                                 {lesson.trainer_name}
                               </Typography>
                             )}
@@ -369,17 +369,17 @@ const StudentPortalCabinetPage: React.FC = () => {
 
             {/* Courses */}
             <Box>
-              <Typography sx={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.7rem', fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase', mb: 1.5 }}>
+              <Typography sx={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.68rem', fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', mb: 1 }}>
                 🚀 Мои курсы
               </Typography>
               {courses.length === 0 ? (
                 <EmptyCard>
-                  <SchoolIcon sx={{ fontSize: 32, color: 'rgba(255,255,255,0.15)', mb: 1 }} />
-                  <Typography sx={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.9rem' }}>Пока нет доступных курсов</Typography>
-                  <Typography sx={{ color: 'rgba(255,255,255,0.2)', fontSize: '0.8rem', mt: 0.5 }}>Обратитесь к тренеру</Typography>
+                  <SchoolIcon sx={{ fontSize: 28, color: 'rgba(255,255,255,0.15)', mb: 1 }} />
+                  <Typography sx={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.85rem' }}>Пока нет доступных курсов</Typography>
+                  <Typography sx={{ color: 'rgba(255,255,255,0.2)', fontSize: '0.78rem', mt: 0.5 }}>Обратитесь к тренеру</Typography>
                 </EmptyCard>
               ) : (
-                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(auto-fill, minmax(300px, 1fr))' }, gap: 2 }}>
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(auto-fill, minmax(260px, 1fr))' }, gap: 1.5 }}>
                   {courses.map((course) => {
                     const p = course.progress;
                     const pct = p && p.cases_total > 0 ? Math.round((p.cases_solved / p.cases_total) * 100) : 0;
@@ -387,35 +387,35 @@ const StudentPortalCabinetPage: React.FC = () => {
                       <Box key={course.id} sx={{
                         bgcolor: 'rgba(255,255,255,0.04)',
                         border: '1px solid rgba(255,255,255,0.08)',
-                        borderRadius: '20px',
+                        borderRadius: '16px',
                         overflow: 'hidden',
                         display: 'flex',
                         flexDirection: 'column',
                         transition: 'all 0.25s',
-                        '&:hover': { border: '1px solid rgba(127,35,204,0.4)', boxShadow: '0 8px 32px rgba(127,35,204,0.2)', transform: 'translateY(-2px)' },
+                        '&:hover': { border: '1px solid rgba(127,35,204,0.4)', boxShadow: '0 6px 24px rgba(127,35,204,0.18)', transform: 'translateY(-2px)' },
                       }}>
                         {course.cover_image_url ? (
-                          <Box sx={{ position: 'relative', height: 160, overflow: 'hidden' }}>
+                          <Box sx={{ position: 'relative', height: 120, overflow: 'hidden' }}>
                             <Box
                               component="img"
                               src={course.cover_image_url}
                               alt={course.name}
                               sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                             />
-                            <Box sx={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, transparent 40%, rgba(15,10,30,0.85) 100%)' }} />
-                            <Typography sx={{ position: 'absolute', bottom: 12, left: 16, right: 16, color: '#fff', fontWeight: 800, fontSize: '1.1rem', lineHeight: 1.2 }}>
+                            <Box sx={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, transparent 40%, rgba(33,27,59,0.85) 100%)' }} />
+                            <Typography sx={{ position: 'absolute', bottom: 10, left: 14, right: 14, color: '#fff', fontWeight: 800, fontSize: '1rem', lineHeight: 1.2 }}>
                               {course.name}
                             </Typography>
                           </Box>
                         ) : (
-                          <Box sx={{ height: 80, background: 'linear-gradient(135deg, rgba(127,35,204,0.3) 0%, rgba(171,103,229,0.1) 100%)', display: 'flex', alignItems: 'center', px: 2.5 }}>
-                            <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: '1.15rem' }}>{course.name}</Typography>
+                          <Box sx={{ height: 64, background: 'linear-gradient(135deg, rgba(127,35,204,0.3) 0%, rgba(171,103,229,0.1) 100%)', display: 'flex', alignItems: 'center', px: 2 }}>
+                            <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: '1.05rem' }}>{course.name}</Typography>
                           </Box>
                         )}
 
-                        <Box sx={{ p: 2.5, flexGrow: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <Box sx={{ p: 1.75, flexGrow: 1, display: 'flex', flexDirection: 'column', gap: 1.25 }}>
                           {course.description && !course.cover_image_url && (
-                            <Typography sx={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.85rem', lineHeight: 1.5 }}>
+                            <Typography sx={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.8rem', lineHeight: 1.4 }}>
                               {course.description}
                             </Typography>
                           )}
@@ -423,13 +423,13 @@ const StudentPortalCabinetPage: React.FC = () => {
                           {p && (
                             <Box>
                               {/* Progress bar */}
-                              <Stack direction="row" justifyContent="space-between" sx={{ mb: 1 }}>
-                                <Typography sx={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>Прогресс</Typography>
-                                <Typography sx={{ color: pct >= 80 ? '#22C55E' : pct >= 40 ? '#AB67E5' : 'rgba(255,255,255,0.5)', fontSize: '0.8rem', fontWeight: 700 }}>
+                              <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.75 }}>
+                                <Typography sx={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.68rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>Прогресс</Typography>
+                                <Typography sx={{ color: pct >= 80 ? '#22C55E' : pct >= 40 ? '#AB67E5' : 'rgba(255,255,255,0.5)', fontSize: '0.76rem', fontWeight: 700 }}>
                                   {p.cases_solved}/{p.cases_total} задач · {pct}%
                                 </Typography>
                               </Stack>
-                              <Box sx={{ height: 6, borderRadius: 999, bgcolor: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+                              <Box sx={{ height: 5, borderRadius: 999, bgcolor: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
                                 <Box sx={{
                                   height: '100%',
                                   width: `${pct}%`,
@@ -443,17 +443,17 @@ const StudentPortalCabinetPage: React.FC = () => {
                               </Box>
 
                               {/* Badges/rank */}
-                              <Stack direction="row" gap={1} flexWrap="wrap" sx={{ mt: 1.5 }}>
+                              <Stack direction="row" gap={0.75} flexWrap="wrap" sx={{ mt: 1 }}>
                                 {p.rank_name && (
-                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, bgcolor: 'rgba(127,35,204,0.2)', border: '1px solid rgba(171,103,229,0.3)', borderRadius: 2, px: 1, py: 0.4 }}>
-                                    <MilitaryTechIcon sx={{ fontSize: 13, color: '#AB67E5' }} />
-                                    <Typography sx={{ color: '#AB67E5', fontSize: '0.75rem', fontWeight: 700 }}>{p.rank_name}</Typography>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, bgcolor: 'rgba(127,35,204,0.2)', border: '1px solid rgba(171,103,229,0.3)', borderRadius: 2, px: 0.9, py: 0.3 }}>
+                                    <MilitaryTechIcon sx={{ fontSize: 12, color: '#AB67E5' }} />
+                                    <Typography sx={{ color: '#AB67E5', fontSize: '0.72rem', fontWeight: 700 }}>{p.rank_name}</Typography>
                                   </Box>
                                 )}
                                 {p.badges_count > 0 && (
-                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, bgcolor: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 2, px: 1, py: 0.4 }}>
-                                    <EmojiEventsIcon sx={{ fontSize: 13, color: '#F59E0B' }} />
-                                    <Typography sx={{ color: '#F59E0B', fontSize: '0.75rem', fontWeight: 700 }}>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, bgcolor: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 2, px: 0.9, py: 0.3 }}>
+                                    <EmojiEventsIcon sx={{ fontSize: 12, color: '#F59E0B' }} />
+                                    <Typography sx={{ color: '#F59E0B', fontSize: '0.72rem', fontWeight: 700 }}>
                                       {p.last_badge_name ?? `${p.badges_count} значк${p.badges_count === 1 ? '' : p.badges_count < 5 ? 'а' : 'ов'}`}
                                     </Typography>
                                   </Box>
@@ -470,10 +470,10 @@ const StudentPortalCabinetPage: React.FC = () => {
                             sx={{
                               mt: 'auto',
                               background: 'linear-gradient(135deg, #7F23CC, #AB67E5)',
-                              borderRadius: '12px',
-                              py: 1.25,
+                              borderRadius: '10px',
+                              py: 0.9,
                               fontWeight: 800,
-                              fontSize: '0.9rem',
+                              fontSize: '0.85rem',
                               letterSpacing: 0.3,
                               boxShadow: '0 4px 16px rgba(127,35,204,0.4)',
                               '&:hover': { boxShadow: '0 6px 24px rgba(127,35,204,0.6)', transform: 'translateY(-1px)' },
@@ -493,16 +493,16 @@ const StudentPortalCabinetPage: React.FC = () => {
 
           {/* ── Right column: Grades ──────────────────────────────────────── */}
           <Box>
-            <Typography sx={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.7rem', fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase', mb: 1.5 }}>
+            <Typography sx={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.68rem', fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', mb: 1 }}>
               ⭐ Последние оценки
             </Typography>
             {grades.length === 0 ? (
               <EmptyCard>
-                <StarIcon sx={{ fontSize: 32, color: 'rgba(255,255,255,0.15)', mb: 1 }} />
-                <Typography sx={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.9rem' }}>Оценок пока нет</Typography>
+                <StarIcon sx={{ fontSize: 28, color: 'rgba(255,255,255,0.15)', mb: 1 }} />
+                <Typography sx={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.85rem' }}>Оценок пока нет</Typography>
               </EmptyCard>
             ) : (
-              <Stack gap={1}>
+              <Stack gap={0.75}>
                 {grades.map((g) => {
                   const c = gradeColor(g.grade);
                   const d = new Date(g.date);
@@ -511,25 +511,25 @@ const StudentPortalCabinetPage: React.FC = () => {
                     <Box key={g.id} sx={{
                       bgcolor: 'rgba(255,255,255,0.04)',
                       border: '1px solid rgba(255,255,255,0.07)',
-                      borderRadius: '14px',
-                      p: 2,
+                      borderRadius: '12px',
+                      p: 1.5,
                       display: 'flex',
-                      gap: 2,
+                      gap: 1.5,
                       alignItems: 'flex-start',
                       transition: 'all 0.2s',
                       '&:hover': { bgcolor: 'rgba(255,255,255,0.07)', borderColor: 'rgba(255,255,255,0.12)' },
                     }}>
                       {/* Grade badge */}
                       <Box sx={{
-                        width: 44,
-                        height: 44,
-                        borderRadius: '12px',
+                        width: 36,
+                        height: 36,
+                        borderRadius: '10px',
                         bgcolor: c.bg,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         fontWeight: 900,
-                        fontSize: '1.2rem',
+                        fontSize: '1.05rem',
                         color: c.text,
                         flexShrink: 0,
                         boxShadow: `0 4px 12px ${c.bg}60`,
@@ -538,22 +538,22 @@ const StudentPortalCabinetPage: React.FC = () => {
                       </Box>
 
                       <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-                        <Typography sx={{ color: 'rgba(255,255,255,0.85)', fontSize: '0.88rem', fontWeight: 600, lineHeight: 1.3, mb: 0.25 }}>
+                        <Typography sx={{ color: 'rgba(255,255,255,0.85)', fontSize: '0.83rem', fontWeight: 600, lineHeight: 1.3, mb: 0.2 }}>
                           {g.topic_name}
                         </Typography>
-                        <Typography sx={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.75rem' }}>
+                        <Typography sx={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.72rem' }}>
                           {g.module_name}
                         </Typography>
                         {g.comment && (
-                          <Typography sx={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.78rem', mt: 0.75, fontStyle: 'italic' }}>
+                          <Typography sx={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.75rem', mt: 0.6, fontStyle: 'italic' }}>
                             «{g.comment}»
                           </Typography>
                         )}
                       </Box>
 
                       <Box sx={{ textAlign: 'right', flexShrink: 0 }}>
-                        <Typography sx={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.73rem' }}>{dateStr}</Typography>
-                        <Typography sx={{ color: 'rgba(255,255,255,0.2)', fontSize: '0.7rem', mt: 0.25 }}>{g.trainer_name}</Typography>
+                        <Typography sx={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.7rem' }}>{dateStr}</Typography>
+                        <Typography sx={{ color: 'rgba(255,255,255,0.2)', fontSize: '0.68rem', mt: 0.2 }}>{g.trainer_name}</Typography>
                       </Box>
                     </Box>
                   );
@@ -566,7 +566,7 @@ const StudentPortalCabinetPage: React.FC = () => {
 
       {/* ── Change password dialog ────────────────────────────────────────── */}
       <Dialog open={pwOpen} onClose={handlePwClose} maxWidth="xs" fullWidth
-        PaperProps={{ sx: { bgcolor: '#1A1130', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 3, backgroundImage: 'none' } }}
+        PaperProps={{ sx: { bgcolor: '#2A2348', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 3, backgroundImage: 'none' } }}
       >
         <DialogTitle sx={{ color: '#fff', fontWeight: 800 }}>Сменить пароль</DialogTitle>
         <DialogContent>
@@ -625,8 +625,8 @@ const EmptyCard: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <Box sx={{
     bgcolor: 'rgba(255,255,255,0.03)',
     border: '1px solid rgba(255,255,255,0.06)',
-    borderRadius: '16px',
-    p: 4,
+    borderRadius: '14px',
+    p: 2.5,
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',

@@ -1394,14 +1394,31 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
                     <Box>
                       <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>Вход в кабинет</Typography>
                       {portalView?.credential ? (
-                        <Stack direction="row" spacing={1} alignItems="center">
-                          <Chip label={`Логин: ${portalView.credential.login}`} />
-                          <Chip
-                            size="small"
-                            label={portalView.credential.is_active ? 'Активен' : 'Отключён'}
-                            color={portalView.credential.is_active ? 'success' : 'default'}
-                          />
-                          <Button size="small" variant="text" onClick={openEditCredential}>Изменить</Button>
+                        <Stack spacing={1}>
+                          <Stack direction="row" spacing={1} alignItems="center">
+                            <Chip label={`Логин: ${portalView.credential.login}`} />
+                            <Chip
+                              size="small"
+                              label={portalView.credential.is_active ? 'Активен' : 'Отключён'}
+                              color={portalView.credential.is_active ? 'success' : 'default'}
+                            />
+                            <Button size="small" variant="text" onClick={openEditCredential}>Изменить</Button>
+                          </Stack>
+                          <Stack direction="row" spacing={1} alignItems="center">
+                            <TextField
+                              size="small"
+                              fullWidth
+                              value={`${window.location.origin}/student-portal/login`}
+                              InputProps={{ readOnly: true }}
+                              sx={{ fontFamily: 'monospace', fontSize: '0.85rem', maxWidth: 360 }}
+                            />
+                            <Button
+                              size="small"
+                              onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/student-portal/login`); }}
+                            >
+                              Копировать ссылку
+                            </Button>
+                          </Stack>
                         </Stack>
                       ) : (
                         <Stack direction="row" spacing={1} alignItems="center">

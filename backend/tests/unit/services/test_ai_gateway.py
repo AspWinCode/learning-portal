@@ -156,6 +156,38 @@ async def test_generate_image_surfaces_real_provider_error(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_generate_image_omits_size_by_default(monkeypatch):
+    # некоторые провайдеры (напр. Qwen через AI Tunnel) не понимают
+    # OpenAI-style "size" и отвечают 400 — не шлём его без явного запроса.
+    monkeypatch.setenv("AI_TUNNEL_BASE_URL", "https://tunnel.example/v1")
+    monkeypatch.setenv("AI_TUNNEL_API_KEY", "k")
+    monkeypatch.setenv("AI_TUNNEL_MODEL_IMAGE", "qwen-image-3")
+    _FakeAsyncClient.payload = {"data": [{"b64_json": "abc"}]}
+    monkeypatch.setattr(httpx, "AsyncClient", _FakeAsyncClient)
+
+    result = await ai_gateway.generate_image(feature="unit", prompt="картинка")
+
+    assert result.ok is True
+    _, kwargs = _FakeAsyncClient.calls[0]
+    assert "size" not in kwargs["json"]
+
+
+@pytest.mark.asyncio
+async def test_generate_image_includes_size_when_requested(monkeypatch):
+    monkeypatch.setenv("AI_TUNNEL_BASE_URL", "https://tunnel.example/v1")
+    monkeypatch.setenv("AI_TUNNEL_API_KEY", "k")
+    monkeypatch.setenv("AI_TUNNEL_MODEL_IMAGE", "gpt-image-1-mini")
+    _FakeAsyncClient.payload = {"data": [{"b64_json": "abc"}]}
+    monkeypatch.setattr(httpx, "AsyncClient", _FakeAsyncClient)
+
+    result = await ai_gateway.generate_image(feature="unit", prompt="картинка", size="1024x1024")
+
+    assert result.ok is True
+    _, kwargs = _FakeAsyncClient.calls[0]
+    assert kwargs["json"]["size"] == "1024x1024"
+
+
+@pytest.mark.asyncio
 async def test_embed_surfaces_real_provider_error(monkeypatch):
     monkeypatch.setenv("AI_TUNNEL_BASE_URL", "https://tunnel.example/v1")
     monkeypatch.setenv("AI_TUNNEL_API_KEY", "k")

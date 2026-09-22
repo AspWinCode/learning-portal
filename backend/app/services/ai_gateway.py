@@ -451,18 +451,24 @@ async def generate_image(
     *,
     feature: str,
     prompt: str,
-    size: str = "1024x1024",
+    size: Optional[str] = None,
     user_id: Optional[int] = None,
     timeout: float = 90.0,
 ) -> GatewayResult:
-    """Генерация изображения. data = список {url|b64_json} из ответа провайдера."""
+    """Генерация изображения. data = список {url|b64_json} из ответа провайдера.
+
+    ``size`` не OpenAI-совместим у всех моделей (напр. Qwen использует
+    RESOLUTION/ASPECT_RATIO и может вернуть 400 на незнакомый параметр) —
+    поэтому передаём его в payload, только если вызывающий код явно попросил."""
     last_error: Optional[str] = None
     for name in _provider_order():
         cfg = _openai_config(name, "image")
         if not cfg:
             continue
         headers = {"Authorization": f"Bearer {cfg['api_key']}", "Content-Type": "application/json"}
-        payload = {"model": cfg["model"], "prompt": prompt, "size": size, "n": 1}
+        payload = {"model": cfg["model"], "prompt": prompt, "n": 1}
+        if size:
+            payload["size"] = size
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.post(f"{cfg['base_url']}/images/generations", headers=headers, json=payload)

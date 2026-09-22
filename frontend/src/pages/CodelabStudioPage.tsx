@@ -50,13 +50,19 @@ function TreeItemRow({ item, depth, onAddChild, onEdit, onArchive, onDelete }: {
   return (
     <Box sx={{ borderBottom: '1px solid', borderColor: 'divider', '&:last-child': { borderBottom: 0 } }}>
       <Stack direction="row" alignItems="center" spacing={1} sx={{ pl: 1.5 + depth * 3, pr: 1, py: 1, opacity: item.is_archived ? 0.5 : 1 }}>
-        <Chip
-          size="small"
-          label={isStructural ? CODELAB_STRUCTURAL_LABEL[item.type as CodelabStructuralType] : (CONTENT_TYPE_LABEL[item.type] || item.type)}
-          color={isStructural ? 'primary' : 'default'}
-          variant={isStructural ? 'filled' : 'outlined'}
-        />
-        <Typography sx={{ flex: 1 }}>{item.title}</Typography>
+        <Stack
+          direction="row" alignItems="center" spacing={1}
+          onClick={() => onEdit(item)}
+          sx={{ flex: 1, minWidth: 0, cursor: 'pointer', '&:hover .tree-item-title': { textDecoration: 'underline' } }}
+        >
+          <Chip
+            size="small"
+            label={isStructural ? CODELAB_STRUCTURAL_LABEL[item.type as CodelabStructuralType] : (CONTENT_TYPE_LABEL[item.type] || item.type)}
+            color={isStructural ? 'primary' : 'default'}
+            variant={isStructural ? 'filled' : 'outlined'}
+          />
+          <Typography className="tree-item-title" sx={{ flex: 1 }}>{item.title}</Typography>
+        </Stack>
         {item.is_archived && <Chip size="small" label="в архиве" />}
         <IconButton size="small" onClick={(e) => setAnchorEl(e.currentTarget)}>
           <MoreVertIcon fontSize="small" />

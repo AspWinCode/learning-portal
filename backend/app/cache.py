@@ -4,7 +4,11 @@ Redis cache helpers for fastapi-cache2.
 Redis db=0 — Dramatiq broker (existing)
 Redis db=1 — HTTP response cache (this module)
 """
+import logging
+
 from fastapi_cache import FastAPICache
+
+logger = logging.getLogger(__name__)
 
 CACHE_NS_PROGRAMS = "programs"
 CACHE_NS_GROUPS = "groups"
@@ -42,4 +46,4 @@ async def invalidate_namespace(namespace: str) -> None:
         if keys:
             await redis.delete(*keys)
     except Exception:
-        pass
+        logger.exception("Failed to invalidate cache namespace %s", namespace)

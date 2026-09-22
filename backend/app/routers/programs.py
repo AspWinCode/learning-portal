@@ -408,6 +408,7 @@ async def update_program(
             "parent_id": program_id,
             "version": new_program.version
         })
+        await invalidate_namespace(CACHE_NS_PROGRAMS)
         return new_program
     else:
         # Обычное обновление
@@ -510,6 +511,7 @@ async def archive_topic(
     topic.status = TopicStatus.ARCHIVED
     db.commit()
     log_action(db, current_user.id, "archive", "topic", topic_id)
+    await invalidate_namespace(CACHE_NS_PROGRAMS)
     return {"message": "Topic archived"}
 
 
@@ -532,6 +534,7 @@ async def unarchive_topic(
     topic.status = TopicStatus.ACTIVE
     db.commit()
     log_action(db, current_user.id, "unarchive", "topic", topic_id)
+    await invalidate_namespace(CACHE_NS_PROGRAMS)
     return {"message": "Topic unarchived"}
 
 
@@ -565,6 +568,7 @@ async def archive_module(
 
     db.commit()
     log_action(db, current_user.id, "archive", "module", module_id, {"program_id": program_id})
+    await invalidate_namespace(CACHE_NS_PROGRAMS)
     return {"message": "Module archived"}
 
 
@@ -590,6 +594,7 @@ async def unarchive_module(
 
     db.commit()
     log_action(db, current_user.id, "unarchive", "module", module_id, {"program_id": program_id})
+    await invalidate_namespace(CACHE_NS_PROGRAMS)
     return {"message": "Module unarchived"}
 
 
@@ -617,8 +622,9 @@ async def assign_program_to_group(
     # Авто-привязка тренера группы к программе, чтобы тренер видел программу и мог работать по ней
     ensure_program_trainer(db, program_id, group.trainer_id)
     db.commit()
-    
+
     log_action(db, current_user.id, "set_program", "group", group_id, {"program_id": program_id})
+    await invalidate_namespace(CACHE_NS_PROGRAMS)
     return {"message": "Program set for group"}
 
 
@@ -651,6 +657,7 @@ async def assign_program_to_student(
         existing.status = StudentProgramLinkStatus.ACTIVE
         db.commit()
         log_action(db, current_user.id, "add_program", "student", student_id, {"program_id": program_id})
+        await invalidate_namespace(CACHE_NS_PROGRAMS)
         return {"message": "Program added to student (reactivated)"}
 
     student_program = StudentProgram(student_id=student_id, program_id=program_id)
@@ -667,5 +674,6 @@ async def assign_program_to_student(
     db.commit()
 
     log_action(db, current_user.id, "add_program", "student", student_id, {"program_id": program_id})
+    await invalidate_namespace(CACHE_NS_PROGRAMS)
     return {"message": "Program added to student"}
 

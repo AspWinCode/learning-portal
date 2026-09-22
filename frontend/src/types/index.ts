@@ -1420,6 +1420,15 @@ export interface PaymentLink {
   url: string;
 }
 
+export interface QuestionnaireAttempt {
+  id: number;
+  anketa_type: string;
+  reason?: string | null;
+  payload?: Record<string, unknown> | null;
+  dismissed: boolean;
+  created_at: string;
+}
+
 export interface LeadPipelineStage {
   key: string;
   label: string;

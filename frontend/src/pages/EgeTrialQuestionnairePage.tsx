@@ -37,11 +37,21 @@ const EgeTrialQuestionnairePage: React.FC = () => {
 
     if (!fullName || !city || !form.phone || !schoolName || !source) {
       setError('Пожалуйста, заполните все обязательные поля.');
+      void salesApi.logQuestionnaireAttempt({
+        anketa_type: 'ege-trial',
+        reason: 'validation_failed',
+        payload: form,
+      });
       return;
     }
 
     if (!isValidPhone(form.phone)) {
       setError('Проверьте номер телефона — введите его полностью.');
+      void salesApi.logQuestionnaireAttempt({
+        anketa_type: 'ege-trial',
+        reason: 'invalid_phone',
+        payload: form,
+      });
       return;
     }
 
@@ -57,6 +67,11 @@ const EgeTrialQuestionnairePage: React.FC = () => {
       setSuccess(true);
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось отправить анкету. Попробуйте ещё раз.'));
+      void salesApi.logQuestionnaireAttempt({
+        anketa_type: 'ege-trial',
+        reason: 'submit_error',
+        payload: form,
+      });
     } finally {
       setSubmitting(false);
     }

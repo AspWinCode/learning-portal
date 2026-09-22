@@ -855,6 +855,23 @@ class ProgrammerQuestionnaireResponse(BaseModel):
     lead_id: int
 
 
+class QuestionnaireAttemptCreate(BaseModel):
+    anketa_type: str = Field(..., min_length=1, max_length=64)
+    reason: Optional[str] = Field(None, max_length=255)
+    payload: Optional[Dict[str, Any]] = None
+
+
+class QuestionnaireAttemptResponse(BaseModel):
+    id: int
+    anketa_type: str
+    reason: Optional[str] = None
+    payload: Optional[Dict[str, Any]] = None
+    dismissed: bool
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class TildaLeadRequest(BaseModel):
     parent_full_name: str = Field(..., min_length=1, description="ФИО родителя")
     parent_phone: str = Field(..., min_length=1, description="Контактный телефон родителя")

@@ -69,6 +69,7 @@ import {
   WebAsset,
   DesktopWindows,
   FlightTakeoff,
+  ErrorOutline,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { salesApi, settingsApi } from '../services/api';
@@ -130,6 +131,7 @@ const EXTRA_ROLE_NAV_ITEMS: Record<string, Array<{ text: string; icon: React.Rea
   sales: [
     { text: 'Ученики', icon: <People sx={{ fontSize: 18 }} />, path: '/students' },
     { text: 'Лиды', icon: <WorkOutline sx={{ fontSize: 18 }} />, path: '/sales/leads' },
+    { text: 'Незавершённые анкеты', icon: <ErrorOutline sx={{ fontSize: 18 }} />, path: '/sales/questionnaire-attempts' },
     { text: 'Оплаты', icon: <ReceiptLong sx={{ fontSize: 18 }} />, path: '/finance/payments' },
     { text: 'Задачи', icon: <Assignment sx={{ fontSize: 18 }} />, path: '/tasks' },
   ],
@@ -435,6 +437,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         { text: 'Тренеры', icon: <People />, path: '/trainers' },
         { text: 'Уроки', icon: <EventAvailable />, path: '/lessons' },
         { text: 'Лиды', icon: <WorkOutline />, path: '/sales/leads' },
+        { text: 'Незавершённые анкеты', icon: <ErrorOutline />, path: '/sales/questionnaire-attempts' },
         { text: 'Воронка', icon: <Dashboard />, path: '/sales/pipeline' },
         { text: 'События', icon: <EventAvailable />, path: '/sales/events' },
         { text: 'Инструкции', icon: <Description />, path: '/operations/instructions' },

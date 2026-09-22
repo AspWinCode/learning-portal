@@ -26,6 +26,7 @@ from app.models import (
     LeadTask,
     LeadTaskStatus,
     LeadTaskTemplate,
+    QuestionnaireAttempt,
     SalesCity,
     SalesClass,
     Student,
@@ -53,6 +54,8 @@ from app.schemas.sales import (
     PixelForgeQuestionnaireResponse,
     ProgrammerQuestionnaireRequest,
     ProgrammerQuestionnaireResponse,
+    QuestionnaireAttemptCreate,
+    QuestionnaireAttemptResponse,
     TildaLeadRequest,
     TildaLeadResponse,
 )
@@ -505,6 +508,70 @@ async def list_public_lead_sources(db: Session = Depends(get_db)):
         .all()
     )
     return [row.name for row in rows]
+
+
+@router.post(
+    "/public/questionnaire-attempts",
+    response_model=QuestionnaireAttemptResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def log_questionnaire_attempt(
+    payload: QuestionnaireAttemptCreate,
+    db: Session = Depends(get_db),
+):
+    """
+    Best-effort лог незавершённой попытки заполнения публичной анкеты (не прошла
+    валидацию на фронте или запрос на отправку упал с ошибкой). Никогда не должен
+    ломать пользовательский сценарий, поэтому проглатывает любые внутренние ошибки.
+    """
+    try:
+        attempt = QuestionnaireAttempt(
+            anketa_type=payload.anketa_type,
+            reason=payload.reason,
+            payload=payload.payload,
+        )
+        db.add(attempt)
+        db.commit()
+        db.refresh(attempt)
+        return attempt
+    except Exception:
+        db.rollback()
+        return QuestionnaireAttemptResponse(
+            id=0,
+            anketa_type=payload.anketa_type,
+            reason=payload.reason,
+            payload=payload.payload,
+            dismissed=False,
+            created_at=utcnow(),
+        )
+
+
+@router.get("/questionnaire-attempts", response_model=List[QuestionnaireAttemptResponse])
+async def list_questionnaire_attempts(
+    include_dismissed: bool = False,
+    limit: int = Query(default=100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("sales.access")),
+):
+    query = db.query(QuestionnaireAttempt).order_by(QuestionnaireAttempt.created_at.desc())
+    if not include_dismissed:
+        query = query.filter(QuestionnaireAttempt.dismissed.is_(False))
+    return query.limit(limit).all()
+
+
+@router.post("/questionnaire-attempts/{attempt_id}/dismiss", response_model=QuestionnaireAttemptResponse)
+async def dismiss_questionnaire_attempt(
+    attempt_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("sales.access")),
+):
+    attempt = db.query(QuestionnaireAttempt).filter(QuestionnaireAttempt.id == attempt_id).first()
+    if not attempt:
+        raise HTTPException(status_code=404, detail="Attempt not found")
+    attempt.dismissed = True
+    db.commit()
+    db.refresh(attempt)
+    return attempt
 
 
 @router.post("/public/leads/specialist-questionnaire", response_model=SpecialistQuestionnaireResponse, status_code=status.HTTP_201_CREATED)

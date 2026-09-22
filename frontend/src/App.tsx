@@ -49,6 +49,7 @@ const ParentDashboardPage = React.lazy(() => import('./pages/ParentDashboardPage
 const TrainerCockpitPage = React.lazy(() => import('./pages/TrainerCockpitPage'));
 const TrainerGradesPage = React.lazy(() => import('./pages/TrainerGradesPage'));
 const SalesLeadsPage = React.lazy(() => import('./pages/SalesLeadsPage'));
+const QuestionnaireAttemptsPage = React.lazy(() => import('./pages/QuestionnaireAttemptsPage'));
 const SalesManagersPage = React.lazy(() => import('./pages/SalesManagersPage'));
 const SalesEventsHubPage = React.lazy(() => import('./pages/SalesEventsHubPage'));
 const SalesInvoicesPage = React.lazy(() => import('./pages/SalesInvoicesPage'));
@@ -459,6 +460,16 @@ function App() {
                 <PrivateRoute requiredPermission="sales.access">
                   <SectionBoundary>
                     <SalesLeadsPage />
+                  </SectionBoundary>
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/sales/questionnaire-attempts"
+              element={
+                <PrivateRoute requiredPermission="sales.access">
+                  <SectionBoundary>
+                    <QuestionnaireAttemptsPage />
                   </SectionBoundary>
                 </PrivateRoute>
               }

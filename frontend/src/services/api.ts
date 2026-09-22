@@ -131,6 +131,7 @@ import {
   GroupActivityResponse,
   LearningLink,
   PaymentLink,
+  QuestionnaireAttempt,
   LeadPipelineStage,
 } from '../types';
 export { ownerWorkspaceApi } from './api/ownerWorkspace';
@@ -2521,6 +2522,27 @@ export const salesApi = {
     source?: string;
   }): Promise<{ lead_id: number }> => {
     const response = await api.post('/api/sales/public/leads/programmer-questionnaire', payload);
+    return response.data;
+  },
+  logQuestionnaireAttempt: async (payload: {
+    anketa_type: string;
+    reason?: string;
+    payload?: Record<string, unknown>;
+  }): Promise<void> => {
+    try {
+      await api.post('/api/sales/public/questionnaire-attempts', payload);
+    } catch {
+      // best-effort: никогда не ломаем пользовательский сценарий отправки анкеты
+    }
+  },
+  listQuestionnaireAttempts: async (includeDismissed = false): Promise<QuestionnaireAttempt[]> => {
+    const response = await api.get('/api/sales/questionnaire-attempts', {
+      params: { include_dismissed: includeDismissed },
+    });
+    return response.data;
+  },
+  dismissQuestionnaireAttempt: async (id: number): Promise<QuestionnaireAttempt> => {
+    const response = await api.post(`/api/sales/questionnaire-attempts/${id}/dismiss`);
     return response.data;
   },
   submitEgeTrialQuestionnaire: async (payload: {

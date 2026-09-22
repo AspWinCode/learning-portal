@@ -87,6 +87,11 @@ const PixelForgeQuestionnairePage: React.FC = () => {
       !parentEmail
     ) {
       setError('Пожалуйста, заполните все обязательные поля.');
+      void salesApi.logQuestionnaireAttempt({
+        anketa_type: 'novichok',
+        reason: 'validation_failed',
+        payload: form,
+      });
       return;
     }
 
@@ -112,6 +117,11 @@ const PixelForgeQuestionnairePage: React.FC = () => {
       setSuccess(true);
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось отправить анкету. Попробуйте ещё раз.'));
+      void salesApi.logQuestionnaireAttempt({
+        anketa_type: 'novichok',
+        reason: 'submit_error',
+        payload: form,
+      });
     } finally {
       setSubmitting(false);
     }

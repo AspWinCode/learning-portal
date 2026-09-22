@@ -649,6 +649,18 @@ class LeadSource(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
+class QuestionnaireAttempt(Base):
+    """Незавершённая попытка заполнения публичной анкеты (не прошла валидацию или не отправилась)."""
+    __tablename__ = "questionnaire_attempts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    anketa_type = Column(String(64), nullable=False, index=True)
+    reason = Column(String(255), nullable=True)
+    payload = Column(JSON, nullable=True)
+    dismissed = Column(Boolean, default=False, nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
 class SmsMessage(Base):
     """История отправленных SMS через SMS Gateway (телефон с приложением)."""
     __tablename__ = "sms_messages"

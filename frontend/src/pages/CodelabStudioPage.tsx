@@ -11,9 +11,11 @@ import { useAuth } from '../contexts/AuthContext';
 import { getEffectiveRole, hasPermission } from '../utils/permissions';
 import {
   CODELAB_CHILD_STRUCTURAL_TYPE, CODELAB_STRUCTURAL_LABEL, CodelabCourse, CodelabCourseAnalytics,
-  CodelabLearningItem, CodelabLoginEvent, CodelabProblemTest, CodelabStructuralType, CodelabSubmissionReview,
+  CodelabLearningItem, CodelabLoginEvent, CodelabProblemTest, CodelabSnapStep, CodelabStructuralType, CodelabSubmissionReview,
   CodelabSystemStatus, CodelabUser, codelabStudioApi as api,
 } from '../services/codelabApi';
+
+const CONTENT_TYPE_LABEL: Record<string, string> = { theory: 'Материал', task: 'Задача', snap_task: 'Snap!' };
 
 const STRUCTURAL_TYPE_SET = new Set<string>(['module', 'submodule', 'topic', 'subtopic']);
 
@@ -50,7 +52,7 @@ function TreeItemRow({ item, depth, onAddChild, onEdit, onArchive, onDelete }: {
       <Stack direction="row" alignItems="center" spacing={1} sx={{ pl: 1.5 + depth * 3, pr: 1, py: 1, opacity: item.is_archived ? 0.5 : 1 }}>
         <Chip
           size="small"
-          label={isStructural ? CODELAB_STRUCTURAL_LABEL[item.type as CodelabStructuralType] : item.type}
+          label={isStructural ? CODELAB_STRUCTURAL_LABEL[item.type as CodelabStructuralType] : (CONTENT_TYPE_LABEL[item.type] || item.type)}
           color={isStructural ? 'primary' : 'default'}
           variant={isStructural ? 'filled' : 'outlined'}
         />
@@ -67,6 +69,7 @@ function TreeItemRow({ item, depth, onAddChild, onEdit, onArchive, onDelete }: {
           )}
           {isStructural && <MenuItem onClick={() => { onAddChild(item.id, 'theory'); close(); }}>+ Материал</MenuItem>}
           {isStructural && <MenuItem onClick={() => { onAddChild(item.id, 'task'); close(); }}>+ Задача</MenuItem>}
+          {isStructural && <MenuItem onClick={() => { onAddChild(item.id, 'snap_task'); close(); }}>+ Snap-задание</MenuItem>}
           {isStructural && <Divider />}
           <MenuItem onClick={() => { onEdit(item); close(); }}>Редактировать</MenuItem>
           <MenuItem onClick={() => { onArchive(item); close(); }}>{item.is_archived ? 'Разархивировать' : 'Архивировать'}</MenuItem>
@@ -144,6 +147,10 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
   const [taskTests, setTaskTests] = useState<CodelabProblemTest[]>([{ input: '', expected: '', is_hidden: false }]);
   const [taskLoading, setTaskLoading] = useState(false);
 
+  // Snap!-задание: пошаговая инструкция слева (см. CoursePage в Codelab),
+  // панель snap.tirskix.space справа — одна на весь элемент, шагами не управляется.
+  const [snapSteps, setSnapSteps] = useState<CodelabSnapStep[]>([{ title: '', content: '' }]);
+
   const loadCourses = () => api.listCourses().then(setCourses).catch((e) => onToast({ msg: e.message, err: true }));
 
   useEffect(() => { loadCourses(); }, []);
@@ -183,6 +190,7 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
     setTaskInputFormat('');
     setTaskOutputFormat('');
     setTaskTests([{ input: '', expected: '', is_hidden: false }]);
+    setSnapSteps([{ title: '', content: '' }]);
   };
 
   const openEdit = (item: CodelabLearningItem) => {
@@ -201,12 +209,20 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
         .catch((e: any) => onToast({ msg: e.message, err: true }))
         .finally(() => setTaskLoading(false));
     }
+    if (item.type === 'snap_task') {
+      setSnapSteps(item.steps && item.steps.length > 0 ? item.steps : [{ title: '', content: '' }]);
+    }
   };
 
   const addTestRow = () => setTaskTests((prev) => [...prev, { input: '', expected: '', is_hidden: false }]);
   const removeTestRow = (i: number) => setTaskTests((prev) => prev.filter((_, idx) => idx !== i));
   const updateTestRow = (i: number, patch: Partial<CodelabProblemTest>) =>
     setTaskTests((prev) => prev.map((t, idx) => (idx === i ? { ...t, ...patch } : t)));
+
+  const addStepRow = () => setSnapSteps((prev) => [...prev, { title: '', content: '' }]);
+  const removeStepRow = (i: number) => setSnapSteps((prev) => prev.filter((_, idx) => idx !== i));
+  const updateStepRow = (i: number, patch: Partial<CodelabSnapStep>) =>
+    setSnapSteps((prev) => prev.map((s, idx) => (idx === i ? { ...s, ...patch } : s)));
 
   const siblingCount = (parentId: number | null): number => {
     const siblings = parentId === null ? tree : findNode(tree, parentId)?.children ?? [];
@@ -239,6 +255,18 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
             parent_id: nodeDialog.parentId, position: siblingCount(nodeDialog.parentId),
           });
           onToast({ msg: 'Задача добавлена' });
+        }
+      } else if (nodeDialog.type === 'snap_task') {
+        const steps = snapSteps.filter((s) => s.title.trim() || s.content.trim());
+        if (nodeDialog.editing) {
+          await api.updateItem(nodeDialog.editing.id, { title: nodeTitle, steps });
+          onToast({ msg: 'Snap-задание обновлено' });
+        } else {
+          await api.createItem(selected.id, {
+            type: 'snap_task', title: nodeTitle, steps,
+            parent_id: nodeDialog.parentId, position: siblingCount(nodeDialog.parentId),
+          });
+          onToast({ msg: 'Snap-задание добавлено' });
         }
       } else if (nodeDialog.editing) {
         const patch: Record<string, unknown> = { title: nodeTitle };
@@ -355,6 +383,7 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
                 <Button size="small" variant="outlined" onClick={() => openCreate(null, 'module')}>+ Модуль</Button>
                 <Button size="small" variant="outlined" onClick={() => openCreate(null, 'theory')}>+ Материал</Button>
                 <Button size="small" variant="outlined" onClick={() => openCreate(null, 'task')}>+ Задача</Button>
+                <Button size="small" variant="outlined" onClick={() => openCreate(null, 'snap_task')}>+ Snap-задание</Button>
                 {selected.status === 'published' ? (
                   <Button size="small" startIcon={<UnpublishIcon />} onClick={unpublish}>Снять с публикации</Button>
                 ) : (
@@ -391,7 +420,7 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
       </Dialog>
 
       <Dialog
-        open={!!nodeDialog && nodeDialog.type !== 'task'}
+        open={!!nodeDialog && nodeDialog.type !== 'task' && nodeDialog.type !== 'snap_task'}
         onClose={() => setNodeDialog(null)} fullWidth
         maxWidth={nodeDialog?.type === 'theory' ? 'md' : 'sm'}
       >
@@ -472,6 +501,49 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
         <DialogActions>
           <Button onClick={() => setNodeDialog(null)}>Отмена</Button>
           <Button variant="contained" disabled={!nodeTitle.trim() || taskLoading} onClick={saveNode}>
+            {nodeDialog?.editing ? 'Сохранить' : 'Добавить'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={nodeDialog?.type === 'snap_task'} onClose={() => setNodeDialog(null)} fullWidth maxWidth="md">
+        <DialogTitle>{nodeDialog?.editing ? 'Редактирование Snap-задания' : 'Новое Snap-задание'}</DialogTitle>
+        <DialogContent>
+          <TextField autoFocus fullWidth label="Название" value={nodeTitle} onChange={(e) => setNodeTitle(e.target.value)} sx={{ mt: 1, mb: 2 }} />
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Ученик увидит инструкцию слева, а справа — постоянную панель Snap! (snap.tirskix.space), которая
+            не перезагружается при переходе между этапами. Этапы ниже — то, что листается слева.
+          </Typography>
+
+          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+            <Typography variant="subtitle2">Этапы</Typography>
+            <Button size="small" onClick={addStepRow}>+ Добавить этап</Button>
+          </Stack>
+          <Stack spacing={2}>
+            {snapSteps.map((s, i) => (
+              <Paper key={i} variant="outlined" sx={{ p: 1.5 }}>
+                <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 1 }}>
+                  <TextField
+                    fullWidth size="small" label={`Заголовок этапа ${i + 1}`}
+                    value={s.title} onChange={(e) => updateStepRow(i, { title: e.target.value })}
+                  />
+                  <IconButton size="small" onClick={() => removeStepRow(i)} disabled={snapSteps.length === 1}>
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </Stack>
+                <NotesEditor
+                  value={s.content}
+                  onChange={(v) => updateStepRow(i, { content: v })}
+                  placeholder="Текст этапа — форматирование, изображения (Ctrl+V), видео, ссылки…"
+                  onUploadImage={async (file) => (await api.uploadFile(file)).url}
+                />
+              </Paper>
+            ))}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setNodeDialog(null)}>Отмена</Button>
+          <Button variant="contained" disabled={!nodeTitle.trim()} onClick={saveNode}>
             {nodeDialog?.editing ? 'Сохранить' : 'Добавить'}
           </Button>
         </DialogActions>

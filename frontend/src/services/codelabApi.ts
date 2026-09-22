@@ -56,6 +56,12 @@ export const CODELAB_CHILD_STRUCTURAL_TYPE: Record<CodelabStructuralType, Codela
   module: 'submodule', submodule: 'topic', topic: 'subtopic', subtopic: null,
 };
 
+// Этап Snap!-задания — слева листаются, панель Snap! справа статична (см. CoursePage в Codelab).
+export interface CodelabSnapStep {
+  title: string;
+  content: string;
+}
+
 export interface CodelabLearningItem {
   id: number;
   type: string;
@@ -69,6 +75,7 @@ export interface CodelabLearningItem {
   unlock_rules: Record<string, unknown>;
   problem_revision_id: number | null;
   is_archived: boolean;
+  steps: CodelabSnapStep[] | null;
   children: CodelabLearningItem[];
 }
 

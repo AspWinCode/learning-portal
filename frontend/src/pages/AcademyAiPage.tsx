@@ -21,6 +21,7 @@ import UploadFileIcon from '@mui/icons-material/UploadFile';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import Layout from '../components/Layout';
 import { extractApiError } from '../utils/extractApiError';
 import { markdownToHtml } from '../utils/markdownHtml';
@@ -931,12 +932,26 @@ const DraftCard: React.FC<{
                 🖼 {d.image_prompt}
               </Typography>
               {hasImage ? (
-                <Box
-                  component="img"
-                  src={imageUrl || externalImageUrl || undefined}
-                  alt={d.title || 'Сгенерированная картинка'}
-                  sx={{ mt: 1, maxWidth: '100%', maxHeight: 320, borderRadius: 1, display: 'block' }}
-                />
+                <Box sx={{ mt: 1 }}>
+                  <Box
+                    component="img"
+                    src={imageUrl || externalImageUrl || undefined}
+                    alt={d.title || 'Сгенерированная картинка'}
+                    sx={{ maxWidth: '100%', maxHeight: 320, borderRadius: 1, display: 'block' }}
+                  />
+                  <Button
+                    size="small"
+                    component="a"
+                    href={imageUrl || externalImageUrl || undefined}
+                    download={imageUrl ? `draft_${d.id}.png` : undefined}
+                    target={imageUrl ? undefined : '_blank'}
+                    rel={imageUrl ? undefined : 'noopener noreferrer'}
+                    startIcon={<FileDownloadIcon fontSize="small" />}
+                    sx={{ mt: 0.5 }}
+                  >
+                    Скачать
+                  </Button>
+                </Box>
               ) : (
                 <Button
                   size="small"

@@ -19,6 +19,7 @@ import {
 } from '@mui/material';
 import { ArrowBack, CalendarToday, CreditCard, Refresh, School } from '@mui/icons-material';
 import { parentDashboardApi } from '../services/api';
+import NpsSurveyPrompt from '../components/NpsSurveyPrompt';
 
 const MobileParentDashboardPage: React.FC = () => {
   const navigate = useNavigate();
@@ -32,6 +33,7 @@ const MobileParentDashboardPage: React.FC = () => {
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: '#f6f8fb', pb: 'calc(24px + env(safe-area-inset-bottom))' }}>
+      <NpsSurveyPrompt />
       <AppBar position="sticky" color="inherit" elevation={0} sx={{ borderBottom: '1px solid rgba(15,23,42,0.08)' }}>
         <Toolbar>
           <IconButton edge="start" onClick={() => navigate('/mobile')} aria-label="Назад">

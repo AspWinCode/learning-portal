@@ -14,9 +14,13 @@ from app.schemas.owner_workspace import (
 )
 from app.schemas.parent_dashboard import (
     ParentDashboardSummaryResponse,
+    ParentNpsPromptStatusResponse,
+    ParentNpsResponseOut,
+    ParentNpsSubmitRequest,
     ParentQuestionCreate,
     ParentQuestionResponse,
 )
+from app.services.nps import get_nps_prompt_status, submit_nps_response
 from app.services.parent_dashboard import (
     build_parent_dashboard_summary,
     create_parent_question,
@@ -24,6 +28,7 @@ from app.services.parent_dashboard import (
     remove_parent_web_push_subscription,
     upsert_parent_web_push_subscription,
 )
+from app.utils.datetime import utcnow
 
 router = APIRouter()
 
@@ -67,6 +72,36 @@ async def create_dashboard_question(
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     log_action(db, current_user.id, "create", "parent_question", row.id)
+    return row
+
+
+@router.get("/nps", response_model=ParentNpsPromptStatusResponse)
+async def get_parent_nps_prompt(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    _require_parent(current_user)
+    status_data = get_nps_prompt_status(db, parent_id=current_user.id, now=utcnow())
+    return status_data
+
+
+@router.post("/nps", response_model=ParentNpsResponseOut)
+async def submit_parent_nps(
+    payload: ParentNpsSubmitRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    _require_parent(current_user)
+    try:
+        row = submit_nps_response(
+            db,
+            parent_id=current_user.id,
+            score=payload.score,
+            comment=payload.comment,
+            now=utcnow(),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     return row
 
 

@@ -89,6 +89,14 @@ class AcademyMetricsGroupBreakdown(BaseModel):
     average_check: float
 
 
+class AcademyMetricsNpsResponse(BaseModel):
+    responses_count: int
+    promoters_count: int
+    passives_count: int
+    detractors_count: int
+    nps_score: Optional[float] = None
+
+
 class AcademyMetricsResponse(BaseModel):
     period_start: datetime
     period_end: datetime
@@ -97,6 +105,13 @@ class AcademyMetricsResponse(BaseModel):
     average_check: float
     breakdown_by_format: List[AcademyMetricsFormatBreakdown]
     breakdown_by_group: List[AcademyMetricsGroupBreakdown]
+    cac: float
+    ltv: float
+    ltv_cac_ratio: float
+    retention_3_pct: float
+    retention_6_pct: float
+    retention_12_pct: float
+    nps: AcademyMetricsNpsResponse
 
 
 __all__ = [name for name in globals() if not name.startswith("_")]

@@ -1941,6 +1941,26 @@ class ParentQuestion(Base):
     target_trainer = relationship("User", foreign_keys=[target_trainer_id])
 
 
+class NpsResponse(Base):
+    """Ответ родителя на опрос NPS («оцените от 0 до 10, порекомендуете ли нас»).
+    Опрос показывается родителю не чаще раза в квартал — period_label вида
+    "2026-Q3" используется для троттлинга (один ответ на родителя за квартал)."""
+
+    __tablename__ = "nps_responses"
+    __table_args__ = (
+        UniqueConstraint("parent_id", "period_label", name="uq_nps_response_parent_period"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    parent_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    period_label = Column(String(16), nullable=False, index=True)
+    score = Column(Integer, nullable=False)  # 0..10
+    comment = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    parent = relationship("User", foreign_keys=[parent_id])
+
+
 # B2B Schools pipeline (conveyor stages for owner)
 class B2BSchoolPipelineStage(str, enum.Enum):
     NEW = "new"

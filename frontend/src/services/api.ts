@@ -101,6 +101,8 @@ import {
   AcademyMetricsResponse,
   AdminDashboardSummary,
   ParentDashboardSummary,
+  ParentNpsPromptStatus,
+  ParentNpsResponse,
   ParentQuestion,
   ParentQuestionCreate,
   ParentWeeklyDigestSettings,
@@ -421,6 +423,14 @@ export const parentDashboardApi = {
   },
   removeWebPushSubscription: async (endpoint: string): Promise<OwnerWorkspaceWebPushStatus> => {
     const response = await api.post('/api/parent-dashboard/me/web-push/subscriptions/remove', { endpoint });
+    return response.data;
+  },
+  getNpsPromptStatus: async (): Promise<ParentNpsPromptStatus> => {
+    const response = await api.get('/api/parent-dashboard/nps');
+    return response.data;
+  },
+  submitNps: async (payload: { score: number; comment?: string }): Promise<ParentNpsResponse> => {
+    const response = await api.post('/api/parent-dashboard/nps', payload);
     return response.data;
   },
 };

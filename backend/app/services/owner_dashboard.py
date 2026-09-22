@@ -23,8 +23,10 @@ from app.models import (
     UserRole,
 )
 from app.services.ai_insights import build_owner_ai_insights
+from app.services.nps import build_nps_summary
 from app.services.payment_status import get_payment_status_summary
 from app.services.pricing import student_abonement_price
+from app.services.unit_economics import compute_unit_economics_kpis
 from app.utils.datetime import utcnow
 
 ABONEMENT_FORMAT_LABELS = {
@@ -295,6 +297,19 @@ def build_academy_metrics(
 
     groups_breakdown = _build_groups_revenue(db, student_checks=student_checks)
 
+    period_length = period_end - period_start
+    prev_start = period_start - period_length
+    prev_end = period_start
+    unit_economics = compute_unit_economics_kpis(
+        db,
+        period_start=period_start,
+        period_end=period_end,
+        prev_start=prev_start,
+        prev_end=prev_end,
+    )
+
+    nps = build_nps_summary(db, period_start=period_start, period_end=period_end)
+
     return {
         "period_start": period_start,
         "period_end": period_end,
@@ -303,6 +318,13 @@ def build_academy_metrics(
         "average_check": round(total_sum / total_count, 2) if total_count else 0.0,
         "breakdown_by_format": breakdown,
         "breakdown_by_group": groups_breakdown,
+        "cac": unit_economics["cac"],
+        "ltv": unit_economics["ltv"],
+        "ltv_cac_ratio": unit_economics["ltv_cac_ratio"],
+        "retention_3_pct": unit_economics["retention_3_pct"],
+        "retention_6_pct": unit_economics["retention_6_pct"],
+        "retention_12_pct": unit_economics["retention_12_pct"],
+        "nps": nps,
     }
 
 

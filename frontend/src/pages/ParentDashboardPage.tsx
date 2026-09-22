@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
+import NpsSurveyPrompt from '../components/NpsSurveyPrompt';
 import {
   Alert,
   Typography,
@@ -374,6 +375,7 @@ const ParentDashboardPage: React.FC = () => {
 
   return (
     <Layout>
+      <NpsSurveyPrompt />
       <Typography variant="h4" gutterBottom>
         Дашборд родителя
       </Typography>

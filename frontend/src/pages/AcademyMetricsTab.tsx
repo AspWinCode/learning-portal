@@ -148,6 +148,71 @@ const AcademyMetricsTab: React.FC = () => {
             )}
           </Paper>
 
+          <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              CAC, LTV, Retention, NPS
+            </Typography>
+            <Grid container spacing={2}>
+              <Grid item xs={6} md={3}>
+                <Typography variant="caption" color="text.secondary">
+                  CAC
+                </Typography>
+                <Typography variant="h5">{rub(metricsQuery.data.cac)}</Typography>
+              </Grid>
+              <Grid item xs={6} md={3}>
+                <Typography variant="caption" color="text.secondary">
+                  LTV
+                </Typography>
+                <Typography variant="h5">{rub(metricsQuery.data.ltv)}</Typography>
+              </Grid>
+              <Grid item xs={6} md={3}>
+                <Typography variant="caption" color="text.secondary">
+                  LTV / CAC
+                </Typography>
+                <Typography variant="h5">{metricsQuery.data.ltv_cac_ratio.toFixed(2)}</Typography>
+              </Grid>
+              <Grid item xs={6} md={3}>
+                <Typography variant="caption" color="text.secondary">
+                  NPS {metricsQuery.data.nps.responses_count > 0 ? `(${metricsQuery.data.nps.responses_count} отв.)` : '(нет ответов)'}
+                </Typography>
+                <Typography variant="h5">
+                  {metricsQuery.data.nps.nps_score === null ? '—' : metricsQuery.data.nps.nps_score}
+                </Typography>
+              </Grid>
+              <Grid item xs={4}>
+                <Typography variant="caption" color="text.secondary">
+                  Retention 3 мес.
+                </Typography>
+                <Typography variant="h6">{metricsQuery.data.retention_3_pct}%</Typography>
+              </Grid>
+              <Grid item xs={4}>
+                <Typography variant="caption" color="text.secondary">
+                  Retention 6 мес.
+                </Typography>
+                <Typography variant="h6">{metricsQuery.data.retention_6_pct}%</Typography>
+              </Grid>
+              <Grid item xs={4}>
+                <Typography variant="caption" color="text.secondary">
+                  Retention 12 мес.
+                </Typography>
+                <Typography variant="h6">{metricsQuery.data.retention_12_pct}%</Typography>
+              </Grid>
+            </Grid>
+
+            <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block' }}>
+              CAC = расходы на маркетинг/продажи за период / новые ученики за период (первая оплата в периоде).
+              <br />
+              LTV = ARPU × валовая маржа% × Lifetime(мес.), где Lifetime = 100/Churn% (или средний фактический
+              срок жизни, если Churn = 0); Churn% = ушедшие из прошлого периода / платившие в прошлом периоде.
+              <br />
+              Retention N мес. = % учеников когорты (по месяцу первой оплаты), у кого была оплата ровно через
+              N месяцев после первой.
+              <br />
+              NPS = %Промоутеров(оценка 9–10) − %Детракторов(оценка 0–6) по ответам на опрос в кабинете
+              родителя (раз в квартал) за выбранный период.
+            </Typography>
+          </Paper>
+
           <Paper variant="outlined" sx={{ p: 2, mt: 3 }}>
             <Typography variant="h6" gutterBottom>
               Выручка по группам

@@ -242,6 +242,14 @@ export interface AcademyMetricsGroupBreakdown {
   average_check: number;
 }
 
+export interface AcademyMetricsNps {
+  responses_count: number;
+  promoters_count: number;
+  passives_count: number;
+  detractors_count: number;
+  nps_score: number | null;
+}
+
 export interface AcademyMetricsResponse {
   period_start: string;
   period_end: string;
@@ -250,6 +258,13 @@ export interface AcademyMetricsResponse {
   average_check: number;
   breakdown_by_format: AcademyMetricsFormatBreakdown[];
   breakdown_by_group: AcademyMetricsGroupBreakdown[];
+  cac: number;
+  ltv: number;
+  ltv_cac_ratio: number;
+  retention_3_pct: number;
+  retention_6_pct: number;
+  retention_12_pct: number;
+  nps: AcademyMetricsNps;
 }
 
 export interface AdminDashboardSummary {
@@ -1064,6 +1079,17 @@ export interface ParentWeeklyDigestSettings {
   enabled: boolean;
   weekday: number;
   send_time: string;
+}
+
+export interface ParentNpsPromptStatus {
+  should_prompt: boolean;
+  period_label: string;
+}
+
+export interface ParentNpsResponse {
+  period_label: string;
+  score: number;
+  comment?: string | null;
 }
 
 export type StudentQuestionnaireFieldType =

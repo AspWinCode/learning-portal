@@ -87,4 +87,20 @@ class ParentWeeklyDigestSettingsUpdate(BaseModel):
         return text
 
 
+class ParentNpsPromptStatusResponse(BaseModel):
+    should_prompt: bool
+    period_label: str
+
+
+class ParentNpsSubmitRequest(BaseModel):
+    score: int = Field(ge=0, le=10)
+    comment: Optional[str] = None
+
+
+class ParentNpsResponseOut(BaseModel):
+    period_label: str
+    score: int
+    comment: Optional[str] = None
+
+
 __all__ = [name for name in globals() if not name.startswith("_")]

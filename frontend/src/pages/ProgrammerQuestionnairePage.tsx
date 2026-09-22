@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import {
   Alert,
+  Autocomplete,
   Box,
   Button,
   Container,
   FormControl,
-  FormHelperText,
   InputLabel,
   MenuItem,
   Select,
@@ -199,24 +199,15 @@ const ProgrammerQuestionnairePage: React.FC = () => {
                 <MenuItem value="Женский">Женский</MenuItem>
               </Select>
             </FormControl>
-            <FormControl fullWidth required>
-              <InputLabel id="city-label">Город</InputLabel>
-              <Select
-                labelId="city-label"
-                label="Город"
-                value={form.city}
-                onChange={handleSelectChange('city')}
-              >
-                {cities.map((city) => (
-                  <MenuItem key={city} value={city}>
-                    {city}
-                  </MenuItem>
-                ))}
-              </Select>
-              {cities.length === 0 && (
-                <FormHelperText>Список городов не настроен — обратитесь к менеджеру</FormHelperText>
+            <Autocomplete
+              freeSolo
+              options={cities}
+              value={form.city}
+              onInputChange={(_, v) => setForm((f) => ({ ...f, city: v ?? '' }))}
+              renderInput={(params) => (
+                <TextField {...params} label="Город" required placeholder="Выберите из списка или введите свой город" />
               )}
-            </FormControl>
+            />
             <TextField
               label="Образовательное учреждение"
               value={form.school_name}
@@ -224,24 +215,15 @@ const ProgrammerQuestionnairePage: React.FC = () => {
               required
               fullWidth
             />
-            <FormControl fullWidth required>
-              <InputLabel id="school-class-label">Класс</InputLabel>
-              <Select
-                labelId="school-class-label"
-                label="Класс"
-                value={form.school_class}
-                onChange={handleSelectChange('school_class')}
-              >
-                {classes.map((cls) => (
-                  <MenuItem key={cls} value={cls}>
-                    {cls}
-                  </MenuItem>
-                ))}
-              </Select>
-              {classes.length === 0 && (
-                <FormHelperText>Список классов не настроен — обратитесь к менеджеру</FormHelperText>
+            <Autocomplete
+              freeSolo
+              options={classes}
+              value={form.school_class}
+              onInputChange={(_, v) => setForm((f) => ({ ...f, school_class: v ?? '' }))}
+              renderInput={(params) => (
+                <TextField {...params} label="Класс" required placeholder="Выберите из списка или введите свой класс" />
               )}
-            </FormControl>
+            />
 
             <Typography variant="h6" sx={{ mt: 2 }}>
               Родитель

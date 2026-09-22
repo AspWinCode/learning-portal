@@ -386,7 +386,9 @@ export const setDraftStatus = (id: number, status: DraftStatus, feedback?: strin
   api.post(`${BASE}/content/drafts/${id}/status`, { status, feedback }).then((r) => r.data);
 
 export const renderDraftImage = (id: number): Promise<{ ok: boolean; detail: string; draft: ContentDraft }> =>
-  api.post(`${BASE}/content/drafts/${id}/image`).then((r) => r.data);
+  // генерация картинки — медленная операция (у некоторых провайдеров 50-60+ сек),
+  // глобальный таймаут axios (45с) для неё недостаточен
+  api.post(`${BASE}/content/drafts/${id}/image`, null, { timeout: 120000 }).then((r) => r.data);
 
 export const getDraftImageBlob = (id: number): Promise<Blob> =>
   api.get(`${BASE}/content/drafts/${id}/image`, { responseType: 'blob' }).then((r) => r.data);

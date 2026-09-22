@@ -5,7 +5,7 @@ from typing import Dict, List, Optional, Tuple
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import StreamingResponse
 from openpyxl import Workbook, load_workbook
-from sqlalchemy import Text, cast, or_, update as sa_update
+from sqlalchemy import Text, cast, func, or_, update as sa_update
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app import auth
@@ -179,6 +179,25 @@ def _get_default_lead_status_option_id(db: Session, base_status: LeadStatus) -> 
         .first()
     )
     return option.id if option else None
+
+
+def _find_existing_lead(
+    db: Session,
+    *,
+    phone_normalized: Optional[str] = None,
+    email: Optional[str] = None,
+) -> Optional[Lead]:
+    """Ищет уже существующий лид по телефону или email, чтобы повторная заявка
+    (анкета, Tilda, ручное добавление и т.д.) обновляла его, а не плодила дубль."""
+    normalized_email = (email or "").strip().lower() or None
+    conditions = []
+    if phone_normalized:
+        conditions.append(Lead.phone_normalized == phone_normalized)
+    if normalized_email:
+        conditions.append(func.lower(Lead.email) == normalized_email)
+    if not conditions:
+        return None
+    return db.query(Lead).filter(or_(*conditions)).order_by(Lead.id.asc()).first()
 
 
 def _add_activity(
@@ -645,15 +664,16 @@ async def submit_specialist_questionnaire(
     db.flush()
     sync_student_card_person(db, card)
 
-    # У leads.phone_normalized уникальный индекс — если лид с этим телефоном уже есть
-    # (например, менеджер уже завёл его вручную), обновляем существующего вместо вставки дубля.
-    existing_lead = (
-        db.query(Lead).filter(Lead.phone_normalized == phone_norm).first() if phone_norm else None
+    # Ищем уже существующий лид по телефону ИЛИ email — чтобы не плодить дубли,
+    # если человек уже приходил (вручную, с другой анкеты или другого источника).
+    existing_lead = _find_existing_lead(
+        db, phone_normalized=phone_norm, email=payload.parent_email or payload.student_email
     )
     if existing_lead:
         lead = existing_lead
         lead.contact_name = payload.parent_full_name
         lead.phone = payload.parent_phone
+        lead.phone_normalized = lead.phone_normalized or phone_norm
         lead.parent_full_name = payload.parent_full_name
         lead.child_full_name = payload.child_full_name
         lead.parent_phone = payload.parent_phone
@@ -734,15 +754,14 @@ async def submit_ege_trial_questionnaire(
     db.flush()
     sync_student_card_person(db, card)
 
-    # У leads.phone_normalized уникальный индекс — если лид с этим телефоном уже есть
-    # (например, менеджер уже завёл его вручную), обновляем существующего вместо вставки дубля.
-    existing_lead = (
-        db.query(Lead).filter(Lead.phone_normalized == phone_norm).first() if phone_norm else None
-    )
+    # Ищем уже существующий лид по телефону (у этой анкеты нет email) — чтобы не
+    # плодить дубли, если человек уже приходил вручную или с другой анкеты/источника.
+    existing_lead = _find_existing_lead(db, phone_normalized=phone_norm)
     if existing_lead:
         lead = existing_lead
         lead.contact_name = payload.full_name
         lead.phone = payload.phone
+        lead.phone_normalized = lead.phone_normalized or phone_norm
         lead.parent_full_name = payload.full_name
         lead.child_full_name = payload.full_name
         lead.parent_phone = payload.phone
@@ -838,10 +857,10 @@ async def submit_individual_lessons_questionnaire(
 
     questionnaire_data = payload.model_dump(mode="json")
 
-    # У leads.phone_normalized уникальный индекс — если лид с этим телефоном уже есть
-    # (например, менеджер уже завёл его вручную), обновляем существующего вместо вставки дубля.
-    existing_lead = (
-        db.query(Lead).filter(Lead.phone_normalized == phone_norm).first() if phone_norm else None
+    # Ищем уже существующий лид по телефону ИЛИ email — чтобы не плодить дубли,
+    # если человек уже приходил (вручную, с другой анкеты или другого источника).
+    existing_lead = _find_existing_lead(
+        db, phone_normalized=phone_norm, email=payload.parent_email or payload.student_email
     )
     if existing_lead:
         lead = existing_lead
@@ -849,6 +868,7 @@ async def submit_individual_lessons_questionnaire(
         lead.contact_name = payload.parent_full_name
         lead.child_full_name = payload.child_full_name
         lead.phone = payload.parent_phone
+        lead.phone_normalized = lead.phone_normalized or phone_norm
         lead.parent_phone = payload.parent_phone
         lead.child_phone = payload.child_phone
         lead.email = payload.parent_email or payload.student_email or lead.email
@@ -944,31 +964,62 @@ async def submit_pixelforge_questionnaire(
     )
 
     questionnaire_data = payload.model_dump(mode="json")
-    lead = Lead(
-        owner_id=owner.id,
-        contact_name=payload.parent_full_name,
-        phone=payload.parent_phone,
-        phone_normalized=normalize_phone(payload.parent_phone or payload.child_phone or "") or None,
-        parent_full_name=payload.parent_full_name,
-        child_full_name=payload.child_full_name,
-        parent_phone=payload.parent_phone,
-        child_phone=payload.child_phone,
-        email=payload.parent_email or payload.student_email,
-        city=payload.city,
-        school_name=payload.school_name,
-        school_class=payload.school_class,
-        comment=full_comment or None,
-        source=payload.source or "Анкета PixelForge",
-        tags=["direction:pixelforge"],
-        status=LeadStatus.NEW,
-        questionnaire_filled=True,
-        questionnaire_data=questionnaire_data,
-    )
+    phone_norm = normalize_phone(payload.parent_phone or payload.child_phone or "") or None
+
     db.add(card)
-    db.add(lead)
     db.flush()
     sync_student_card_person(db, card)
-    lead.student_card_id = card.id
+
+    # Ищем уже существующий лид по телефону ИЛИ email — чтобы не плодить дубли,
+    # если человек уже приходил (вручную, с другой анкеты или другого источника).
+    existing_lead = _find_existing_lead(
+        db, phone_normalized=phone_norm, email=payload.parent_email or payload.student_email
+    )
+    if existing_lead:
+        lead = existing_lead
+        lead.contact_name = payload.parent_full_name
+        lead.phone = payload.parent_phone
+        lead.phone_normalized = lead.phone_normalized or phone_norm
+        lead.parent_full_name = payload.parent_full_name
+        lead.child_full_name = payload.child_full_name
+        lead.parent_phone = payload.parent_phone
+        lead.child_phone = payload.child_phone
+        lead.email = payload.parent_email or payload.student_email or lead.email
+        lead.city = payload.city or lead.city
+        lead.school_name = payload.school_name or lead.school_name
+        lead.school_class = payload.school_class or lead.school_class
+        lead.comment = (f"{lead.comment}\n\n" if lead.comment else "") + full_comment if full_comment else lead.comment
+        lead.tags = sorted(set((lead.tags or []) + ["direction:pixelforge"]))
+        lead.questionnaire_filled = True
+        lead.questionnaire_data = questionnaire_data
+        lead.student_card_id = card.id
+        if not lead.source:
+            lead.source = payload.source or "Анкета PixelForge"
+    else:
+        lead = Lead(
+            owner_id=owner.id,
+            contact_name=payload.parent_full_name,
+            phone=payload.parent_phone,
+            phone_normalized=phone_norm,
+            parent_full_name=payload.parent_full_name,
+            child_full_name=payload.child_full_name,
+            parent_phone=payload.parent_phone,
+            child_phone=payload.child_phone,
+            email=payload.parent_email or payload.student_email,
+            city=payload.city,
+            school_name=payload.school_name,
+            school_class=payload.school_class,
+            comment=full_comment or None,
+            source=payload.source or "Анкета PixelForge",
+            tags=["direction:pixelforge"],
+            status=LeadStatus.NEW,
+            questionnaire_filled=True,
+            questionnaire_data=questionnaire_data,
+            student_card_id=card.id,
+        )
+        db.add(lead)
+
+    db.flush()
     sync_lead_person(db, lead)
     db.commit()
     db.refresh(lead)
@@ -1026,31 +1077,62 @@ async def submit_programmer_questionnaire(
     )
 
     questionnaire_data = payload.model_dump(mode="json")
-    lead = Lead(
-        owner_id=owner.id,
-        contact_name=payload.parent_full_name,
-        phone=payload.parent_phone,
-        phone_normalized=normalize_phone(payload.parent_phone or payload.child_phone or "") or None,
-        parent_full_name=payload.parent_full_name,
-        child_full_name=payload.child_full_name,
-        parent_phone=payload.parent_phone,
-        child_phone=payload.child_phone,
-        email=payload.parent_email or payload.student_email,
-        city=payload.city,
-        school_name=payload.school_name,
-        school_class=payload.school_class,
-        comment=full_comment or None,
-        source=payload.source or "Анкета Программист",
-        tags=["direction:programmer"],
-        status=LeadStatus.NEW,
-        questionnaire_filled=True,
-        questionnaire_data=questionnaire_data,
-    )
+    phone_norm = normalize_phone(payload.parent_phone or payload.child_phone or "") or None
+
     db.add(card)
-    db.add(lead)
     db.flush()
     sync_student_card_person(db, card)
-    lead.student_card_id = card.id
+
+    # Ищем уже существующий лид по телефону ИЛИ email — чтобы не плодить дубли,
+    # если человек уже приходил (вручную, с другой анкеты или другого источника).
+    existing_lead = _find_existing_lead(
+        db, phone_normalized=phone_norm, email=payload.parent_email or payload.student_email
+    )
+    if existing_lead:
+        lead = existing_lead
+        lead.contact_name = payload.parent_full_name
+        lead.phone = payload.parent_phone
+        lead.phone_normalized = lead.phone_normalized or phone_norm
+        lead.parent_full_name = payload.parent_full_name
+        lead.child_full_name = payload.child_full_name
+        lead.parent_phone = payload.parent_phone
+        lead.child_phone = payload.child_phone
+        lead.email = payload.parent_email or payload.student_email or lead.email
+        lead.city = payload.city or lead.city
+        lead.school_name = payload.school_name or lead.school_name
+        lead.school_class = payload.school_class or lead.school_class
+        lead.comment = (f"{lead.comment}\n\n" if lead.comment else "") + full_comment if full_comment else lead.comment
+        lead.tags = sorted(set((lead.tags or []) + ["direction:programmer"]))
+        lead.questionnaire_filled = True
+        lead.questionnaire_data = questionnaire_data
+        lead.student_card_id = card.id
+        if not lead.source:
+            lead.source = payload.source or "Анкета Программист"
+    else:
+        lead = Lead(
+            owner_id=owner.id,
+            contact_name=payload.parent_full_name,
+            phone=payload.parent_phone,
+            phone_normalized=phone_norm,
+            parent_full_name=payload.parent_full_name,
+            child_full_name=payload.child_full_name,
+            parent_phone=payload.parent_phone,
+            child_phone=payload.child_phone,
+            email=payload.parent_email or payload.student_email,
+            city=payload.city,
+            school_name=payload.school_name,
+            school_class=payload.school_class,
+            comment=full_comment or None,
+            source=payload.source or "Анкета Программист",
+            tags=["direction:programmer"],
+            status=LeadStatus.NEW,
+            questionnaire_filled=True,
+            questionnaire_data=questionnaire_data,
+            student_card_id=card.id,
+        )
+        db.add(lead)
+
+    db.flush()
     sync_lead_person(db, lead)
     db.commit()
     db.refresh(lead)
@@ -1096,15 +1178,14 @@ async def submit_tilda_lead(
     source_id, source_name = _resolve_source(db, None, source_label)
     status_option_id = _get_default_lead_status_option_id(db, LeadStatus.NEW)
 
-    # У leads.phone_normalized уникальный индекс — если лид с этим телефоном уже есть
-    # (например, менеджер уже завёл его вручную), обновляем существующего вместо вставки дубля.
-    existing_lead = (
-        db.query(Lead).filter(Lead.phone_normalized == normalized_phone).first() if normalized_phone else None
-    )
+    # Ищем уже существующий лид по телефону (у Tilda-заявки нет email) — чтобы не
+    # плодить дубли, если человек уже приходил вручную или с другой анкеты/источника.
+    existing_lead = _find_existing_lead(db, phone_normalized=normalized_phone)
     if existing_lead:
         lead = existing_lead
         lead.contact_name = parent_name
         lead.phone = normalized_phone
+        lead.phone_normalized = lead.phone_normalized or normalized_phone
         lead.parent_full_name = parent_name
         lead.parent_phone = normalized_phone
         lead.child_full_name = child_name
@@ -1153,42 +1234,76 @@ async def create_lead(
         if not abonement:
             raise HTTPException(status_code=404, detail="Abonement not found")
 
-    lead = Lead(
-        owner_id=owner_id,
-        contact_name=payload.contact_name,
-        phone=payload.phone,
-        phone_normalized=normalize_phone(payload.parent_phone or payload.phone or payload.child_phone or "") or None,
-        parent_full_name=payload.parent_full_name,
-        child_full_name=payload.child_full_name,
-        parent_phone=payload.parent_phone,
-        child_phone=payload.child_phone,
-        email=payload.email,
-        city=payload.city,
-        school_name=payload.school_name,
-        school_class=payload.school_class,
-        outreach_at=payload.outreach_at,
-        outreach_minutes=payload.outreach_minutes,
-        source=source_name,
-        source_id=source_id,
-        referral_name=payload.referral_name,
-        tags=payload.tags,
-        abonement_id=payload.abonement_id,
-        desired_slot=payload.desired_slot,
-        comment=payload.comment,
-        next_contact_at=payload.next_contact_at,
-        status=LeadStatus.NEW,
-    )
-    db.add(lead)
-    db.flush()
-    sync_lead_person(db, lead)
-    _add_activity(
-        db,
-        lead.id,
-        current_user.id,
-        type="lead_created",
-        title="Лид создан",
-        description=f"Источник: {source_name or '—'}",
-    )
+    phone_norm = normalize_phone(payload.parent_phone or payload.phone or payload.child_phone or "") or None
+
+    # Ищем уже существующий лид по телефону ИЛИ email — чтобы менеджер, добавляя
+    # контакт вручную, не создал дубль того, кто уже есть в системе (с анкеты, Tilda и т.д.).
+    existing_lead = _find_existing_lead(db, phone_normalized=phone_norm, email=payload.email)
+    if existing_lead:
+        lead = existing_lead
+        lead.contact_name = payload.contact_name or lead.contact_name
+        lead.phone = payload.phone or lead.phone
+        lead.phone_normalized = lead.phone_normalized or phone_norm
+        lead.parent_full_name = payload.parent_full_name or lead.parent_full_name
+        lead.child_full_name = payload.child_full_name or lead.child_full_name
+        lead.parent_phone = payload.parent_phone or lead.parent_phone
+        lead.child_phone = payload.child_phone or lead.child_phone
+        lead.email = payload.email or lead.email
+        lead.city = payload.city or lead.city
+        lead.school_name = payload.school_name or lead.school_name
+        lead.school_class = payload.school_class or lead.school_class
+        lead.tags = sorted(set((lead.tags or []) + (payload.tags or [])))
+        lead.comment = (f"{lead.comment}\n\n" if lead.comment else "") + payload.comment if payload.comment else lead.comment
+        if not lead.source:
+            lead.source = source_name
+            lead.source_id = source_id
+        db.flush()
+        sync_lead_person(db, lead)
+        _add_activity(
+            db,
+            lead.id,
+            current_user.id,
+            type="lead_duplicate_merged",
+            title="Обнаружен дубль лида",
+            description=f"Попытка создать новый лид (источник: {source_name or '—'}) — совпал по телефону/email с уже существующим, данные объединены.",
+        )
+    else:
+        lead = Lead(
+            owner_id=owner_id,
+            contact_name=payload.contact_name,
+            phone=payload.phone,
+            phone_normalized=phone_norm,
+            parent_full_name=payload.parent_full_name,
+            child_full_name=payload.child_full_name,
+            parent_phone=payload.parent_phone,
+            child_phone=payload.child_phone,
+            email=payload.email,
+            city=payload.city,
+            school_name=payload.school_name,
+            school_class=payload.school_class,
+            outreach_at=payload.outreach_at,
+            outreach_minutes=payload.outreach_minutes,
+            source=source_name,
+            source_id=source_id,
+            referral_name=payload.referral_name,
+            tags=payload.tags,
+            abonement_id=payload.abonement_id,
+            desired_slot=payload.desired_slot,
+            comment=payload.comment,
+            next_contact_at=payload.next_contact_at,
+            status=LeadStatus.NEW,
+        )
+        db.add(lead)
+        db.flush()
+        sync_lead_person(db, lead)
+        _add_activity(
+            db,
+            lead.id,
+            current_user.id,
+            type="lead_created",
+            title="Лид создан",
+            description=f"Источник: {source_name or '—'}",
+        )
     db.commit()
     db.refresh(lead)
 

@@ -879,6 +879,24 @@ async def render_content_draft_image(
     return ImageRenderResult(ok=result["ok"], detail=result["detail"], draft=draft)
 
 
+@router.get("/content/drafts/{draft_id}/image")
+def download_draft_image(
+    draft_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("academy_ai.generate")),
+):
+    draft = db.query(AcademyContentDraft).filter(AcademyContentDraft.id == draft_id).first()
+    if not draft or not draft.image_storage_key:
+        raise HTTPException(status_code=404, detail="Картинка не найдена")
+    try:
+        path = kb_storage.resolve_path(draft.image_storage_key)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Картинка не найдена")
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Файл отсутствует в хранилище")
+    return FileResponse(path, media_type="image/png")
+
+
 @router.delete("/content/drafts/{draft_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_content_draft(
     draft_id: int,

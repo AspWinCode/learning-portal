@@ -388,6 +388,9 @@ export const setDraftStatus = (id: number, status: DraftStatus, feedback?: strin
 export const renderDraftImage = (id: number): Promise<{ ok: boolean; detail: string; draft: ContentDraft }> =>
   api.post(`${BASE}/content/drafts/${id}/image`).then((r) => r.data);
 
+export const getDraftImageBlob = (id: number): Promise<Blob> =>
+  api.get(`${BASE}/content/drafts/${id}/image`, { responseType: 'blob' }).then((r) => r.data);
+
 export const deleteDraft = (id: number): Promise<void> =>
   api.delete(`${BASE}/content/drafts/${id}`).then(() => undefined);
 

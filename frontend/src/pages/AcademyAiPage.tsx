@@ -865,6 +865,105 @@ const ContentExamplesSection: React.FC = () => {
   );
 };
 
+const DraftCard: React.FC<{
+  draft: academyAi.ContentDraft;
+  onStatus: (id: number, status: academyAi.DraftStatus) => void;
+  onImageRendered: () => void;
+}> = ({ draft: d, onStatus, onImageRendered }) => {
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [renderingImage, setRenderingImage] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
+
+  const externalImageUrl = (d.based_on as { image_url?: string } | null)?.image_url || null;
+
+  useEffect(() => {
+    if (!d.image_storage_key) {
+      setImageUrl(null);
+      return;
+    }
+    let cancelled = false;
+    let objectUrl: string | null = null;
+    academyAi.getDraftImageBlob(d.id).then((blob) => {
+      if (cancelled) return;
+      objectUrl = URL.createObjectURL(blob);
+      setImageUrl(objectUrl);
+    }).catch(() => {
+      if (!cancelled) setImageUrl(null);
+    });
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [d.id, d.image_storage_key]);
+
+  const renderImage = async () => {
+    setRenderingImage(true);
+    setImageError(null);
+    try {
+      const res = await academyAi.renderDraftImage(d.id);
+      if (!res.ok) setImageError(res.detail);
+      onImageRendered();
+    } catch (err) {
+      setImageError(extractApiError(err, 'Не удалось сгенерировать картинку'));
+    } finally {
+      setRenderingImage(false);
+    }
+  };
+
+  const hasImage = !!imageUrl || !!externalImageUrl;
+
+  return (
+    <Paper variant="outlined" sx={{ p: 1.5 }}>
+      <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={2}>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Stack direction="row" spacing={0.5} sx={{ mb: 0.5 }}>
+            <Chip size="small" label={CONTENT_KIND_LABELS[d.kind] || d.kind} />
+            <Chip size="small" color={d.status === 'draft' ? 'default' : d.status === 'approved' ? 'success' : d.status === 'rejected' ? 'error' : 'info'} label={DRAFT_STATUS_LABELS[d.status]} />
+            {d.direction && <Chip size="small" variant="outlined" label={d.direction} />}
+          </Stack>
+          {d.title && <Typography variant="subtitle2">{d.title}</Typography>}
+          <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'pre-wrap' }}>{d.body || ''}</Typography>
+          {d.feedback_note && <Typography variant="caption" color="error.main" display="block">Замечание: {d.feedback_note}</Typography>}
+
+          {d.image_prompt && (
+            <Box sx={{ mt: 1 }}>
+              <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'pre-wrap', display: 'block' }}>
+                🖼 {d.image_prompt}
+              </Typography>
+              {hasImage ? (
+                <Box
+                  component="img"
+                  src={imageUrl || externalImageUrl || undefined}
+                  alt={d.title || 'Сгенерированная картинка'}
+                  sx={{ mt: 1, maxWidth: '100%', maxHeight: 320, borderRadius: 1, display: 'block' }}
+                />
+              ) : (
+                <Button
+                  size="small"
+                  variant="outlined"
+                  sx={{ mt: 1 }}
+                  onClick={renderImage}
+                  disabled={renderingImage}
+                  startIcon={renderingImage ? <CircularProgress size={14} /> : <AutoAwesomeIcon fontSize="small" />}
+                >
+                  Сгенерировать картинку
+                </Button>
+              )}
+              {imageError && <Typography variant="caption" color="error.main" display="block">{imageError}</Typography>}
+            </Box>
+          )}
+        </Box>
+        {d.status === 'draft' && (
+          <Stack spacing={0.5} sx={{ flexShrink: 0 }}>
+            <Button size="small" color="success" onClick={() => onStatus(d.id, 'approved')}>Одобрить</Button>
+            <Button size="small" color="error" onClick={() => onStatus(d.id, 'rejected')}>Отклонить</Button>
+          </Stack>
+        )}
+      </Stack>
+    </Paper>
+  );
+};
+
 const ContentTab: React.FC = () => {
   const { error, setError, message, setMessage } = useToast();
   const [kind, setKind] = useState<academyAi.ContentKind>('post');
@@ -941,27 +1040,7 @@ const ContentTab: React.FC = () => {
       <Typography variant="subtitle2">Очередь черновиков</Typography>
       <Stack spacing={1}>
         {drafts.map((d) => (
-          <Paper key={d.id} variant="outlined" sx={{ p: 1.5 }}>
-            <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
-              <Box sx={{ flex: 1 }}>
-                <Stack direction="row" spacing={0.5} sx={{ mb: 0.5 }}>
-                  <Chip size="small" label={CONTENT_KIND_LABELS[d.kind] || d.kind} />
-                  <Chip size="small" color={d.status === 'draft' ? 'default' : d.status === 'approved' ? 'success' : d.status === 'rejected' ? 'error' : 'info'} label={DRAFT_STATUS_LABELS[d.status]} />
-                  {d.direction && <Chip size="small" variant="outlined" label={d.direction} />}
-                </Stack>
-                {d.title && <Typography variant="subtitle2">{d.title}</Typography>}
-                <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'pre-wrap' }}>{(d.body || '').slice(0, 400)}</Typography>
-                {d.image_prompt && <Typography variant="caption" color="text.secondary">🖼 {d.image_prompt.slice(0, 160)}</Typography>}
-                {d.feedback_note && <Typography variant="caption" color="error.main" display="block">Замечание: {d.feedback_note}</Typography>}
-              </Box>
-              {d.status === 'draft' && (
-                <Stack spacing={0.5}>
-                  <Button size="small" color="success" onClick={() => setStatus(d.id, 'approved')}>Одобрить</Button>
-                  <Button size="small" color="error" onClick={() => setStatus(d.id, 'rejected')}>Отклонить</Button>
-                </Stack>
-              )}
-            </Stack>
-          </Paper>
+          <DraftCard key={d.id} draft={d} onStatus={setStatus} onImageRendered={load} />
         ))}
       </Stack>
     </Stack>

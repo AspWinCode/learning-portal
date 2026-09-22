@@ -131,6 +131,44 @@ async def test_embed_returns_vectors(monkeypatch):
     assert result.data == [[0.1, 0.2], [0.3, 0.4]]
 
 
+class _FailingAsyncClient(_FakeAsyncClient):
+    """Провайдер настроен, но реальный вызов падает (напр. 403 от шлюза)."""
+
+    async def post(self, url, **kwargs):
+        _FakeAsyncClient.calls.append((url, kwargs))
+        raise httpx.HTTPStatusError("403 Forbidden", request=None, response=None)
+
+
+@pytest.mark.asyncio
+async def test_generate_image_surfaces_real_provider_error(monkeypatch):
+    monkeypatch.setenv("AI_TUNNEL_BASE_URL", "https://tunnel.example/v1")
+    monkeypatch.setenv("AI_TUNNEL_API_KEY", "k")
+    monkeypatch.setenv("AI_TUNNEL_MODEL_IMAGE", "image-model")
+    monkeypatch.setattr(httpx, "AsyncClient", _FailingAsyncClient)
+
+    result = await ai_gateway.generate_image(feature="unit", prompt="картинка")
+
+    assert result.ok is False
+    # раньше здесь была обманчивая generic-фраза, даже когда провайдер был
+    # настроен и реально вызывался — теперь виден настоящий сбой
+    assert "no image provider configured" not in result.error
+    assert "403" in result.error
+
+
+@pytest.mark.asyncio
+async def test_embed_surfaces_real_provider_error(monkeypatch):
+    monkeypatch.setenv("AI_TUNNEL_BASE_URL", "https://tunnel.example/v1")
+    monkeypatch.setenv("AI_TUNNEL_API_KEY", "k")
+    monkeypatch.setenv("AI_TUNNEL_MODEL_EMBED", "embed-model")
+    monkeypatch.setattr(httpx, "AsyncClient", _FailingAsyncClient)
+
+    result = await ai_gateway.embed(feature="unit", inputs=["a"])
+
+    assert result.ok is False
+    assert "no embed provider configured" not in result.error
+    assert "403" in result.error
+
+
 def test_parse_json_object_strips_code_fence():
     assert ai_gateway._parse_json_object('```json\n{"a": 1}\n```') == {"a": 1}
     assert ai_gateway._parse_json_object("noise {\"a\": 2} trailer") == {"a": 2}

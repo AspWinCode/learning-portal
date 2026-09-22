@@ -63,6 +63,19 @@ export interface CodelabSnapStep {
   content: string;
 }
 
+// Вопрос теста (type=quiz) — один тип, несколько правильных ответов (checkbox).
+// Живёт прямо на элементе дерева, не в отдельном банке (без переиспользования
+// между тестами — решение владельца продукта 2026-09-23).
+export interface CodelabQuizOption {
+  text: string;
+  correct: boolean;
+}
+
+export interface CodelabQuizQuestion {
+  text: string;
+  options: CodelabQuizOption[];
+}
+
 export interface CodelabLearningItem {
   id: number;
   type: string;
@@ -77,6 +90,7 @@ export interface CodelabLearningItem {
   problem_revision_id: number | null;
   is_archived: boolean;
   steps: CodelabSnapStep[] | null;
+  quiz_questions: CodelabQuizQuestion[] | null;
   children: CodelabLearningItem[];
 }
 

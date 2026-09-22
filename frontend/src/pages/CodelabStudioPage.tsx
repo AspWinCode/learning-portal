@@ -11,11 +11,11 @@ import { useAuth } from '../contexts/AuthContext';
 import { getEffectiveRole, hasPermission } from '../utils/permissions';
 import {
   CODELAB_CHILD_STRUCTURAL_TYPE, CODELAB_STRUCTURAL_LABEL, CodelabCourse, CodelabCourseAnalytics,
-  CodelabLearningItem, CodelabLoginEvent, CodelabProblemTest, CodelabSnapStep, CodelabStructuralType, CodelabSubmissionReview,
-  CodelabSystemStatus, CodelabUser, codelabStudioApi as api,
+  CodelabLearningItem, CodelabLoginEvent, CodelabProblemTest, CodelabQuizQuestion, CodelabSnapStep, CodelabStructuralType,
+  CodelabSubmissionReview, CodelabSystemStatus, CodelabUser, codelabStudioApi as api,
 } from '../services/codelabApi';
 
-const CONTENT_TYPE_LABEL: Record<string, string> = { theory: 'Материал', task: 'Задача', snap_task: 'Snap!' };
+const CONTENT_TYPE_LABEL: Record<string, string> = { theory: 'Материал', task: 'Задача', snap_task: 'Snap!', quiz: 'Тест' };
 
 const STRUCTURAL_TYPE_SET = new Set<string>(['module', 'submodule', 'topic', 'subtopic']);
 
@@ -76,6 +76,7 @@ function TreeItemRow({ item, depth, onAddChild, onEdit, onArchive, onDelete }: {
           {isStructural && <MenuItem onClick={() => { onAddChild(item.id, 'theory'); close(); }}>+ Материал</MenuItem>}
           {isStructural && <MenuItem onClick={() => { onAddChild(item.id, 'task'); close(); }}>+ Задача</MenuItem>}
           {isStructural && <MenuItem onClick={() => { onAddChild(item.id, 'snap_task'); close(); }}>+ Snap-задание</MenuItem>}
+          {isStructural && <MenuItem onClick={() => { onAddChild(item.id, 'quiz'); close(); }}>+ Тест</MenuItem>}
           {isStructural && <Divider />}
           <MenuItem onClick={() => { onEdit(item); close(); }}>Редактировать</MenuItem>
           <MenuItem onClick={() => { onArchive(item); close(); }}>{item.is_archived ? 'Разархивировать' : 'Архивировать'}</MenuItem>
@@ -163,6 +164,12 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
   // панель snap.tirskix.space справа — одна на весь элемент, шагами не управляется.
   const [snapSteps, setSnapSteps] = useState<CodelabSnapStep[]>([{ title: '', content: '' }]);
 
+  // Тест: один тип вопроса — несколько правильных ответов (checkbox), список
+  // вопросов принадлежит только этому тесту (без банка, без переиспользования).
+  const [quizQuestions, setQuizQuestions] = useState<CodelabQuizQuestion[]>([
+    { text: '', options: [{ text: '', correct: false }, { text: '', correct: false }] },
+  ]);
+
   const loadCourses = () => api.listCourses().then(setCourses).catch((e) => onToast({ msg: e.message, err: true }));
 
   useEffect(() => { loadCourses(); }, []);
@@ -203,6 +210,7 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
     setTaskOutputFormat('');
     setTaskTests([{ input: '', expected: '', is_hidden: false }]);
     setSnapSteps([{ title: '', content: '' }]);
+    setQuizQuestions([{ text: '', options: [{ text: '', correct: false }, { text: '', correct: false }] }]);
   };
 
   const openEdit = (item: CodelabLearningItem) => {
@@ -224,6 +232,13 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
     if (item.type === 'snap_task') {
       setSnapSteps(item.steps && item.steps.length > 0 ? item.steps : [{ title: '', content: '' }]);
     }
+    if (item.type === 'quiz') {
+      setQuizQuestions(
+        item.quiz_questions && item.quiz_questions.length > 0
+          ? item.quiz_questions
+          : [{ text: '', options: [{ text: '', correct: false }, { text: '', correct: false }] }],
+      );
+    }
   };
 
   const addTestRow = () => setTaskTests((prev) => [...prev, { input: '', expected: '', is_hidden: false }]);
@@ -235,6 +250,20 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
   const removeStepRow = (i: number) => setSnapSteps((prev) => prev.filter((_, idx) => idx !== i));
   const updateStepRow = (i: number, patch: Partial<CodelabSnapStep>) =>
     setSnapSteps((prev) => prev.map((s, idx) => (idx === i ? { ...s, ...patch } : s)));
+
+  const addQuestionRow = () =>
+    setQuizQuestions((prev) => [...prev, { text: '', options: [{ text: '', correct: false }, { text: '', correct: false }] }]);
+  const removeQuestionRow = (qi: number) => setQuizQuestions((prev) => prev.filter((_, idx) => idx !== qi));
+  const updateQuestionText = (qi: number, text: string) =>
+    setQuizQuestions((prev) => prev.map((q, idx) => (idx === qi ? { ...q, text } : q)));
+  const addOptionRow = (qi: number) =>
+    setQuizQuestions((prev) => prev.map((q, idx) => (idx === qi ? { ...q, options: [...q.options, { text: '', correct: false }] } : q)));
+  const removeOptionRow = (qi: number, oi: number) =>
+    setQuizQuestions((prev) => prev.map((q, idx) => (idx === qi ? { ...q, options: q.options.filter((_, j) => j !== oi) } : q)));
+  const updateOptionText = (qi: number, oi: number, text: string) =>
+    setQuizQuestions((prev) => prev.map((q, idx) => (idx === qi ? { ...q, options: q.options.map((o, j) => (j === oi ? { ...o, text } : o)) } : q)));
+  const toggleOptionCorrect = (qi: number, oi: number) =>
+    setQuizQuestions((prev) => prev.map((q, idx) => (idx === qi ? { ...q, options: q.options.map((o, j) => (j === oi ? { ...o, correct: !o.correct } : o)) } : q)));
 
   const siblingCount = (parentId: number | null): number => {
     const siblings = parentId === null ? tree : findNode(tree, parentId)?.children ?? [];
@@ -284,6 +313,20 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
             parent_id: nodeDialog.parentId, position: siblingCount(nodeDialog.parentId),
           });
           onToast({ msg: 'Snap-задание добавлено' });
+        }
+      } else if (nodeDialog.type === 'quiz') {
+        const questions = quizQuestions
+          .filter((q) => q.text.trim())
+          .map((q) => ({ text: q.text, options: q.options.filter((o) => o.text.trim()) }));
+        if (nodeDialog.editing) {
+          await api.updateItem(nodeDialog.editing.id, { title: nodeTitle, quiz_questions: questions });
+          onToast({ msg: 'Тест обновлён' });
+        } else {
+          await api.createItem(selected.id, {
+            type: 'quiz', title: nodeTitle, quiz_questions: questions,
+            parent_id: nodeDialog.parentId, position: siblingCount(nodeDialog.parentId),
+          });
+          onToast({ msg: 'Тест добавлен' });
         }
       } else if (nodeDialog.editing) {
         const patch: Record<string, unknown> = { title: nodeTitle };
@@ -504,6 +547,7 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
                 <Button size="small" variant="outlined" onClick={() => openCreate(null, 'theory')}>+ Материал</Button>
                 <Button size="small" variant="outlined" onClick={() => openCreate(null, 'task')}>+ Задача</Button>
                 <Button size="small" variant="outlined" onClick={() => openCreate(null, 'snap_task')}>+ Snap-задание</Button>
+                <Button size="small" variant="outlined" onClick={() => openCreate(null, 'quiz')}>+ Тест</Button>
                 {selected.status === 'published' ? (
                   <Button size="small" startIcon={<UnpublishIcon />} onClick={unpublish}>Снять с публикации</Button>
                 ) : (
@@ -540,7 +584,7 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
       </Dialog>
 
       <Dialog
-        open={!!nodeDialog && nodeDialog.type !== 'task' && nodeDialog.type !== 'snap_task'}
+        open={!!nodeDialog && nodeDialog.type !== 'task' && nodeDialog.type !== 'snap_task' && nodeDialog.type !== 'quiz'}
         onClose={() => setNodeDialog(null)} fullWidth
         maxWidth={nodeDialog?.type === 'theory' ? 'md' : 'sm'}
       >
@@ -657,6 +701,62 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
                   placeholder="Текст этапа — форматирование, изображения (Ctrl+V), видео, ссылки…"
                   onUploadImage={async (file) => (await api.uploadFile(file)).url}
                 />
+              </Paper>
+            ))}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setNodeDialog(null)}>Отмена</Button>
+          <Button variant="contained" disabled={!nodeTitle.trim()} onClick={saveNode}>
+            {nodeDialog?.editing ? 'Сохранить' : 'Добавить'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={nodeDialog?.type === 'quiz'} onClose={() => setNodeDialog(null)} fullWidth maxWidth="md">
+        <DialogTitle>{nodeDialog?.editing ? 'Редактирование теста' : 'Новый тест'}</DialogTitle>
+        <DialogContent>
+          <TextField autoFocus fullWidth label="Название" value={nodeTitle} onChange={(e) => setNodeTitle(e.target.value)} sx={{ mt: 1, mb: 2 }} />
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Один тип вопроса — несколько правильных ответов (отметьте галочкой один или несколько
+            вариантов). Балл ученика — процент вопросов, отвеченных полностью верно.
+          </Typography>
+
+          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+            <Typography variant="subtitle2">Вопросы</Typography>
+            <Button size="small" onClick={addQuestionRow}>+ Добавить вопрос</Button>
+          </Stack>
+          <Stack spacing={2}>
+            {quizQuestions.map((q, qi) => (
+              <Paper key={qi} variant="outlined" sx={{ p: 1.5 }}>
+                <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 1 }}>
+                  <TextField
+                    fullWidth size="small" label={`Вопрос ${qi + 1}`}
+                    value={q.text} onChange={(e) => updateQuestionText(qi, e.target.value)}
+                  />
+                  <IconButton size="small" onClick={() => removeQuestionRow(qi)} disabled={quizQuestions.length === 1}>
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </Stack>
+                <Stack spacing={1} sx={{ pl: 2 }}>
+                  {q.options.map((o, oi) => (
+                    <Stack key={oi} direction="row" spacing={1} alignItems="center">
+                      <FormControlLabel
+                        sx={{ m: 0 }}
+                        control={<Checkbox size="small" checked={o.correct} onChange={() => toggleOptionCorrect(qi, oi)} />}
+                        label=""
+                      />
+                      <TextField
+                        fullWidth size="small" label={`Вариант ${oi + 1}`}
+                        value={o.text} onChange={(e) => updateOptionText(qi, oi, e.target.value)}
+                      />
+                      <IconButton size="small" onClick={() => removeOptionRow(qi, oi)} disabled={q.options.length <= 2}>
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    </Stack>
+                  ))}
+                  <Button size="small" onClick={() => addOptionRow(qi)} sx={{ alignSelf: 'flex-start' }}>+ Вариант</Button>
+                </Stack>
               </Paper>
             ))}
           </Stack>

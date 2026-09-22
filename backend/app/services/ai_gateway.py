@@ -410,6 +410,7 @@ async def embed(
 ) -> GatewayResult:
     """Эмбеддинги для смыслового поиска. Возвращает GatewayResult с data =
     список векторов (list[list[float]])."""
+    last_error: Optional[str] = None
     for name in _provider_order():
         cfg = _openai_config(name, "embed")
         if not cfg:
@@ -437,12 +438,13 @@ async def embed(
             if result.ok:
                 return result
         except Exception as exc:  # noqa: BLE001
+            last_error = f"{name}: {exc}"
             _log_call(
                 feature=feature,
-                result=GatewayResult(ok=False, provider=name, purpose="embed", error=str(exc)),
+                result=GatewayResult(ok=False, provider=name, purpose="embed", error=last_error),
                 user_id=user_id,
             )
-    return GatewayResult(ok=False, purpose="embed", error="no embed provider configured")
+    return GatewayResult(ok=False, purpose="embed", error=last_error or "no embed provider configured")
 
 
 async def generate_image(
@@ -454,6 +456,7 @@ async def generate_image(
     timeout: float = 90.0,
 ) -> GatewayResult:
     """Генерация изображения. data = список {url|b64_json} из ответа провайдера."""
+    last_error: Optional[str] = None
     for name in _provider_order():
         cfg = _openai_config(name, "image")
         if not cfg:
@@ -478,9 +481,10 @@ async def generate_image(
             if result.ok:
                 return result
         except Exception as exc:  # noqa: BLE001
+            last_error = f"{name}: {exc}"
             _log_call(
                 feature=feature,
-                result=GatewayResult(ok=False, provider=name, purpose="image", error=str(exc)),
+                result=GatewayResult(ok=False, provider=name, purpose="image", error=last_error),
                 user_id=user_id,
             )
-    return GatewayResult(ok=False, purpose="image", error="no image provider configured")
+    return GatewayResult(ok=False, purpose="image", error=last_error or "no image provider configured")

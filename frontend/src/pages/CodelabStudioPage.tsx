@@ -253,6 +253,11 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
           tests: taskTests
             .filter((t) => t.input.trim() || t.expected.trim())
             .map((t) => ({ input: t.input, expected: t.expected, is_hidden: t.is_hidden })),
+          // Codelab по умолчанию сравнивает вывод байт-в-байт (checker="exact"),
+          // если не передать это поле явно — а print() в Python всегда добавляет
+          // "\n", которого нет в "Ожидаемом выводе", введённом методистом. Без
+          // этого любое решение получало Wrong Answer.
+          checker: 'trimmed',
         };
         if (nodeDialog.editing) {
           if (nodeDialog.editing.problem_revision_id) {

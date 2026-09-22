@@ -1,17 +1,83 @@
 import React, { useEffect, useState } from 'react';
 import {
   Alert, Box, Button, Card, CardActionArea, CardContent, Checkbox, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
-  DialogTitle, Divider, List, ListItemText, MenuItem, Paper, Select,
+  DialogTitle, Divider, IconButton, List, ListItemText, Menu, MenuItem, Paper, Select,
   Snackbar, Stack, Tab, Table, TableBody, TableCell, TableHead, TableRow, Tabs, TextField, Typography,
 } from '@mui/material';
-import { Publish as PublishIcon, UnpublishedOutlined as UnpublishIcon } from '@mui/icons-material';
+import { MoreVert as MoreVertIcon, Publish as PublishIcon, UnpublishedOutlined as UnpublishIcon } from '@mui/icons-material';
 import Layout from '../components/Layout';
 import { useAuth } from '../contexts/AuthContext';
 import { getEffectiveRole, hasPermission } from '../utils/permissions';
 import {
-  CodelabCourse, CodelabCourseAnalytics, CodelabLearningItem, CodelabLoginEvent, CodelabSubmissionReview,
+  CODELAB_CHILD_STRUCTURAL_TYPE, CODELAB_STRUCTURAL_LABEL, CodelabCourse, CodelabCourseAnalytics,
+  CodelabLearningItem, CodelabLoginEvent, CodelabStructuralType, CodelabSubmissionReview,
   CodelabSystemStatus, CodelabUser, codelabStudioApi as api,
 } from '../services/codelabApi';
+
+const STRUCTURAL_TYPE_SET = new Set<string>(['module', 'submodule', 'topic', 'subtopic']);
+
+function findNode(nodes: CodelabLearningItem[], id: number): CodelabLearningItem | null {
+  for (const n of nodes) {
+    if (n.id === id) return n;
+    const found = findNode(n.children, id);
+    if (found) return found;
+  }
+  return null;
+}
+
+/** Узел дерева курса — рекурсивный, с меню действий (добавить дочерний
+ * узел/материал/задачу, редактировать, архивировать, удалить). Иерархия
+ * жёсткая (Модуль → Подмодуль → Тема → Подтема, app/services/tree_rules.py
+ * в Codelab) — дочерний структурный уровень для узла вычисляется таблицей
+ * CODELAB_CHILD_STRUCTURAL_TYPE; контент (материал/задача) можно добавить
+ * на любом структурном уровне, но не под самим материалом/задачей. */
+function TreeItemRow({ item, depth, onAddChild, onEdit, onArchive, onDelete }: {
+  item: CodelabLearningItem;
+  depth: number;
+  onAddChild: (parentId: number, type: string) => void;
+  onEdit: (item: CodelabLearningItem) => void;
+  onArchive: (item: CodelabLearningItem) => void;
+  onDelete: (item: CodelabLearningItem) => void;
+}) {
+  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
+  const isStructural = STRUCTURAL_TYPE_SET.has(item.type);
+  const childStructType = isStructural ? CODELAB_CHILD_STRUCTURAL_TYPE[item.type as CodelabStructuralType] : null;
+  const close = () => setAnchorEl(null);
+
+  return (
+    <Box sx={{ borderBottom: '1px solid', borderColor: 'divider', '&:last-child': { borderBottom: 0 } }}>
+      <Stack direction="row" alignItems="center" spacing={1} sx={{ pl: 1.5 + depth * 3, pr: 1, py: 1, opacity: item.is_archived ? 0.5 : 1 }}>
+        <Chip
+          size="small"
+          label={isStructural ? CODELAB_STRUCTURAL_LABEL[item.type as CodelabStructuralType] : item.type}
+          color={isStructural ? 'primary' : 'default'}
+          variant={isStructural ? 'filled' : 'outlined'}
+        />
+        <Typography sx={{ flex: 1 }}>{item.title}</Typography>
+        {item.is_archived && <Chip size="small" label="в архиве" />}
+        <IconButton size="small" onClick={(e) => setAnchorEl(e.currentTarget)}>
+          <MoreVertIcon fontSize="small" />
+        </IconButton>
+        <Menu anchorEl={anchorEl} open={!!anchorEl} onClose={close}>
+          {isStructural && childStructType && (
+            <MenuItem onClick={() => { onAddChild(item.id, childStructType); close(); }}>
+              + {CODELAB_STRUCTURAL_LABEL[childStructType]}
+            </MenuItem>
+          )}
+          {isStructural && <MenuItem onClick={() => { onAddChild(item.id, 'theory'); close(); }}>+ Материал</MenuItem>}
+          {isStructural && <MenuItem onClick={() => { onAddChild(item.id, 'task'); close(); }}>+ Задача</MenuItem>}
+          {isStructural && <Divider />}
+          <MenuItem onClick={() => { onEdit(item); close(); }}>Редактировать</MenuItem>
+          <MenuItem onClick={() => { onArchive(item); close(); }}>{item.is_archived ? 'Разархивировать' : 'Архивировать'}</MenuItem>
+          <MenuItem onClick={() => { onDelete(item); close(); }} sx={{ color: 'error.main' }}>Удалить</MenuItem>
+        </Menu>
+      </Stack>
+      {item.children.map((child) => (
+        <TreeItemRow key={child.id} item={child} depth={depth + 1} onAddChild={onAddChild} onEdit={onEdit} onArchive={onArchive} onDelete={onDelete} />
+      ))}
+    </Box>
+  );
+}
 
 type Toast = { msg: string; err?: boolean } | null;
 type TabKey = 'courses' | 'submissions' | 'analytics' | 'status';
@@ -51,6 +117,12 @@ export default function CodelabStudioPage() {
 
 // ─────────────────────────── Курсы (методист) ───────────────────────────
 
+interface NodeDialogState {
+  type: string; // module|submodule|topic|subtopic|theory|task
+  parentId: number | null;
+  editing?: CodelabLearningItem; // задано — режим редактирования, иначе создание
+}
+
 function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
   const [courses, setCourses] = useState<CodelabCourse[]>([]);
   const [selected, setSelected] = useState<CodelabCourse | null>(null);
@@ -58,10 +130,11 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
   const [loading, setLoading] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [newTitle, setNewTitle] = useState('');
-  const [itemDialog, setItemDialog] = useState<'theory' | 'task' | null>(null);
-  const [itemTitle, setItemTitle] = useState('');
-  const [itemContent, setItemContent] = useState('');
+  const [nodeDialog, setNodeDialog] = useState<NodeDialogState | null>(null);
+  const [nodeTitle, setNodeTitle] = useState('');
+  const [nodeContent, setNodeContent] = useState('');
   const [testsText, setTestsText] = useState('2 3=>5');
+  const [deleteTarget, setDeleteTarget] = useState<CodelabLearningItem | null>(null);
 
   const loadCourses = () => api.listCourses().then(setCourses).catch((e) => onToast({ msg: e.message, err: true }));
 
@@ -79,6 +152,8 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
     }
   };
 
+  const refresh = () => { if (selected) selectCourse(selected); };
+
   const createCourse = async () => {
     try {
       const course = await api.createCourse({ title: newTitle });
@@ -92,34 +167,77 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
     }
   };
 
-  const addTheoryItem = async () => {
-    if (!selected) return;
+  const openCreate = (parentId: number | null, type: string) => {
+    setNodeDialog({ parentId, type });
+    setNodeTitle('');
+    setNodeContent('');
+    setTestsText('2 3=>5');
+  };
+
+  const openEdit = (item: CodelabLearningItem) => {
+    setNodeDialog({ parentId: item.parent_id, type: item.type, editing: item });
+    setNodeTitle(item.title);
+    setNodeContent(item.content || '');
+  };
+
+  const siblingCount = (parentId: number | null): number => {
+    const siblings = parentId === null ? tree : findNode(tree, parentId)?.children ?? [];
+    return siblings.length;
+  };
+
+  const saveNode = async () => {
+    if (!selected || !nodeDialog) return;
     try {
-      await api.createItem(selected.id, { type: 'theory', title: itemTitle, content: itemContent, position: tree.length });
-      setItemDialog(null);
-      setItemTitle('');
-      setItemContent('');
-      onToast({ msg: 'Материал добавлен' });
-      selectCourse(selected);
+      if (nodeDialog.editing) {
+        const patch: Record<string, unknown> = { title: nodeTitle };
+        if (nodeDialog.type === 'theory') patch.content = nodeContent;
+        await api.updateItem(nodeDialog.editing.id, patch);
+        onToast({ msg: 'Сохранено' });
+      } else if (nodeDialog.type === 'task') {
+        const tests = testsText.split('\n').filter(Boolean).map((line) => {
+          const [input, expected] = line.split('=>');
+          return { input: `${(input || '').trim()}\n`, expected: `${(expected || '').trim()}\n` };
+        });
+        const task = await api.createTask(selected.id, { title: nodeTitle, tests });
+        await api.createItem(selected.id, {
+          type: 'task', title: nodeTitle, problem_revision_id: task.id,
+          parent_id: nodeDialog.parentId, position: siblingCount(nodeDialog.parentId),
+        });
+        onToast({ msg: 'Задача добавлена' });
+      } else {
+        await api.createItem(selected.id, {
+          type: nodeDialog.type,
+          title: nodeTitle,
+          content: nodeDialog.type === 'theory' ? nodeContent : undefined,
+          parent_id: nodeDialog.parentId,
+          position: siblingCount(nodeDialog.parentId),
+        });
+        onToast({ msg: 'Добавлено' });
+      }
+      setNodeDialog(null);
+      refresh();
     } catch (e: any) {
       onToast({ msg: e.message, err: true });
     }
   };
 
-  const addTaskItem = async () => {
-    if (!selected) return;
+  const toggleArchive = async (item: CodelabLearningItem) => {
     try {
-      const tests = testsText.split('\n').filter(Boolean).map((line) => {
-        const [input, expected] = line.split('=>');
-        return { input: `${(input || '').trim()}\n`, expected: `${(expected || '').trim()}\n` };
-      });
-      const task = await api.createTask(selected.id, { title: itemTitle, tests });
-      await api.createItem(selected.id, { type: 'task', title: itemTitle, problem_revision_id: task.id, position: tree.length });
-      setItemDialog(null);
-      setItemTitle('');
-      setTestsText('2 3=>5');
-      onToast({ msg: 'Задача добавлена' });
-      selectCourse(selected);
+      await api.archiveItem(item.id, !item.is_archived);
+      onToast({ msg: item.is_archived ? 'Разархивировано' : 'Архивировано' });
+      refresh();
+    } catch (e: any) {
+      onToast({ msg: e.message, err: true });
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    try {
+      await api.deleteItem(deleteTarget.id);
+      onToast({ msg: 'Удалено' });
+      setDeleteTarget(null);
+      refresh();
     } catch (e: any) {
       onToast({ msg: e.message, err: true });
     }
@@ -193,8 +311,9 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
             <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
               <Typography variant="h6">{selected.title}</Typography>
               <Stack direction="row" spacing={1}>
-                <Button size="small" variant="outlined" onClick={() => setItemDialog('theory')}>+ Материал</Button>
-                <Button size="small" variant="outlined" onClick={() => setItemDialog('task')}>+ Задача</Button>
+                <Button size="small" variant="outlined" onClick={() => openCreate(null, 'module')}>+ Модуль</Button>
+                <Button size="small" variant="outlined" onClick={() => openCreate(null, 'theory')}>+ Материал</Button>
+                <Button size="small" variant="outlined" onClick={() => openCreate(null, 'task')}>+ Задача</Button>
                 {selected.status === 'published' ? (
                   <Button size="small" startIcon={<UnpublishIcon />} onClick={unpublish}>Снять с публикации</Button>
                 ) : (
@@ -204,15 +323,16 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
             </Stack>
 
             {loading ? <CircularProgress size={24} /> : (
-              <Stack spacing={1}>
+              <Paper variant="outlined">
                 {tree.map((item) => (
-                  <Paper key={item.id} variant="outlined" sx={{ p: 1.5 }}>
-                    <Chip size="small" label={item.type} sx={{ mr: 1 }} />
-                    {item.title}
-                  </Paper>
+                  <TreeItemRow
+                    key={item.id}
+                    item={item} depth={0}
+                    onAddChild={openCreate} onEdit={openEdit} onArchive={toggleArchive} onDelete={setDeleteTarget}
+                  />
                 ))}
-                {tree.length === 0 && <Typography variant="caption" color="text.secondary">В черновике пока пусто.</Typography>}
-              </Stack>
+                {tree.length === 0 && <Typography variant="caption" color="text.secondary" sx={{ p: 2, display: 'block' }}>В черновике пока пусто.</Typography>}
+              </Paper>
             )}
           </>
         )}
@@ -229,30 +349,49 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={itemDialog === 'theory'} onClose={() => setItemDialog(null)} fullWidth maxWidth="sm">
-        <DialogTitle>Новый материал</DialogTitle>
+      <Dialog open={!!nodeDialog && (nodeDialog.type !== 'task' || !!nodeDialog.editing)} onClose={() => setNodeDialog(null)} fullWidth maxWidth="sm">
+        <DialogTitle>
+          {nodeDialog?.editing ? 'Редактирование' : STRUCTURAL_TYPE_SET.has(nodeDialog?.type || '')
+            ? `Новый узел «${CODELAB_STRUCTURAL_LABEL[nodeDialog?.type as CodelabStructuralType]}»`
+            : 'Новый материал'}
+        </DialogTitle>
         <DialogContent>
-          <TextField autoFocus fullWidth label="Заголовок" value={itemTitle} onChange={(e) => setItemTitle(e.target.value)} sx={{ mt: 1, mb: 2 }} />
-          <TextField fullWidth multiline rows={6} label="Текст (Markdown)" value={itemContent} onChange={(e) => setItemContent(e.target.value)} />
+          <TextField autoFocus fullWidth label="Заголовок" value={nodeTitle} onChange={(e) => setNodeTitle(e.target.value)} sx={{ mt: 1, mb: 2 }} />
+          {nodeDialog?.type === 'theory' && (
+            <TextField fullWidth multiline rows={6} label="Текст (Markdown)" value={nodeContent} onChange={(e) => setNodeContent(e.target.value)} />
+          )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setItemDialog(null)}>Отмена</Button>
-          <Button variant="contained" disabled={!itemTitle.trim()} onClick={addTheoryItem}>Добавить</Button>
+          <Button onClick={() => setNodeDialog(null)}>Отмена</Button>
+          <Button variant="contained" disabled={!nodeTitle.trim()} onClick={saveNode}>{nodeDialog?.editing ? 'Сохранить' : 'Добавить'}</Button>
         </DialogActions>
       </Dialog>
 
-      <Dialog open={itemDialog === 'task'} onClose={() => setItemDialog(null)} fullWidth maxWidth="sm">
+      <Dialog open={nodeDialog?.type === 'task' && !nodeDialog.editing} onClose={() => setNodeDialog(null)} fullWidth maxWidth="sm">
         <DialogTitle>Новая задача (Python, stdin/stdout)</DialogTitle>
         <DialogContent>
-          <TextField autoFocus fullWidth label="Название" value={itemTitle} onChange={(e) => setItemTitle(e.target.value)} sx={{ mt: 1, mb: 2 }} />
+          <TextField autoFocus fullWidth label="Название" value={nodeTitle} onChange={(e) => setNodeTitle(e.target.value)} sx={{ mt: 1, mb: 2 }} />
           <TextField
             fullWidth multiline rows={5} label="Тесты — по одному на строку: вход=>ожидаемый вывод"
             value={testsText} onChange={(e) => setTestsText(e.target.value)} helperText="Пример: 2 3=>5"
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setItemDialog(null)}>Отмена</Button>
-          <Button variant="contained" disabled={!itemTitle.trim()} onClick={addTaskItem}>Добавить</Button>
+          <Button onClick={() => setNodeDialog(null)}>Отмена</Button>
+          <Button variant="contained" disabled={!nodeTitle.trim()} onClick={saveNode}>Добавить</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)}>
+        <DialogTitle>Удалить «{deleteTarget?.title}»?</DialogTitle>
+        <DialogContent>
+          <Typography color="text.secondary">
+            Вместе с этим узлом безвозвратно удалятся все вложенные материалы, задачи и подпункты. Отменить нельзя.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteTarget(null)}>Отмена</Button>
+          <Button variant="contained" color="error" onClick={confirmDelete}>Удалить</Button>
         </DialogActions>
       </Dialog>
     </Stack>

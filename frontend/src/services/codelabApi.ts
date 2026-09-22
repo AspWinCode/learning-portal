@@ -43,6 +43,19 @@ export interface CodelabCourse {
   status: string;
 }
 
+// 4 фиксированных структурных уровня — каждый следующий только внутри
+// предыдущего (app/services/tree_rules.py в Codelab); контент лежит на любом
+// из них или в корне курса.
+export type CodelabStructuralType = 'module' | 'submodule' | 'topic' | 'subtopic';
+export const CODELAB_STRUCTURAL_TYPES: CodelabStructuralType[] = ['module', 'submodule', 'topic', 'subtopic'];
+export const CODELAB_STRUCTURAL_LABEL: Record<CodelabStructuralType, string> = {
+  module: 'Модуль', submodule: 'Подмодуль', topic: 'Тема', subtopic: 'Подтема',
+};
+// Прямой дочерний структурный уровень для каждого — null у "module" (верхний уровень).
+export const CODELAB_CHILD_STRUCTURAL_TYPE: Record<CodelabStructuralType, CodelabStructuralType | null> = {
+  module: 'submodule', submodule: 'topic', topic: 'subtopic', subtopic: null,
+};
+
 export interface CodelabLearningItem {
   id: number;
   type: string;
@@ -55,6 +68,7 @@ export interface CodelabLearningItem {
   position: number;
   unlock_rules: Record<string, unknown>;
   problem_revision_id: number | null;
+  is_archived: boolean;
   children: CodelabLearningItem[];
 }
 
@@ -139,6 +153,8 @@ export const codelabStudioApi = {
   updateItem: (itemId: number, p: Record<string, unknown>): Promise<CodelabLearningItem> =>
     api.put(`${B}/items/${itemId}`, p).then((r) => r.data),
   deleteItem: (itemId: number): Promise<void> => api.delete(`${B}/items/${itemId}`).then(() => undefined),
+  archiveItem: (itemId: number, archived: boolean): Promise<CodelabLearningItem> =>
+    api.put(`${B}/items/${itemId}/archive`, { archived }).then((r) => r.data),
   getTree: (courseId: number): Promise<CodelabLearningItem[]> => api.get(`${B}/courses/${courseId}/tree`).then((r) => r.data),
   publishCourse: (courseId: number): Promise<CodelabCourse> => api.post(`${B}/courses/${courseId}/publish`).then((r) => r.data),
   unpublishCourse: (courseId: number): Promise<CodelabCourse> => api.post(`${B}/courses/${courseId}/unpublish`).then((r) => r.data),

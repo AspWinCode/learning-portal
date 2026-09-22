@@ -104,6 +104,10 @@ async def delete_item(user, item_id: int) -> None:
     await _request("DELETE", f"/api/lms-admin/items/{item_id}", user)
 
 
+async def archive_item(user, item_id: int, archived: bool) -> dict:
+    return await _request("PUT", f"/api/lms-admin/items/{item_id}/archive", user, json={"archived": archived})
+
+
 async def get_course_tree(user, course_id: int) -> Any:
     return await _request("GET", f"/api/lms-admin/courses/{course_id}/tree", user)
 

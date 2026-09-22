@@ -212,6 +212,14 @@ async def admin_delete_item(item_id: int, current_user: User = Depends(_manage))
     return {"ok": True}
 
 
+@router.put("/admin/items/{item_id}/archive")
+async def admin_archive_item(item_id: int, payload: dict, current_user: User = Depends(_manage)):
+    try:
+        return await cl.archive_item(current_user, item_id, bool(payload.get("archived")))
+    except CodelabError as e:
+        _raise(e)
+
+
 @router.get("/admin/courses/{course_id}/tree")
 async def admin_get_course_tree(course_id: int, current_user: User = Depends(_manage)):
     try:

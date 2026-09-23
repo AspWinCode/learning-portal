@@ -119,8 +119,16 @@ def compute_unit_economics_kpis(
         .all()
     )
     first_payment_by_student = {int(sid): first_paid for sid, first_paid in first_payment_rows if sid and first_paid}
+
+    def _naive(value: datetime) -> datetime:
+        return value.replace(tzinfo=None) if value and value.tzinfo else value
+
+    period_start_naive = _naive(period_start)
+    period_end_naive = _naive(period_end)
     new_student_ids = {
-        sid for sid, first_paid in first_payment_by_student.items() if period_start <= first_paid <= period_end
+        sid
+        for sid, first_paid in first_payment_by_student.items()
+        if period_start_naive <= _naive(first_paid) <= period_end_naive
     }
 
     active_students = len(active_student_ids)

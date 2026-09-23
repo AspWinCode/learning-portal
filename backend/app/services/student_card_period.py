@@ -5,10 +5,12 @@ from sqlalchemy.orm import Session
 
 from app.models import (
     LessonAttendance,
+    Student,
     StudentAccount,
     StudentAccountTransaction,
     StudentAccountTransactionKind,
     StudentCard,
+    StudentFreeze,
 )
 
 
@@ -39,15 +41,52 @@ def _lesson_threshold_for_card(card: "StudentCard") -> int:
     return DEFAULT_LESSON_THRESHOLD
 
 
-def count_lessons_since_period_start(db: Session, student_id: int, period_start: "date | None") -> int:
-    """Количество уроков студента с даты начала периода (и посещённые, и пропущенные).
-    Пропущенный урок всё равно считается — он занимает место в абонементе."""
-    query = db.query(func.count(LessonAttendance.id)).filter(
+def is_student_on_grant(db: Session, student_id: int, card: "StudentCard | None" = None) -> bool:
+    """Ученик на гранте (флаг на ученике или на карточке) — он не платит: нет долгов и отработок."""
+    student = db.query(Student.on_grant).filter(Student.id == student_id).first()
+    if student and student.on_grant:
+        return True
+    if card is None:
+        card = db.query(StudentCard).filter(StudentCard.student_id == student_id).first()
+    return bool(card and card.on_grant)
+
+
+def _period_attendance_query(db: Session, student_id: int, period_start: "date | None"):
+    """Уроки периода: только уже прошедшие (не будущие слоты) и вне заморозки —
+    так же, как они списываются с баланса в trainer_lessons."""
+    query = db.query(LessonAttendance).filter(
         LessonAttendance.student_id == student_id,
+        LessonAttendance.lesson_date <= date.today(),
+        ~(
+            db.query(StudentFreeze.id)
+            .filter(
+                StudentFreeze.student_id == LessonAttendance.student_id,
+                StudentFreeze.freeze_start <= LessonAttendance.lesson_date,
+                StudentFreeze.freeze_end >= LessonAttendance.lesson_date,
+            )
+            .exists()
+        ),
     )
     if period_start:
         query = query.filter(LessonAttendance.lesson_date >= period_start)
-    return query.scalar() or 0
+    return query
+
+
+def _is_present_clause():
+    return (LessonAttendance.attended.is_(True)) & (
+        LessonAttendance.absence_reason.is_(None) | (LessonAttendance.absence_reason == "was")
+    )
+
+
+def count_lessons_since_period_start(db: Session, student_id: int, period_start: "date | None") -> int:
+    """Количество уроков студента с даты начала периода (и посещённые, и пропущенные).
+    Пропущенный урок всё равно считается — он занимает место в абонементе."""
+    return _period_attendance_query(db, student_id, period_start).count()
+
+
+def count_attended_since_period_start(db: Session, student_id: int, period_start: "date | None") -> int:
+    """Сколько из уроков периода ученик реально посетил (без пропусков)."""
+    return _period_attendance_query(db, student_id, period_start).filter(_is_present_clause()).count()
 
 
 def _has_payment_since(db: Session, student_id: int, since: "date | None") -> bool:
@@ -79,6 +118,10 @@ def check_lesson_payment_threshold(db: Session, student_id: int) -> None:
     """
     card = _get_or_create_card(db, student_id)
     if not card:
+        return
+    if is_student_on_grant(db, student_id, card):
+        # Грантовики не платят — не ставим им дату оплаты (и не держим висящую).
+        card.next_payment_date = None
         return
     threshold = _lesson_threshold_for_card(card)
     lessons = count_lessons_since_period_start(db, student_id, card.learning_period_start)

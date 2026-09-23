@@ -31,6 +31,7 @@ interface PaymentStatusRow {
   next_payment_date?: string | null;
   learning_period_start?: string | null;
   lessons_since_payment?: number;
+  lessons_attended?: number;
   status: string;
 }
 
@@ -119,7 +120,7 @@ const SalesDebtsPage: React.FC = () => {
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           Ученик появляется здесь с первого урока, если оплата за период не поступила.
-          Оплата закрывает текущий период (8 уроков). После 8 уроков — нужна следующая оплата.
+          Оплата закрывает текущий период (8 уроков, пропуски тоже считаются). После 8 уроков — нужна следующая оплата. Ученики на гранте здесь не показываются.
         </Typography>
 
         <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -220,14 +221,19 @@ const SalesDebtsPage: React.FC = () => {
                   const lessons = row.lessons_since_payment ?? 0;
                   const pct = Math.min(100, Math.round((lessons / LESSON_THRESHOLD) * 100));
                   const overThreshold = lessons > LESSON_THRESHOLD;
+                  const attended = row.lessons_attended ?? lessons;
+                  const missed = Math.max(0, lessons - attended);
                   return (
                     <TableRow key={row.student_id} hover>
                       <TableCell sx={{ fontWeight: 500 }}>{row.student_name}</TableCell>
                       <TableCell sx={{ minWidth: 160 }}>
-                        <Tooltip title={`${lessons} из ${LESSON_THRESHOLD} уроков`}>
+                        <Tooltip
+                          title={`${lessons} из ${LESSON_THRESHOLD} уроков: посетил ${attended}, пропустил ${missed} (пропуск тоже занимает место в абонементе)`}
+                        >
                           <Box>
                             <Typography variant="caption" color={overThreshold ? 'error' : 'text.secondary'}>
                               {lessons} / {LESSON_THRESHOLD} уроков
+                              {missed > 0 && ` · был ${attended}, пропуск ${missed}`}
                             </Typography>
                             <LinearProgress
                               variant="determinate"

@@ -14,6 +14,7 @@ from app.models import (
     GroupSchedule,
     ProgramMakeupCompatibility,
     Student,
+    StudentCard,
     StudentProgram,
     User,
 )
@@ -106,6 +107,15 @@ async def list_absences(
         query = query.filter(AbsenceFollowUp.stage != "no_makeup_needed")
     if student_id is not None:
         query = query.filter(AbsenceFollowUp.student_id == student_id)
+    # Ученики на гранте не платят и отработки им не ведём.
+    query = (
+        query.join(Student, Student.id == AbsenceFollowUp.student_id)
+        .outerjoin(StudentCard, StudentCard.student_id == AbsenceFollowUp.student_id)
+        .filter(
+            Student.on_grant.is_(False),
+            (StudentCard.id.is_(None)) | (StudentCard.on_grant.is_(False)),
+        )
+    )
     return [_absence_to_response(db, item) for item in query.all()]
 
 

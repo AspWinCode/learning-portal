@@ -741,6 +741,8 @@ async def save_attendance(
 
         # Списание начисляется за сам факт проведённого по расписанию занятия
         # (присутствие, болезнь, прогул и т.п. — кроме периода заморозки).
+        # Грантовики не платят: суммы остаются 0, прежние списания за урок сторнируются ниже.
+        on_grant = is_student_on_grant(db, att.student_id)
         in_freeze = db.query(StudentFreeze).filter(
             StudentFreeze.student_id == att.student_id,
             StudentFreeze.freeze_start <= att.lesson_date,
@@ -753,7 +755,7 @@ async def save_attendance(
         extra_units_to_apply = 0
         price_per_unit = 0.0
 
-        if not in_freeze:
+        if not in_freeze and not on_grant:
             abonement = getattr(student, "abonement", None)
             if not abonement and student.abonement_id:
                 abonement = db.query(Abonement).filter(Abonement.id == student.abonement_id).first()
@@ -903,7 +905,7 @@ async def save_attendance(
                 )
 
         # Грантовикам отработки не заводим — в «Пропуски» они не попадают.
-        if is_absence and not in_freeze and not is_student_on_grant(db, att.student_id):
+        if is_absence and not in_freeze and not on_grant:
             absence = db.query(AbsenceFollowUp).filter(
                 AbsenceFollowUp.lesson_attendance_id == att.id,
             ).first()

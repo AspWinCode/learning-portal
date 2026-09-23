@@ -3,6 +3,7 @@
 
 Студент появляется в "Долгах" как только посетил 1 урок без оплаты за текущий период.
 После оплаты исчезает из долгов на следующие 8 уроков.
+Ученики на гранте (Student.on_grant или StudentCard.on_grant) не платят и сюда не попадают.
 """
 
 from datetime import date, timedelta
@@ -18,7 +19,10 @@ from app.models import (
     StudentStatus,
     Student,
 )
-from app.services.student_card_period import count_lessons_since_period_start
+from app.services.student_card_period import (
+    count_attended_since_period_start,
+    count_lessons_since_period_start,
+)
 from app.student_display import get_student_display_name
 
 
@@ -59,6 +63,8 @@ def get_payment_status_list(
         student = db.query(Student).filter(Student.id == card.student_id).first()
         if not student or student.status == StudentStatus.ARCHIVED:
             continue
+        if student.on_grant or card.on_grant:
+            continue
         next_pay = getattr(card, "next_payment_date", None)
         if not next_pay:
             continue
@@ -67,6 +73,7 @@ def get_payment_status_list(
 
         has_payments = _has_payments(db, card.student_id)
         lessons = count_lessons_since_period_start(db, card.student_id, card.learning_period_start)
+        attended = count_attended_since_period_start(db, card.student_id, card.learning_period_start)
 
         if not has_payments:
             st = "unpaid"
@@ -86,6 +93,7 @@ def get_payment_status_list(
             "next_payment_date": next_pay,
             "learning_period_start": getattr(card, "learning_period_start", None),
             "lessons_since_payment": lessons,
+            "lessons_attended": attended,
             "status": st,
         })
     result.sort(key=lambda x: (x["next_payment_date"] or date.max, x["student_name"]))
@@ -99,7 +107,12 @@ def get_negative_balance_list(db: Session) -> List[dict]:
     rows = (
         db.query(StudentAccount.student_id, func.sum(StudentAccount.balance).label("balance"))
         .join(Student, Student.id == StudentAccount.student_id)
-        .filter(Student.status != StudentStatus.ARCHIVED)
+        .outerjoin(StudentCard, StudentCard.student_id == Student.id)
+        .filter(
+            Student.status != StudentStatus.ARCHIVED,
+            Student.on_grant.is_(False),
+            (StudentCard.id.is_(None)) | (StudentCard.on_grant.is_(False)),
+        )
         .group_by(StudentAccount.student_id)
         .having(func.sum(StudentAccount.balance) < 0)
         .all()
@@ -141,6 +154,8 @@ def get_payment_status_summary(
     for card in cards:
         student = db.query(Student).filter(Student.id == card.student_id).first()
         if not student or student.status == StudentStatus.ARCHIVED:
+            continue
+        if student.on_grant or card.on_grant:
             continue
         if not _has_payments(db, card.student_id):
             continue

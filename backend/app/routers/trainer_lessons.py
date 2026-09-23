@@ -11,7 +11,11 @@ from app.database import get_db
 from app import auth
 from app.services.communication_hub import CommunicationService
 from app.services.student_activity import log_student_activity
-from app.services.student_card_period import check_lesson_payment_threshold, set_card_payment_dates_from_training_start
+from app.services.student_card_period import (
+    check_lesson_payment_threshold,
+    is_student_on_grant,
+    set_card_payment_dates_from_training_start,
+)
 from app.models import (
     User,
     Group,
@@ -705,7 +709,14 @@ async def save_attendance(
     ).all()
     is_individual = (getattr(group, "lesson_format", None) or "group").strip().lower() == "individual"
     BASE_UNITS = 8
-    U = max(1, getattr(group, "units_per_session", None) or 1)
+    default_U = max(1, getattr(group, "units_per_session", None) or 1)
+    group_students_by_student_id = {
+        gs.student_id: gs
+        for gs in db.query(GroupStudent).filter(
+            GroupStudent.group_id == group.id,
+            GroupStudent.left_at.is_(None),
+        ).all()
+    }
     window_start, window_end = get_academic_window(payload.lesson_date)
     effective_trainer = db.query(User).filter(User.id == effective_trainer_id).first() if effective_trainer_id else None
 
@@ -754,6 +765,12 @@ async def save_attendance(
                 target_base = round(hourly_rate * duration_hours, 2)
                 base_units_to_apply = 1 if target_base > 0 else 0
             else:
+                group_student = group_students_by_student_id.get(att.student_id)
+                if group_student and group_student.custom_duration_minutes:
+                    U = max(1, round(group_student.custom_duration_minutes / 60))
+                else:
+                    U = default_U
+
                 all_in_window = (
                     db.query(LessonAttendance)
                     .filter(
@@ -885,7 +902,8 @@ async def save_attendance(
                     )
                 )
 
-        if is_absence and not in_freeze:
+        # Грантовикам отработки не заводим — в «Пропуски» они не попадают.
+        if is_absence and not in_freeze and not is_student_on_grant(db, att.student_id):
             absence = db.query(AbsenceFollowUp).filter(
                 AbsenceFollowUp.lesson_attendance_id == att.id,
             ).first()

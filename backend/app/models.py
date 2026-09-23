@@ -1461,6 +1461,8 @@ class GroupStudent(Base):
     student_id = Column(Integer, ForeignKey("students.id"), nullable=False, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     left_at = Column(DateTime(timezone=True), nullable=True)  # когда ученик вышел из группы; NULL = ещё в группе
+    # Индивидуальная длительность занятия ученика в минутах; NULL = использовать group.units_per_session
+    custom_duration_minutes = Column(Integer, nullable=True)
 
     # Relationships
     group = relationship("Group", back_populates="group_students")

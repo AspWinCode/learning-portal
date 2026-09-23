@@ -383,6 +383,7 @@ export interface Group {
   direction?: string | null;
   trainer?: User;
   students?: Student[];
+  group_students?: GroupStudentInfo[];
   programs?: ProgramSummary[];
   schedules?: GroupSchedule[];
   /** Юнитов за одно занятие (лимит «8 занятий»). По умолчанию 1. */
@@ -396,6 +397,14 @@ export interface Group {
   /** Краткое расписание (например, "Вт, Чт · 20:00–21:00"). */
   schedule_short?: string | null;
   online_url?: string | null;
+}
+
+/** Параметры конкретного ученика в группе. */
+export interface GroupStudentInfo {
+  student_id: number;
+  /** Индивидуальная длительность занятия ученика, в минутах. Null = как у группы. */
+  custom_duration_minutes?: number | null;
+  student: Student;
 }
 
 /** Политика доп. юнитов по слоту (дата + время). */

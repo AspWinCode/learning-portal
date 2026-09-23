@@ -10,6 +10,8 @@ from app.schemas.groups import (
     GroupCreate,
     GroupListResponse,
     GroupResponse,
+    GroupStudentInfo,
+    GroupStudentUpdate,
     GroupUpdate,
     GroupScheduleResponse,
     LessonSlotExtraPolicyPayload,
@@ -47,8 +49,12 @@ def _group_to_response(db: Session, g: Group) -> GroupResponse:
         for s in student_list
     ]
     schedules = list(getattr(g, "group_schedules", None) or [])
-    base = GroupResponse.model_validate(g).model_dump(exclude={"students", "schedules", "programs"})
+    active_group_students = [
+        gs for gs in (getattr(g, "group_students", None) or []) if getattr(gs, "left_at", None) is None
+    ]
+    base = GroupResponse.model_validate(g).model_dump(exclude={"students", "schedules", "programs", "group_students"})
     base["students"] = students_out
+    base["group_students"] = [GroupStudentInfo.model_validate(gs) for gs in active_group_students]
     base["schedules"] = [GroupScheduleResponse.model_validate(s) for s in schedules]
     base["programs"] = getattr(g, "programs", None) or []
     if "units_per_session" not in base or base.get("units_per_session") is None:
@@ -515,6 +521,37 @@ async def add_student_to_group(
 
     log_action(db, current_user.id, "add_student", "group", group_id, {"student_id": student_id})
     return {"message": "Student added to group"}
+
+
+@router.patch("/{group_id}/students/{student_id}")
+async def update_group_student(
+    group_id: int,
+    student_id: int,
+    payload: GroupStudentUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("groups.manage_roster"))
+):
+    """Настройка параметров ученика в группе (индивидуальная длительность занятия)."""
+    group_student = db.query(GroupStudent).filter(
+        GroupStudent.group_id == group_id,
+        GroupStudent.student_id == student_id,
+        GroupStudent.left_at.is_(None),
+    ).first()
+
+    if not group_student:
+        raise HTTPException(status_code=404, detail="Student not in group")
+
+    update_data = payload.model_dump(exclude_unset=True)
+    if "custom_duration_minutes" in update_data:
+        group_student.custom_duration_minutes = update_data["custom_duration_minutes"]
+
+    db.commit()
+
+    log_action(db, current_user.id, "update_group_student", "group", group_id, {
+        "student_id": student_id,
+        "custom_duration_minutes": group_student.custom_duration_minutes,
+    })
+    return {"message": "Group student updated"}
 
 
 @router.delete("/{group_id}/students/{student_id}")

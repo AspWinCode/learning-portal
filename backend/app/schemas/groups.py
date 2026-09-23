@@ -53,6 +53,18 @@ class GroupUpdate(BaseModel):
     online_url: Optional[str] = None
 
 
+class GroupStudentUpdate(BaseModel):
+    custom_duration_minutes: Optional[int] = None  # None в payload = сбросить на дефолт группы
+
+
+class GroupStudentInfo(BaseModel):
+    student_id: int
+    custom_duration_minutes: Optional[int] = None
+    student: StudentResponse
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class GroupResponse(GroupBase):
     id: int
     trainer_id: int
@@ -65,6 +77,7 @@ class GroupResponse(GroupBase):
     online_url: Optional[str] = None
     trainer: Optional[UserResponse] = None
     students: Optional[List[StudentResponse]] = []
+    group_students: Optional[List[GroupStudentInfo]] = []
     programs: Optional[List[ProgramSummaryResponse]] = []
     schedules: Optional[List[GroupScheduleResponse]] = []
 

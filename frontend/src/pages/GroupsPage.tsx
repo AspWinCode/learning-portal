@@ -44,6 +44,8 @@ const GroupsPage: React.FC = () => {
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
   const [groupDetails, setGroupDetails] = useState<Group | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
+  const [durationEditStudentId, setDurationEditStudentId] = useState<number | null>(null);
+  const [durationEditMinutes, setDurationEditMinutes] = useState<string>('');
   const [studentToAddId, setStudentToAddId] = useState('');
   const [newSchedule, setNewSchedule] = useState({ day_of_week: 1, start_time: '09:00', end_time: '11:00' });
   const [scheduleDraftDirty, setScheduleDraftDirty] = useState(false);
@@ -294,6 +296,30 @@ const GroupsPage: React.FC = () => {
       loadGroups();
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Ошибка удаления ученика из группы');
+    }
+  };
+
+  const getStudentCustomDuration = (studentId: number): number | null => {
+    const gs = (groupDetails?.group_students || []).find((x) => x.student_id === studentId);
+    return gs?.custom_duration_minutes ?? null;
+  };
+
+  const openDurationEdit = (studentId: number) => {
+    const current = getStudentCustomDuration(studentId);
+    setDurationEditStudentId(studentId);
+    setDurationEditMinutes(current != null ? String(current) : '');
+  };
+
+  const handleSaveStudentDuration = async () => {
+    if (!selectedGroup || durationEditStudentId == null) return;
+    try {
+      const minutes = durationEditMinutes.trim() === '' ? null : parseInt(durationEditMinutes, 10);
+      await groupsApi.updateStudent(selectedGroup.id, durationEditStudentId, { custom_duration_minutes: minutes });
+      const fullGroup = await groupsApi.getById(selectedGroup.id);
+      setGroupDetails(fullGroup);
+      setDurationEditStudentId(null);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Ошибка сохранения длительности занятия');
     }
   };
 
@@ -953,16 +979,22 @@ const GroupsPage: React.FC = () => {
                       <Typography variant="body2">{s.full_name}</Typography>
                       <Typography variant="caption" color="text.secondary">
                         {s.status === 'active' ? 'Активен' : 'В архиве'}
+                        {getStudentCustomDuration(s.id) != null && ` · ${getStudentCustomDuration(s.id)} мин/занятие`}
                       </Typography>
                     </Box>
                     {canManageGroups && (
-                      <Button
-                        size="small"
-                        color="error"
-                        onClick={() => handleRemoveStudentFromGroup(s.id)}
-                      >
-                        Удалить
-                      </Button>
+                      <Stack direction="row" spacing={1}>
+                        <Button size="small" onClick={() => openDurationEdit(s.id)}>
+                          Длительность
+                        </Button>
+                        <Button
+                          size="small"
+                          color="error"
+                          onClick={() => handleRemoveStudentFromGroup(s.id)}
+                        >
+                          Удалить
+                        </Button>
+                      </Stack>
                     )}
                   </Box>
                 ))}
@@ -974,6 +1006,38 @@ const GroupsPage: React.FC = () => {
           </DialogActions>
         </Dialog>
       )}
+
+      {/* Диалог индивидуальной длительности занятия ученика в группе */}
+      <Dialog open={durationEditStudentId != null} onClose={() => setDurationEditStudentId(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Длительность занятия ученика</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            По умолчанию используется длительность группы ({groupDetails?.units_per_session || 1} ч за занятие). Укажите
+            индивидуальную длительность в минутах, если ученик занимается меньше или больше.
+          </Typography>
+          <TextField
+            fullWidth
+            type="number"
+            label="Длительность, мин"
+            placeholder="Как в группе"
+            value={durationEditMinutes}
+            onChange={(e) => setDurationEditMinutes(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setDurationEditMinutes('');
+            }}
+          >
+            Сбросить на групповую
+          </Button>
+          <Button onClick={() => setDurationEditStudentId(null)}>Отмена</Button>
+          <Button variant="contained" onClick={handleSaveStudentDuration}>
+            Сохранить
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {selectedGroup && (
         <AssignCourseToGroupDialog

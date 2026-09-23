@@ -386,13 +386,13 @@ export interface Group {
   group_students?: GroupStudentInfo[];
   programs?: ProgramSummary[];
   schedules?: GroupSchedule[];
-  /** Юнитов за одно занятие (лимит «8 занятий»). По умолчанию 1. */
-  units_per_session?: number | null;
-  /** Ставка за доп. юнит (сверх лимита), ₽. Если не задано — как базовая. */
+  /** Продолжительность одного занятия группы в минутах. По умолчанию 60. */
+  duration_minutes?: number | null;
+  /** Ставка за доп. час сверх лимита «8 занятий», ₽. Если не задано — как базовая. */
   extra_rate_per_unit?: number | null;
   /** Дата начала работы группы; уроки не создаются раньше неё. */
   start_date?: string | null;
-  /** Формат: групповой (лимит 8 занятий, юниты) или индивидуальный. */
+  /** Формат: групповой (лимит 8 занятий) или индивидуальный. */
   lesson_format?: 'group' | 'individual';
   /** Краткое расписание (например, "Вт, Чт · 20:00–21:00"). */
   schedule_short?: string | null;
@@ -524,8 +524,8 @@ export interface TrainerLessonSlot {
   trainer_id?: number | null;
   trainer_name?: string | null;
   lesson_index_in_month?: number | null;
-  /** Юнитов за занятие (лимит 8 занятий). Может приходить с бэкенда. */
-  units_per_session?: number | null;
+  /** Продолжительность занятия в минутах (лимит 8 занятий). Может приходить с бэкенда. */
+  duration_minutes?: number | null;
   /** Флаг: слот отменён/перенесён (LessonCancellation). */
   is_cancelled?: boolean;
   /** Если перенесён: целевая дата/время. */

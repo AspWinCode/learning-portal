@@ -1,7 +1,7 @@
 from datetime import date, datetime, time
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.programs import ProgramSummaryResponse
 from app.schemas.students import StudentResponse
@@ -35,7 +35,7 @@ class GroupCreate(GroupBase):
     schedules: Optional[List[GroupScheduleCreate]] = []
     start_date: Optional[date] = None
     lesson_format: Optional[str] = "group"
-    units_per_session: Optional[int] = 1
+    duration_minutes: Optional[int] = Field(60, gt=0)
     extra_rate_per_unit: Optional[float] = None
     online_url: Optional[str] = None
 
@@ -48,7 +48,7 @@ class GroupUpdate(BaseModel):
     schedules: Optional[List[GroupScheduleCreate]] = None
     start_date: Optional[date] = None
     lesson_format: Optional[str] = None
-    units_per_session: Optional[int] = None
+    duration_minutes: Optional[int] = Field(None, gt=0)
     extra_rate_per_unit: Optional[float] = None
     online_url: Optional[str] = None
 
@@ -72,7 +72,7 @@ class GroupResponse(GroupBase):
     created_at: datetime
     start_date: Optional[date] = None
     lesson_format: Optional[str] = "group"
-    units_per_session: Optional[int] = 1
+    duration_minutes: Optional[int] = 60
     extra_rate_per_unit: Optional[float] = None
     online_url: Optional[str] = None
     trainer: Optional[UserResponse] = None

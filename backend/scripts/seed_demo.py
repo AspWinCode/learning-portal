@@ -312,7 +312,7 @@ for i, (name, direction, prog_idx, trainer_idx) in enumerate(groups_data):
         direction=direction,
         trainer_id=trainers[trainer_idx].id,
         lesson_format="individual" if "Индивидуальные" in name else "group",
-        units_per_session=2 if direction == "first_step" else 1,
+        duration_minutes=120 if direction == "first_step" else 60,
         start_date=date.today() - timedelta(days=rng.randint(30, 180)),
     )
     db.add(g)

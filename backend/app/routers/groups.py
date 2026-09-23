@@ -57,8 +57,8 @@ def _group_to_response(db: Session, g: Group) -> GroupResponse:
     base["group_students"] = [GroupStudentInfo.model_validate(gs) for gs in active_group_students]
     base["schedules"] = [GroupScheduleResponse.model_validate(s) for s in schedules]
     base["programs"] = getattr(g, "programs", None) or []
-    if "units_per_session" not in base or base.get("units_per_session") is None:
-        base["units_per_session"] = getattr(g, "units_per_session", 1) or 1
+    if "duration_minutes" not in base or base.get("duration_minutes") is None:
+        base["duration_minutes"] = getattr(g, "duration_minutes", 60) or 60
     if "extra_rate_per_unit" not in base:
         base["extra_rate_per_unit"] = getattr(g, "extra_rate_per_unit", None)
     base["start_date"] = getattr(g, "start_date", None)
@@ -137,7 +137,7 @@ async def create_group(
         status=GroupStatus.ACTIVE,
         start_date=group.start_date,
         lesson_format=(group.lesson_format or "group").strip().lower() or "group",
-        units_per_session=group.units_per_session if group.units_per_session is not None else 1,
+        duration_minutes=group.duration_minutes if group.duration_minutes is not None else 60,
         extra_rate_per_unit=group.extra_rate_per_unit,
         online_url=group.online_url,
     )
@@ -297,7 +297,7 @@ async def update_group(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_permission("groups.edit")),
 ):
-    """Обновление группы (admin/owner/sales). В т.ч. units_per_session, extra_rate_per_unit для лимита 8."""
+    """Обновление группы (admin/owner/sales). В т.ч. duration_minutes, extra_rate_per_unit для лимита 8."""
     db_group = db.query(Group).filter(Group.id == group_id).first()
     if db_group is None:
         raise HTTPException(status_code=404, detail="Group not found")

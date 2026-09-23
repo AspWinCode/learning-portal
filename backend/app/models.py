@@ -1426,8 +1426,9 @@ class Group(Base):
     direction = Column(String, nullable=True, index=True)  # first_step, specialist, expert, backend, frontend, oge, ege
     trainer_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     status = Column(_GroupStatusType(), default=GroupStatus.ACTIVE)
-    # Лимит «8 занятий»: сколько юнитов даёт одна встреча (обычно 1; «Первый шаг» 2ч=2 занятия → 2)
-    units_per_session = Column(Integer, default=1, nullable=False, server_default="1")
+    # Продолжительность одного занятия группы в минутах; используется для расчёта списания
+    # с лимита «8 занятий» (BASE_HOURS в trainer_lessons.py): часы = duration_minutes / 60.
+    duration_minutes = Column(Integer, default=60, nullable=False, server_default="60")
     # Ставка за доп. юнит (сверх 8), когда extra_policy=paid; если NULL — берём price/8
     extra_rate_per_unit = Column(Float, nullable=True)
     # С какой даты группа считается работающей — уроки нельзя создавать раньше этой даты
@@ -1461,7 +1462,7 @@ class GroupStudent(Base):
     student_id = Column(Integer, ForeignKey("students.id"), nullable=False, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     left_at = Column(DateTime(timezone=True), nullable=True)  # когда ученик вышел из группы; NULL = ещё в группе
-    # Индивидуальная длительность занятия ученика в минутах; NULL = использовать group.units_per_session
+    # Индивидуальная длительность занятия ученика в минутах; NULL = использовать group.duration_minutes
     custom_duration_minutes = Column(Integer, nullable=True)
 
     # Relationships
@@ -1554,9 +1555,10 @@ class LessonAttendance(Base):
     absence_comment = Column(Text, nullable=True)
     lesson_start_time = Column(Time, nullable=True)  # при переносе с изменением времени
     lesson_end_time = Column(Time, nullable=True)
-    # Лимит 8: сколько юнитов списано как base (в пакете) и как extra (сверх пакета)
-    base_units_applied = Column(Integer, nullable=True)
-    extra_units_applied = Column(Integer, nullable=True)
+    # Лимит 8 часов: сколько часов-эквивалентов списано как base (в пакете) и как extra (сверх пакета).
+    # Дробные значения (напр. 1.5) — если длительность занятия не кратна часу.
+    base_units_applied = Column(Float, nullable=True)
+    extra_units_applied = Column(Float, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     group = relationship("Group", back_populates="lesson_attendances")

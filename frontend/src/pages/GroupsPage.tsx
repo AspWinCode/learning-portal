@@ -54,7 +54,7 @@ const GroupsPage: React.FC = () => {
     name: '',
     trainer_id: '',
     direction: '',
-    units_per_session: 1,
+    duration_minutes: 60,
     extra_rate_per_unit: '' as number | '',
     start_date: '' as string,
     lesson_format: 'group' as 'group' | 'individual',
@@ -146,7 +146,7 @@ const GroupsPage: React.FC = () => {
         name: full.name,
         trainer_id: full.trainer_id?.toString?.() || '',
         direction: full.direction ?? '',
-        units_per_session: full.units_per_session ?? 1,
+        duration_minutes: full.duration_minutes ?? 60,
         extra_rate_per_unit: full.extra_rate_per_unit != null ? full.extra_rate_per_unit : '',
         start_date: full.start_date ? full.start_date.slice(0, 10) : '',
         lesson_format: (full.lesson_format === 'individual' ? 'individual' : 'group'),
@@ -203,7 +203,7 @@ const GroupsPage: React.FC = () => {
         name: newGroup.name.trim(),
         trainer_id: parseInt(newGroup.trainer_id),
         direction: newGroup.direction || undefined,
-        units_per_session: Number(newGroup.units_per_session) || 1,
+        duration_minutes: Number(newGroup.duration_minutes) || 60,
         extra_rate_per_unit: newGroup.extra_rate_per_unit === '' ? undefined : Number(newGroup.extra_rate_per_unit) || undefined,
         start_date: newGroup.start_date || undefined,
         lesson_format: newGroup.lesson_format,
@@ -215,7 +215,7 @@ const GroupsPage: React.FC = () => {
         })),
       });
       setOpen(false);
-      setNewGroup({ name: '', trainer_id: '', direction: '', units_per_session: 1, extra_rate_per_unit: '', start_date: '', lesson_format: 'group', online_url: '' });
+      setNewGroup({ name: '', trainer_id: '', direction: '', duration_minutes: 60, extra_rate_per_unit: '', start_date: '', lesson_format: 'group', online_url: '' });
       setFormSchedules([]);
       setScheduleDraftDirty(false);
       setError('');
@@ -241,7 +241,7 @@ const GroupsPage: React.FC = () => {
         name: newGroup.name.trim(),
         trainer_id: parseInt(newGroup.trainer_id),
         direction: newGroup.direction || undefined,
-        units_per_session: Number(newGroup.units_per_session) || 1,
+        duration_minutes: Number(newGroup.duration_minutes) || 60,
         extra_rate_per_unit: newGroup.extra_rate_per_unit === '' ? null : Number(newGroup.extra_rate_per_unit) || null,
         start_date: newGroup.start_date || null,
         lesson_format: newGroup.lesson_format,
@@ -254,7 +254,7 @@ const GroupsPage: React.FC = () => {
       });
       setEditOpen(false);
       setSelectedGroup(null);
-      setNewGroup({ name: '', trainer_id: '', direction: '', units_per_session: 1, extra_rate_per_unit: '', start_date: '', lesson_format: 'group', online_url: '' });
+      setNewGroup({ name: '', trainer_id: '', direction: '', duration_minutes: 60, extra_rate_per_unit: '', start_date: '', lesson_format: 'group', online_url: '' });
       setFormSchedules([]);
       setScheduleDraftDirty(false);
       setError('');
@@ -345,12 +345,12 @@ const GroupsPage: React.FC = () => {
           : '-',
     },
     {
-      key: 'units',
-      header: 'Юниты',
+      key: 'duration',
+      header: 'Длительность',
       render: (group: Group) =>
         group.lesson_format === 'individual'
           ? '—'
-          : `${group.units_per_session ?? 1}${group.extra_rate_per_unit != null ? ` · ${group.extra_rate_per_unit} ₽/доп` : ''}`,
+          : `${group.duration_minutes ?? 60} мин${group.extra_rate_per_unit != null ? ` · ${group.extra_rate_per_unit} ₽/доп.час` : ''}`,
     },
     { key: 'students', header: 'Ученики', render: (group: Group) => group.students?.length ?? '-' },
     {
@@ -407,7 +407,7 @@ const GroupsPage: React.FC = () => {
             startIcon={<AddIcon />}
             onClick={() => {
               setOpen(true);
-              setNewGroup({ name: '', trainer_id: '', direction: '', units_per_session: 1, extra_rate_per_unit: '', start_date: '', lesson_format: 'group', online_url: '' });
+              setNewGroup({ name: '', trainer_id: '', direction: '', duration_minutes: 60, extra_rate_per_unit: '', start_date: '', lesson_format: 'group', online_url: '' });
               setFormSchedules([]);
               setNewSchedule({ day_of_week: 1, start_time: '09:00', end_time: '11:00' });
               setScheduleDraftDirty(false);
@@ -435,65 +435,6 @@ const GroupsPage: React.FC = () => {
           />
         }
       />
-      {false && (
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell>Название</TableCell>
-              <TableCell>Направление</TableCell>
-              <TableCell>Тренер</TableCell>
-              <TableCell>Юниты</TableCell>
-              <TableCell>Ученики</TableCell>
-              <TableCell>Статус</TableCell>
-              {canViewMembers && <TableCell>Действия</TableCell>}
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {displayedGroups.map((group) => (
-              <TableRow key={group.id}>
-                <TableCell>{group.name}</TableCell>
-                <TableCell>{DIRECTION_OPTIONS.find((o) => o.value === group.direction)?.label ?? group.direction ?? '-'}</TableCell>
-                <TableCell>{group.trainer?.full_name || '-'}</TableCell>
-                <TableCell>{(group.lesson_format === 'individual') ? '—' : (group.units_per_session ?? 1) + (group.extra_rate_per_unit != null ? ` · ${group.extra_rate_per_unit} ₽/доп` : '')}</TableCell>
-                <TableCell>{group.students?.length ?? '-'}</TableCell>
-                <TableCell>{group.status === 'active' ? 'Активна' : 'В архиве'}</TableCell>
-                {canViewMembers && (
-                  <TableCell>
-                    <Button
-                      size="small"
-                      startIcon={<PeopleIcon />}
-                      onClick={() => openMembersDialog(group)}
-                      sx={{ mr: 1 }}
-                    >
-                      Состав
-                    </Button>
-                    {canManageGroups && (
-                      <>
-                        <Button
-                          size="small"
-                          startIcon={<EditIcon />}
-                          onClick={() => openEditDialog(group)}
-                          sx={{ mr: 1 }}
-                        >
-                          Редактировать
-                        </Button>
-                        <Button
-                          size="small"
-                          color={group.status === 'active' ? 'warning' : 'success'}
-                          onClick={() => handleArchiveToggle(group)}
-                        >
-                          {group.status === 'active' ? 'В архив' : 'Разархивировать'}
-                        </Button>
-                      </>
-                    )}
-                  </TableCell>
-                )}
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      )}
-
       {/* Диалог создания группы */}
       {canManageGroups && (
         <FormDialog open={open} title="Создать группу" onClose={() => setOpen(false)} onSubmit={handleCreate} submitLabel="Создать" maxWidth="sm">
@@ -571,25 +512,26 @@ const GroupsPage: React.FC = () => {
             {newGroup.lesson_format !== 'individual' && (
               <>
             <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>
-              8 занятий (юниты)
+              Списание с лимита «8 занятий»
             </Typography>
             <Stack direction="row" spacing={2} sx={{ mb: 1 }}>
               <TextField
                 type="number"
-                label="Юнитов за занятие"
-                value={newGroup.units_per_session}
-                onChange={(e) => setNewGroup({ ...newGroup, units_per_session: Math.max(1, parseInt(e.target.value, 10) || 1) })}
-                inputProps={{ min: 1, max: 10 }}
-                sx={{ width: 160 }}
-                helperText="Обычно 1 или 2"
+                label="Продолжительность занятия, мин"
+                value={newGroup.duration_minutes}
+                onChange={(e) => setNewGroup({ ...newGroup, duration_minutes: Math.max(1, parseInt(e.target.value, 10) || 60) })}
+                inputProps={{ min: 1 }}
+                sx={{ width: 200 }}
+                placeholder="60, 90, 120…"
+                helperText="Реальная длительность занятия"
               />
               <TextField
                 type="number"
-                label="Ставка за доп. юнит, ₽"
+                label="Ставка за доп. час сверх лимита, ₽"
                 value={newGroup.extra_rate_per_unit}
                 onChange={(e) => setNewGroup({ ...newGroup, extra_rate_per_unit: e.target.value === '' ? '' : parseFloat(e.target.value) || 0 })}
                 inputProps={{ min: 0, step: 0.01 }}
-                sx={{ width: 180 }}
+                sx={{ width: 200 }}
                 placeholder="Не задано"
                 helperText="Сверх лимита; пусто — как базовая"
               />
@@ -774,25 +716,26 @@ const GroupsPage: React.FC = () => {
             {newGroup.lesson_format !== 'individual' && (
               <>
             <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>
-              8 занятий (юниты)
+              Списание с лимита «8 занятий»
             </Typography>
             <Stack direction="row" spacing={2} sx={{ mb: 1 }}>
               <TextField
                 type="number"
-                label="Юнитов за занятие"
-                value={newGroup.units_per_session}
-                onChange={(e) => setNewGroup({ ...newGroup, units_per_session: Math.max(1, parseInt(e.target.value, 10) || 1) })}
-                inputProps={{ min: 1, max: 10 }}
-                sx={{ width: 160 }}
-                helperText="Обычно 1 или 2"
+                label="Продолжительность занятия, мин"
+                value={newGroup.duration_minutes}
+                onChange={(e) => setNewGroup({ ...newGroup, duration_minutes: Math.max(1, parseInt(e.target.value, 10) || 60) })}
+                inputProps={{ min: 1 }}
+                sx={{ width: 200 }}
+                placeholder="60, 90, 120…"
+                helperText="Реальная длительность занятия"
               />
               <TextField
                 type="number"
-                label="Ставка за доп. юнит, ₽"
+                label="Ставка за доп. час сверх лимита, ₽"
                 value={newGroup.extra_rate_per_unit}
                 onChange={(e) => setNewGroup({ ...newGroup, extra_rate_per_unit: e.target.value === '' ? '' : parseFloat(e.target.value) || 0 })}
                 inputProps={{ min: 0, step: 0.01 }}
-                sx={{ width: 180 }}
+                sx={{ width: 200 }}
                 placeholder="Не задано"
                 helperText="Сверх лимита; пусто — как базовая"
               />
@@ -1012,7 +955,7 @@ const GroupsPage: React.FC = () => {
         <DialogTitle>Длительность занятия ученика</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            По умолчанию используется длительность группы ({groupDetails?.units_per_session || 1} ч за занятие). Укажите
+            По умолчанию используется длительность группы ({groupDetails?.duration_minutes || 60} мин за занятие). Укажите
             индивидуальную длительность в минутах, если ученик занимается меньше или больше.
           </Typography>
           <TextField

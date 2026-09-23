@@ -1066,7 +1066,7 @@ export const groupsApi = {
     trainer_id: number;
     direction?: string | null;
     schedules?: Array<{ day_of_week: number; start_time: string; end_time: string }>;
-    units_per_session?: number;
+    duration_minutes?: number;
     extra_rate_per_unit?: number | null;
     start_date?: string | null;
     lesson_format?: 'group' | 'individual';
@@ -1077,7 +1077,7 @@ export const groupsApi = {
   },
   update: async (
     id: number,
-    data: Partial<Pick<Group, 'name' | 'trainer_id' | 'status' | 'direction' | 'units_per_session' | 'extra_rate_per_unit' | 'start_date' | 'lesson_format' | 'online_url'>> & {
+    data: Partial<Pick<Group, 'name' | 'trainer_id' | 'status' | 'direction' | 'duration_minutes' | 'extra_rate_per_unit' | 'start_date' | 'lesson_format' | 'online_url'>> & {
       schedules?: Array<{ day_of_week: number; start_time: string; end_time: string }>;
     }
   ): Promise<Group> => {

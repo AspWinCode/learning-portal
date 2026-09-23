@@ -708,8 +708,8 @@ async def save_attendance(
         LessonAttendance.lesson_date == payload.lesson_date,
     ).all()
     is_individual = (getattr(group, "lesson_format", None) or "group").strip().lower() == "individual"
-    BASE_UNITS = 8
-    default_U = max(1, getattr(group, "units_per_session", None) or 1)
+    BASE_HOURS = 8.0
+    default_hours = (getattr(group, "duration_minutes", None) or 60) / 60.0
     group_students_by_student_id = {
         gs.student_id: gs
         for gs in db.query(GroupStudent).filter(
@@ -751,8 +751,8 @@ async def save_attendance(
 
         target_base = 0.0
         target_extra = 0.0
-        base_units_to_apply = 0
-        extra_units_to_apply = 0
+        base_units_to_apply = 0.0
+        extra_units_to_apply = 0.0
         price_per_unit = 0.0
 
         if not in_freeze and not on_grant:
@@ -769,9 +769,9 @@ async def save_attendance(
             else:
                 group_student = group_students_by_student_id.get(att.student_id)
                 if group_student and group_student.custom_duration_minutes:
-                    U = max(1, round(group_student.custom_duration_minutes / 60))
+                    U = group_student.custom_duration_minutes / 60.0
                 else:
-                    U = default_U
+                    U = default_hours
 
                 all_in_window = (
                     db.query(LessonAttendance)
@@ -789,12 +789,12 @@ async def save_attendance(
                     for att2 in all_in_window
                     if _slot_key(att2) < current_key
                 )
-                base_left = max(0, BASE_UNITS - base_used)
+                base_left = max(0.0, BASE_HOURS - base_used)
                 base_units_to_apply = min(base_left, U)
                 extra_units_to_apply = U - base_units_to_apply
 
-                if abonement and abonement.price is not None and BASE_UNITS > 0:
-                    price_per_unit = student_abonement_price(student, abonement) / BASE_UNITS
+                if abonement and abonement.price is not None and BASE_HOURS > 0:
+                    price_per_unit = student_abonement_price(student, abonement) / BASE_HOURS
                 if base_units_to_apply > 0 and price_per_unit > 0:
                     target_base = round(price_per_unit * base_units_to_apply, 2)
 

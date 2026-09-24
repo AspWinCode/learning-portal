@@ -1,3 +1,4 @@
+import json
 from datetime import date, datetime, time as dt_time
 from io import BytesIO
 from typing import Dict, List, Optional, Tuple
@@ -12,6 +13,7 @@ from app import auth
 from app.database import get_db
 from app.models import (
     Abonement,
+    AppSetting,
     DiscountType,
     EventRegistration,
     EventRegistrationStatus,
@@ -159,6 +161,20 @@ def _resolve_source(
             return source_obj.id, source_obj.name
         return None, normalized
     return None, None
+
+
+REFUSED_REASONS_KEY = "sales_refused_reasons"
+
+
+def _get_refused_reasons(db: Session) -> List[str]:
+    setting = db.query(AppSetting).filter(AppSetting.key == REFUSED_REASONS_KEY).first()
+    if not setting or not (setting.value or "").strip():
+        return []
+    try:
+        data = json.loads(setting.value)
+        return [str(x) for x in data] if isinstance(data, list) else []
+    except Exception:
+        return []
 
 
 def _require_owner_or_admin(lead: Lead, user: User) -> None:
@@ -436,6 +452,7 @@ async def import_leads_from_excel(
             outreach_at=outreach_at,
             outreach_minutes=outreach_minutes,
             status=LeadStatus.NEW,
+            arrival_channel="excel",
         )
         db.add(lead)
         db.flush()
@@ -685,6 +702,8 @@ async def submit_specialist_questionnaire(
         lead.comment = (f"{lead.comment}\n\n" if lead.comment else "") + full_comment if full_comment else lead.comment
         lead.tags = sorted(set((lead.tags or []) + ["direction:specialist"]))
         lead.questionnaire_filled = True
+        if not lead.arrival_channel:
+            lead.arrival_channel = "questionnaire"
         lead.questionnaire_data = questionnaire_data
         lead.student_card_id = card.id
         if not lead.source:
@@ -708,6 +727,7 @@ async def submit_specialist_questionnaire(
             tags=["direction:specialist"],
             status=LeadStatus.NEW,
             questionnaire_filled=True,
+            arrival_channel="questionnaire",
             questionnaire_data=questionnaire_data,
             student_card_id=card.id,
         )
@@ -769,6 +789,8 @@ async def submit_ege_trial_questionnaire(
         lead.school_name = payload.school_name or lead.school_name
         lead.tags = sorted(set((lead.tags or []) + ["direction:ege-trial"]))
         lead.questionnaire_filled = True
+        if not lead.arrival_channel:
+            lead.arrival_channel = "questionnaire"
         lead.questionnaire_data = questionnaire_data
         lead.student_card_id = card.id
         if not lead.source:
@@ -788,6 +810,7 @@ async def submit_ege_trial_questionnaire(
             tags=["direction:ege-trial"],
             status=LeadStatus.NEW,
             questionnaire_filled=True,
+            arrival_channel="questionnaire",
             questionnaire_data=questionnaire_data,
             student_card_id=card.id,
         )
@@ -878,6 +901,8 @@ async def submit_individual_lessons_questionnaire(
         lead.comment = (f"{lead.comment}\n\n" if lead.comment else "") + full_comment if full_comment else lead.comment
         lead.tags = sorted(set((lead.tags or []) + ["direction:individual"]))
         lead.questionnaire_filled = True
+        if not lead.arrival_channel:
+            lead.arrival_channel = "questionnaire"
         lead.questionnaire_data = questionnaire_data
         lead.student_card_id = card.id
         if not lead.source:
@@ -901,6 +926,7 @@ async def submit_individual_lessons_questionnaire(
             tags=["direction:individual"],
             status=LeadStatus.NEW,
             questionnaire_filled=True,
+            arrival_channel="questionnaire",
             questionnaire_data=questionnaire_data,
             student_card_id=card.id,
         )
@@ -991,6 +1017,8 @@ async def submit_pixelforge_questionnaire(
         lead.comment = (f"{lead.comment}\n\n" if lead.comment else "") + full_comment if full_comment else lead.comment
         lead.tags = sorted(set((lead.tags or []) + ["direction:pixelforge"]))
         lead.questionnaire_filled = True
+        if not lead.arrival_channel:
+            lead.arrival_channel = "questionnaire"
         lead.questionnaire_data = questionnaire_data
         lead.student_card_id = card.id
         if not lead.source:
@@ -1014,6 +1042,7 @@ async def submit_pixelforge_questionnaire(
             tags=["direction:pixelforge"],
             status=LeadStatus.NEW,
             questionnaire_filled=True,
+            arrival_channel="questionnaire",
             questionnaire_data=questionnaire_data,
             student_card_id=card.id,
         )
@@ -1104,6 +1133,8 @@ async def submit_programmer_questionnaire(
         lead.comment = (f"{lead.comment}\n\n" if lead.comment else "") + full_comment if full_comment else lead.comment
         lead.tags = sorted(set((lead.tags or []) + ["direction:programmer"]))
         lead.questionnaire_filled = True
+        if not lead.arrival_channel:
+            lead.arrival_channel = "questionnaire"
         lead.questionnaire_data = questionnaire_data
         lead.student_card_id = card.id
         if not lead.source:
@@ -1127,6 +1158,7 @@ async def submit_programmer_questionnaire(
             tags=["direction:programmer"],
             status=LeadStatus.NEW,
             questionnaire_filled=True,
+            arrival_channel="questionnaire",
             questionnaire_data=questionnaire_data,
             student_card_id=card.id,
         )
@@ -1193,6 +1225,8 @@ async def submit_tilda_lead(
         if not lead.source:
             lead.source = source_name or source_label
             lead.source_id = source_id
+        if not lead.arrival_channel:
+            lead.arrival_channel = "site"
     else:
         lead = Lead(
             owner_id=owner.id,
@@ -1207,6 +1241,7 @@ async def submit_tilda_lead(
             status=LeadStatus.NEW,
             status_option_id=status_option_id,
             tags=[tag],
+            arrival_channel="site",
         )
         db.add(lead)
 
@@ -1292,6 +1327,9 @@ async def create_lead(
             comment=payload.comment,
             next_contact_at=payload.next_contact_at,
             status=LeadStatus.NEW,
+            arrival_channel=payload.arrival_channel or "manual",
+            scheduled_event_type=payload.scheduled_event_type,
+            campaign_event_id=payload.campaign_event_id,
         )
         db.add(lead)
         db.flush()
@@ -1479,7 +1517,27 @@ async def update_lead(
 
     update_data = payload.dict(exclude_unset=True)
     old_status = lead.status.value
-    if "status" in update_data and update_data["status"] is not None:
+    target_status = update_data.get("status")
+    if target_status is not None:
+        target_status_value = target_status.value if hasattr(target_status, "value") else str(target_status)
+        if target_status_value == LeadStatus.WON.value:
+            raise HTTPException(
+                status_code=400,
+                detail="Перевести лида в 'Ученик' можно только через конвертацию (convert-to-student)",
+            )
+        if target_status_value in (LeadStatus.REFUSED.value, LeadStatus.LOST.value):
+            reason = (update_data.get("lost_reason") if "lost_reason" in update_data else lead.lost_reason) or ""
+            reason = reason.strip()
+            if not reason:
+                raise HTTPException(status_code=400, detail="Укажите причину отказа")
+            allowed_reasons = _get_refused_reasons(db)
+            has_other_option = any(r.strip().lower() == "другое" for r in allowed_reasons)
+            if allowed_reasons and reason not in allowed_reasons and not has_other_option:
+                raise HTTPException(status_code=400, detail="Причина отказа не из справочника")
+        if target_status_value == LeadStatus.THINKING.value:
+            next_contact = update_data.get("next_contact_at") if "next_contact_at" in update_data else lead.next_contact_at
+            if not next_contact:
+                raise HTTPException(status_code=400, detail="Укажите дату следующего контакта")
         lead.status = update_data["status"]
     if "lost_reason" in update_data:
         lead.lost_reason = update_data["lost_reason"]
@@ -1514,6 +1572,10 @@ async def update_lead(
         "questionnaire_filled",
         "no_answer_attempt",
         "max_user_id",
+        "arrival_channel",
+        "scheduled_event_type",
+        "thinking_reason",
+        "campaign_event_id",
     ]:
         if field in update_data:
             setattr(lead, field, update_data[field])

@@ -536,7 +536,9 @@ class LeadStatus(str, enum.Enum):
     THINKING = "thinking"  # ╨Я╨╛╨┤╤Г╨╝╨░╤О╤В
     REFUSED = "refused"  # ╨Ю╤В╨║╨░╨╖╨░╨╗╤Б╤П
     TRIAL_SCHEDULED = "trial_scheduled"  # ╨Ч╨░╨┐╨╕╤Б╨░╨╗╤Б╤П╨╜╨░╨┐╤А╨╛╨▒╨╜╨╛╨╡
-    EVENT_REGISTERED = "event_registered"  # ╨Ч╨░╨┐╨╕╤Б╨░╨╗╤Б╤П╨╜╨░╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡
+    MESSAGED = "messaged"
+    LATER = "later"
+    EVENT_REGISTERED = "event_registered"  #╨Ч╨░╨┐╨╕╤Б╨░╨╗╤Б╤П╨╜╨░╨╝╨╡╤А╨╛╨┐╤А╨╕╤П╤В╨╕╨╡
     DECIDED_IMMEDIATELY = "decided_immediately"  # ╨а╨╡╤И╨╕╨╗╨╖╨░╨╜╨╕╨╝╨░╤В╤М╤Б╤П╤Б╤А╨░╨╖╤Г
 
 
@@ -592,6 +594,10 @@ class Lead(Base):
     post_visit_project_date = Column(DateTime(timezone=True), nullable=True)
     max_user_id = Column(Integer, nullable=True, index=True)  # MAX мессенджер: user_id в платформе MAX
     last_contact_at = Column(DateTime(timezone=True), nullable=True, index=True)  # дата последнего контакта (звонок/недозвон/инфо)
+    arrival_channel = Column(String(32), nullable=True, index=True)  # site/questionnaire/manual/game_jam/excel/other
+    scheduled_event_type = Column(String(32), nullable=True)  # trial/game_jam/other_event/consultation
+    thinking_reason = Column(String(32), nullable=True)  # child/parent/price/schedule/comparing/other
+    campaign_event_id = Column(Integer, ForeignKey("campaign_events.id"), nullable=True, index=True)
 
     # Relationships
     person = relationship("Person", back_populates="leads", foreign_keys=[person_id])
@@ -603,6 +609,7 @@ class Lead(Base):
     status_option = relationship("LeadStatusOption")
     b2b_school = relationship("B2BSchool", back_populates="leads")
     b2b_event = relationship("B2BSchoolEvent", back_populates="leads", foreign_keys=[b2b_event_id])
+    campaign_event = relationship("CampaignEvent", foreign_keys=[campaign_event_id])
     tasks = relationship("LeadTask", back_populates="lead", cascade="all, delete-orphan")
     invoices = relationship("Invoice", back_populates="lead", cascade="all, delete-orphan")
     communications = relationship("LeadCommunication", back_populates="lead", cascade="all, delete-orphan")

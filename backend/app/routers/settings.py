@@ -1196,12 +1196,17 @@ async def set_refused_reasons(
 
 DEFAULT_LEAD_PIPELINE_STAGES: List[Dict[str, Any]] = [
     {"key": "new", "label": "Новый", "color": None, "primary_status": "new", "grouped_statuses": [], "position": 0},
-    {"key": "thinking", "label": "Подумают", "color": None, "primary_status": "thinking", "grouped_statuses": ["contacted"], "position": 1},
-    {"key": "no_answer", "label": "Недозвон", "color": None, "primary_status": "no_answer", "grouped_statuses": [], "position": 2},
-    {"key": "refused", "label": "Отказали", "color": None, "primary_status": "refused", "grouped_statuses": ["lost"], "position": 3},
-    {"key": "trial_scheduled", "label": "Запланировали пробное", "color": None, "primary_status": "trial_scheduled", "grouped_statuses": ["demo", "invoice_sent"], "position": 4},
-    {"key": "event_registered", "label": "Записали на мероприятие", "color": None, "primary_status": "event_registered", "grouped_statuses": [], "position": 5},
-    {"key": "decided_immediately", "label": "Решил заниматься сразу", "color": None, "primary_status": "decided_immediately", "grouped_statuses": ["won"], "position": 6},
+    {"key": "messaged", "label": "Написали в мессенджер", "color": None, "primary_status": "messaged", "grouped_statuses": [], "position": 1},
+    {"key": "contacted", "label": "Дозвонились / Связались", "color": None, "primary_status": "contacted", "grouped_statuses": [], "position": 2},
+    {"key": "no_answer", "label": "Недозвон", "color": None, "primary_status": "no_answer", "grouped_statuses": [], "position": 3},
+    {"key": "trial_scheduled", "label": "Запланировали", "color": None, "primary_status": "trial_scheduled", "grouped_statuses": ["event_registered"], "position": 4},
+    {"key": "demo", "label": "Состоялось", "color": None, "primary_status": "demo", "grouped_statuses": [], "position": 5},
+    {"key": "thinking", "label": "Думают", "color": None, "primary_status": "thinking", "grouped_statuses": [], "position": 6},
+    {"key": "invoice_sent", "label": "Готовы заниматься / Оформление", "color": None, "primary_status": "invoice_sent", "grouped_statuses": ["decided_immediately"], "position": 7},
+    {"key": "later", "label": "Возможно позже сами выйдут на связь", "color": None, "primary_status": "later", "grouped_statuses": [], "position": 8},
+    {"key": "won", "label": "Ученик", "color": None, "primary_status": "won", "grouped_statuses": [], "position": 9},
+    {"key": "refused", "label": "Отказ", "color": None, "primary_status": "refused", "grouped_statuses": [], "position": 10},
+    {"key": "lost_archive", "label": "Отказ (архив)", "color": None, "primary_status": "lost", "grouped_statuses": [], "position": 11},
 ]
 
 

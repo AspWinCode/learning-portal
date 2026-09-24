@@ -223,6 +223,10 @@ class LeadBase(BaseModel):
     comment: Optional[str] = None
     next_contact_at: Optional[datetime] = None
     questionnaire_filled: Optional[bool] = None
+    arrival_channel: Optional[str] = None
+    scheduled_event_type: Optional[str] = None
+    thinking_reason: Optional[str] = None
+    campaign_event_id: Optional[int] = None
 
 
 class LeadCreate(LeadBase):
@@ -259,6 +263,10 @@ class LeadUpdate(BaseModel):
     lost_reason: Optional[str] = None
     questionnaire_filled: Optional[bool] = None
     max_user_id: Optional[int] = None
+    arrival_channel: Optional[str] = None
+    scheduled_event_type: Optional[str] = None
+    thinking_reason: Optional[str] = None
+    campaign_event_id: Optional[int] = None
 
 
 class LeadStatusOptionBase(BaseModel):
@@ -329,6 +337,10 @@ class LeadResponse(BaseModel):
     max_user_id: Optional[int] = None
     last_contact_at: Optional[datetime] = None
     ai_insight: Optional[LeadAIInsightResponse] = None
+    arrival_channel: Optional[str] = None
+    scheduled_event_type: Optional[str] = None
+    thinking_reason: Optional[str] = None
+    campaign_event_id: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)
 

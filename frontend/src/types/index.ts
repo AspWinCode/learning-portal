@@ -628,8 +628,13 @@ export type LeadStatus =
   | 'refused'
   | 'trial_scheduled'
   | 'event_registered'
-  | 'decided_immediately';
+  | 'decided_immediately'
+  | 'messaged'
+  | 'later';
 export type LeadCommunicationChannel = 'max' | 'email' | 'sms';
+export type LeadArrivalChannel = 'site' | 'questionnaire' | 'manual' | 'game_jam' | 'excel' | 'other';
+export type LeadScheduledEventType = 'trial' | 'game_jam' | 'other_event' | 'consultation';
+export type LeadThinkingReason = 'child' | 'parent' | 'price' | 'schedule' | 'comparing' | 'other';
 
 export interface LeadStatusOption {
   id: number;
@@ -685,6 +690,10 @@ export interface Lead {
   /** Дата последнего контакта (звонок / недозвон / инфо) */
   last_contact_at?: string | null;
   ai_insight?: LeadAIInsight | null;
+  arrival_channel?: LeadArrivalChannel | string | null;
+  scheduled_event_type?: LeadScheduledEventType | string | null;
+  thinking_reason?: LeadThinkingReason | string | null;
+  campaign_event_id?: number | null;
 }
 
 export type LeadTaskStatus = 'open' | 'done';

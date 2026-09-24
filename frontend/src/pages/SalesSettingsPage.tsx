@@ -73,23 +73,25 @@ import {
 } from '../types';
 
 const ALL_LEAD_STATUSES: LeadStatus[] = [
-  'new', 'contacted', 'no_answer', 'demo', 'invoice_sent', 'won', 'lost',
-  'thinking', 'refused', 'trial_scheduled', 'event_registered', 'decided_immediately',
+  'new', 'messaged', 'contacted', 'no_answer', 'demo', 'invoice_sent', 'won', 'lost',
+  'thinking', 'refused', 'trial_scheduled', 'event_registered', 'decided_immediately', 'later',
 ];
 
 const leadStatusLabels: Record<LeadStatus, string> = {
   new: 'Новый',
-  contacted: 'Связались',
+  messaged: 'Написали в мессенджер',
+  contacted: 'Дозвонились / Связались',
   no_answer: 'Недозвон',
-  demo: 'Демо',
-  invoice_sent: 'Инвойс отправлен',
-  won: 'Успешно',
-  lost: 'Закрыт',
-  thinking: 'Подумают',
-  refused: 'Отказали',
-  trial_scheduled: 'Записали на пробное',
+  demo: 'Состоялось',
+  invoice_sent: 'Оформление',
+  won: 'Ученик',
+  lost: 'Отказ (архив)',
+  thinking: 'Думают',
+  refused: 'Отказ',
+  trial_scheduled: 'Запланировали',
   event_registered: 'Записали на мероприятие',
-  decided_immediately: 'Решил сразу',
+  decided_immediately: 'Решил заниматься сразу',
+  later: 'Возможно позже',
 };
 
 const isEmailValid = (email: string) =>

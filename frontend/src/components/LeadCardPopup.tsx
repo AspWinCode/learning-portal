@@ -47,6 +47,8 @@ const statusLabels: Record<string, string> = {
   trial_scheduled: 'Записали на пробное',
   event_registered: 'Записали на мероприятие',
   decided_immediately: 'Решил сразу',
+  messaged: 'Написали в мессенджер',
+  later: 'Возможно позже',
 };
 
 const statusColors: Record<string, 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning'> = {
@@ -261,6 +263,11 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
         ...extraPayload,
       };
       const activity = await salesApi.createLeadActivity(leadId, payload);
+
+      // Причина отказа сохраняется в lost_reason лида (баг: раньше отказ уходил как status=lost без причины)
+      if (type === 'refused') {
+        await salesApi.updateLead(leadId, { lost_reason: quickActionComment.trim() || undefined });
+      }
 
       // Follow-up date
       if (quickActionFollowUp) {
@@ -802,7 +809,7 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
             {quickActionDialog === 'refused' && (
               <Stack spacing={2}>
                 <TextField fullWidth size="small" label="Причина отказа" multiline rows={2} value={quickActionComment} onChange={(e) => setQuickActionComment(e.target.value)} />
-                <Button variant="contained" color="error" disabled={quickActionLoading || !quickActionComment} onClick={() => handleQuickAction('refused', { status_effect_from: lead?.status, status_effect_to: 'lost' })}>
+                <Button variant="contained" color="error" disabled={quickActionLoading || !quickActionComment} onClick={() => handleQuickAction('refused', { status_effect_from: lead?.status, status_effect_to: 'refused' })}>
                   Подтвердить отказ
                 </Button>
               </Stack>

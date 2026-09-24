@@ -139,7 +139,7 @@ const SalesReportsPage: React.FC = () => {
   );
 
   const stageCounts = useMemo(() => {
-    const statuses: LeadStatus[] = ['new', 'contacted', 'no_answer', 'demo', 'invoice_sent', 'won', 'lost', 'thinking', 'refused', 'trial_scheduled', 'event_registered', 'decided_immediately'];
+    const statuses: LeadStatus[] = ['new', 'messaged', 'contacted', 'no_answer', 'demo', 'invoice_sent', 'won', 'lost', 'thinking', 'refused', 'trial_scheduled', 'event_registered', 'decided_immediately', 'later'];
     const base = statuses.reduce<Record<LeadStatus, number>>((acc, s) => ({ ...acc, [s]: 0 }), {} as Record<LeadStatus, number>);
     filteredLeads.forEach((l) => {
       base[l.status] = (base[l.status] ?? 0) + 1;
@@ -171,7 +171,7 @@ const SalesReportsPage: React.FC = () => {
   const lostReasons = useMemo(() => {
     const byReason: Record<string, number> = {};
     filteredLeads
-      .filter((l) => l.status === 'lost')
+      .filter((l) => l.status === 'lost' || l.status === 'refused')
       .forEach((l) => {
         const reason = (l.lost_reason || 'Не указано').trim();
         byReason[reason] = (byReason[reason] || 0) + 1;

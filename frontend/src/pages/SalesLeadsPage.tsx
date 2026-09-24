@@ -54,12 +54,16 @@ import Layout from '../components/Layout';
 import { LeadCardPopup } from '../components/LeadCardPopup';
 import { SendSMSModal } from '../components/SendSMSModal';
 import { SendMaxModal } from '../components/SendMaxModal';
+import { LeadKanban } from '../components/sales/LeadKanban';
+import { LeadPipelineStats } from '../components/sales/LeadPipelineStats';
 import { salesApi, settingsApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
+import { ARRIVAL_CHANNEL_FILTER_OPTIONS, FINAL_STATUSES } from '../utils/leadPipeline';
 import {
   EventItem,
   Invoice,
   Lead,
+  LeadArrivalChannel,
   LeadCommunication,
   LeadCommunicationChannel,
   LeadInfoTemplate,
@@ -76,17 +80,19 @@ import {
 
 const statusLabels: Record<LeadStatus, string> = {
   new: '\u041d\u043e\u0432\u044b\u0439',
+  messaged: '\u041d\u0430\u043f\u0438\u0441\u0430\u043b\u0438 \u0432 \u043c\u0435\u0441\u0441\u0435\u043d\u0434\u0436\u0435\u0440',
   contacted: '\u0421\u0432\u044f\u0437\u0430\u043b\u0438\u0441\u044c',
   no_answer: '\u041d\u0435\u0434\u043e\u0437\u0432\u043e\u043d',
-  demo: '\u0414\u0435\u043c\u043e',
-  invoice_sent: '\u0418\u043d\u0432\u043e\u0439\u0441 \u043e\u0442\u043f\u0440\u0430\u0432\u043b\u0435\u043d',
-  won: '\u0423\u0441\u043f\u0435\u0448\u043d\u043e',
-  lost: '\u0417\u0430\u043a\u0440\u044b\u0442',
+  demo: '\u0421\u043e\u0441\u0442\u043e\u044f\u043b\u043e\u0441\u044c',
+  invoice_sent: '\u041e\u0444\u043e\u0440\u043c\u043b\u0435\u043d\u0438\u0435',
+  won: '\u0423\u0447\u0435\u043d\u0438\u043a',
+  lost: '\u041e\u0442\u043a\u0430\u0437 (\u0430\u0440\u0445\u0438\u0432)',
   thinking: '\u041f\u043e\u0434\u0443\u043c\u0430\u044e\u0442',
   refused: '\u041e\u0442\u043a\u0430\u0437\u0430\u043b\u0438',
   trial_scheduled: '\u0417\u0430\u043f\u0438\u0441\u0430\u043b\u0438 \u043d\u0430 \u043f\u0440\u043e\u0431\u043d\u043e\u0435',
   event_registered: 'Записали на мероприятие',
   decided_immediately: '\u0420\u0435\u0448\u0438\u043b \u0437\u0430\u043d\u0438\u043c\u0430\u0442\u044c\u0441\u044f \u0441\u0440\u0430\u0437\u0443',
+  later: '\u0412\u043e\u0437\u043c\u043e\u0436\u043d\u043e \u043f\u043e\u0437\u0436\u0435',
 };
 
 const leadAiStageMeta: Record<string, { label: string; color: 'success' | 'warning' | 'error' | 'default' }> = {
@@ -102,12 +108,17 @@ const TAG_REINVITE_NEXT_EVENT = 'reinvite_next_event';
 /** Дефолтная конфигурация колонок воронки — используется, пока не загружен пользовательский конфиг из настроек. */
 const DEFAULT_PIPELINE_STAGES: LeadPipelineStage[] = [
   { key: 'new', label: 'Новый', color: null, primary_status: 'new', grouped_statuses: [], position: 0 },
-  { key: 'thinking', label: 'Подумают', color: null, primary_status: 'thinking', grouped_statuses: ['contacted'], position: 1 },
-  { key: 'no_answer', label: 'Недозвон', color: null, primary_status: 'no_answer', grouped_statuses: [], position: 2 },
-  { key: 'refused', label: 'Отказали', color: null, primary_status: 'refused', grouped_statuses: ['lost'], position: 3 },
-  { key: 'trial_scheduled', label: 'Запланировали пробное', color: null, primary_status: 'trial_scheduled', grouped_statuses: ['demo', 'invoice_sent'], position: 4 },
-  { key: 'event_registered', label: 'Записали на мероприятие', color: null, primary_status: 'event_registered', grouped_statuses: [], position: 5 },
-  { key: 'decided_immediately', label: 'Решил заниматься сразу', color: null, primary_status: 'decided_immediately', grouped_statuses: ['won'], position: 6 },
+  { key: 'messaged', label: 'Написали в мессенджер', color: null, primary_status: 'messaged', grouped_statuses: [], position: 1 },
+  { key: 'contacted', label: 'Дозвонились / Связались', color: null, primary_status: 'contacted', grouped_statuses: [], position: 2 },
+  { key: 'no_answer', label: 'Недозвон', color: null, primary_status: 'no_answer', grouped_statuses: [], position: 3 },
+  { key: 'trial_scheduled', label: 'Запланировали', color: null, primary_status: 'trial_scheduled', grouped_statuses: ['event_registered'], position: 4 },
+  { key: 'demo', label: 'Состоялось', color: null, primary_status: 'demo', grouped_statuses: [], position: 5 },
+  { key: 'thinking', label: 'Думают', color: null, primary_status: 'thinking', grouped_statuses: [], position: 6 },
+  { key: 'invoice_sent', label: 'Готовы заниматься / Оформление', color: null, primary_status: 'invoice_sent', grouped_statuses: ['decided_immediately'], position: 7 },
+  { key: 'later', label: 'Возможно позже сами выйдут на связь', color: null, primary_status: 'later', grouped_statuses: [], position: 8 },
+  { key: 'won', label: 'Ученик', color: null, primary_status: 'won', grouped_statuses: [], position: 9 },
+  { key: 'refused', label: 'Отказ', color: null, primary_status: 'refused', grouped_statuses: [], position: 10 },
+  { key: 'lost_archive', label: 'Отказ (архив)', color: null, primary_status: 'lost', grouped_statuses: [], position: 11 },
 ];
 
 const DEFAULT_REFUSED_REASONS = [
@@ -153,7 +164,7 @@ const SalesLeadsPage: React.FC = () => {
   const [sourceFilter, setSourceFilter] = useState('');
   const [tagFilter, setTagFilter] = useState('');
   const [overdueOnly, setOverdueOnly] = useState(false);
-  const [viewMode, setViewMode] = useState<'table' | 'kanban'>(isPipelineRoute ? 'kanban' : 'table');
+  const [viewMode, setViewMode] = useState<'table' | 'kanban'>('kanban');
   const [actionLoadingId, setActionLoadingId] = useState<number | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
@@ -184,6 +195,12 @@ const SalesLeadsPage: React.FC = () => {
   const [lostDialogOpen, setLostDialogOpen] = useState(false);
   const [lostReason, setLostReason] = useState('');
   const [pendingLostLead, setPendingLostLead] = useState<Lead | null>(null);
+  const [convertConfirmOpen, setConvertConfirmOpen] = useState(false);
+  const [pendingConvertLead, setPendingConvertLead] = useState<Lead | null>(null);
+  const [convertSubmitting, setConvertSubmitting] = useState(false);
+  const [convertError, setConvertError] = useState<string | null>(null);
+  const [archiveMode, setArchiveMode] = useState<'active' | 'archive'>('active');
+  const [arrivalChannelFilter, setArrivalChannelFilter] = useState<LeadArrivalChannel | ''>('');
   const [events, setEvents] = useState<EventItem[]>([]);
   const [registerEventOpen, setRegisterEventOpen] = useState(false);
   const [registerEventId, setRegisterEventId] = useState<number | ''>('');
@@ -428,8 +445,8 @@ const SalesLeadsPage: React.FC = () => {
     } else if (queryView === 'table') {
       setViewMode('table');
     } else if (location.pathname === '/sales/leads') {
-      // Keep leads page table-first by default.
-      setViewMode('table');
+      // По умолчанию /sales/leads открывается в режиме «Воронка» (канбан); ?view=table переключает на таблицу.
+      setViewMode('kanban');
     }
     if (queryCreate === '1') {
       handleOpenCreate();
@@ -662,8 +679,11 @@ const SalesLeadsPage: React.FC = () => {
   const handleStatusChange = async (lead: Lead, newStatus: LeadStatus, statusOptionId?: number) => {
     if (lead.status === newStatus) return;
     if (newStatus === 'won') {
-      const ok = window.confirm('Перевести лида в статус "Согласились заниматься"?');
-      if (!ok) return;
+      // Перевод в "Ученик" возможен только через конвертацию (backend запрещает прямой PUT status=won).
+      setPendingConvertLead(lead);
+      setConvertError(null);
+      setConvertConfirmOpen(true);
+      return;
     }
     if (newStatus === 'lost') {
       setPendingLostLead(lead);
@@ -794,6 +814,24 @@ const SalesLeadsPage: React.FC = () => {
       setActionLoadingId(null);
       setPendingLostLead(null);
       setLostReason('');
+    }
+  };
+
+  /** Подтверждение конвертации лида в ученика (единственный разрешённый путь в статус "won"). */
+  const handleConfirmConvertToStudent = async () => {
+    if (!pendingConvertLead) return;
+    setConvertSubmitting(true);
+    setConvertError(null);
+    try {
+      await salesApi.convertLeadToStudent(pendingConvertLead.id);
+      await loadLeads();
+      setToast({ open: true, message: `Лид "${pendingConvertLead.contact_name}" переведён в ученики`, severity: 'success' });
+      setConvertConfirmOpen(false);
+      setPendingConvertLead(null);
+    } catch (err: any) {
+      setConvertError(extractApiError(err, 'Не удалось создать ученика — проверьте обязательные поля'));
+    } finally {
+      setConvertSubmitting(false);
     }
   };
 
@@ -1588,6 +1626,8 @@ const SalesLeadsPage: React.FC = () => {
       trial_scheduled: 50,
       event_registered: 60,
       decided_immediately: 100,
+      messaged: 10,
+      later: 20,
     };
     const base = byStatus[lead.status] ?? 0;
     if (lead.status === 'contacted' || lead.status === 'no_answer' || lead.status === 'demo' || lead.status === 'invoice_sent') {
@@ -1612,6 +1652,14 @@ const SalesLeadsPage: React.FC = () => {
     const hasReinviteTag = currentTags.includes(TAG_REINVITE_NEXT_EVENT);
     const cleanedTags = hasReinviteTag ? currentTags.filter((t) => t !== TAG_REINVITE_NEXT_EVENT) : currentTags;
     const tagsPayload = hasReinviteTag ? { tags: cleanedTags } as { tags: string[] } : {};
+
+    if (targetStatus === 'won') {
+      // Перевод в "Ученик" возможен только через конвертацию (backend запрещает прямой PUT status=won).
+      setPendingConvertLead(lead);
+      setConvertError(null);
+      setConvertConfirmOpen(true);
+      return;
+    }
 
     if (targetStatus === 'no_answer') {
       try {
@@ -1774,7 +1822,7 @@ const SalesLeadsPage: React.FC = () => {
       }
       try {
         await salesApi.updateLead(lead.id, {
-          status: 'lost',
+          status: 'refused',
           lost_reason: dropRefusedReason.trim(),
           ...tagsPayload,
         });
@@ -1882,7 +1930,13 @@ const SalesLeadsPage: React.FC = () => {
     }
   };
 
-  const statusOptions = sortedPipelineStages;
+  // Колонка "Отказ (архив)" (primary_status='lost') — только для просмотра старых данных,
+  // её нельзя выбрать как новую цель: генерическая ветка обновления не запрашивает причину
+  // отказа, а backend теперь требует lost_reason для status in (refused, lost).
+  const statusOptions = useMemo(
+    () => sortedPipelineStages.filter((col) => col.primary_status !== 'lost'),
+    [sortedPipelineStages]
+  );
   const pipelineLeads = useMemo(
     () =>
       isPipelineRoute
@@ -1895,6 +1949,25 @@ const SalesLeadsPage: React.FC = () => {
     () => new Set(leads.filter((l) => (l.tags || []).includes(TAG_REINVITE_NEXT_EVENT)).map((l) => l.id)),
     [leads]
   );
+  /** Лиды для нового канбана (LeadKanban) с учётом школы/канала поступления; статус-бакетинг по колонкам делает сам компонент. */
+  const kanbanFilteredLeads = useMemo(() => {
+    let source = leads;
+    const schoolTrim = pipelineSchoolFilter.trim().toLowerCase();
+    if (schoolTrim) {
+      source = source.filter((l) => (l.school_name || '').toLowerCase().includes(schoolTrim));
+    }
+    if (arrivalChannelFilter) {
+      source = source.filter((l) => (l.arrival_channel || '') === arrivalChannelFilter);
+    }
+    return source;
+  }, [leads, pipelineSchoolFilter, arrivalChannelFilter]);
+
+  /** Лиды активной (не архивной) воронки — для KPI-строки (п.15 ТЗ: считать только по активной воронке). */
+  const activeKanbanLeads = useMemo(
+    () => kanbanFilteredLeads.filter((l) => !FINAL_STATUSES.includes(l.status)),
+    [kanbanFilteredLeads]
+  );
+
   const kanbanColumns = useMemo(
     () => {
       let source = isPipelineRoute ? pipelineLeads : leads;
@@ -2129,15 +2202,32 @@ const SalesLeadsPage: React.FC = () => {
                   Сбросить школу
                 </Button>
               )}
-              <Checkbox
-                id="show-archive-column"
-                checked={showArchiveColumn}
-                onChange={(e) => setShowArchiveColumn(e.target.checked)}
+              <FormControl size="small" sx={{ minWidth: 160 }}>
+                <InputLabel id="arrival-channel-filter-label">Канал поступления</InputLabel>
+                <Select
+                  labelId="arrival-channel-filter-label"
+                  label="Канал поступления"
+                  value={arrivalChannelFilter}
+                  onChange={(e) => setArrivalChannelFilter((e.target.value as LeadArrivalChannel) || '')}
+                >
+                  {ARRIVAL_CHANNEL_FILTER_OPTIONS.map((opt) => (
+                    <MenuItem key={opt.value || 'all'} value={opt.value}>
+                      {opt.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <ToggleButtonGroup
+                value={archiveMode}
+                exclusive
                 size="small"
-              />
-              <Typography component="label" htmlFor="show-archive-column" variant="body2" sx={{ cursor: 'pointer' }}>
-                Показывать колонку «Архив»
-              </Typography>
+                onChange={(_, v) => {
+                  if (v) setArchiveMode(v);
+                }}
+              >
+                <ToggleButton value="active">Активная воронка</ToggleButton>
+                <ToggleButton value="archive">Архив</ToggleButton>
+              </ToggleButtonGroup>
             </Stack>
           )}
           {!isPipelineRoute && (
@@ -2441,145 +2531,17 @@ const SalesLeadsPage: React.FC = () => {
       />
       </>
       ) : (
-        <Box
-          sx={{
-            display: 'flex',
-            flexWrap: 'nowrap',
-            gap: 2,
-            overflowX: 'auto',
-            pb: 1,
-            minHeight: 400,
-          }}
-        >
-          {kanbanColumns.map((col) => (
-            <Box
-              key={col.status}
-              sx={{
-                flex: '0 0 auto',
-                width: 280,
-                minWidth: 280,
-              }}
-            >
-              <Card
-                variant="outlined"
-                sx={{
-                  height: '100%',
-                  transition: 'background-color 0.15s, box-shadow 0.15s',
-                  ...((col.status !== 'archive') && dragOverColumn === col.status && draggedLeadId
-                    ? { bgcolor: 'action.hover', boxShadow: 2 }
-                    : {}),
-                }}
-                onDragOver={col.status === 'archive' ? undefined : (e) => handleKanbanDragOver(e, col.status as LeadStatus | 'next_event')}
-                onDragLeave={col.status === 'archive' ? undefined : handleKanbanDragLeave}
-                onDrop={col.status === 'archive' ? undefined : (e) => handleKanbanDrop(e, col.status as LeadStatus | 'next_event')}
-              >
-                <CardContent>
-                  <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
-                    <Stack direction="row" alignItems="center" spacing={1}>
-                      {col.color && (
-                        <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: col.color, flexShrink: 0 }} />
-                      )}
-                      <Typography variant="subtitle1">{col.title}</Typography>
-                    </Stack>
-                    <Chip size="small" label={col.leads.length} />
-                  </Stack>
-                  <Stack spacing={1.5}>
-                    {col.leads.map((lead) => (
-                      <Card
-                        key={lead.id}
-                        variant="outlined"
-                        draggable={col.status !== 'archive' && col.status !== 'next_event'}
-                        onDragStart={col.status === 'archive' || col.status === 'next_event' ? undefined : (e) => handleKanbanDragStart(e, lead.id)}
-                        onDragEnd={col.status === 'archive' || col.status === 'next_event' ? undefined : handleKanbanDragEnd}
-                        onDragOver={col.status === 'archive' || col.status === 'next_event' ? undefined : (e) => handleKanbanDragOver(e, col.status as LeadStatus)}
-                        onDragLeave={col.status === 'archive' || col.status === 'next_event' ? undefined : handleKanbanDragLeave}
-                        onDrop={col.status === 'archive' || col.status === 'next_event' ? undefined : (e) => handleKanbanDrop(e, col.status as LeadStatus)}
-                        sx={{
-                          borderRadius: 2,
-                          borderColor:
-                            selectedLead?.id === lead.id
-                              ? 'primary.main'
-                              : getKanbanBorderColor(lead.next_contact_at),
-                          borderWidth: 2,
-                          opacity: draggedLeadId === lead.id ? 0.6 : 1,
-                          cursor: draggedLeadId === lead.id ? 'grabbing' : 'grab',
-                          userSelect: 'none',
-                        }}
-                      >
-                        <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
-                          <Typography variant="subtitle2" noWrap>{lead.contact_name}</Typography>
-                          <Typography variant="caption" color="text.secondary" component="a" href={`tel:${lead.parent_phone || lead.phone || ''}`} sx={{ textDecoration: 'none', color: 'text.secondary', '&:hover': { color: 'primary.main' } }} onClick={(e) => e.stopPropagation()}>
-                            {lead.parent_phone || lead.phone || '—'}
-                          </Typography>
-                          {lead.source && (
-                            <Typography variant="caption" display="block" color="text.secondary" noWrap>
-                              {lead.source}
-                            </Typography>
-                          )}
-                          <Chip size="small" label={statusLabels[lead.status] ?? lead.status} color={badgeColor(lead.status)} sx={{ mt: 0.5, height: 20, fontSize: '0.7rem' }} />
-                          {lead.ai_insight ? (
-                            <Chip
-                              size="small"
-                              label={leadAiStageMeta[lead.ai_insight.stage]?.label ?? lead.ai_insight.stage}
-                              color={leadAiStageMeta[lead.ai_insight.stage]?.color ?? 'default'}
-                              variant="outlined"
-                              sx={{ mt: 0.5, height: 20, fontSize: '0.7rem' }}
-                            />
-                          ) : null}
-                          {lead.next_contact_at && (() => {
-                            const d = parseISO(lead.next_contact_at);
-                            if (!isValid(d)) return null;
-                            const now = new Date();
-                            const isOverdue = d.getTime() < now.getTime();
-                            const isToday = d.toDateString() === now.toDateString();
-                            return (
-                              <Typography
-                                variant="caption"
-                                display="block"
-                                sx={{ mt: 0.5, fontWeight: 600, color: isOverdue ? 'error.main' : isToday ? 'warning.main' : 'primary.main' }}
-                              >
-                                {isOverdue ? 'Просрочено: ' : isToday ? 'Сегодня: ' : 'Следующий шаг: '}
-                                {format(d, 'dd.MM HH:mm')}
-                              </Typography>
-                            );
-                          })()}
-                          {!lead.next_contact_at && lead.status !== 'won' && lead.status !== 'lost' && lead.status !== 'refused' && (
-                            <Typography variant="caption" display="block" color="warning.main" sx={{ mt: 0.5, fontWeight: 600 }}>
-                              Нет следующего шага
-                            </Typography>
-                          )}
-                          {lead.ai_insight ? (
-                            <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>
-                              AI: {lead.ai_insight.best_next_action}
-                            </Typography>
-                          ) : null}
-                          <Stack direction="row" spacing={0.5} sx={{ mt: 0.5 }} flexWrap="wrap">
-                            {invoicesBadgeMap[lead.id] && (
-                              <Chip size="small" label="Счёт" color="info" variant="outlined" sx={{ height: 18, fontSize: '0.65rem' }} />
-                            )}
-                            {taskTodayBadgeMap[lead.id] && (
-                              <Chip size="small" label="Задача" color="warning" variant="outlined" sx={{ height: 18, fontSize: '0.65rem' }} />
-                            )}
-                            {overdueBadgeMap[lead.id] && (
-                              <Chip size="small" label="Просрочено" color="error" variant="outlined" sx={{ height: 18, fontSize: '0.65rem' }} />
-                            )}
-                          </Stack>
-                          <Button size="small" fullWidth variant="outlined" sx={{ mt: 1, textTransform: 'none' }} onClick={(e) => { e.stopPropagation(); setCardPopupLeadId(lead.id); }}>
-                            Открыть
-                          </Button>
-                        </CardContent>
-                      </Card>
-                    ))}
-                    {col.leads.length === 0 && (
-                      <Typography variant="caption" color="text.secondary">
-                        Лидов нет
-                      </Typography>
-                    )}
-                  </Stack>
-                </CardContent>
-              </Card>
-            </Box>
-          ))}
+        <Box>
+          <LeadPipelineStats leads={activeKanbanLeads} />
+          <LeadKanban
+            leads={kanbanFilteredLeads}
+            pipelineStages={sortedPipelineStages}
+            mode={archiveMode}
+            refusedReasons={refusedReasons}
+            onLeadsChanged={loadLeads}
+            onOpenLead={(leadId) => setCardPopupLeadId(leadId)}
+            onToast={(message, severity = 'success') => setToast({ open: true, message, severity })}
+          />
         </Box>
       )}
         </Grid>
@@ -3313,6 +3275,28 @@ const SalesLeadsPage: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+      <Dialog open={convertConfirmOpen} onClose={() => (!convertSubmitting ? setConvertConfirmOpen(false) : undefined)} maxWidth="sm" fullWidth>
+        <DialogTitle>Создать ученика</DialogTitle>
+        <DialogContent>
+          {convertError && (
+            <Alert severity="error" sx={{ mb: 2, mt: 1 }}>
+              {convertError}
+            </Alert>
+          )}
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            Лид «{pendingConvertLead?.contact_name}» будет переведён в ученики. Убедитесь, что заполнены ФИО ученика,
+            ФИО родителя, телефон, email, город и класс.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConvertConfirmOpen(false)} disabled={convertSubmitting}>
+            Отмена
+          </Button>
+          <Button variant="contained" onClick={() => void handleConfirmConvertToStudent()} disabled={convertSubmitting}>
+            Создать ученика
+          </Button>
+        </DialogActions>
+      </Dialog>
       <Dialog open={batchFollowUpOpen} onClose={() => setBatchFollowUpOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Массовый follow‑up</DialogTitle>
         <DialogContent>
@@ -3517,7 +3501,7 @@ const SalesLeadsPage: React.FC = () => {
         <DialogActions>
           <Button onClick={() => setDropConfirmOpen(false)}>Отмена</Button>
           <Button variant="contained" onClick={() => void handleConfirmKanbanDrop()}>
-            {dropTargetStatus === 'refused' ? 'В архив' : 'Сохранить'}
+            {dropTargetStatus === 'refused' ? 'Отметить отказ' : 'Сохранить'}
           </Button>
         </DialogActions>
       </Dialog>

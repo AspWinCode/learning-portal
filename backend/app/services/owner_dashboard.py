@@ -102,6 +102,7 @@ def build_owner_dashboard_summary(db: Session) -> Dict[str, object]:
 
     active_pipeline_statuses = [
         LeadStatus.NEW,
+        LeadStatus.MESSAGED,
         LeadStatus.CONTACTED,
         LeadStatus.DEMO,
         LeadStatus.INVOICE_SENT,

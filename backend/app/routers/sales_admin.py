@@ -223,7 +223,7 @@ async def get_sales_dashboard(
     tasks_q = db.query(LeadTask).join(Lead, Lead.id == LeadTask.lead_id)
     regs_q = db.query(EventRegistration).join(Lead, Lead.id == EventRegistration.lead_id)
 
-    active_lead_statuses = [LeadStatus.NEW, LeadStatus.CONTACTED, LeadStatus.DEMO, LeadStatus.INVOICE_SENT]
+    active_lead_statuses = [LeadStatus.NEW, LeadStatus.MESSAGED, LeadStatus.CONTACTED, LeadStatus.DEMO, LeadStatus.INVOICE_SENT]
     connected_statuses = [LeadStatus.CONTACTED, LeadStatus.DEMO, LeadStatus.INVOICE_SENT, LeadStatus.WON]
 
     kpi_new_leads = leads_q.filter(Lead.created_at >= start_today, Lead.created_at < end_today).count()

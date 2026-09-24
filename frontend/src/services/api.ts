@@ -1960,6 +1960,10 @@ export const salesApi = {
       status_option_id?: number;
       lost_reason?: string;
       questionnaire_filled?: boolean;
+      arrival_channel?: string;
+      scheduled_event_type?: string;
+      thinking_reason?: string;
+      campaign_event_id?: number;
     }
   ): Promise<Lead> => {
     const response = await api.put(`/api/sales/leads/${id}`, payload);

@@ -53,6 +53,7 @@ def build_lead_ai_insight(lead: Lead, *, now: Optional[datetime] = None) -> Dict
 
     base_scores = {
         LeadStatus.NEW: 78,
+        LeadStatus.MESSAGED: 74,
         LeadStatus.CONTACTED: 72,
         LeadStatus.NO_ANSWER: 48,
         LeadStatus.DEMO: 68,
@@ -61,6 +62,7 @@ def build_lead_ai_insight(lead: Lead, *, now: Optional[datetime] = None) -> Dict
         LeadStatus.TRIAL_SCHEDULED: 76,
         LeadStatus.EVENT_REGISTERED: 70,
         LeadStatus.DECIDED_IMMEDIATELY: 92,
+        LeadStatus.LATER: 35,
     }
     score = float(base_scores.get(status, 55))
     reasons: List[str] = []

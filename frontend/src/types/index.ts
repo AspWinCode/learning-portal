@@ -250,6 +250,11 @@ export interface AcademyMetricsNps {
   nps_score: number | null;
 }
 
+export interface AcademyMetricsRatingRow {
+  label: string;
+  students_count: number;
+}
+
 export interface AcademyMetricsResponse {
   period_start: string;
   period_end: string;
@@ -265,6 +270,8 @@ export interface AcademyMetricsResponse {
   retention_6_pct: number;
   retention_12_pct: number;
   nps: AcademyMetricsNps;
+  rating_by_grade: AcademyMetricsRatingRow[];
+  rating_by_school: AcademyMetricsRatingRow[];
 }
 
 export interface AdminDashboardSummary {

@@ -97,6 +97,11 @@ class AcademyMetricsNpsResponse(BaseModel):
     nps_score: Optional[float] = None
 
 
+class AcademyMetricsRatingRow(BaseModel):
+    label: str
+    students_count: int
+
+
 class AcademyMetricsResponse(BaseModel):
     period_start: datetime
     period_end: datetime
@@ -112,6 +117,8 @@ class AcademyMetricsResponse(BaseModel):
     retention_6_pct: float
     retention_12_pct: float
     nps: AcademyMetricsNpsResponse
+    rating_by_grade: List[AcademyMetricsRatingRow]
+    rating_by_school: List[AcademyMetricsRatingRow]
 
 
 __all__ = [name for name in globals() if not name.startswith("_")]

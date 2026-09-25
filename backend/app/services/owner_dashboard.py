@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from typing import Dict, List, Tuple
 
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -326,6 +326,8 @@ def build_academy_metrics(
         "retention_6_pct": unit_economics["retention_6_pct"],
         "retention_12_pct": unit_economics["retention_12_pct"],
         "nps": nps,
+        "rating_by_grade": _build_students_rating(db, field=Student.grade, unknown_label="Класс не указан"),
+        "rating_by_school": _build_students_rating(db, field=Student.school, unknown_label="Школа не указана"),
     }
 
 
@@ -379,3 +381,24 @@ def _build_groups_revenue(db: Session, *, student_checks: Dict[int, float]) -> L
         })
     rows.sort(key=lambda row: row["total_amount"], reverse=True)
     return rows
+
+
+def _build_students_rating(db: Session, *, field, unknown_label: str) -> List[dict]:
+    """Рейтинг по количеству активных учеников в разрезе произвольного текстового
+    поля Student (класс/школа). Пустое значение группируется под unknown_label."""
+
+    rows = (
+        db.query(field, func.count(Student.id))
+        .filter(Student.status == StudentStatus.ACTIVE)
+        .group_by(field)
+        .all()
+    )
+
+    buckets: Dict[str, int] = {}
+    for raw_value, count in rows:
+        label = (raw_value or "").strip() or unknown_label
+        buckets[label] = buckets.get(label, 0) + int(count)
+
+    result = [{"label": label, "students_count": count} for label, count in buckets.items()]
+    result.sort(key=lambda row: row["students_count"], reverse=True)
+    return result

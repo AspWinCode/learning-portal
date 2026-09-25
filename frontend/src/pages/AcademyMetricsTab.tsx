@@ -252,6 +252,71 @@ const AcademyMetricsTab: React.FC = () => {
             </Typography>
           </Paper>
 
+          <Grid container spacing={2} sx={{ mt: 0 }}>
+            <Grid item xs={12} md={6}>
+              <Paper variant="outlined" sx={{ p: 2, height: '100%' }}>
+                <Typography variant="h6" gutterBottom>
+                  Рейтинг по классам
+                </Typography>
+                {metricsQuery.data.rating_by_grade.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary">
+                    Нет активных учеников.
+                  </Typography>
+                ) : (
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Класс</TableCell>
+                        <TableCell align="right">Учеников</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {metricsQuery.data.rating_by_grade.map((row) => (
+                        <TableRow key={row.label}>
+                          <TableCell>{row.label}</TableCell>
+                          <TableCell align="right">{row.students_count}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </Paper>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <Paper variant="outlined" sx={{ p: 2, height: '100%' }}>
+                <Typography variant="h6" gutterBottom>
+                  Рейтинг по школам
+                </Typography>
+                {metricsQuery.data.rating_by_school.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary">
+                    Нет активных учеников.
+                  </Typography>
+                ) : (
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Школа</TableCell>
+                        <TableCell align="right">Учеников</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {metricsQuery.data.rating_by_school.map((row) => (
+                        <TableRow key={row.label}>
+                          <TableCell>{row.label}</TableCell>
+                          <TableCell align="right">{row.students_count}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </Paper>
+            </Grid>
+          </Grid>
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, mb: 2, display: 'block' }}>
+            Рейтинги по классам и школам считаются по всем активным ученикам сейчас (не зависят от выбранного
+            периода) — это срез состава академии, а не денежная метрика.
+          </Typography>
+
           <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block' }}>
             Средний чек = цена абонемента ученика (с учётом персональной скидки), засчитанная один раз за
             период на ученика — вне зависимости от того, одним платежом или в рассрочку он вносил оплату.

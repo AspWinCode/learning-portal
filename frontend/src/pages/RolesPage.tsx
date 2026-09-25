@@ -234,9 +234,9 @@ const CreateUserDialog: React.FC<{
   open: boolean;
   onClose: () => void;
   baseRoleOptions: Array<Role['base_role']>;
-  customRoleOptionsByBase: Map<Role['base_role'], Role[]>;
+  customRoles: Role[];
   onSubmit: (form: UserCreateFormState) => Promise<void>;
-}> = ({ open, onClose, baseRoleOptions, customRoleOptionsByBase, onSubmit }) => {
+}> = ({ open, onClose, baseRoleOptions, customRoles, onSubmit }) => {
   const [form, setForm] = useState<UserCreateFormState>(EMPTY_USER_FORM);
   const [saving, setSaving] = useState(false);
 
@@ -245,8 +245,6 @@ const CreateUserDialog: React.FC<{
       setForm(EMPTY_USER_FORM);
     }
   }, [open]);
-
-  const customRoleOptions = customRoleOptionsByBase.get(form.role) || [];
 
   const handleClose = () => {
     if (!saving) onClose();
@@ -294,6 +292,29 @@ const CreateUserDialog: React.FC<{
           </Divider>
           <TextField
             select
+            label="Кастомная роль (необязательно)"
+            value={form.custom_role_id}
+            onChange={(event) => {
+              const value = String(event.target.value);
+              const selected = customRoles.find((item) => String(item.id) === value);
+              setForm((prev) => ({
+                ...prev,
+                custom_role_id: value,
+                role: selected ? selected.base_role : prev.role,
+              }));
+            }}
+            helperText="Готовый набор прав. Базовая роль подставится автоматически — её не нужно угадывать."
+            fullWidth
+          >
+            <MenuItem value="">Без кастомной роли</MenuItem>
+            {customRoles.map((roleOption) => (
+              <MenuItem key={roleOption.id} value={String(roleOption.id)}>
+                {roleOption.name} ({BASE_ROLE_LABELS[roleOption.base_role]})
+              </MenuItem>
+            ))}
+          </TextField>
+          <TextField
+            select
             label="Базовая роль"
             value={form.role}
             onChange={(event) =>
@@ -303,31 +324,17 @@ const CreateUserDialog: React.FC<{
                 custom_role_id: '',
               }))
             }
-            helperText="Обязательно. Определяет системный набор прав и раздел портала."
+            disabled={!!form.custom_role_id}
+            helperText={
+              form.custom_role_id
+                ? 'Определяется выбранной кастомной ролью.'
+                : 'Обязательно. Определяет системный набор прав и раздел портала.'
+            }
             fullWidth
           >
             {baseRoleOptions.map((option) => (
               <MenuItem key={option} value={option}>
                 {BASE_ROLE_LABELS[option]}
-              </MenuItem>
-            ))}
-          </TextField>
-          <TextField
-            select
-            label="Кастомная роль (необязательно)"
-            value={form.custom_role_id}
-            onChange={(event) => setForm((prev) => ({ ...prev, custom_role_id: String(event.target.value) }))}
-            helperText={
-              customRoleOptions.length
-                ? 'Сужает права выбранной базовой роли до кастомного набора. Можно оставить пустым.'
-                : 'Для выбранной базовой роли пока нет активных кастомных ролей.'
-            }
-            fullWidth
-          >
-            <MenuItem value="">Без кастомной роли</MenuItem>
-            {customRoleOptions.map((roleOption) => (
-              <MenuItem key={roleOption.id} value={String(roleOption.id)}>
-                {roleOption.name}
               </MenuItem>
             ))}
           </TextField>
@@ -426,6 +433,11 @@ const RolesPage: React.FC = () => {
     });
     return grouped;
   }, [activeCustomRoles]);
+
+  const manageableCustomRoles = useMemo(
+    () => activeCustomRoles.filter((item) => isOwner || (item.base_role !== 'owner' && item.base_role !== 'admin')),
+    [activeCustomRoles, isOwner]
+  );
 
   const sortedUsers = useMemo(
     () => [...users].sort((left, right) => left.full_name.localeCompare(right.full_name)),
@@ -1060,7 +1072,7 @@ const RolesPage: React.FC = () => {
         open={userDialogOpen}
         onClose={() => setUserDialogOpen(false)}
         baseRoleOptions={manageableBaseRoleOptions}
-        customRoleOptionsByBase={customRoleOptionsByBase}
+        customRoles={manageableCustomRoles}
         onSubmit={handleCreateUser}
       />
     </Layout>

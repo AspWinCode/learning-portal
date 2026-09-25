@@ -40,6 +40,7 @@ import {
   Add,
   AccountTree,
   Assessment,
+  CallSplit,
   Close,
   Dashboard,
   Hub,
@@ -206,6 +207,14 @@ const FinanceOverviewPageContent: React.FC = () => {
   const [assignOptions, setAssignOptions] = useState<Student[]>([]);
   const [assignSelected, setAssignSelected] = useState<Student | null>(null);
   const [assignLoading, setAssignLoading] = useState(false);
+
+  type SplitEntry = { key: number; student: Student | null; options: Student[]; amount: string };
+  const [splitDialogOpen, setSplitDialogOpen] = useState(false);
+  const [splitRow, setSplitRow] = useState<FinanceLedgerBankRow | null>(null);
+  const [splitEntries, setSplitEntries] = useState<SplitEntry[]>([]);
+  const [splitLoading, setSplitLoading] = useState(false);
+  const splitEntryKeyRef = useRef(0);
+  const splitSearchTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
 
   const [selectedRowIds, setSelectedRowIds] = useState<Set<number>>(new Set());
   const [bulkTargetId, setBulkTargetId] = useState<number | ''>('');
@@ -805,6 +814,73 @@ const FinanceOverviewPageContent: React.FC = () => {
       const updated = await financeApi.ignoreTransactionAssignment(row.id);
       setJournalRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
     } catch { /* silent */ }
+  };
+
+  const openSplitDialog = (row: FinanceLedgerBankRow) => {
+    setSplitRow(row);
+    setSplitEntries([
+      { key: splitEntryKeyRef.current++, student: null, options: [], amount: '' },
+      { key: splitEntryKeyRef.current++, student: null, options: [], amount: '' },
+    ]);
+    setSplitDialogOpen(true);
+  };
+
+  const addSplitEntry = () => {
+    setSplitEntries((prev) => [...prev, { key: splitEntryKeyRef.current++, student: null, options: [], amount: '' }]);
+  };
+
+  const removeSplitEntry = (key: number) => {
+    setSplitEntries((prev) => (prev.length <= 2 ? prev : prev.filter((e) => e.key !== key)));
+  };
+
+  const searchSplitStudents = (key: number, query: string) => {
+    if (splitSearchTimers.current[key]) clearTimeout(splitSearchTimers.current[key]);
+    if (query.trim().length < 2) {
+      setSplitEntries((prev) => prev.map((e) => (e.key === key ? { ...e, options: [] } : e)));
+      return;
+    }
+    splitSearchTimers.current[key] = setTimeout(async () => {
+      try {
+        const result = await studentsApi.getAll({ q: query.trim(), limit: 20 });
+        setSplitEntries((prev) => prev.map((e) => (e.key === key ? { ...e, options: result } : e)));
+      } catch {
+        setSplitEntries((prev) => prev.map((e) => (e.key === key ? { ...e, options: [] } : e)));
+      }
+    }, 300);
+  };
+
+  const splitEntriesSum = useMemo(
+    () => splitEntries.reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0),
+    [splitEntries]
+  );
+  const splitAmountDiff = useMemo(
+    () => Math.round(((splitRow?.amount || 0) - splitEntriesSum) * 100) / 100,
+    [splitRow, splitEntriesSum]
+  );
+  const splitValid =
+    !!splitRow &&
+    splitEntries.length >= 2 &&
+    splitEntries.every((e) => e.student && parseFloat(e.amount) > 0) &&
+    new Set(splitEntries.map((e) => e.student?.id)).size === splitEntries.length &&
+    Math.abs(splitAmountDiff) < 0.01;
+
+  const confirmSplit = async () => {
+    if (!splitRow || !splitValid) return;
+    setSplitLoading(true);
+    setError(null);
+    try {
+      const updated = await financeApi.applyTransactionSplit(splitRow.id, {
+        splits: splitEntries.map((e) => ({ student_id: e.student!.id, amount: Math.round(parseFloat(e.amount) * 100) / 100 })),
+      });
+      setJournalRows((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+      setMessage('Платёж разделён между учениками');
+      setSplitDialogOpen(false);
+      if (selectedTargetId) await loadModelData(selectedTargetId);
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || err?.message || 'Не удалось разделить платёж');
+    } finally {
+      setSplitLoading(false);
+    }
   };
 
   const handleCancelAssignment = async (row: FinanceLedgerBankRow) => {
@@ -1730,6 +1806,11 @@ const FinanceOverviewPageContent: React.FC = () => {
                         <Button size="small" startIcon={<PersonAddAlt fontSize="small" />} onClick={() => openAssignDialog(row)}>
                           Зачислить
                         </Button>
+                        <Tooltip title="Разделить платёж между несколькими учениками (например, братья/сёстры)">
+                          <Button size="small" startIcon={<CallSplit fontSize="small" />} onClick={() => openSplitDialog(row)}>
+                            Разделить
+                          </Button>
+                        </Tooltip>
                         <Tooltip title="Зачисление не требуется">
                           <IconButton size="small" color="default" onClick={() => handleIgnoreAssignment(row)}>
                             <PersonOff fontSize="small" />
@@ -1910,6 +1991,11 @@ const FinanceOverviewPageContent: React.FC = () => {
                                 <PersonAddAlt sx={{ fontSize: 14 }} />
                               </IconButton>
                             </Tooltip>
+                            <Tooltip title="Разделить платёж между несколькими учениками">
+                              <IconButton size="small" color="warning" sx={{ p: 0 }} onClick={() => openSplitDialog(row)}>
+                                <CallSplit sx={{ fontSize: 14 }} />
+                              </IconButton>
+                            </Tooltip>
                             <Tooltip title="Зачисление не требуется">
                               <IconButton size="small" sx={{ p: 0 }} onClick={() => handleIgnoreAssignment(row)}>
                                 <PersonOff sx={{ fontSize: 14 }} />
@@ -1983,6 +2069,11 @@ const FinanceOverviewPageContent: React.FC = () => {
                       <Tooltip title="Зачислить платёж ученику">
                         <IconButton size="small" color="warning" onClick={() => openAssignDialog(row)}>
                           <PersonAddAlt fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Разделить платёж между несколькими учениками">
+                        <IconButton size="small" color="warning" onClick={() => openSplitDialog(row)}>
+                          <CallSplit fontSize="small" />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Зачисление не требуется">
@@ -2649,6 +2740,68 @@ const FinanceOverviewPageContent: React.FC = () => {
           <Button onClick={() => setAssignDialogOpen(false)}>Отмена</Button>
           <Button variant="contained" onClick={confirmAssignStudent} disabled={!assignSelected || assignLoading}>
             Зачислить
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={splitDialogOpen} onClose={() => setSplitDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Разделить платёж между учениками</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            {splitRow && (
+              <Alert severity="info" sx={{ '& .MuiAlert-message': { overflow: 'hidden' } }}>
+                {rub(splitRow.amount)} от {splitRow.counterparty_name || splitRow.counterparty_phone || 'неизвестного плательщика'}
+                {splitRow.occurred_at ? `, ${new Date(splitRow.occurred_at).toLocaleDateString('ru-RU')}` : ''}
+              </Alert>
+            )}
+            {splitEntries.map((entry, idx) => (
+              <Stack key={entry.key} direction="row" spacing={1} alignItems="center">
+                <Autocomplete
+                  sx={{ flex: 1 }}
+                  options={entry.options}
+                  value={entry.student}
+                  getOptionLabel={(option) => option.full_name}
+                  isOptionEqualToValue={(option, value) => option.id === value.id}
+                  onChange={(_event, value) =>
+                    setSplitEntries((prev) => prev.map((e) => (e.key === entry.key ? { ...e, student: value } : e)))
+                  }
+                  onInputChange={(_event, value) => searchSplitStudents(entry.key, value)}
+                  filterOptions={(x) => x}
+                  noOptionsText="Введите минимум 2 символа"
+                  renderInput={(params) => (
+                    <TextField {...params} label={`Ученик ${idx + 1}`} placeholder="Начните вводить ФИО" autoFocus={idx === 0} />
+                  )}
+                />
+                <TextField
+                  label="Сумма"
+                  type="number"
+                  sx={{ width: 140 }}
+                  value={entry.amount}
+                  onChange={(e) =>
+                    setSplitEntries((prev) => prev.map((it) => (it.key === entry.key ? { ...it, amount: e.target.value } : it)))
+                  }
+                />
+                <IconButton size="small" onClick={() => removeSplitEntry(entry.key)} disabled={splitEntries.length <= 2}>
+                  <Close fontSize="small" />
+                </IconButton>
+              </Stack>
+            ))}
+            <Button size="small" startIcon={<Add fontSize="small" />} onClick={addSplitEntry} sx={{ alignSelf: 'flex-start' }}>
+              Добавить ещё ученика
+            </Button>
+            <Alert severity={Math.abs(splitAmountDiff) < 0.01 ? 'success' : 'warning'}>
+              {Math.abs(splitAmountDiff) < 0.01
+                ? 'Суммы долей совпадают с суммой платежа'
+                : splitAmountDiff > 0
+                  ? `Не распределено ещё ${rub(splitAmountDiff)}`
+                  : `Перебор на ${rub(-splitAmountDiff)}`}
+            </Alert>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSplitDialogOpen(false)}>Отмена</Button>
+          <Button variant="contained" onClick={confirmSplit} disabled={!splitValid || splitLoading}>
+            Разделить
           </Button>
         </DialogActions>
       </Dialog>

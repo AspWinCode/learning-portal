@@ -254,6 +254,7 @@ from app.schemas.finance import (
     FinanceStudentAccountCreate,
     FinanceTargetResponse,
     FinanceTransactionApplyStudentRequest,
+    FinanceTransactionApplySplitRequest,
     FinanceTransactionUpdate,
     PhonePaymentBindingCreate,
     TochkaImportRequest,

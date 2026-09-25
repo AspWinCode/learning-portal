@@ -89,6 +89,7 @@ from app.schemas.finance import (
     UnitEconomicsCohortRow,
     FinanceTargetResponse,
     FinanceTransactionApplyStudentRequest,
+    FinanceTransactionApplySplitRequest,
     FinanceTransactionUpdate,
     StudentAccountResponse,
 )
@@ -3372,6 +3373,126 @@ async def apply_finance_transaction_to_student(
     )
 
 
+@router.post("/transactions/{transaction_id}/apply-split", response_model=FinanceLedgerBankRow)
+async def apply_finance_transaction_split(
+    transaction_id: int,
+    payload: FinanceTransactionApplySplitRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> FinanceLedgerBankRow:
+    """
+    Зачислить одну операцию журнала сразу нескольким ученикам (например, платёж
+    за двоих братьев по общей ссылке). Каждому — своя проводка на его счёт,
+    сумма долей должна совпадать с суммой операции.
+    """
+    _require_finance_manage(current_user)
+
+    tx = (
+        db.query(FinanceTransaction)
+        .options(
+            joinedload(FinanceTransaction.account),
+            joinedload(FinanceTransaction.to_account),
+            joinedload(FinanceTransaction.target),
+            joinedload(FinanceTransaction.article),
+        )
+        .filter(FinanceTransaction.id == transaction_id)
+        .first()
+    )
+    if not tx:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Транзакция не найдена")
+    if tx.direction != FinanceTransactionDirection.INCOME:
+        raise HTTPException(status_code=400, detail="Зачислить ученикам можно только доходную операцию")
+    if tx.status == FinanceTransactionStatus.APPLIED:
+        raise HTTPException(status_code=400, detail="Операция уже зачислена")
+
+    splits = payload.splits or []
+    if len(splits) < 2:
+        raise HTTPException(status_code=400, detail="Для разделения нужно указать минимум двух учеников")
+    student_ids = [s.student_id for s in splits]
+    if len(set(student_ids)) != len(student_ids):
+        raise HTTPException(status_code=400, detail="Ученик указан в разделении дважды")
+    for s in splits:
+        if s.amount <= 0:
+            raise HTTPException(status_code=400, detail="Сумма доли должна быть больше 0")
+
+    amount = float(tx.amount or 0.0)
+    splits_sum = round(sum(s.amount for s in splits), 2)
+    if abs(splits_sum - round(amount, 2)) > 0.01:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Сумма долей ({splits_sum}) не совпадает с суммой операции ({round(amount, 2)})",
+        )
+
+    try:
+        pay_date = tx.occurred_at.date() if tx.occurred_at else date.today()
+    except Exception:
+        pay_date = date.today()
+
+    names = _student_name_map(db, student_ids)
+    base_note = tx.counterparty_name or tx.description_raw or "Платёж из журнала"
+
+    from app.services.student_account_payment import add_payment_to_student_account
+
+    with db_transaction(db):
+        for idx, split in enumerate(splits, start=1):
+            student_name = names.get(split.student_id, f"ученик #{split.student_id}")
+            note = f"{base_note} (разделено {idx}/{len(splits)}: {student_name})"
+            try:
+                add_payment_to_student_account(
+                    db, split.student_id, float(split.amount), note, pay_date, finance_transaction_id=tx.id
+                )
+            except ValueError as e:
+                raise HTTPException(status_code=404, detail=str(e))
+
+        tx.status = FinanceTransactionStatus.APPLIED
+        tx.student_id = None
+        if tx.bank_source and tx.bank_operation_id:
+            bank_transaction = (
+                db.query(BankTransaction)
+                .filter(BankTransaction.operation_id == tx.bank_operation_id)
+                .first()
+            )
+            if bank_transaction is not None and bank_transaction.status != BankTransactionStatus.APPLIED.value:
+                bank_transaction.status = BankTransactionStatus.APPLIED.value
+                bank_transaction.student_id = student_ids[0]
+    db.refresh(tx)
+
+    account_obj: Optional[FinanceAccount] = getattr(tx, "account", None)
+    to_account_obj: Optional[FinanceAccount] = getattr(tx, "to_account", None)
+    target_obj: Optional[FinanceTarget] = getattr(tx, "target", None)
+    article_obj: Optional[FinanceArticle] = getattr(tx, "article", None)
+    combined_name = " + ".join(names.get(sid, f"#{sid}") for sid in student_ids)
+
+    return FinanceLedgerBankRow(
+        id=tx.id,
+        occurred_at=tx.occurred_at,
+        amount=float(tx.amount or 0.0),
+        direction=str(getattr(tx.direction, "value", tx.direction)),
+        status=str(getattr(tx.status, "value", tx.status)),
+        account_id=tx.account_id,
+        account_code=getattr(account_obj, "code", None),
+        account_name=getattr(account_obj, "name", None),
+        to_account_id=tx.to_account_id,
+        to_account_code=getattr(to_account_obj, "code", None),
+        to_account_name=getattr(to_account_obj, "name", None),
+        transfer_group_id=tx.transfer_group_id,
+        counterparty_name=tx.counterparty_name,
+        counterparty_phone=tx.counterparty_phone,
+        bank_source=tx.bank_source,
+        bank_operation_id=tx.bank_operation_id,
+        target_id=tx.target_id,
+        target_code=getattr(target_obj, "code", None),
+        target_name=getattr(target_obj, "name", None),
+        article_id=tx.article_id,
+        article_name=getattr(article_obj, "name", None),
+        student_id=None,
+        student_name=combined_name,
+        bank_transaction_status=(
+            BankTransactionStatus.APPLIED.value if tx.bank_source and tx.bank_operation_id else None
+        ),
+    )
+
+
 @router.post("/transactions/{transaction_id}/cancel-assignment", response_model=FinanceLedgerBankRow)
 async def cancel_finance_transaction_assignment(
     transaction_id: int,
@@ -3399,21 +3520,20 @@ async def cancel_finance_transaction_assignment(
     )
     if not tx:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Транзакция не найдена")
-    if not tx.student_id:
+    if tx.status != FinanceTransactionStatus.APPLIED:
         raise HTTPException(status_code=400, detail="Операция не зачислена ученику")
 
     student_id = tx.student_id
     amount = float(tx.amount or 0.0)
 
-    sat = (
+    sats = list(
         db.query(StudentAccountTransaction)
         .filter(StudentAccountTransaction.finance_transaction_id == tx.id)
-        .first()
     )
-    if sat is None:
+    if not sats and student_id:
         # Старые записи (до появления связи finance_transaction_id) —
         # ищем по счёту ученика, сумме и отсутствию привязки к другой операции.
-        sat = (
+        legacy = (
             db.query(StudentAccountTransaction)
             .join(StudentAccount, StudentAccount.id == StudentAccountTransaction.account_id)
             .filter(
@@ -3425,18 +3545,23 @@ async def cancel_finance_transaction_assignment(
             .order_by(StudentAccountTransaction.created_at.desc())
             .first()
         )
-    if sat is None:
+        if legacy is not None:
+            sats = [legacy]
+    if not sats:
         raise HTTPException(
             status_code=400,
             detail="Не найдена проводка по счёту ученика для этой операции — отмените зачисление вручную",
         )
 
-    account = db.query(StudentAccount).filter(StudentAccount.id == sat.account_id).first()
-
     with db_transaction(db):
-        if account is not None:
-            account.balance -= float(sat.amount or 0.0)
-        db.delete(sat)
+        touched_student_ids: Set[int] = set()
+        for sat in sats:
+            account = db.query(StudentAccount).filter(StudentAccount.id == sat.account_id).first()
+            if account is not None:
+                account.balance -= float(sat.amount or 0.0)
+                if account.student_id:
+                    touched_student_ids.add(account.student_id)
+            db.delete(sat)
         tx.student_id = None
         tx.status = FinanceTransactionStatus.CLASSIFIED
         if tx.bank_source and tx.bank_operation_id:
@@ -3449,10 +3574,11 @@ async def cancel_finance_transaction_assignment(
                 bank_transaction.status = BankTransactionStatus.NEW.value
                 bank_transaction.student_id = None
                 bank_transaction.student_account_id = None
-        if account is not None:
+        if touched_student_ids:
             from app.services.student_card_period import update_card_payment_dates
 
-            update_card_payment_dates(db, account.student_id, date.today())
+            for sid in touched_student_ids:
+                update_card_payment_dates(db, sid, date.today())
     db.refresh(tx)
 
     account_obj: Optional[FinanceAccount] = getattr(tx, "account", None)

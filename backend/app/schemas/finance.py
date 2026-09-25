@@ -60,6 +60,15 @@ class FinanceTransactionApplyStudentRequest(BaseModel):
     student_id: int
 
 
+class FinanceTransactionSplitItem(BaseModel):
+    student_id: int
+    amount: float
+
+
+class FinanceTransactionApplySplitRequest(BaseModel):
+    splits: List[FinanceTransactionSplitItem]
+
+
 class FinanceLedgerBankRow(BaseModel):
     id: int
     occurred_at: Optional[datetime] = None

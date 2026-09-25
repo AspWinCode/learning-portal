@@ -1030,6 +1030,13 @@ export const financeApi = {
     const response = await api.post(`/api/finance/transactions/${transactionId}/cancel-assignment`);
     return response.data;
   },
+  applyTransactionSplit: async (
+    transactionId: number,
+    payload: { splits: { student_id: number; amount: number }[] }
+  ): Promise<FinanceLedgerBankRow> => {
+    const response = await api.post(`/api/finance/transactions/${transactionId}/apply-split`, payload);
+    return response.data;
+  },
   getCommandCenter: async (period?: string): Promise<CommandCenterResponse> => {
     const response = await api.get('/api/finance/command-center', { params: period ? { period } : {} });
     return response.data;

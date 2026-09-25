@@ -204,6 +204,23 @@ const EMPTY_ROLE_FORM: RoleFormState = {
   permissions: [],
 };
 
+const CYRILLIC_TO_LATIN: Record<string, string> = {
+  а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'e', ж: 'zh', з: 'z', и: 'i',
+  й: 'i', к: 'k', л: 'l', м: 'm', н: 'n', о: 'o', п: 'p', р: 'r', с: 's', т: 't',
+  у: 'u', ф: 'f', х: 'h', ц: 'ts', ч: 'ch', ш: 'sh', щ: 'sch', ъ: '', ы: 'y', ь: '',
+  э: 'e', ю: 'yu', я: 'ya',
+};
+
+const slugifyRoleKey = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .split('')
+    .map((char) => CYRILLIC_TO_LATIN[char] ?? char)
+    .join('')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
 const EMPTY_USER_FORM: UserCreateFormState = {
   full_name: '',
   email: '',
@@ -236,6 +253,7 @@ const RolesPage: React.FC = () => {
   const [updatingUserId, setUpdatingUserId] = useState<number | null>(null);
   const [editingRole, setEditingRole] = useState<Role | null>(null);
   const [roleForm, setRoleForm] = useState<RoleFormState>(EMPTY_ROLE_FORM);
+  const [roleKeyTouched, setRoleKeyTouched] = useState(false);
   const [userForm, setUserForm] = useState<UserCreateFormState>(EMPTY_USER_FORM);
   const userRowRefs = useRef<Record<number, HTMLTableRowElement | null>>({});
 
@@ -321,6 +339,7 @@ const RolesPage: React.FC = () => {
   const openCreateRoleDialog = () => {
     setEditingRole(null);
     setRoleForm(EMPTY_ROLE_FORM);
+    setRoleKeyTouched(false);
     setRoleDialogOpen(true);
   };
 
@@ -333,6 +352,7 @@ const RolesPage: React.FC = () => {
       base_role: role.base_role,
       permissions: role.permissions,
     });
+    setRoleKeyTouched(true);
     setRoleDialogOpen(true);
   };
 
@@ -830,15 +850,25 @@ const RolesPage: React.FC = () => {
             <TextField
               label="Код роли"
               value={roleForm.key}
-              onChange={(event) => setRoleForm((prev) => ({ ...prev, key: event.target.value }))}
+              onChange={(event) => {
+                setRoleKeyTouched(true);
+                setRoleForm((prev) => ({ ...prev, key: event.target.value }));
+              }}
               disabled={!!editingRole}
-              helperText="Например: menedzher_prodazh"
+              helperText="Например: menedzher_prodazh. Заполняется автоматически из названия, можно изменить вручную"
               fullWidth
             />
             <TextField
               label="Название"
               value={roleForm.name}
-              onChange={(event) => setRoleForm((prev) => ({ ...prev, name: event.target.value }))}
+              onChange={(event) => {
+                const name = event.target.value;
+                setRoleForm((prev) => ({
+                  ...prev,
+                  name,
+                  key: roleKeyTouched ? prev.key : slugifyRoleKey(name),
+                }));
+              }}
               fullWidth
             />
             <TextField

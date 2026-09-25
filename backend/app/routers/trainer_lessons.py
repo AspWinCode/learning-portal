@@ -1,5 +1,6 @@
 """API для тренера: занятия по расписанию и посещаемость."""
 import calendar
+import logging
 from datetime import date, time, datetime, timedelta
 from typing import List, Optional, Set, Tuple
 
@@ -54,6 +55,7 @@ from app.schemas.sales import (
 from app.student_display import get_student_display_name, get_students_display_names
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def _lessons_effective_role(current_user: User) -> UserRole:
@@ -944,10 +946,14 @@ async def save_attendance(
     }
     for sid in attended_student_ids:
         try:
-            set_card_payment_dates_from_training_start(db, sid, payload.lesson_date)
-            check_lesson_payment_threshold(db, sid)
+            with db.begin_nested():
+                set_card_payment_dates_from_training_start(db, sid, payload.lesson_date)
+                check_lesson_payment_threshold(db, sid)
         except Exception:
-            pass
+            logger.exception(
+                "Failed to update student card period/payment dates for student_id=%s (lesson_date=%s)",
+                sid, payload.lesson_date,
+            )
     if attended_student_ids:
         db.commit()
 

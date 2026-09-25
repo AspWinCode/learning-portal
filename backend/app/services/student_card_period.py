@@ -226,9 +226,20 @@ def update_card_payment_dates(db: Session, student_id: int, payment_date: date) 
 
 
 def set_card_payment_dates_from_training_start(db: Session, student_id: int, start_date: date) -> None:
-    """Установить learning_period_start от даты первого занятия (если ещё не задано)."""
+    """Установить learning_period_start от даты первого занятия (если ещё не задано).
+
+    Берём минимум из переданной даты и самого раннего реального урока ученика —
+    если это первое успешное срабатывание после того как более ранние вызовы
+    молча падали с ошибкой (см. save_attendance в trainer_lessons.py), период
+    всё равно не «уедет» вперёд от фактического начала занятий."""
     card = _get_or_create_card(db, student_id)
     if not card:
         return
-    if not card.learning_period_start:
-        card.learning_period_start = start_date
+    if card.learning_period_start:
+        return
+    earliest = (
+        db.query(func.min(LessonAttendance.lesson_date))
+        .filter(LessonAttendance.student_id == student_id)
+        .scalar()
+    )
+    card.learning_period_start = min(start_date, earliest) if earliest else start_date

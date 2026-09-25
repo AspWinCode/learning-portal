@@ -26,6 +26,7 @@ import {
   CheckCircle as CheckCircleIcon,
   EventRepeat as RescheduleIcon,
   Add as AddIcon,
+  DeleteOutline as DeleteIcon,
 } from '@mui/icons-material';
 import { format, isValid, parseISO } from 'date-fns';
 import { salesApi } from '../services/api';
@@ -168,6 +169,10 @@ const LeadCardPage: React.FC = () => {
   // Convert to student
   const [convertDialogOpen, setConvertDialogOpen] = useState(false);
   const [convertLoading, setConvertLoading] = useState(false);
+
+  // Delete lead
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   useEffect(() => {
     salesApi.listLeadInfoTemplates(true).then(setInfoTemplates).catch(() => {});
@@ -439,6 +444,9 @@ const LeadCardPage: React.FC = () => {
                   <Button size="small" variant="outlined" color="success" onClick={() => setConvertDialogOpen(true)}>Конвертировать</Button>
                   <Button size="small" variant="outlined" color="error" onClick={() => setQuickActionDialog('refused')}>Отказ</Button>
                   <Button size="small" variant="outlined" color="success" onClick={() => setQuickActionDialog('won')}>Записан</Button>
+                  <Button size="small" variant="outlined" color="error" startIcon={<DeleteIcon />} onClick={() => setDeleteDialogOpen(true)}>
+                    Удалить
+                  </Button>
                 </Stack>
               </CardContent>
             </Card>
@@ -866,6 +874,39 @@ const LeadCardPage: React.FC = () => {
               Конвертировать
             </Button>
             <Button variant="outlined" onClick={() => setConvertDialogOpen(false)}>Отмена</Button>
+          </Stack>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete lead dialog */}
+      <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)} maxWidth="xs" fullWidth>
+        <DialogContent>
+          <Typography variant="h6" gutterBottom>Удалить лида?</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Лид «{lead?.contact_name}» будет удалён без возможности восстановления. Это действие нельзя отменить.
+          </Typography>
+          <Stack direction="row" spacing={2}>
+            <Button
+              variant="contained"
+              color="error"
+              disabled={deleteLoading}
+              onClick={async () => {
+                if (!leadId) return;
+                setDeleteLoading(true);
+                try {
+                  await salesApi.deleteLead(Number(leadId));
+                  setDeleteDialogOpen(false);
+                  navigate('/sales/leads');
+                } catch (err) {
+                  setActionToast(extractApiError(err, 'Не удалось удалить лида'));
+                } finally {
+                  setDeleteLoading(false);
+                }
+              }}
+            >
+              Удалить
+            </Button>
+            <Button variant="outlined" onClick={() => setDeleteDialogOpen(false)}>Отмена</Button>
           </Stack>
         </DialogContent>
       </Dialog>

@@ -405,6 +405,9 @@ async def update_student_card(
             raise HTTPException(status_code=404, detail="Ученик не найден")
     for key, value in data.items():
         setattr(card, key, value)
+    if "learning_period_start" in data and "next_payment_date" not in data:
+        from app.services.student_card_period import sync_next_payment_date
+        sync_next_payment_date(db, card)
     sync_student_card_person(db, card)
     db.commit()
     db.refresh(card)

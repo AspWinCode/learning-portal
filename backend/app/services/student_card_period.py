@@ -147,6 +147,29 @@ def check_lesson_payment_threshold(db: Session, student_id: int) -> None:
             card.next_payment_date = date.today()
 
 
+def sync_next_payment_date(db: Session, card: "StudentCard") -> None:
+    """Привести next_payment_date в соответствие с текущим learning_period_start.
+
+    Нужно вызывать после любого РУЧНОГО изменения даты начала периода (например,
+    из админки или прямой правки в БД) — иначе next_payment_date может остаться
+    в устаревшем состоянии: ученик уже оплатил текущий период, а флаг долга
+    (или наоборот, отсутствие флага) относится к старой дате периода."""
+    if not card.learning_period_start:
+        return
+    if is_student_on_grant(db, card.student_id, card):
+        card.next_payment_date = None
+        return
+    threshold = _lesson_threshold_for_card(card)
+    lessons = count_lessons_since_period_start(db, card.student_id, card.learning_period_start)
+    has_payment = _has_payment_since(db, card.student_id, card.learning_period_start)
+    if lessons < 1:
+        card.next_payment_date = None
+    elif has_payment and lessons < threshold:
+        card.next_payment_date = None
+    elif not has_payment:
+        card.next_payment_date = card.next_payment_date or date.today()
+
+
 def release_students_from_archived_group(db: Session, group_id: int) -> int:
     """Когда группа архивируется (курс завершён), больше уроков не будет —
     снять «висящий» долг за следующий период с учеников, у которых нет других

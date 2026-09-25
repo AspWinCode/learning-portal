@@ -18,7 +18,7 @@ from app.schemas.groups import (
     LessonSlotExtraPolicyResponse,
 )
 from app.schemas.students import StudentResponse
-from app.models import Group, User, GroupStatus, UserRole, GroupStudent, Student, StudentStatus, GroupSchedule, LessonSlotExtraPolicy, ProgramStatus, GroupProgram, Program
+from app.models import Group, User, GroupStatus, UserRole, GroupStudent, GroupStudentSchedule, Student, StudentStatus, GroupSchedule, LessonSlotExtraPolicy, ProgramStatus, GroupProgram, Program
 from app.routers.action_log import log_action
 from app.services.student_activity import log_student_activity
 from app.services.student_card_period import release_students_from_archived_group
@@ -545,11 +545,30 @@ async def update_group_student(
     if "custom_duration_minutes" in update_data:
         group_student.custom_duration_minutes = update_data["custom_duration_minutes"]
 
+    if "schedule_ids" in update_data:
+        schedule_ids = update_data["schedule_ids"] or []
+        if schedule_ids:
+            valid_ids = {
+                s.id for s in db.query(GroupSchedule.id).filter(
+                    GroupSchedule.group_id == group_id,
+                    GroupSchedule.id.in_(schedule_ids),
+                ).all()
+            }
+            invalid = set(schedule_ids) - valid_ids
+            if invalid:
+                raise HTTPException(status_code=400, detail=f"Schedule ids not in this group: {sorted(invalid)}")
+        db.query(GroupStudentSchedule).filter(
+            GroupStudentSchedule.group_student_id == group_student.id,
+        ).delete(synchronize_session=False)
+        for sid in schedule_ids:
+            db.add(GroupStudentSchedule(group_student_id=group_student.id, group_schedule_id=sid))
+
     db.commit()
 
     log_action(db, current_user.id, "update_group_student", "group", group_id, {
         "student_id": student_id,
         "custom_duration_minutes": group_student.custom_duration_minutes,
+        "schedule_ids": update_data.get("schedule_ids"),
     })
     return {"message": "Group student updated"}
 

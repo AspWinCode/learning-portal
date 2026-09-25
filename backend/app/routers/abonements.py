@@ -17,6 +17,11 @@ def _validate_price(price: float) -> None:
         raise HTTPException(status_code=400, detail="Price must be >= 0")
 
 
+def _validate_base_hours(base_hours: Optional[float]) -> None:
+    if base_hours is not None and base_hours <= 0:
+        raise HTTPException(status_code=400, detail="base_hours must be > 0")
+
+
 @router.get("/", response_model=List[AbonementResponse])
 @cache(expire=120, namespace=CACHE_NS_ABONEMENTS, key_builder=shared_key_builder)
 async def read_abonements(
@@ -58,11 +63,13 @@ async def create_abonement(
     current_user: User = Depends(auth.require_permission("abonements.manage")),
 ):
     _validate_price(float(abonement.price))
+    _validate_base_hours(abonement.base_hours)
     db_abonement = Abonement(
         name=abonement.name,
         price=abonement.price,
         status=AbonementStatus.ACTIVE,
         abonement_format=abonement.abonement_format,
+        base_hours=abonement.base_hours,
     )
     db.add(db_abonement)
     db.commit()
@@ -86,6 +93,8 @@ async def update_abonement(
     update_data = abonement_update.dict(exclude_unset=True)
     if "price" in update_data:
         _validate_price(float(update_data.get("price") or 0))
+    if "base_hours" in update_data:
+        _validate_base_hours(update_data.get("base_hours"))
     update_data.pop("discount_type", None)
     update_data.pop("discount_value", None)
 

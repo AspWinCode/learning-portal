@@ -501,6 +501,9 @@ class Abonement(Base):
     name = Column(String, nullable=False)
     price = Column(Float, default=0.0, nullable=False)
     lessons_count = Column(Integer, nullable=True)  # число занятий в абонементе (для расчёта списания за занятие); по умолчанию 8
+    # Часов в комплекте абонемента — база для расчёта списания за групповое занятие
+    # (цена / base_hours * длительность урока в часах). NULL = использовать дефолт 8 часов.
+    base_hours = Column(Float, nullable=True)
     # Формат абонемента: индивидуальный, пакет, групповой (используется при создании счетов/счетов ученика)
     abonement_format = Column(String(32), nullable=True)  # individual | package | group
     discount_type = Column(
@@ -1475,6 +1478,12 @@ class GroupStudent(Base):
     # Relationships
     group = relationship("Group", back_populates="group_students")
     student = relationship("Student", back_populates="group_students")
+    restricted_schedules = relationship("GroupStudentSchedule", back_populates="group_student", cascade="all, delete-orphan")
+
+    @property
+    def schedule_ids(self) -> list:
+        """ID слотов group_schedules, на которые ограничен ученик; [] = ходит на все слоты группы."""
+        return [rs.group_schedule_id for rs in self.restricted_schedules]
 
 
 class GroupSchedule(Base):
@@ -1489,6 +1498,22 @@ class GroupSchedule(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     group = relationship("Group", back_populates="group_schedules")
+
+
+class GroupStudentSchedule(Base):
+    """Ограничение ученика в группе конкретными слотами расписания (когда ученик ходит
+    не на все дни группы, например 1 раз в неделю в группе, которая занимается 2 раза).
+    Отсутствие записей для group_student_id = ученик ходит на все слоты группы (как раньше)."""
+    __tablename__ = "group_student_schedules"
+    __table_args__ = (UniqueConstraint("group_student_id", "group_schedule_id", name="uq_group_student_schedule"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    group_student_id = Column(Integer, ForeignKey("group_students.id", ondelete="CASCADE"), nullable=False, index=True)
+    group_schedule_id = Column(Integer, ForeignKey("group_schedules.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    group_student = relationship("GroupStudent", back_populates="restricted_schedules")
+    group_schedule = relationship("GroupSchedule")
 
 
 # --- Проекты (канбан для admin/owner/sales): родители или ученики по этапам воронки ---

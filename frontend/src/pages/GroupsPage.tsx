@@ -22,6 +22,9 @@ import {
   Stack,
   Tabs,
   Tab,
+  Checkbox,
+  FormControlLabel,
+  FormGroup,
 } from '@mui/material';
 import { Add as AddIcon, Edit as EditIcon, People as PeopleIcon } from '@mui/icons-material';
 import { groupsApi, usersApi, studentsApi } from '../services/api';
@@ -46,6 +49,8 @@ const GroupsPage: React.FC = () => {
   const [students, setStudents] = useState<Student[]>([]);
   const [durationEditStudentId, setDurationEditStudentId] = useState<number | null>(null);
   const [durationEditMinutes, setDurationEditMinutes] = useState<string>('');
+  const [scheduleEditStudentId, setScheduleEditStudentId] = useState<number | null>(null);
+  const [scheduleEditIds, setScheduleEditIds] = useState<number[]>([]);
   const [studentToAddId, setStudentToAddId] = useState('');
   const [newSchedule, setNewSchedule] = useState({ day_of_week: 1, start_time: '09:00', end_time: '11:00' });
   const [scheduleDraftDirty, setScheduleDraftDirty] = useState(false);
@@ -320,6 +325,39 @@ const GroupsPage: React.FC = () => {
       setDurationEditStudentId(null);
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Ошибка сохранения длительности занятия');
+    }
+  };
+
+  const getStudentScheduleIds = (studentId: number): number[] => {
+    const gs = (groupDetails?.group_students || []).find((x) => x.student_id === studentId);
+    return gs?.schedule_ids || [];
+  };
+
+  const formatScheduleSlot = (s: import('../types').GroupSchedule): string => {
+    const day = WEEKDAY_OPTIONS.find((o) => o.value === s.day_of_week)?.label ?? '';
+    return `${day} ${s.start_time.slice(0, 5)}–${s.end_time.slice(0, 5)}`;
+  };
+
+  const openScheduleEdit = (studentId: number) => {
+    setScheduleEditStudentId(studentId);
+    setScheduleEditIds(getStudentScheduleIds(studentId));
+  };
+
+  const toggleScheduleEditId = (scheduleId: number) => {
+    setScheduleEditIds((prev) =>
+      prev.includes(scheduleId) ? prev.filter((id) => id !== scheduleId) : [...prev, scheduleId]
+    );
+  };
+
+  const handleSaveStudentSchedule = async () => {
+    if (!selectedGroup || scheduleEditStudentId == null) return;
+    try {
+      await groupsApi.updateStudent(selectedGroup.id, scheduleEditStudentId, { schedule_ids: scheduleEditIds });
+      const fullGroup = await groupsApi.getById(selectedGroup.id);
+      setGroupDetails(fullGroup);
+      setScheduleEditStudentId(null);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Ошибка сохранения дней посещения');
     }
   };
 
@@ -923,10 +961,21 @@ const GroupsPage: React.FC = () => {
                       <Typography variant="caption" color="text.secondary">
                         {s.status === 'active' ? 'Активен' : 'В архиве'}
                         {getStudentCustomDuration(s.id) != null && ` · ${getStudentCustomDuration(s.id)} мин/занятие`}
+                        {getStudentScheduleIds(s.id).length > 0 &&
+                          ` · ходит: ${getStudentScheduleIds(s.id)
+                            .map((id) => (groupDetails?.schedules || []).find((sch) => sch.id === id))
+                            .filter((sch): sch is import('../types').GroupSchedule => !!sch)
+                            .map(formatScheduleSlot)
+                            .join(', ')}`}
                       </Typography>
                     </Box>
                     {canManageGroups && (
                       <Stack direction="row" spacing={1}>
+                        {(groupDetails?.schedules?.length || 0) > 1 && (
+                          <Button size="small" onClick={() => openScheduleEdit(s.id)}>
+                            Дни
+                          </Button>
+                        )}
                         <Button size="small" onClick={() => openDurationEdit(s.id)}>
                           Длительность
                         </Button>
@@ -977,6 +1026,38 @@ const GroupsPage: React.FC = () => {
           </Button>
           <Button onClick={() => setDurationEditStudentId(null)}>Отмена</Button>
           <Button variant="contained" onClick={handleSaveStudentDuration}>
+            Сохранить
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Диалог выбора дней (слотов расписания), на которые реально ходит ученик */}
+      <Dialog open={scheduleEditStudentId != null} onClose={() => setScheduleEditStudentId(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Дни посещения ученика</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Если ученик ходит не на все дни группы — отметьте только те слоты, на которые он реально приходит.
+            Если ничего не отмечено — ученик числится на всех днях группы (как раньше).
+          </Typography>
+          <FormGroup>
+            {(groupDetails?.schedules || []).map((s) => (
+              <FormControlLabel
+                key={s.id}
+                control={
+                  <Checkbox
+                    checked={scheduleEditIds.includes(s.id)}
+                    onChange={() => toggleScheduleEditId(s.id)}
+                  />
+                }
+                label={formatScheduleSlot(s)}
+              />
+            ))}
+          </FormGroup>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setScheduleEditIds([])}>Сбросить (все дни)</Button>
+          <Button onClick={() => setScheduleEditStudentId(null)}>Отмена</Button>
+          <Button variant="contained" onClick={handleSaveStudentSchedule}>
             Сохранить
           </Button>
         </DialogActions>

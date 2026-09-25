@@ -15,6 +15,8 @@ class AbonementBase(BaseModel):
     discount_type: DiscountType = DiscountType.NONE
     discount_value: float = 0.0
     abonement_format: Optional[AbonementFormat] = None
+    # Часов в комплекте абонемента (для списания за групповые занятия). None = дефолт 8 часов.
+    base_hours: Optional[float] = None
 
 
 class AbonementCreate(AbonementBase):
@@ -28,6 +30,7 @@ class AbonementUpdate(BaseModel):
     discount_value: Optional[float] = None
     abonement_format: Optional[AbonementFormat] = None
     status: Optional[AbonementStatus] = None
+    base_hours: Optional[float] = None
 
 
 class AbonementResponse(AbonementBase):

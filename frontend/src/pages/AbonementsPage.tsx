@@ -27,7 +27,12 @@ import { Abonement, ABONEMENT_FORMAT_LABELS, AbonementFormat } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { hasPermission } from '../utils/permissions';
 
-const emptyForm = { name: '', price: '' as string | number, abonement_format: '' as '' | AbonementFormat };
+const emptyForm = {
+  name: '',
+  price: '' as string | number,
+  abonement_format: '' as '' | AbonementFormat,
+  base_hours: '' as string | number,
+};
 
 const AbonementsPage: React.FC = () => {
   const { user } = useAuth();
@@ -40,6 +45,7 @@ const AbonementsPage: React.FC = () => {
     name: '',
     price: '' as string | number,
     abonement_format: '' as '' | AbonementFormat,
+    base_hours: '' as string | number,
   });
   const canManageAbonements = hasPermission(user, 'abonements.manage');
 
@@ -66,6 +72,7 @@ const AbonementsPage: React.FC = () => {
         name: form.name.trim(),
         price: Number(form.price) || 0,
         abonement_format: form.abonement_format || undefined,
+        base_hours: form.base_hours === '' ? undefined : Number(form.base_hours),
       });
       setOpen(false);
       setForm(emptyForm);
@@ -86,6 +93,7 @@ const AbonementsPage: React.FC = () => {
         name: form.name.trim(),
         price: Number(form.price) || 0,
         abonement_format: form.abonement_format || undefined,
+        base_hours: form.base_hours === '' ? null : Number(form.base_hours),
       });
       setEditOpen(false);
       setEditing(null);
@@ -124,6 +132,7 @@ const AbonementsPage: React.FC = () => {
             <TableRow>
               <TableCell>Название</TableCell>
               <TableCell>Цена</TableCell>
+              <TableCell>Часов в абонементе</TableCell>
               <TableCell>Формат</TableCell>
               <TableCell>Статус</TableCell>
               <TableCell>Действия</TableCell>
@@ -134,6 +143,7 @@ const AbonementsPage: React.FC = () => {
               <TableRow key={abonement.id}>
                 <TableCell>{abonement.name}</TableCell>
                 <TableCell>{abonement.price} ₽</TableCell>
+                <TableCell>{abonement.base_hours != null ? `${abonement.base_hours} ч` : '8 ч (по умолч.)'}</TableCell>
                 <TableCell>
                   {abonement.abonement_format ? ABONEMENT_FORMAT_LABELS[abonement.abonement_format] : '—'}
                 </TableCell>
@@ -148,6 +158,7 @@ const AbonementsPage: React.FC = () => {
                         name: abonement.name,
                         price: abonement.price,
                         abonement_format: abonement.abonement_format || '',
+                        base_hours: abonement.base_hours ?? '',
                       });
                       setEditOpen(true);
                     }}
@@ -217,6 +228,17 @@ const AbonementsPage: React.FC = () => {
             inputProps={{ min: 0 }}
             sx={{ mt: 2 }}
           />
+          <TextField
+            fullWidth
+            type="number"
+            label="Часов в абонементе (для списания за групповые занятия)"
+            helperText="Пусто = по умолчанию 8 часов. Списание за занятие = цена / часов × длительность урока."
+            value={form.base_hours}
+            onChange={(e) => setForm({ ...form, base_hours: e.target.value })}
+            onFocus={(e) => e.target.select()}
+            inputProps={{ min: 0, step: 0.5 }}
+            sx={{ mt: 2 }}
+          />
           <FormControl fullWidth sx={{ mt: 2 }}>
             <InputLabel>Формат абонемента</InputLabel>
             <Select
@@ -262,6 +284,17 @@ const AbonementsPage: React.FC = () => {
             onChange={(e) => setForm({ ...form, price: e.target.value })}
             onFocus={(e) => e.target.select()}
             inputProps={{ min: 0 }}
+            sx={{ mt: 2 }}
+          />
+          <TextField
+            fullWidth
+            type="number"
+            label="Часов в абонементе (для списания за групповые занятия)"
+            helperText="Пусто = по умолчанию 8 часов. Списание за занятие = цена / часов × длительность урока."
+            value={form.base_hours}
+            onChange={(e) => setForm({ ...form, base_hours: e.target.value })}
+            onFocus={(e) => e.target.select()}
+            inputProps={{ min: 0, step: 0.5 }}
             sx={{ mt: 2 }}
           />
         </DialogContent>

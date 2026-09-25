@@ -55,11 +55,14 @@ class GroupUpdate(BaseModel):
 
 class GroupStudentUpdate(BaseModel):
     custom_duration_minutes: Optional[int] = None  # None в payload = сбросить на дефолт группы
+    # ID слотов group_schedules, на которые реально ходит ученик; пустой список/None = ходит на все слоты группы
+    schedule_ids: Optional[List[int]] = None
 
 
 class GroupStudentInfo(BaseModel):
     student_id: int
     custom_duration_minutes: Optional[int] = None
+    schedule_ids: List[int] = []
     student: StudentResponse
 
     model_config = ConfigDict(from_attributes=True)

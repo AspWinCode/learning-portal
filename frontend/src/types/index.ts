@@ -372,6 +372,8 @@ export interface Abonement {
   status: 'active' | 'archived';
   created_at: string;
   abonement_format?: AbonementFormat | null;
+  /** Часов в комплекте абонемента для расчёта списания за групповое занятие. Null = дефолт 8 часов. */
+  base_hours?: number | null;
 }
 
 export interface Group {
@@ -404,6 +406,8 @@ export interface GroupStudentInfo {
   student_id: number;
   /** Индивидуальная длительность занятия ученика, в минутах. Null = как у группы. */
   custom_duration_minutes?: number | null;
+  /** ID слотов group_schedules, на которые ходит ученик. Пусто = ходит на все слоты группы. */
+  schedule_ids?: number[];
   student: Student;
 }
 

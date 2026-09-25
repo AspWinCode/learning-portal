@@ -23,6 +23,7 @@ from app.models import (
     GroupStatus,
     GroupSchedule,
     GroupStudent,
+    GroupStudentSchedule,
     LessonAttendance,
     LessonCancellation,
     LessonTrainerOverride,
@@ -182,6 +183,28 @@ def _slot_key(att: LessonAttendance) -> Tuple[date, time, time]:
     return (att.lesson_date, st, et)
 
 
+def _restricted_schedule_ids_map(db: Session, group_student_ids: List[int]) -> dict:
+    """group_student_id -> set(group_schedule_id), на которые ограничен ученик.
+    Отсутствие ключа = ученик ходит на все слоты группы (без ограничений)."""
+    if not group_student_ids:
+        return {}
+    rows = db.query(GroupStudentSchedule).filter(
+        GroupStudentSchedule.group_student_id.in_(group_student_ids),
+    ).all()
+    result: dict = {}
+    for r in rows:
+        result.setdefault(r.group_student_id, set()).add(r.group_schedule_id)
+    return result
+
+
+def _is_student_excluded_from_slot(gs: GroupStudent, schedule_id: Optional[int], restricted_map: dict) -> bool:
+    """True, если ученик ограничен конкретными слотами расписания и этот слот в них не входит."""
+    if schedule_id is None:
+        return False
+    restricted = restricted_map.get(gs.id)
+    return bool(restricted) and schedule_id not in restricted
+
+
 @router.get("/", response_model=List[TrainerLessonSlotResponse])
 async def get_lessons_for_date(
     lesson_date: date = Query(..., description="Дата в формате YYYY-MM-DD"),
@@ -285,6 +308,7 @@ async def get_lessons_for_date(
             GroupStudent.group_id == group.id,
             GroupStudent.left_at.is_(None),
         ).all()
+        restricted_map = _restricted_schedule_ids_map(db, [gs.id for gs in students_in_group])
         group_student_ids = {gs.student_id for gs in students_in_group if gs.student_id}
         attendance_student_ids = {att.student_id for att in attendances}
         all_student_ids = list(group_student_ids | attendance_student_ids)
@@ -297,7 +321,7 @@ async def get_lessons_for_date(
         freeze_badges = {f.student_id: f"Заморожен с {f.freeze_start.strftime('%d.%m')} по {f.freeze_end.strftime('%d.%m')}" for f in freezes}
         program_name = group.programs[0].name if group.programs else None
 
-        def build_slot(slot_start: time, slot_end: time, atts: list) -> None:
+        def build_slot(slot_start: time, slot_end: time, atts: list, schedule_id: Optional[int] = None) -> None:
             # Slots with existing attendance records (moved/manual lessons) always show,
             # even if the date is outside the regular schedule. Quota filter only applies
             # to schedule-generated future slots with no attendance yet.
@@ -355,6 +379,8 @@ async def get_lessons_for_date(
                     continue
                 if only_with_attendance and student.id not in slot_student_ids:
                     continue
+                if student.id not in slot_student_ids and _is_student_excluded_from_slot(gs, schedule_id, restricted_map):
+                    continue
                 training_start = getattr(student, "training_start_date", None)
                 if training_start is not None and lesson_date < training_start:
                     continue
@@ -411,7 +437,7 @@ async def get_lessons_for_date(
                 if (getattr(att, "lesson_start_time", None) is None and getattr(att, "lesson_end_time", None) is None)
                 or (_time_eq(getattr(att, "lesson_start_time", None), sched.start_time) and _time_eq(getattr(att, "lesson_end_time", None), sched.end_time))
             ]
-            build_slot(sched.start_time, sched.end_time, matching)
+            build_slot(sched.start_time, sched.end_time, matching, schedule_id=sched.id)
 
         custom_times = set()
         for att in attendances:
@@ -710,7 +736,7 @@ async def save_attendance(
         LessonAttendance.lesson_date == payload.lesson_date,
     ).all()
     is_individual = (getattr(group, "lesson_format", None) or "group").strip().lower() == "individual"
-    BASE_HOURS = 8.0
+    DEFAULT_BASE_HOURS = 8.0  # фолбэк для абонементов без явно заданного base_hours
     default_hours = (getattr(group, "duration_minutes", None) or 60) / 60.0
     group_students_by_student_id = {
         gs.student_id: gs
@@ -774,6 +800,7 @@ async def save_attendance(
                     U = group_student.custom_duration_minutes / 60.0
                 else:
                     U = default_hours
+                base_hours = (abonement.base_hours if abonement and abonement.base_hours else None) or DEFAULT_BASE_HOURS
 
                 all_in_window = (
                     db.query(LessonAttendance)
@@ -791,12 +818,12 @@ async def save_attendance(
                     for att2 in all_in_window
                     if _slot_key(att2) < current_key
                 )
-                base_left = max(0.0, BASE_HOURS - base_used)
+                base_left = max(0.0, base_hours - base_used)
                 base_units_to_apply = min(base_left, U)
                 extra_units_to_apply = U - base_units_to_apply
 
-                if abonement and abonement.price is not None and BASE_HOURS > 0:
-                    price_per_unit = student_abonement_price(student, abonement) / BASE_HOURS
+                if abonement and abonement.price is not None and base_hours > 0:
+                    price_per_unit = student_abonement_price(student, abonement) / base_hours
                 if base_units_to_apply > 0 and price_per_unit > 0:
                     target_base = round(price_per_unit * base_units_to_apply, 2)
 
@@ -1374,6 +1401,20 @@ async def move_lesson(
             GroupStudent.group_id == payload.group_id,
             GroupStudent.left_at.is_(None),
         ).all()
+        restricted_map = _restricted_schedule_ids_map(db, [gs.id for gs in students_in_group])
+        target_sched = None
+        if to_start is not None and to_end is not None:
+            target_sched = db.query(GroupSchedule).filter(
+                GroupSchedule.group_id == payload.group_id,
+                GroupSchedule.day_of_week == payload.to_date.weekday(),
+                GroupSchedule.start_time == to_start,
+                GroupSchedule.end_time == to_end,
+            ).first()
+        target_schedule_id = target_sched.id if target_sched else None
+        students_in_group = [
+            gs for gs in students_in_group
+            if not _is_student_excluded_from_slot(gs, target_schedule_id, restricted_map)
+        ]
         moved_student_ids = [gs.student_id for gs in students_in_group if getattr(gs, "student_id", None)]
         created = 0
         # Фактический тренер для нового слота (учитываем подмены на дату переноса, если они уже заданы).
@@ -1465,13 +1506,23 @@ async def cancel_lesson(
     ).all()
     cancelled_student_ids = [a.student_id for a in attendances_to_delete if getattr(a, "student_id", None)]
     if not cancelled_student_ids:
+        cancel_students_in_group = db.query(GroupStudent).filter(
+            GroupStudent.group_id == payload.group_id,
+            GroupStudent.left_at.is_(None),
+        ).all()
+        cancel_restricted_map = _restricted_schedule_ids_map(db, [gs.id for gs in cancel_students_in_group])
+        cancel_sched = db.query(GroupSchedule).filter(
+            GroupSchedule.group_id == payload.group_id,
+            GroupSchedule.day_of_week == payload.lesson_date.weekday(),
+            GroupSchedule.start_time == start_t,
+            GroupSchedule.end_time == end_t,
+        ).first()
+        cancel_schedule_id = cancel_sched.id if cancel_sched else None
         cancelled_student_ids = [
             gs.student_id
-            for gs in db.query(GroupStudent).filter(
-                GroupStudent.group_id == payload.group_id,
-                GroupStudent.left_at.is_(None),
-            ).all()
+            for gs in cancel_students_in_group
             if getattr(gs, "student_id", None)
+            and not _is_student_excluded_from_slot(gs, cancel_schedule_id, cancel_restricted_map)
         ]
     att_ids = [a.id for a in attendances_to_delete]
     db.query(AbsenceFollowUp).filter(AbsenceFollowUp.lesson_attendance_id.in_(att_ids)).delete(synchronize_session=False)

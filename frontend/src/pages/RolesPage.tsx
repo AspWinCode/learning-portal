@@ -229,6 +229,126 @@ const EMPTY_USER_FORM: UserCreateFormState = {
   custom_role_id: '',
 };
 
+// Изолированное состояние формы, чтобы ввод текста не перерисовывал таблицы ролей/пользователей на странице
+const CreateUserDialog: React.FC<{
+  open: boolean;
+  onClose: () => void;
+  baseRoleOptions: Array<Role['base_role']>;
+  customRoleOptionsByBase: Map<Role['base_role'], Role[]>;
+  onSubmit: (form: UserCreateFormState) => Promise<void>;
+}> = ({ open, onClose, baseRoleOptions, customRoleOptionsByBase, onSubmit }) => {
+  const [form, setForm] = useState<UserCreateFormState>(EMPTY_USER_FORM);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setForm(EMPTY_USER_FORM);
+    }
+  }, [open]);
+
+  const customRoleOptions = customRoleOptionsByBase.get(form.role) || [];
+
+  const handleClose = () => {
+    if (!saving) onClose();
+  };
+
+  const handleSubmit = async () => {
+    setSaving(true);
+    try {
+      await onSubmit(form);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+      <DialogTitle>Создать пользователя</DialogTitle>
+      <DialogContent>
+        <Stack spacing={2} sx={{ mt: 1 }}>
+          <TextField
+            label="ФИО"
+            value={form.full_name}
+            onChange={(event) => setForm((prev) => ({ ...prev, full_name: event.target.value }))}
+            fullWidth
+          />
+          <TextField
+            label="Эл. почта"
+            type="email"
+            value={form.email}
+            onChange={(event) => setForm((prev) => ({ ...prev, email: event.target.value }))}
+            fullWidth
+          />
+          <TextField
+            label="Пароль"
+            type="password"
+            value={form.password}
+            onChange={(event) => setForm((prev) => ({ ...prev, password: event.target.value }))}
+            helperText="Минимум 6 символов"
+            fullWidth
+          />
+          <Divider textAlign="left">
+            <Typography variant="caption" color="text.secondary">
+              Роль пользователя
+            </Typography>
+          </Divider>
+          <TextField
+            select
+            label="Базовая роль"
+            value={form.role}
+            onChange={(event) =>
+              setForm((prev) => ({
+                ...prev,
+                role: event.target.value as Role['base_role'],
+                custom_role_id: '',
+              }))
+            }
+            helperText="Обязательно. Определяет системный набор прав и раздел портала."
+            fullWidth
+          >
+            {baseRoleOptions.map((option) => (
+              <MenuItem key={option} value={option}>
+                {BASE_ROLE_LABELS[option]}
+              </MenuItem>
+            ))}
+          </TextField>
+          <TextField
+            select
+            label="Кастомная роль (необязательно)"
+            value={form.custom_role_id}
+            onChange={(event) => setForm((prev) => ({ ...prev, custom_role_id: String(event.target.value) }))}
+            helperText={
+              customRoleOptions.length
+                ? 'Сужает права выбранной базовой роли до кастомного набора. Можно оставить пустым.'
+                : 'Для выбранной базовой роли пока нет активных кастомных ролей.'
+            }
+            fullWidth
+          >
+            <MenuItem value="">Без кастомной роли</MenuItem>
+            {customRoleOptions.map((roleOption) => (
+              <MenuItem key={roleOption.id} value={String(roleOption.id)}>
+                {roleOption.name}
+              </MenuItem>
+            ))}
+          </TextField>
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={handleClose} disabled={saving}>
+          Отмена
+        </Button>
+        <Button
+          variant="contained"
+          onClick={() => void handleSubmit()}
+          disabled={saving || !form.full_name.trim() || !form.email.trim() || form.password.length < 6}
+        >
+          {saving ? 'Создание...' : 'Создать'}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
 const RolesPage: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -249,12 +369,10 @@ const RolesPage: React.FC = () => {
   const [roleDialogOpen, setRoleDialogOpen] = useState(false);
   const [userDialogOpen, setUserDialogOpen] = useState(false);
   const [roleSaving, setRoleSaving] = useState(false);
-  const [userSaving, setUserSaving] = useState(false);
   const [updatingUserId, setUpdatingUserId] = useState<number | null>(null);
   const [editingRole, setEditingRole] = useState<Role | null>(null);
   const [roleForm, setRoleForm] = useState<RoleFormState>(EMPTY_ROLE_FORM);
   const [roleKeyTouched, setRoleKeyTouched] = useState(false);
-  const [userForm, setUserForm] = useState<UserCreateFormState>(EMPTY_USER_FORM);
   const userRowRefs = useRef<Record<number, HTMLTableRowElement | null>>({});
 
   const loadData = useCallback(async () => {
@@ -327,7 +445,6 @@ const RolesPage: React.FC = () => {
     row.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, [focusedUserId, sortedUsers]);
 
-  const createUserRoleOptions = customRoleOptionsByBase.get(userForm.role) || [];
   const manageableBaseRoleOptions = useMemo(
     () => BASE_ROLE_OPTIONS.filter((option) => isOwner || (option !== 'owner' && option !== 'admin')),
     [isOwner]
@@ -359,12 +476,6 @@ const RolesPage: React.FC = () => {
   const closeRoleDialog = () => {
     if (!roleSaving) {
       setRoleDialogOpen(false);
-    }
-  };
-
-  const closeUserDialog = () => {
-    if (!userSaving) {
-      setUserDialogOpen(false);
     }
   };
 
@@ -543,24 +654,20 @@ const RolesPage: React.FC = () => {
     }
   };
 
-  const handleCreateUser = async () => {
-    setUserSaving(true);
+  const handleCreateUser = async (form: UserCreateFormState) => {
     try {
       await usersApi.create({
-        full_name: userForm.full_name.trim(),
-        email: userForm.email.trim(),
-        password: userForm.password,
-        role: userForm.role,
-        custom_role_id: userForm.custom_role_id ? Number(userForm.custom_role_id) : undefined,
+        full_name: form.full_name.trim(),
+        email: form.email.trim(),
+        password: form.password,
+        role: form.role,
+        custom_role_id: form.custom_role_id ? Number(form.custom_role_id) : undefined,
       });
-      setSuccess(`Пользователь ${userForm.full_name.trim()} создан.`);
+      setSuccess(`Пользователь ${form.full_name.trim()} создан.`);
       setUserDialogOpen(false);
-      setUserForm(EMPTY_USER_FORM);
       await loadData();
     } catch (err: unknown) {
       setError(extractApiError(err, 'Не удалось создать пользователя.'));
-    } finally {
-      setUserSaving(false);
     }
   };
 
@@ -949,84 +1056,13 @@ const RolesPage: React.FC = () => {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={userDialogOpen} onClose={closeUserDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>Создать пользователя</DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ mt: 1 }}>
-            <TextField
-              label="ФИО"
-              value={userForm.full_name}
-              onChange={(event) => setUserForm((prev) => ({ ...prev, full_name: event.target.value }))}
-              fullWidth
-            />
-            <TextField
-              label="Эл. почта"
-              type="email"
-              value={userForm.email}
-              onChange={(event) => setUserForm((prev) => ({ ...prev, email: event.target.value }))}
-              fullWidth
-            />
-            <TextField
-              label="Пароль"
-              type="password"
-              value={userForm.password}
-              onChange={(event) => setUserForm((prev) => ({ ...prev, password: event.target.value }))}
-              helperText="Минимум 6 символов"
-              fullWidth
-            />
-            <TextField
-              select
-              label="Базовая роль"
-              value={userForm.role}
-              onChange={(event) =>
-                setUserForm((prev) => ({
-                  ...prev,
-                  role: event.target.value as Role['base_role'],
-                  custom_role_id: '',
-                }))
-              }
-              fullWidth
-            >
-              {manageableBaseRoleOptions.map((option) => (
-                <MenuItem key={option} value={option}>
-                  {BASE_ROLE_LABELS[option]}
-                </MenuItem>
-              ))}
-            </TextField>
-            <TextField
-              select
-              label="Кастомная роль"
-              value={userForm.custom_role_id}
-              onChange={(event) => setUserForm((prev) => ({ ...prev, custom_role_id: String(event.target.value) }))}
-              helperText={
-                createUserRoleOptions.length
-                  ? 'Можно оставить пустым, если нужна только базовая роль.'
-                  : 'Для выбранной базовой роли пока нет активных кастомных ролей.'
-              }
-              fullWidth
-            >
-              <MenuItem value="">Без кастомной роли</MenuItem>
-              {createUserRoleOptions.map((roleOption) => (
-                <MenuItem key={roleOption.id} value={String(roleOption.id)}>
-                  {roleOption.name}
-                </MenuItem>
-              ))}
-            </TextField>
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={closeUserDialog} disabled={userSaving}>
-            Отмена
-          </Button>
-          <Button
-            variant="contained"
-            onClick={() => void handleCreateUser()}
-            disabled={userSaving || !userForm.full_name.trim() || !userForm.email.trim() || userForm.password.length < 6}
-          >
-            {userSaving ? 'Создание...' : 'Создать'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <CreateUserDialog
+        open={userDialogOpen}
+        onClose={() => setUserDialogOpen(false)}
+        baseRoleOptions={manageableBaseRoleOptions}
+        customRoleOptionsByBase={customRoleOptionsByBase}
+        onSubmit={handleCreateUser}
+      />
     </Layout>
   );
 };

@@ -1,9 +1,14 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Alert,
   Box,
   CircularProgress,
+  Dialog,
+  DialogContent,
+  DialogTitle,
   Grid,
+  IconButton,
   Paper,
   Stack,
   Table,
@@ -14,10 +19,13 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+import CloseIcon from '@mui/icons-material/Close';
 import { useQuery } from '@tanstack/react-query';
 
 import { ownerDashboardApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
+
+type RatingField = 'grade' | 'school';
 
 const toLocalDateString = (date: Date) => {
   const year = date.getFullYear();
@@ -39,13 +47,25 @@ const currentMonthBounds = () => {
 const rub = (value: number) => `${value.toLocaleString('ru-RU')} ₽`;
 
 const AcademyMetricsTab: React.FC = () => {
+  const navigate = useNavigate();
   const initial = currentMonthBounds();
   const [fromDate, setFromDate] = useState<string>(initial.from);
   const [toDate, setToDate] = useState<string>(initial.to);
+  const [selectedRating, setSelectedRating] = useState<{ field: RatingField; label: string } | null>(null);
 
   const metricsQuery = useQuery({
     queryKey: ['owner-dashboard', 'academy-metrics', fromDate, toDate],
     queryFn: () => ownerDashboardApi.getAcademyMetrics({ date_from: fromDate, date_to: toDate }),
+  });
+
+  const ratingStudentsQuery = useQuery({
+    queryKey: ['owner-dashboard', 'academy-metrics-students', selectedRating?.field, selectedRating?.label],
+    queryFn: () =>
+      ownerDashboardApi.getAcademyMetricsRatingStudents({
+        field: selectedRating!.field,
+        label: selectedRating!.label,
+      }),
+    enabled: !!selectedRating,
   });
 
   return (
@@ -272,7 +292,12 @@ const AcademyMetricsTab: React.FC = () => {
                     </TableHead>
                     <TableBody>
                       {metricsQuery.data.rating_by_grade.map((row) => (
-                        <TableRow key={row.label}>
+                        <TableRow
+                          key={row.label}
+                          hover
+                          sx={{ cursor: 'pointer' }}
+                          onClick={() => setSelectedRating({ field: 'grade', label: row.label })}
+                        >
                           <TableCell>{row.label}</TableCell>
                           <TableCell align="right">{row.students_count}</TableCell>
                         </TableRow>
@@ -301,7 +326,12 @@ const AcademyMetricsTab: React.FC = () => {
                     </TableHead>
                     <TableBody>
                       {metricsQuery.data.rating_by_school.map((row) => (
-                        <TableRow key={row.label}>
+                        <TableRow
+                          key={row.label}
+                          hover
+                          sx={{ cursor: 'pointer' }}
+                          onClick={() => setSelectedRating({ field: 'school', label: row.label })}
+                        >
                           <TableCell>{row.label}</TableCell>
                           <TableCell align="right">{row.students_count}</TableCell>
                         </TableRow>
@@ -323,6 +353,54 @@ const AcademyMetricsTab: React.FC = () => {
           </Typography>
         </Box>
       ) : null}
+
+      <Dialog open={!!selectedRating} onClose={() => setSelectedRating(null)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          {selectedRating ? (selectedRating.field === 'grade' ? `Класс: ${selectedRating.label}` : `Школа: ${selectedRating.label}`) : ''}
+          <IconButton onClick={() => setSelectedRating(null)} size="small">
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent>
+          {ratingStudentsQuery.isLoading ? (
+            <Box display="flex" justifyContent="center" py={4}>
+              <CircularProgress />
+            </Box>
+          ) : ratingStudentsQuery.isError ? (
+            <Alert severity="error">
+              {extractApiError(ratingStudentsQuery.error, 'Не удалось загрузить список учеников')}
+            </Alert>
+          ) : ratingStudentsQuery.data && ratingStudentsQuery.data.length > 0 ? (
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Ученик</TableCell>
+                  <TableCell>{selectedRating?.field === 'grade' ? 'Школа' : 'Класс'}</TableCell>
+                  <TableCell>Телефон</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {ratingStudentsQuery.data.map((student) => (
+                  <TableRow
+                    key={student.id}
+                    hover
+                    sx={{ cursor: 'pointer' }}
+                    onClick={() => navigate(`/students?detail=${student.id}`)}
+                  >
+                    <TableCell>{student.full_name}</TableCell>
+                    <TableCell>{(selectedRating?.field === 'grade' ? student.school : student.grade) || '—'}</TableCell>
+                    <TableCell>{student.phone || student.parent_phone || '—'}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          ) : (
+            <Typography variant="body2" color="text.secondary">
+              Нет учеников.
+            </Typography>
+          )}
+        </DialogContent>
+      </Dialog>
     </Box>
   );
 };

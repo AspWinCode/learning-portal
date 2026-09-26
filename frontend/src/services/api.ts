@@ -99,6 +99,7 @@ import {
   TrainerCockpitSummary,
   OwnerDashboardSummary,
   AcademyMetricsResponse,
+  AcademyMetricsRatingStudent,
   AdminDashboardSummary,
   ParentDashboardSummary,
   ParentNpsPromptStatus,
@@ -442,6 +443,13 @@ export const ownerDashboardApi = {
   },
   getAcademyMetrics: async (params?: { date_from?: string; date_to?: string }): Promise<AcademyMetricsResponse> => {
     const response = await api.get('/api/owner-dashboard/academy-metrics', { params });
+    return response.data;
+  },
+  getAcademyMetricsRatingStudents: async (params: {
+    field: 'grade' | 'school';
+    label: string;
+  }): Promise<AcademyMetricsRatingStudent[]> => {
+    const response = await api.get('/api/owner-dashboard/academy-metrics/students', { params });
     return response.data;
   },
 };

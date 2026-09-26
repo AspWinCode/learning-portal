@@ -255,6 +255,15 @@ export interface AcademyMetricsRatingRow {
   students_count: number;
 }
 
+export interface AcademyMetricsRatingStudent {
+  id: number;
+  full_name: string;
+  grade?: string | null;
+  school?: string | null;
+  phone?: string | null;
+  parent_phone?: string | null;
+}
+
 export interface AcademyMetricsResponse {
   period_start: string;
   period_end: string;

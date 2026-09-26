@@ -121,4 +121,13 @@ class AcademyMetricsResponse(BaseModel):
     rating_by_school: List[AcademyMetricsRatingRow]
 
 
+class AcademyMetricsRatingStudent(BaseModel):
+    id: int
+    full_name: str
+    grade: Optional[str] = None
+    school: Optional[str] = None
+    phone: Optional[str] = None
+    parent_phone: Optional[str] = None
+
+
 __all__ = [name for name in globals() if not name.startswith("_")]

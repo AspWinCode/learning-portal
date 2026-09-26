@@ -383,6 +383,16 @@ def _build_groups_revenue(db: Session, *, student_checks: Dict[int, float]) -> L
     return rows
 
 
+RATING_FIELD_UNKNOWN_LABELS = {
+    "grade": "Класс не указан",
+    "school": "Школа не указана",
+}
+RATING_FIELDS = {
+    "grade": Student.grade,
+    "school": Student.school,
+}
+
+
 def _build_students_rating(db: Session, *, field, unknown_label: str) -> List[dict]:
     """Рейтинг по количеству активных учеников в разрезе произвольного текстового
     поля Student (класс/школа). Пустое значение группируется под unknown_label."""
@@ -402,3 +412,33 @@ def _build_students_rating(db: Session, *, field, unknown_label: str) -> List[di
     result = [{"label": label, "students_count": count} for label, count in buckets.items()]
     result.sort(key=lambda row: row["students_count"], reverse=True)
     return result
+
+
+def list_students_by_rating(db: Session, *, field_name: str, label: str) -> List[dict]:
+    """Список активных учеников для одной строки рейтинга по классам/школам
+    (см. _build_students_rating) — по клику на строку в интерфейсе."""
+
+    if field_name not in RATING_FIELDS:
+        raise ValueError(f"unknown rating field: {field_name}")
+
+    column = RATING_FIELDS[field_name]
+    unknown_label = RATING_FIELD_UNKNOWN_LABELS[field_name]
+
+    query = db.query(Student).filter(Student.status == StudentStatus.ACTIVE)
+    if label == unknown_label:
+        query = query.filter(or_(column.is_(None), func.trim(column) == ""))
+    else:
+        query = query.filter(func.trim(column) == label)
+
+    students = query.order_by(Student.full_name).all()
+    return [
+        {
+            "id": student.id,
+            "full_name": student.full_name,
+            "grade": student.grade,
+            "school": student.school,
+            "phone": student.phone,
+            "parent_phone": student.parent_phone_2,
+        }
+        for student in students
+    ]

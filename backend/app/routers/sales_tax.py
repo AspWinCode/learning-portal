@@ -3,8 +3,11 @@ from typing import Dict
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
+from sqlalchemy.orm import Session
 
+from app.database import get_db
 from app.dependencies import require_sales_admin_owner
+from app.routers.action_log import log_action
 from app.services.tax_deduction_pdf import (
     PYPDF_AVAILABLE,
     REPORTLAB_AVAILABLE,
@@ -32,6 +35,7 @@ async def tax_deduction_certificate_status(
 @router.post("/tax-deduction-certificate")
 async def generate_tax_deduction_certificate(
     body: Dict,
+    db: Session = Depends(get_db),
     current_user=Depends(require_sales_admin_owner),
 ):
     if not REPORTLAB_AVAILABLE:
@@ -46,4 +50,8 @@ async def generate_tax_deduction_certificate(
         "Content-Disposition": 'attachment; filename="spravka_KND_1151158.pdf"',
         "X-Spravka-Source": "template" if use_template else "generated",
     }
+    log_action(
+        db, current_user.id, "generate", "tax_deduction_certificate", None,
+        {"source": "template" if use_template else "generated", "parent_name": body.get("parent_name") or body.get("fio")},
+    )
     return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)

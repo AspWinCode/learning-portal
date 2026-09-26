@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, joinedload
 from app import auth
 from app.database import get_db
 from app.models import PasswordEntry, User
+from app.routers.action_log import log_action
 from app.schemas.passwords import (
     PasswordEntryCreate,
     PasswordEntryResponse,
@@ -94,6 +95,7 @@ async def create_password_entry(
     db.commit()
     db.refresh(row)
     db.refresh(row, ["owner"])
+    log_action(db, current_user.id, "create", "password_entry", row.id, {"name": row.name})
     return _to_response(row)
 
 
@@ -119,6 +121,10 @@ async def update_password_entry(
     db.commit()
     db.refresh(row)
     db.refresh(row, ["owner"])
+    safe_update = {k: v for k, v in data.items() if k != "password"}
+    if "password" in data:
+        safe_update["password_changed"] = True
+    log_action(db, current_user.id, "update", "password_entry", entry_id, safe_update)
     return _to_response(row)
 
 
@@ -144,6 +150,8 @@ async def delete_password_entry(
     current_user: User = Depends(auth.require_permission("passwords.manage")),
 ):
     row = _get_entry(db, entry_id)
+    deleted_name = row.name
     db.delete(row)
     db.commit()
+    log_action(db, current_user.id, "delete", "password_entry", entry_id, {"name": deleted_name})
     return None

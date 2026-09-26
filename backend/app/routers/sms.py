@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app import auth
 from app.database import get_db
 from app.models import User, SmsMessage, LeadCommunication
+from app.routers.action_log import log_action
 from app.schemas.sms import (
     SmsSendRequest,
     SmsSendBulkRequest,
@@ -133,6 +134,7 @@ def api_sms_send(
 
         if not success:
             raise HTTPException(status_code=502, detail=err or "Ошибка отправки SMS")
+        log_action(db, current_user.id, "send", "sms_message", record.id, {"phone": phone, "status": record.status})
         return _sms_message_to_response(record)
 
     # Отложенная отправка: только записываем сообщение в очередь.
@@ -148,6 +150,7 @@ def api_sms_send(
     db.add(record)
     db.commit()
     db.refresh(record)
+    log_action(db, current_user.id, "schedule", "sms_message", record.id, {"phone": phone, "send_at": send_at})
     return _sms_message_to_response(record)
 
 
@@ -202,6 +205,7 @@ def api_sms_send_bulk(
         results.append(_sms_message_to_response(record))
         if i < len(phones) - 1:
             time.sleep(61)
+    log_action(db, current_user.id, "send_bulk", "sms_message", None, {"count": len(phones)})
     return results
 
 
@@ -262,4 +266,5 @@ def api_sms_process_scheduled(
         processed += 1
 
     db.commit()
+    log_action(db, current_user.id, "process_scheduled", "sms_message", None, {"processed": processed})
     return processed

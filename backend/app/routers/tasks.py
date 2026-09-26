@@ -7,6 +7,7 @@ from sqlalchemy import or_, and_, func
 from sqlalchemy.orm import Session, joinedload
 from app.database import get_db
 from app import auth
+from app.routers.action_log import log_action
 from app.models import (
     User,
     Student,
@@ -355,6 +356,7 @@ async def create_task_template(
                 db.add(TaskTemplateStudent(template_id=t.id, student_id=sid))
         db.commit()
         db.refresh(t)
+        log_action(db, current_user.id, "create", "task_template", t.id, {"name": t.name})
         t = (
             db.query(TaskTemplate)
             .options(joinedload(TaskTemplate.subtasks), joinedload(TaskTemplate.students))
@@ -432,6 +434,7 @@ async def update_task_template(
                 db.add(TaskTemplateStudent(template_id=t.id, student_id=sid))
     db.commit()
     db.refresh(t)
+    log_action(db, current_user.id, "update", "task_template", template_id, {"name": t.name})
     t = (
         db.query(TaskTemplate)
         .options(joinedload(TaskTemplate.subtasks), joinedload(TaskTemplate.students))
@@ -450,8 +453,10 @@ async def delete_task_template(
     t = db.query(TaskTemplate).filter(TaskTemplate.id == template_id).first()
     if not t:
         raise HTTPException(status_code=404, detail="Template not found")
+    template_name = t.name
     db.delete(t)
     db.commit()
+    log_action(db, current_user.id, "delete", "task_template", template_id, {"name": template_name})
     return None
 
 
@@ -887,6 +892,7 @@ async def create_task(
             db.add(TaskStudent(task_id=task.id, student_id=sid))
     db.commit()
     db.refresh(task)
+    log_action(db, current_user.id, "create", "task", task.id, {"title": task.title, "category": task_category})
     task = (
         db.query(Task)
         .options(joinedload(Task.subtasks), joinedload(Task.students))
@@ -968,6 +974,7 @@ async def update_task(
                 db.add(TaskStudent(task_id=task_id, student_id=sid))
     db.commit()
     db.refresh(task)
+    log_action(db, current_user.id, "update", "task", task_id, {"title": task.title, "status": task.status})
     task = (
         db.query(Task)
         .options(joinedload(Task.subtasks), joinedload(Task.students))
@@ -986,8 +993,10 @@ async def delete_task(
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    task_title = task.title
     db.delete(task)
     db.commit()
+    log_action(db, current_user.id, "delete", "task", task_id, {"title": task_title})
     return None
 
 
@@ -1053,6 +1062,7 @@ async def update_task_subtask(
         task.status = TaskStatus.ARCHIVED.value
     db.commit()
     db.refresh(st)
+    log_action(db, current_user.id, "update", "task_subtask", st.id, {"task_id": task_id, "completed": st.completed})
     return TaskSubtaskResponse(
         id=st.id,
         task_id=st.task_id,
@@ -1086,6 +1096,7 @@ async def bulk_create_subtasks(
     db.commit()
     for st in new_subtasks:
         db.refresh(st)
+    log_action(db, current_user.id, "bulk_create", "task_subtask", task_id, {"created": len(new_subtasks)})
 
     return TaskSubtaskBulkResponse(
         created=len(new_subtasks),
@@ -1157,6 +1168,7 @@ async def complete_task(
         task.status = TaskStatus.ARCHIVED.value
         db.commit()
         db.refresh(task)
+        log_action(db, current_user.id, "complete", "task", task_id, {"title": task.title})
 
     return _task_to_response(task, db)
 
@@ -1190,6 +1202,7 @@ async def postpone_task(
     task.pinned_today = False
     db.commit()
     db.refresh(task)
+    log_action(db, current_user.id, "postpone", "task", task_id, {"scheduled_for": _norm_date(task.scheduled_for)})
     return _task_to_response(task, db)
 
 
@@ -1213,6 +1226,7 @@ async def pin_task_today(
     task.pinned_today = pinned
     db.commit()
     db.refresh(task)
+    log_action(db, current_user.id, "pin_today" if pinned else "unpin_today", "task", task_id, {"pinned": pinned})
     return _task_to_response(task, db)
 
 
@@ -1250,6 +1264,7 @@ async def increment_task_counter(
     counter.value = (counter.value or 0) + delta
     db.commit()
     db.refresh(task)
+    log_action(db, current_user.id, "increment_counter", "task", task_id, {"key": key, "delta": delta, "value": counter.value})
     return _task_to_response(task, db)
 
 

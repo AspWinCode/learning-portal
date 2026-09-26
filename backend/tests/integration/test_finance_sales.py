@@ -55,6 +55,7 @@ class FakeSalesDB:
         self.group = group
         self.committed = False
         self.refreshed = []
+        self.added = []
 
     def query(self, model):
         if model is sales_router.Student:
@@ -62,6 +63,9 @@ class FakeSalesDB:
         if model is sales_router.Group:
             return FakeQuery(self.group)
         raise AssertionError(f"Unexpected model query: {model}")
+
+    def add(self, obj) -> None:
+        self.added.append(obj)
 
     def commit(self) -> None:
         self.committed = True

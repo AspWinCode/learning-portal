@@ -130,10 +130,12 @@ async def pixelforge_course_webhook(request: Request, db: Session = Depends(get_
                 sort_order=100,
             ))
         db.commit()
+        log_action(db, None, "publish", "course_catalog_item", item.id if item else None, {"code": code, "title": c.title})
     elif payload.event in ("unpublished", "deleted"):
         if item:
             item.is_active = False
             db.commit()
+            log_action(db, None, "unpublish", "course_catalog_item", item.id, {"code": code})
     else:
         logger.warning("pixelforge webhook: unknown event %r", payload.event)
 
@@ -215,19 +217,27 @@ async def admin_delete_course(course_id: int, current_user: User = Depends(_mana
 
 
 @router.post("/admin/courses/{course_id}/archive", status_code=status.HTTP_204_NO_CONTENT)
-async def admin_archive_course(course_id: int, current_user: User = Depends(_manage)):
+async def admin_archive_course(
+    course_id: int, current_user: User = Depends(_manage), db: Session = Depends(get_db)
+):
     try:
         await pf.archive_course(course_id)
     except PixelForgeError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "archive", "pixelforge_course", course_id)
 
 
 @router.post("/admin/courses/{course_id}/unarchive", status_code=status.HTTP_204_NO_CONTENT)
-async def admin_unarchive_course(course_id: int, current_user: User = Depends(_manage)):
+async def admin_unarchive_course(
+    course_id: int, current_user: User = Depends(_manage), db: Session = Depends(get_db)
+):
     try:
         await pf.unarchive_course(course_id)
     except PixelForgeError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "unarchive", "pixelforge_course", course_id)
 
 
 @router.get("/admin/courses/{course_id}/tree")
@@ -242,44 +252,64 @@ async def admin_course_tree(course_id: int, current_user: User = Depends(_manage
 
 @router.post("/admin/courses/{course_id}/nodes", status_code=status.HTTP_201_CREATED)
 async def admin_create_node(
-    course_id: int, payload: PixelForgeNodeCreate, current_user: User = Depends(_manage)
+    course_id: int, payload: PixelForgeNodeCreate, current_user: User = Depends(_manage), db: Session = Depends(get_db)
 ):
     try:
-        return await pf.create_node(course_id, _body(payload))
+        node = await pf.create_node(course_id, _body(payload))
     except PixelForgeError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "create", "pixelforge_node", node.get("id") if isinstance(node, dict) else None, {"course_id": course_id})
+    return node
 
 
 @router.put("/admin/nodes/{node_id}")
-async def admin_update_node(node_id: int, payload: PixelForgeNodeUpdate, current_user: User = Depends(_manage)):
+async def admin_update_node(
+    node_id: int, payload: PixelForgeNodeUpdate, current_user: User = Depends(_manage), db: Session = Depends(get_db)
+):
     try:
-        return await pf.update_node(node_id, _body(payload))
+        result = await pf.update_node(node_id, _body(payload))
     except PixelForgeError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "update", "pixelforge_node", node_id, _body(payload))
+    return result
 
 
 @router.delete("/admin/nodes/{node_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def admin_delete_node(node_id: int, current_user: User = Depends(_manage)):
+async def admin_delete_node(node_id: int, current_user: User = Depends(_manage), db: Session = Depends(get_db)):
     try:
         await pf.delete_node(node_id)
     except PixelForgeError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "delete", "pixelforge_node", node_id, {})
 
 
 @router.post("/admin/nodes/{node_id}/move")
-async def admin_move_node(node_id: int, payload: PixelForgeNodeMove, current_user: User = Depends(_manage)):
+async def admin_move_node(
+    node_id: int, payload: PixelForgeNodeMove, current_user: User = Depends(_manage), db: Session = Depends(get_db)
+):
     try:
-        return await pf.move_node(node_id, _body(payload))
+        result = await pf.move_node(node_id, _body(payload))
     except PixelForgeError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "move", "pixelforge_node", node_id, _body(payload))
+    return result
 
 
 @router.post("/admin/nodes/reorder")
-async def admin_reorder_nodes(payload: PixelForgeNodeReorder, current_user: User = Depends(_manage)):
+async def admin_reorder_nodes(
+    payload: PixelForgeNodeReorder, current_user: User = Depends(_manage), db: Session = Depends(get_db)
+):
     try:
-        return await pf.reorder_nodes(_body(payload))
+        result = await pf.reorder_nodes(_body(payload))
     except PixelForgeError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "reorder", "pixelforge_node", None, _body(payload))
+    return result
 
 
 # ─── Задачи ─────────────────────────────────────────────────────────────────
@@ -294,62 +324,85 @@ async def admin_get_task(task_id: int, current_user: User = Depends(_manage)):
 
 @router.post("/admin/nodes/{node_id}/tasks", status_code=status.HTTP_201_CREATED)
 async def admin_create_node_task(
-    node_id: int, payload: PixelForgeNodeTaskCreate, current_user: User = Depends(_manage)
+    node_id: int, payload: PixelForgeNodeTaskCreate, current_user: User = Depends(_manage), db: Session = Depends(get_db)
 ):
     try:
-        return await pf.create_node_task(node_id, _body(payload))
+        node_task = await pf.create_node_task(node_id, _body(payload))
     except PixelForgeError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "create", "pixelforge_node_task", node_task.get("id") if isinstance(node_task, dict) else None, {"node_id": node_id})
+    return node_task
 
 
 @router.put("/admin/tasks/{task_id}")
-async def admin_update_task(task_id: int, payload: PixelForgeTaskUpdate, current_user: User = Depends(_manage)):
+async def admin_update_task(
+    task_id: int, payload: PixelForgeTaskUpdate, current_user: User = Depends(_manage), db: Session = Depends(get_db)
+):
     try:
-        return await pf.update_task(task_id, _body(payload))
+        result = await pf.update_task(task_id, _body(payload))
     except PixelForgeError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "update", "pixelforge_task", task_id, _body(payload))
+    return result
 
 
 @router.delete("/admin/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def admin_delete_task(task_id: int, current_user: User = Depends(_manage)):
+async def admin_delete_task(task_id: int, current_user: User = Depends(_manage), db: Session = Depends(get_db)):
     try:
         await pf.delete_task(task_id)
     except PixelForgeError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "delete", "pixelforge_task", task_id, {})
 
 
 @router.post("/admin/tasks/{task_id}/publish")
-async def admin_publish_task(task_id: int, current_user: User = Depends(_manage)):
+async def admin_publish_task(task_id: int, current_user: User = Depends(_manage), db: Session = Depends(get_db)):
     try:
-        return await pf.publish_task(task_id)
+        result = await pf.publish_task(task_id)
     except PixelForgeError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "publish", "pixelforge_task", task_id)
+    return result
 
 
 @router.post("/admin/tasks/{task_id}/unpublish")
-async def admin_unpublish_task(task_id: int, current_user: User = Depends(_manage)):
+async def admin_unpublish_task(task_id: int, current_user: User = Depends(_manage), db: Session = Depends(get_db)):
     try:
-        return await pf.unpublish_task(task_id)
+        result = await pf.unpublish_task(task_id)
     except PixelForgeError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "unpublish", "pixelforge_task", task_id)
+    return result
 
 
 @router.delete("/admin/nodes/{node_id}/tasks/{node_task_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def admin_detach_node_task(node_id: int, node_task_id: int, current_user: User = Depends(_manage)):
+async def admin_detach_node_task(
+    node_id: int, node_task_id: int, current_user: User = Depends(_manage), db: Session = Depends(get_db)
+):
     try:
         await pf.delete_node_task(node_id, node_task_id)
     except PixelForgeError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "delete", "pixelforge_node_task", node_task_id, {"node_id": node_id})
 
 
 @router.post("/admin/nodes/{node_id}/tasks/reorder")
 async def admin_reorder_node_tasks(
-    node_id: int, payload: PixelForgeReorder, current_user: User = Depends(_manage)
+    node_id: int, payload: PixelForgeReorder, current_user: User = Depends(_manage), db: Session = Depends(get_db)
 ):
     try:
-        return await pf.reorder_node_tasks(node_id, _body(payload))
+        result = await pf.reorder_node_tasks(node_id, _body(payload))
     except PixelForgeError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "reorder", "pixelforge_node_task", None, {"node_id": node_id})
+    return result
 
 
 @router.get("/admin/tasks/{task_id}/images")
@@ -362,14 +415,17 @@ async def admin_task_images(task_id: int, current_user: User = Depends(_manage))
 
 @router.post("/admin/tasks/{task_id}/images", status_code=status.HTTP_201_CREATED)
 async def admin_upload_task_image(
-    task_id: int, file: UploadFile = File(...), current_user: User = Depends(_manage)
+    task_id: int, file: UploadFile = File(...), current_user: User = Depends(_manage), db: Session = Depends(get_db)
 ):
     try:
-        return await pf.upload_task_image(
+        result = await pf.upload_task_image(
             task_id, file.filename or "image", await file.read(), file.content_type or "application/octet-stream"
         )
     except PixelForgeError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "upload", "pixelforge_task_image", task_id, {"filename": file.filename})
+    return result
 
 
 # ─── Тесты ──────────────────────────────────────────────────────────────────
@@ -383,27 +439,39 @@ async def admin_list_tests(task_id: int, current_user: User = Depends(_manage)):
 
 
 @router.post("/admin/tasks/{task_id}/tests", status_code=status.HTTP_201_CREATED)
-async def admin_create_test(task_id: int, payload: PixelForgeTaskTest, current_user: User = Depends(_manage)):
+async def admin_create_test(
+    task_id: int, payload: PixelForgeTaskTest, current_user: User = Depends(_manage), db: Session = Depends(get_db)
+):
     try:
-        return await pf.create_task_test(task_id, _body(payload))
+        test = await pf.create_task_test(task_id, _body(payload))
     except PixelForgeError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "create", "pixelforge_test", test.get("id") if isinstance(test, dict) else None, {"task_id": task_id})
+    return test
 
 
 @router.put("/admin/tests/{test_id}")
-async def admin_update_test(test_id: int, payload: PixelForgeTaskTest, current_user: User = Depends(_manage)):
+async def admin_update_test(
+    test_id: int, payload: PixelForgeTaskTest, current_user: User = Depends(_manage), db: Session = Depends(get_db)
+):
     try:
-        return await pf.update_task_test(test_id, _body(payload))
+        result = await pf.update_task_test(test_id, _body(payload))
     except PixelForgeError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "update", "pixelforge_test", test_id, _body(payload))
+    return result
 
 
 @router.delete("/admin/tests/{test_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def admin_delete_test(test_id: int, current_user: User = Depends(_manage)):
+async def admin_delete_test(test_id: int, current_user: User = Depends(_manage), db: Session = Depends(get_db)):
     try:
         await pf.delete_task_test(test_id)
     except PixelForgeError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "delete", "pixelforge_test", test_id, {})
 
 
 # ─── Подсказки ──────────────────────────────────────────────────────────────
@@ -417,27 +485,39 @@ async def admin_list_hints(task_id: int, current_user: User = Depends(_manage)):
 
 
 @router.post("/admin/tasks/{task_id}/hints", status_code=status.HTTP_201_CREATED)
-async def admin_create_hint(task_id: int, payload: PixelForgeTaskHint, current_user: User = Depends(_manage)):
+async def admin_create_hint(
+    task_id: int, payload: PixelForgeTaskHint, current_user: User = Depends(_manage), db: Session = Depends(get_db)
+):
     try:
-        return await pf.create_task_hint(task_id, _body(payload))
+        hint = await pf.create_task_hint(task_id, _body(payload))
     except PixelForgeError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "create", "pixelforge_hint", hint.get("id") if isinstance(hint, dict) else None, {"task_id": task_id})
+    return hint
 
 
 @router.put("/admin/hints/{hint_id}")
-async def admin_update_hint(hint_id: int, payload: PixelForgeTaskHint, current_user: User = Depends(_manage)):
+async def admin_update_hint(
+    hint_id: int, payload: PixelForgeTaskHint, current_user: User = Depends(_manage), db: Session = Depends(get_db)
+):
     try:
-        return await pf.update_task_hint(hint_id, _body(payload))
+        result = await pf.update_task_hint(hint_id, _body(payload))
     except PixelForgeError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "update", "pixelforge_hint", hint_id, _body(payload))
+    return result
 
 
 @router.delete("/admin/hints/{hint_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def admin_delete_hint(hint_id: int, current_user: User = Depends(_manage)):
+async def admin_delete_hint(hint_id: int, current_user: User = Depends(_manage), db: Session = Depends(get_db)):
     try:
         await pf.delete_task_hint(hint_id)
     except PixelForgeError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "delete", "pixelforge_hint", hint_id, {})
 
 
 # ─── Лекции ─────────────────────────────────────────────────────────────────
@@ -451,27 +531,39 @@ async def admin_list_lectures(current_user: User = Depends(_manage)):
 
 
 @router.post("/admin/lectures", status_code=status.HTTP_201_CREATED)
-async def admin_create_lecture(payload: PixelForgeLecture, current_user: User = Depends(_manage)):
+async def admin_create_lecture(
+    payload: PixelForgeLecture, current_user: User = Depends(_manage), db: Session = Depends(get_db)
+):
     try:
-        return await pf.create_lecture(_body(payload))
+        lecture = await pf.create_lecture(_body(payload))
     except PixelForgeError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "create", "pixelforge_lecture", lecture.get("id") if isinstance(lecture, dict) else None, {})
+    return lecture
 
 
 @router.put("/admin/lectures/{lecture_id}")
-async def admin_update_lecture(lecture_id: int, payload: PixelForgeLecture, current_user: User = Depends(_manage)):
+async def admin_update_lecture(
+    lecture_id: int, payload: PixelForgeLecture, current_user: User = Depends(_manage), db: Session = Depends(get_db)
+):
     try:
-        return await pf.update_lecture(lecture_id, _body(payload))
+        result = await pf.update_lecture(lecture_id, _body(payload))
     except PixelForgeError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "update", "pixelforge_lecture", lecture_id, _body(payload))
+    return result
 
 
 @router.delete("/admin/lectures/{lecture_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def admin_delete_lecture(lecture_id: int, current_user: User = Depends(_manage)):
+async def admin_delete_lecture(lecture_id: int, current_user: User = Depends(_manage), db: Session = Depends(get_db)):
     try:
         await pf.delete_lecture(lecture_id)
     except PixelForgeError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "delete", "pixelforge_lecture", lecture_id, {})
 
 
 @router.get("/admin/lectures/{lecture_id}/cards")
@@ -483,37 +575,52 @@ async def admin_list_cards(lecture_id: int, current_user: User = Depends(_manage
 
 
 @router.post("/admin/lectures/{lecture_id}/cards", status_code=status.HTTP_201_CREATED)
-async def admin_create_card(lecture_id: int, payload: PixelForgeCardCreate, current_user: User = Depends(_manage)):
+async def admin_create_card(
+    lecture_id: int, payload: PixelForgeCardCreate, current_user: User = Depends(_manage), db: Session = Depends(get_db)
+):
     try:
-        return await pf.create_lecture_card(lecture_id, _body(payload))
+        card = await pf.create_lecture_card(lecture_id, _body(payload))
     except PixelForgeError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "create", "pixelforge_lecture_card", card.get("id") if isinstance(card, dict) else None, {"lecture_id": lecture_id})
+    return card
 
 
 @router.put("/admin/lecture-cards/{card_id}")
-async def admin_update_card(card_id: int, payload: PixelForgeCardUpdate, current_user: User = Depends(_manage)):
+async def admin_update_card(
+    card_id: int, payload: PixelForgeCardUpdate, current_user: User = Depends(_manage), db: Session = Depends(get_db)
+):
     try:
-        return await pf.update_lecture_card(card_id, _body(payload))
+        result = await pf.update_lecture_card(card_id, _body(payload))
     except PixelForgeError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "update", "pixelforge_lecture_card", card_id, _body(payload))
+    return result
 
 
 @router.delete("/admin/lecture-cards/{card_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def admin_delete_card(card_id: int, current_user: User = Depends(_manage)):
+async def admin_delete_card(card_id: int, current_user: User = Depends(_manage), db: Session = Depends(get_db)):
     try:
         await pf.delete_lecture_card(card_id)
     except PixelForgeError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "delete", "pixelforge_lecture_card", card_id, {})
 
 
 @router.post("/admin/lectures/{lecture_id}/cards/reorder")
 async def admin_reorder_cards(
-    lecture_id: int, payload: PixelForgeReorder, current_user: User = Depends(_manage)
+    lecture_id: int, payload: PixelForgeReorder, current_user: User = Depends(_manage), db: Session = Depends(get_db)
 ):
     try:
-        return await pf.reorder_lecture_cards(lecture_id, _body(payload))
+        result = await pf.reorder_lecture_cards(lecture_id, _body(payload))
     except PixelForgeError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "reorder", "pixelforge_lecture_card", None, {"lecture_id": lecture_id})
+    return result
 
 
 # ─── Классы (read-only) ─────────────────────────────────────────────────────

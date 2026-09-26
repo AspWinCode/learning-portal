@@ -8,6 +8,7 @@ import logging
 from sqlalchemy.orm import Session
 
 from app.models import SmsMessage, MaxMessage, LeadCommunication
+from app.routers.action_log import log_action
 from app.services.sms_gateway import send_sms, is_configured as sms_is_configured
 from app.services.max_messenger import (
     send_message,
@@ -55,12 +56,36 @@ def _dispatch_sms(db: Session) -> int:
                         follow_up_at=utcnow(),
                     )
                     db.add(comm)
+                log_action(
+                    db,
+                    user_id=None,
+                    action_type="send_scheduled_sms",
+                    entity_type="sms_message",
+                    entity_id=record.id,
+                    details={"phone": record.phone},
+                )
             else:
                 record.status = "failed"
                 logger.warning("scheduled_sms_failed: id=%s error=%s", record.id, err)
+                log_action(
+                    db,
+                    user_id=None,
+                    action_type="fail_scheduled_sms",
+                    entity_type="sms_message",
+                    entity_id=record.id,
+                    details={"error": err},
+                )
         except Exception:
             logger.exception("scheduled_sms_error: id=%s", record.id)
             record.status = "failed"
+            log_action(
+                db,
+                user_id=None,
+                action_type="fail_scheduled_sms",
+                entity_type="sms_message",
+                entity_id=record.id,
+                details={"error": "exception"},
+            )
         db.commit()
     return sent_count
 
@@ -90,6 +115,14 @@ def _dispatch_max(db: Session) -> int:
             else:
                 logger.warning("scheduled_max_skip: id=%s no chat_id or user_id", record.id)
                 record.status = "failed"
+                log_action(
+                    db,
+                    user_id=None,
+                    action_type="fail_scheduled_max",
+                    entity_type="max_message",
+                    entity_id=record.id,
+                    details={"error": "no chat_id or user_id"},
+                )
                 db.commit()
                 continue
 
@@ -111,12 +144,36 @@ def _dispatch_max(db: Session) -> int:
                         follow_up_at=utcnow(),
                     )
                     db.add(comm)
+                log_action(
+                    db,
+                    user_id=None,
+                    action_type="send_scheduled_max",
+                    entity_type="max_message",
+                    entity_id=record.id,
+                    details={"max_user_id": max_user_id, "chat_id": chat_id or None},
+                )
             else:
                 record.status = "failed"
                 logger.warning("scheduled_max_failed: id=%s error=%s", record.id, err)
+                log_action(
+                    db,
+                    user_id=None,
+                    action_type="fail_scheduled_max",
+                    entity_type="max_message",
+                    entity_id=record.id,
+                    details={"error": err},
+                )
         except Exception:
             logger.exception("scheduled_max_error: id=%s", record.id)
             record.status = "failed"
+            log_action(
+                db,
+                user_id=None,
+                action_type="fail_scheduled_max",
+                entity_type="max_message",
+                entity_id=record.id,
+                details={"error": "exception"},
+            )
         db.commit()
     return sent_count
 

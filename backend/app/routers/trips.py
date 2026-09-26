@@ -11,6 +11,7 @@ from typing import Dict
 from app import auth
 from app.database import get_db
 from app.models import FinanceTransaction, Trip, TripBudget, TripCashExchange, TripChecklistItem, TripExpense, TripItineraryItem, TripShare, TripStatus, User
+from app.routers.action_log import log_action
 
 
 router = APIRouter()
@@ -203,6 +204,13 @@ async def create_trip(
     db.add(trip)
     db.commit()
     db.refresh(trip)
+    log_action(db, current_user.id, "create", "trip", trip.id, {
+        "title": trip.title,
+        "start_date": trip.start_date,
+        "end_date": trip.end_date,
+        "base_currency": trip.base_currency,
+        "local_currency": trip.local_currency,
+    })
     return _serialize_trip(trip, db)
 
 
@@ -251,6 +259,7 @@ async def update_trip(
         trip.cash_alert_threshold = payload.cash_alert_threshold if payload.cash_alert_threshold > 0 else None
     db.commit()
     db.refresh(trip)
+    log_action(db, current_user.id, "update", "trip", trip_id, payload.dict(exclude_unset=True))
     return _serialize_trip(trip, db)
 
 
@@ -262,9 +271,11 @@ async def delete_trip(
 ):
     _require_owner(current_user)
     trip = _get_trip_or_404(db, trip_id, current_user)
+    trip_title = trip.title
     db.query(FinanceTransaction).filter(FinanceTransaction.trip_id == trip_id).update({"trip_id": None})
     db.delete(trip)
     db.commit()
+    log_action(db, current_user.id, "delete", "trip", trip_id, {"title": trip_title})
 
 
 @router.get("/{trip_id}/transactions")
@@ -309,6 +320,7 @@ async def link_transaction_to_trip(
         raise HTTPException(status_code=404, detail="Транзакция не найдена")
     txn.trip_id = trip_id
     db.commit()
+    log_action(db, current_user.id, "link_transaction", "trip", trip_id, {"transaction_id": transaction_id})
     return {"ok": True}
 
 
@@ -329,6 +341,7 @@ async def unlink_transaction_from_trip(
         raise HTTPException(status_code=404, detail="Транзакция не найдена в этой поездке")
     txn.trip_id = None
     db.commit()
+    log_action(db, current_user.id, "unlink_transaction", "trip", trip_id, {"transaction_id": transaction_id})
 
 
 # ── Trip Expenses ─────────────────────────────────────────────────────────────
@@ -435,6 +448,14 @@ async def create_expense(
     db.add(expense)
     db.commit()
     db.refresh(expense)
+    log_action(db, current_user.id, "add_expense", "trip_expense", expense.id, {
+        "trip_id": trip_id,
+        "category": expense.category,
+        "amount_local": expense.amount_local,
+        "local_currency": expense.local_currency,
+        "amount_base": expense.amount_base,
+        "base_currency": expense.base_currency,
+    })
     return _serialize_expense(expense)
 
 
@@ -478,6 +499,7 @@ async def update_expense(
     expense.amount_base = round(expense.amount_local / expense.exchange_rate, 2)
     db.commit()
     db.refresh(expense)
+    log_action(db, current_user.id, "update", "trip_expense", expense_id, payload.dict(exclude_unset=True))
     return _serialize_expense(expense)
 
 
@@ -495,8 +517,10 @@ async def delete_expense(
     ).first()
     if not expense:
         raise HTTPException(status_code=404, detail="Трата не найдена")
+    deleted_info = {"trip_id": trip_id, "category": expense.category, "amount_local": expense.amount_local, "description": expense.description}
     db.delete(expense)
     db.commit()
+    log_action(db, current_user.id, "delete", "trip_expense", expense_id, deleted_info)
 
 
 # ── Cash Exchanges ────────────────────────────────────────────────────────────
@@ -572,6 +596,11 @@ async def create_cash_exchange(
     db.add(exchange)
     db.commit()
     db.refresh(exchange)
+    log_action(db, current_user.id, "create", "trip_cash_exchange", exchange.id, {
+        "trip_id": trip_id,
+        "amount_base": payload.amount_base,
+        "exchange_rate": payload.exchange_rate,
+    })
     return _serialize_exchange(exchange)
 
 
@@ -589,8 +618,10 @@ async def delete_cash_exchange(
     ).first()
     if not exchange:
         raise HTTPException(status_code=404, detail="Операция обмена не найдена")
+    deleted_info = {"trip_id": trip_id, "amount_base": exchange.amount_base, "amount_local": exchange.amount_local}
     db.delete(exchange)
     db.commit()
+    log_action(db, current_user.id, "delete", "trip_cash_exchange", exchange_id, deleted_info)
 
 
 # ── Trip Summary ──────────────────────────────────────────────────────────────
@@ -685,6 +716,7 @@ async def set_budget(
         else:
             db.add(TripBudget(trip_id=trip_id, category=category, amount_local=amount))
     db.commit()
+    log_action(db, current_user.id, "update", "trip_budget", trip_id, {"budgets": payload.budgets})
     rows = db.query(TripBudget).filter(TripBudget.trip_id == trip_id).all()
     return {r.category: {"amount_local": r.amount_local, "id": r.id} for r in rows}
 
@@ -855,6 +887,7 @@ async def create_itinerary_item(
     db.add(item)
     db.commit()
     db.refresh(item)
+    log_action(db, current_user.id, "create", "trip_itinerary_item", item.id, {"trip_id": trip_id, "title": item.title, "day_date": item.day_date})
     return _serialize_item(item)
 
 
@@ -893,6 +926,7 @@ async def update_itinerary_item(
         item.sort_order = payload.sort_order
     db.commit()
     db.refresh(item)
+    log_action(db, current_user.id, "update", "trip_itinerary_item", item_id, payload.dict(exclude_unset=True))
     return _serialize_item(item)
 
 
@@ -910,8 +944,10 @@ async def delete_itinerary_item(
     ).first()
     if not item:
         raise HTTPException(status_code=404, detail="Пункт маршрута не найден")
+    deleted_info = {"trip_id": trip_id, "title": item.title, "day_date": item.day_date}
     db.delete(item)
     db.commit()
+    log_action(db, current_user.id, "delete", "trip_itinerary_item", item_id, deleted_info)
 
 
 @router.post("/{trip_id}/itinerary/{item_id}/convert")
@@ -950,6 +986,7 @@ async def convert_itinerary_to_expense(
     item.status = "done"
     db.commit()
     db.refresh(item)
+    log_action(db, current_user.id, "convert_to_expense", "trip_itinerary_item", item_id, {"trip_id": trip_id, "expense_id": expense.id})
     return {"item": _serialize_item(item), "expense": _serialize_expense(expense)}
 
 
@@ -1148,6 +1185,7 @@ async def create_checklist_item(
     db.add(item)
     db.commit()
     db.refresh(item)
+    log_action(db, current_user.id, "create", "trip_checklist_item", item.id, {"trip_id": trip_id, "title": item.title, "category": cat})
     return _serialize_checklist(item)
 
 
@@ -1167,6 +1205,7 @@ async def seed_checklist(
         db.add(TripChecklistItem(trip_id=trip_id, category=cat, title=title, sort_order=idx))
     db.commit()
     items = db.query(TripChecklistItem).filter(TripChecklistItem.trip_id == trip_id).order_by(TripChecklistItem.sort_order).all()
+    log_action(db, current_user.id, "seed", "trip_checklist_item", None, {"trip_id": trip_id, "seeded": len(items)})
     return {"seeded": len(items), "items": [_serialize_checklist(i) for i in items]}
 
 
@@ -1197,6 +1236,7 @@ async def update_checklist_item(
         item.sort_order = payload.sort_order
     db.commit()
     db.refresh(item)
+    log_action(db, current_user.id, "update", "trip_checklist_item", item_id, payload.dict(exclude_unset=True))
     return _serialize_checklist(item)
 
 
@@ -1214,8 +1254,10 @@ async def delete_checklist_item(
     ).first()
     if not item:
         raise HTTPException(status_code=404, detail="Пункт чеклиста не найден")
+    deleted_info = {"trip_id": trip_id, "title": item.title, "category": item.category}
     db.delete(item)
     db.commit()
+    log_action(db, current_user.id, "delete", "trip_checklist_item", item_id, deleted_info)
 
 
 # ── Sharing ───────────────────────────────────────────────────────────────────
@@ -1280,6 +1322,7 @@ async def create_share(
     db.add(share)
     db.commit()
     db.refresh(share)
+    log_action(db, current_user.id, "create", "trip_share", share.id, {"trip_id": trip_id, "shared_with_id": target.id, "can_edit": payload.can_edit})
     return _serialize_share(share)
 
 
@@ -1297,5 +1340,7 @@ async def delete_share(
     ).first()
     if not share:
         raise HTTPException(status_code=404, detail="Запись шаринга не найдена")
+    deleted_info = {"trip_id": trip_id, "shared_with_id": share.shared_with_id}
     db.delete(share)
     db.commit()
+    log_action(db, current_user.id, "delete", "trip_share", share_id, deleted_info)

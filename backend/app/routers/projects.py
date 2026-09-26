@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app import auth
 from app.database import get_db
 from app.models import Project, ProjectCard, ProjectStage, Student, StudentStatus, User, UserRole
+from app.routers.action_log import log_action
 from app.schemas.projects import (
     ProjectCardMove,
     ProjectCardResponse,
@@ -99,6 +100,7 @@ async def create_project(
 
     db.commit()
     db.refresh(project)
+    log_action(db, current_user.id, "create", "project", project.id, {"name": project.name, "entity_type": project.entity_type})
     data = ProjectResponse.model_validate(project).model_dump(exclude={"stages", "card_count"})
     data["stages"] = [ProjectStageResponse.model_validate(stage) for stage in project.stages]
     data["card_count"] = db.query(ProjectCard).filter(ProjectCard.project_id == project.id).count()
@@ -132,10 +134,12 @@ async def update_project(
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    for key, value in body.model_dump(exclude_unset=True).items():
+    update_data = body.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
         setattr(project, key, value)
     db.commit()
     db.refresh(project)
+    log_action(db, current_user.id, "update", "project", project.id, update_data)
     data = ProjectResponse.model_validate(project).model_dump(exclude={"stages", "card_count"})
     data["stages"] = [ProjectStageResponse.model_validate(stage) for stage in project.stages]
     data["card_count"] = db.query(ProjectCard).filter(ProjectCard.project_id == project.id).count()
@@ -162,6 +166,7 @@ async def create_stage(
     db.add(stage)
     db.commit()
     db.refresh(stage)
+    log_action(db, current_user.id, "create", "project_stage", stage.id, {"project_id": project_id, "name": stage.name})
     return ProjectStageResponse.model_validate(stage)
 
 
@@ -186,6 +191,7 @@ async def update_stage(
         stage.position = body.position
     db.commit()
     db.refresh(stage)
+    log_action(db, current_user.id, "update", "project_stage", stage.id, {"name": body.name, "position": body.position})
     return ProjectStageResponse.model_validate(stage)
 
 
@@ -205,8 +211,10 @@ async def delete_stage(
         raise HTTPException(status_code=404, detail="Stage not found")
     if stage.cards:
         raise HTTPException(status_code=400, detail="Move cards to another stage before deleting")
+    stage_name = stage.name
     db.delete(stage)
     db.commit()
+    log_action(db, current_user.id, "delete", "project_stage", stage_id, {"project_id": project_id, "name": stage_name})
 
 
 def _safe_iso(value):
@@ -326,4 +334,5 @@ async def move_card(
         card.position = body.position
     db.commit()
     db.refresh(card)
+    log_action(db, current_user.id, "move", "project_card", card.id, {"stage_id": body.stage_id, "position": body.position})
     return ProjectCardResponse.model_validate(card)

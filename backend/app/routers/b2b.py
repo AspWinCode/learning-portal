@@ -28,6 +28,7 @@ from app.models import (
     User,
     UserRole,
 )
+from app.routers.action_log import log_action
 from app.schemas.b2b import (
     B2BDocumentResponse,
     B2BPartnershipUpdate,
@@ -581,6 +582,7 @@ async def import_b2b_schools(
         created += 1
 
     db.commit()
+    log_action(db, current_user.id, "import", "b2b_school", None, {"created": created, "skipped": skipped})
     return B2BSchoolImportResponse(created=created, skipped=skipped, errors=errors)
 
 
@@ -850,6 +852,7 @@ async def transfer_school_leads(
         .update({Lead.status: LeadStatus.CONTACTED}, synchronize_session="fetch")
     )
     db.commit()
+    log_action(db, current_user.id, "transfer_lead", "lead", None, {"source_school_id": school_id, "updated": updated})
     return {"updated": updated}
 
 
@@ -912,6 +915,7 @@ async def create_school_interaction(
             school.next_step_date = payload.next_step_date
     db.commit()
     db.refresh(interaction)
+    log_action(db, current_user.id, "create", "b2b_school_interaction", interaction.id, {"b2b_school_id": school_id, "type": interaction.type})
     return B2BSchoolInteractionResponse(
         id=interaction.id,
         b2b_school_id=interaction.b2b_school_id,
@@ -1002,6 +1006,7 @@ async def create_school_event(
         _on_b2b_online_event_created(db, school, event, current_user.id)
     db.commit()
     db.refresh(event)
+    log_action(db, current_user.id, "create", "b2b_school_event", event.id, {"b2b_school_id": school_id, "format": event.format})
     return B2BSchoolEventResponse(
         id=event.id,
         b2b_school_id=event.b2b_school_id,
@@ -1049,6 +1054,7 @@ async def create_b2b_school(
     db.commit()
     db.refresh(school)
     _ = school.school_contacts
+    log_action(db, current_user.id, "create", "b2b_school", school.id, {"name": school.name, "city": school.city})
     return _school_to_response(db, school)
 
 
@@ -1089,6 +1095,7 @@ async def update_b2b_school(
     db.commit()
     db.refresh(school)
     _ = school.school_contacts
+    log_action(db, current_user.id, "update", "b2b_school", school_id, data)
     return _school_to_response(db, school)
 
 
@@ -1101,8 +1108,10 @@ async def delete_b2b_school(
     school = db.query(B2BSchool).filter(B2BSchool.id == school_id).first()
     if not school:
         raise HTTPException(status_code=404, detail="School not found")
+    deleted_info = {"name": school.name, "city": school.city}
     db.delete(school)
     db.commit()
+    log_action(db, current_user.id, "delete", "b2b_school", school_id, deleted_info)
     return None
 
 
@@ -1147,6 +1156,7 @@ async def create_school_contact(
     db.add(contact)
     db.commit()
     db.refresh(contact)
+    log_action(db, current_user.id, "create", "b2b_school_contact", contact.id, {"b2b_school_id": school_id, "full_name": contact.full_name})
     return B2BSchoolContactResponse(
         id=contact.id,
         b2b_school_id=contact.b2b_school_id,
@@ -1177,6 +1187,7 @@ async def update_school_contact(
         setattr(contact, key, value)
     db.commit()
     db.refresh(contact)
+    log_action(db, current_user.id, "update", "b2b_school_contact", contact_id, data)
     return B2BSchoolContactResponse(
         id=contact.id,
         b2b_school_id=contact.b2b_school_id,
@@ -1201,8 +1212,10 @@ async def delete_school_contact(
     ).first()
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found")
+    deleted_info = {"b2b_school_id": school_id, "full_name": contact.full_name}
     db.delete(contact)
     db.commit()
+    log_action(db, current_user.id, "delete", "b2b_school_contact", contact_id, deleted_info)
     return None
 
 
@@ -1249,6 +1262,7 @@ async def create_b2b_project(
     db.add(project)
     db.commit()
     db.refresh(project)
+    log_action(db, current_user.id, "create", "b2b_project", project.id, {"name": project.name})
     return B2BProjectResponse(
         id=project.id,
         name=project.name,
@@ -1296,6 +1310,7 @@ async def update_b2b_project(
         setattr(project, key, value)
     db.commit()
     db.refresh(project)
+    log_action(db, current_user.id, "update", "b2b_project", project_id, data)
     return B2BProjectResponse(
         id=project.id,
         name=project.name,
@@ -1317,8 +1332,10 @@ async def delete_b2b_project(
     project = db.query(B2BProject).filter(B2BProject.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+    deleted_info = {"name": project.name}
     db.delete(project)
     db.commit()
+    log_action(db, current_user.id, "delete", "b2b_project", project_id, deleted_info)
     return None
 
 
@@ -1421,6 +1438,7 @@ async def upload_school_document(
     db.commit()
     db.refresh(doc)
     db.refresh(doc, ["uploaded_by"])
+    log_action(db, current_user.id, "upload", "b2b_document", doc.id, {"b2b_school_id": school_id, "type": doc_type, "file_name": doc.file_name})
     return _doc_to_response(doc)
 
 
@@ -1490,8 +1508,10 @@ async def delete_school_document(
         _recompute_active_partner(partnership)
         school.partnership = partnership
 
+    deleted_info = {"b2b_school_id": school_id, "type": doc.type, "file_name": doc.file_name}
     db.delete(doc)
     db.commit()
+    log_action(db, current_user.id, "delete", "b2b_document", doc_id, deleted_info)
     return None
 
 
@@ -1575,4 +1595,5 @@ async def update_partnership_step(
 
     db.commit()
     db.refresh(school)
+    log_action(db, current_user.id, "update_partnership_step", "b2b_school", school_id, {"step": payload.step, "value": payload.value})
     return _school_to_response(db, school)

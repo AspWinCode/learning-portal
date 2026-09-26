@@ -39,6 +39,7 @@ from app.schemas.sales import (
     StudentFreezeCreate,
     StudentFreezeResponse,
 )
+from app.routers.action_log import log_action
 from app.services.manual_lesson import create_manual_lesson as manual_lesson_create
 from app.services.payment_status import (
     get_negative_balance_list as negative_balance_list_svc,
@@ -202,6 +203,14 @@ async def create_custom_lesson(
         if "не найден" in message.lower():
             raise HTTPException(status_code=404, detail=message)
         raise HTTPException(status_code=400, detail=message)
+    log_action(
+        db,
+        current_user.id,
+        "create",
+        "custom_lesson",
+        result.lesson.id,
+        {"title": payload.title, "lesson_date": str(payload.lesson_date), "trainer_id": payload.trainer_id},
+    )
     return _custom_lesson_to_response(db, result.lesson)
 
 
@@ -313,6 +322,14 @@ async def update_custom_lesson(
 
     db.commit()
     db.refresh(lesson)
+    log_action(
+        db,
+        current_user.id,
+        "update",
+        "custom_lesson",
+        lesson.id,
+        payload.model_dump(exclude_unset=True),
+    )
     return _custom_lesson_to_response(db, lesson)
 
 
@@ -325,9 +342,19 @@ async def delete_custom_lesson(
     lesson = db.query(CustomLesson).filter(CustomLesson.id == lesson_id).first()
     if not lesson:
         raise HTTPException(status_code=404, detail="Ручной урок не найден")
+    lesson_title = lesson.title
+    lesson_date_str = str(lesson.lesson_date)
     db.query(CustomLessonStudent).filter(CustomLessonStudent.lesson_id == lesson.id).delete(synchronize_session=False)
     db.delete(lesson)
     db.commit()
+    log_action(
+        db,
+        current_user.id,
+        "delete",
+        "custom_lesson",
+        lesson_id,
+        {"title": lesson_title, "lesson_date": lesson_date_str},
+    )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -378,6 +405,14 @@ async def create_program_makeup_compatibility(
     db.add(compatibility)
     db.commit()
     db.refresh(compatibility)
+    log_action(
+        db,
+        current_user.id,
+        "create",
+        "program_makeup_compatibility",
+        compatibility.id,
+        {"source_program_id": compatibility.source_program_id, "target_program_id": compatibility.target_program_id},
+    )
     source_program = db.query(Program).filter(Program.id == compatibility.source_program_id).first()
     target_program = db.query(Program).filter(Program.id == compatibility.target_program_id).first()
     return ProgramMakeupCompatibilityResponse(
@@ -399,8 +434,18 @@ async def delete_program_makeup_compatibility(
     compatibility = db.query(ProgramMakeupCompatibility).filter(ProgramMakeupCompatibility.id == compat_id).first()
     if not compatibility:
         raise HTTPException(status_code=404, detail="Правило не найдено")
+    source_program_id = compatibility.source_program_id
+    target_program_id = compatibility.target_program_id
     db.delete(compatibility)
     db.commit()
+    log_action(
+        db,
+        current_user.id,
+        "delete",
+        "program_makeup_compatibility",
+        compat_id,
+        {"source_program_id": source_program_id, "target_program_id": target_program_id},
+    )
 
 
 @router.get("/students/{student_id}/freezes", response_model=List[StudentFreezeResponse])
@@ -464,6 +509,14 @@ async def create_student_freeze(
     )
     db.commit()
     db.refresh(freeze)
+    log_action(
+        db,
+        current_user.id,
+        "create",
+        "student_freeze",
+        freeze.id,
+        {"student_id": student_id, "freeze_start": str(payload.freeze_start), "freeze_end": str(payload.freeze_end)},
+    )
     return StudentFreezeResponse(
         id=freeze.id,
         student_id=freeze.student_id,
@@ -488,8 +541,18 @@ async def delete_student_freeze(
     )
     if not freeze:
         raise HTTPException(status_code=404, detail="Заморозка не найдена")
+    freeze_start_str = str(freeze.freeze_start)
+    freeze_end_str = str(freeze.freeze_end)
     db.delete(freeze)
     db.commit()
+    log_action(
+        db,
+        current_user.id,
+        "delete",
+        "student_freeze",
+        freeze_id,
+        {"student_id": student_id, "freeze_start": freeze_start_str, "freeze_end": freeze_end_str},
+    )
 
 
 @router.get("/students/{student_id}/close-by-fact-preview", response_model=CloseByFactPreview)
@@ -536,4 +599,12 @@ async def close_by_fact_confirm(
         card.archived = True
     student.status = StudentStatus.ARCHIVED
     db.commit()
+    log_action(
+        db,
+        current_user.id,
+        "close_by_fact",
+        "student",
+        student_id,
+        {"amount": amount, "lessons_attended": attended, "period_start": str(period_start), "period_end": str(period_end)},
+    )
     return {"ok": True, "student_id": student_id, "amount": amount, "lessons_attended": attended}

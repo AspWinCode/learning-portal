@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app import auth
 from app.database import get_db
+from app.routers.action_log import log_action
 from app.models import (
     FinanceArticle,
     FinanceTarget,
@@ -142,6 +143,14 @@ async def update_trainer_rate(
     if "rate_per_hour" in payload_fields:
         user.trainer_rate_per_hour = payload.rate_per_hour
     db.commit()
+    log_action(
+        db,
+        current_user.id,
+        "update",
+        "trainer_rate",
+        trainer_id,
+        {"rate_per_lesson": user.trainer_rate, "rate_per_hour": user.trainer_rate_per_hour},
+    )
     return {"ok": True}
 
 
@@ -174,6 +183,7 @@ async def add_trainer_bonus(
             )
         )
     db.commit()
+    log_action(db, current_user.id, "add_bonus", "trainer_period_bonus", trainer_id, {"period": payload.period, "bonus": payload.bonus})
     return {"ok": True}
 
 
@@ -319,4 +329,12 @@ async def pay_trainer(
         )
 
     db.commit()
+    log_action(
+        db,
+        current_user.id,
+        "pay",
+        "trainer_payout",
+        trainer_id,
+        {"period": payload.period, "lessons_count": lessons_count, "hours_count": hours_count, "total": round(total, 2)},
+    )
     return {"ok": True}

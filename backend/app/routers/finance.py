@@ -102,6 +102,7 @@ from app.services.payment_status import get_payment_status_summary
 from app.dependencies import require_finance_access as dep_require_finance_access
 from app.dependencies import require_finance_manage as dep_require_finance_manage
 from app.student_display import get_student_display_name
+from app.routers.action_log import log_action
 
 
 router = APIRouter()
@@ -298,6 +299,7 @@ async def create_finance_account(
     db.add(account)
     db.commit()
     db.refresh(account)
+    log_action(db, current_user.id, "create", "finance_account", account.id, {"code": account.code, "name": account.name})
     return FinanceAccountResponse(
         id=account.id,
         code=account.code,
@@ -320,6 +322,7 @@ async def delete_finance_account(
         raise HTTPException(status_code=404, detail="Счёт не найден")
     account.is_active = False
     db.commit()
+    log_action(db, current_user.id, "deactivate", "finance_account", account_id, {"code": account.code})
 
 
 @router.get("/targets", response_model=List[FinanceTargetResponse])
@@ -360,6 +363,7 @@ async def create_finance_target(
     db.add(target)
     db.commit()
     db.refresh(target)
+    log_action(db, current_user.id, "create", "finance_target", target.id, {"code": target.code, "name": target.name})
     return FinanceTargetResponse(id=target.id, code=target.code, name=target.name, is_active=bool(target.is_active))
 
 
@@ -376,6 +380,7 @@ async def delete_finance_target(
         raise HTTPException(status_code=404, detail="Проект не найден")
     target.is_active = False
     db.commit()
+    log_action(db, current_user.id, "deactivate", "finance_target", target_id, {"code": target.code})
 
 
 @router.get("/model-templates", response_model=List[FinanceModelTemplateResponse])
@@ -412,6 +417,7 @@ async def create_finance_model_template(
     db.add(row)
     db.commit()
     db.refresh(row)
+    log_action(db, current_user.id, "create", "finance_model_template", row.id, {"key": row.key, "name": row.name})
     return row
 
 
@@ -435,6 +441,7 @@ async def update_finance_model_template(
         row.metrics_json = [m.model_dump(exclude_none=True) for m in payload.metrics]
     db.commit()
     db.refresh(row)
+    log_action(db, current_user.id, "update", "finance_model_template", row.id, {"key": row.key, "name": row.name})
     return row
 
 
@@ -451,8 +458,10 @@ async def delete_finance_model_template(
         raise HTTPException(status_code=404, detail="Шаблон не найден")
     if row.is_system:
         raise HTTPException(status_code=400, detail="Системный шаблон нельзя удалить")
+    template_key, template_name = row.key, row.name
     db.delete(row)
     db.commit()
+    log_action(db, current_user.id, "delete", "finance_model_template", template_id, {"key": template_key, "name": template_name})
 
 
 @router.get("/models", response_model=List[FinanceModelResponse])
@@ -532,6 +541,7 @@ async def create_finance_model(
         raise HTTPException(status_code=400, detail="Finance model with this name already exists for target")
     db.refresh(model)
     db.refresh(model, ["target"])
+    log_action(db, current_user.id, "create", "finance_model", model.id, {"name": model.name, "target_id": model.target_id, "template_key": model.template_key})
     return _model_response(model)
 
 
@@ -602,9 +612,13 @@ async def sync_finance_model_template(
     articles_after = db.query(FinanceArticle.id).filter(FinanceArticle.target_id == target_id).count()
     metrics_after = db.query(MetricDefinition.id).filter(MetricDefinition.target_id == target_id).count()
 
+    created_articles = articles_after - articles_before
+    created_metrics = metrics_after - metrics_before
+    log_action(db, current_user.id, "sync_template", "finance_model", model_id, {"created_articles": created_articles, "created_metrics": created_metrics})
+
     return {
-        "created_articles": articles_after - articles_before,
-        "created_metrics": metrics_after - metrics_before,
+        "created_articles": created_articles,
+        "created_metrics": created_metrics,
     }
 
 
@@ -645,6 +659,7 @@ async def update_finance_model(
     db.commit()
     db.refresh(row)
     db.refresh(row, ["target"])
+    log_action(db, current_user.id, "update", "finance_model", row.id, {"name": row.name})
     return _model_response(row)
 
 
@@ -658,8 +673,10 @@ async def delete_finance_model(
     row = db.query(FinanceModel).filter(FinanceModel.id == model_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Finance model not found")
+    model_name = row.name
     db.delete(row)
     db.commit()
+    log_action(db, current_user.id, "delete", "finance_model", model_id, {"name": model_name})
     return None
 
 
@@ -757,6 +774,7 @@ async def create_finance_article(
     db.add(art)
     db.commit()
     db.refresh(art)
+    log_action(db, current_user.id, "create", "finance_article", art.id, {"name": art.name, "direction": str(getattr(art.direction, "value", art.direction)), "target_id": art.target_id})
 
     return _article_response(art)
 
@@ -814,6 +832,7 @@ async def update_finance_article(
 
     db.commit()
     db.refresh(art)
+    log_action(db, current_user.id, "update", "finance_article", art.id, {"name": art.name})
 
     return _article_response(art)
 
@@ -837,6 +856,7 @@ async def delete_finance_article(
 
     art.is_active = False
     db.commit()
+    log_action(db, current_user.id, "deactivate", "finance_article", article_id, {"name": art.name})
     return {"ok": True}
 
 
@@ -932,6 +952,7 @@ async def save_budget_entries(
                 row = BudgetEntry(target_id=payload.target_id, article_id=item.article_id, period=payload.period)
                 db.add(row)
             row.amount_plan = item.amount_plan
+    log_action(db, current_user.id, "save", "finance_budget_entry", None, {"target_id": payload.target_id, "period": payload.period, "entries_count": len(payload.entries)})
     return await list_budget_entries(payload.target_id, payload.period, db, current_user)
 
 
@@ -970,6 +991,7 @@ async def create_metric(
     db.commit()
     db.refresh(row)
     db.refresh(row, ["target"])
+    log_action(db, current_user.id, "create", "finance_metric", row.id, {"name": row.name, "target_id": row.target_id})
     return _metric_response(row)
 
 
@@ -997,6 +1019,7 @@ async def update_metric(
     db.commit()
     db.refresh(row)
     db.refresh(row, ["target"])
+    log_action(db, current_user.id, "update", "finance_metric", row.id, {"name": row.name})
     return _metric_response(row)
 
 
@@ -1036,8 +1059,10 @@ async def delete_metric(
     row = db.query(MetricDefinition).filter(MetricDefinition.id == metric_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Metric not found")
+    metric_name = row.name
     db.delete(row)
     db.commit()
+    log_action(db, current_user.id, "delete", "finance_metric", metric_id, {"name": metric_name})
     return None
 
 
@@ -1079,6 +1104,7 @@ async def create_dashboard_widget(
     db.commit()
     db.refresh(row)
     db.refresh(row, ["metric", "target"])
+    log_action(db, current_user.id, "create", "finance_dashboard_widget", row.id, {"metric_id": row.metric_id, "target_id": row.target_id, "widget_type": row.widget_type})
     return _widget_response(row)
 
 
@@ -1104,6 +1130,7 @@ async def update_dashboard_widget(
     db.commit()
     db.refresh(row)
     db.refresh(row, ["metric", "target"])
+    log_action(db, current_user.id, "update", "finance_dashboard_widget", row.id, data)
     return _widget_response(row)
 
 
@@ -1119,6 +1146,7 @@ async def delete_dashboard_widget(
         raise HTTPException(status_code=404, detail="Widget not found")
     db.delete(row)
     db.commit()
+    log_action(db, current_user.id, "delete", "finance_dashboard_widget", widget_id, None)
     return None
 
 
@@ -2713,6 +2741,7 @@ async def import_finance_transactions(
         raise HTTPException(status_code=400, detail="Поддерживаются только форматы .csv и .xlsx")
 
     # Итоговые числа по импортированным и пропущенным строкам
+    log_action(db, current_user.id, "import", "finance_transaction", None, {"account_code": account_code, "imported": created, "skipped": skipped})
     return {"imported": created, "skipped": skipped}
 
 
@@ -2848,6 +2877,8 @@ async def create_manual_transaction(
     to_account = getattr(tx, "to_account", None)
     target = getattr(tx, "target", None)
     article = getattr(tx, "article", None)
+
+    log_action(db, current_user.id, "create", "finance_transaction", tx.id, {"amount": float(tx.amount or 0.0), "direction": str(getattr(tx.direction, "value", tx.direction)), "account_id": tx.account_id})
 
     return FinanceLedgerBankRow(
         id=tx.id,
@@ -3190,6 +3221,7 @@ async def update_finance_transaction(
 
     with db_transaction(db):
         pass
+    log_action(db, current_user.id, "patch", "finance_transaction", transaction_id, payload.model_dump(include=fields_set, mode="json"))
     tx = (
         db.query(FinanceTransaction)
         .options(
@@ -3250,6 +3282,8 @@ async def delete_finance_transaction(
     if not tx:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Транзакция не найдена")
 
+    deleted_amount = float(tx.amount or 0.0)
+    deleted_direction = str(getattr(tx.direction, "value", tx.direction))
     with db_transaction(db):
         if tx.bank_source and tx.bank_operation_id:
             bank_transaction = (
@@ -3267,6 +3301,7 @@ async def delete_finance_transaction(
                 bank_transaction.student_id = None
                 bank_transaction.student_account_id = None
         db.delete(tx)
+    log_action(db, current_user.id, "delete", "finance_transaction", transaction_id, {"amount": deleted_amount, "direction": deleted_direction})
     return {"ok": True}
 
 
@@ -3337,6 +3372,7 @@ async def apply_finance_transaction_to_student(
                 bank_transaction.student_id = payload.student_id
                 bank_transaction.student_account_id = payment_result.account.id
     db.refresh(tx)
+    log_action(db, current_user.id, "apply_to_student", "finance_transaction", tx.id, {"student_id": payload.student_id, "amount": amount})
 
     account_obj: Optional[FinanceAccount] = getattr(tx, "account", None)
     to_account_obj: Optional[FinanceAccount] = getattr(tx, "to_account", None)
@@ -3456,6 +3492,7 @@ async def apply_finance_transaction_split(
                 bank_transaction.status = BankTransactionStatus.APPLIED.value
                 bank_transaction.student_id = student_ids[0]
     db.refresh(tx)
+    log_action(db, current_user.id, "apply_split", "finance_transaction", tx.id, {"student_ids": student_ids, "splits": [{"student_id": s.student_id, "amount": s.amount} for s in splits]})
 
     account_obj: Optional[FinanceAccount] = getattr(tx, "account", None)
     to_account_obj: Optional[FinanceAccount] = getattr(tx, "to_account", None)
@@ -3580,6 +3617,7 @@ async def cancel_finance_transaction_assignment(
             for sid in touched_student_ids:
                 update_card_payment_dates(db, sid, date.today())
     db.refresh(tx)
+    log_action(db, current_user.id, "cancel_assignment", "finance_transaction", tx.id, {"prior_student_id": student_id, "amount": amount})
 
     account_obj: Optional[FinanceAccount] = getattr(tx, "account", None)
     to_account_obj: Optional[FinanceAccount] = getattr(tx, "to_account", None)
@@ -3649,6 +3687,7 @@ async def ignore_finance_transaction_assignment(
             bank_tx.status = BankTransactionStatus.IGNORED.value
     db.commit()
     db.refresh(tx)
+    log_action(db, current_user.id, "ignore_assignment", "finance_transaction", tx.id, None)
 
     account_obj = getattr(tx, "account", None)
     to_account_obj = getattr(tx, "to_account", None)
@@ -3703,6 +3742,7 @@ async def create_student_account_finance(
     with db_transaction(db):
         pass
     db.refresh(account)
+    log_action(db, current_user.id, "create", "student_account", account.id, {"student_id": payload.student_id, "name": payload.name})
     return StudentAccountResponse.model_validate(account)
 
 
@@ -3729,6 +3769,7 @@ async def apply_bank_transaction_to_student(
             raise HTTPException(status_code=404, detail=msg)
         raise HTTPException(status_code=400, detail=msg)
     db.refresh(result.transaction)
+    log_action(db, current_user.id, "apply", "finance_bank_transaction", transaction_id, {"student_id": payload.student_id})
     return BankTransactionResponse.model_validate(result.transaction)
 
 
@@ -3769,4 +3810,5 @@ async def backfill_bank_transactions_to_ledger(
             created += 1
 
     db.commit()
+    log_action(db, current_user.id, "backfill", "finance_bank_transaction", None, {"created": created, "updated": updated, "total": len(all_bank_txs)})
     return {"ok": True, "created": created, "updated": updated, "total": len(all_bank_txs)}

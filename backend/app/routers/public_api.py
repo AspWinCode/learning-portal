@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app.models import BlogPost, BlogPostStatus, BlogCategory, SiteSettings, CmsPage, Lead, LeadStatus, User, UserRole
+from app.routers.action_log import log_action
 from app.utils.phone import validate_phone_for_lead
 from app.services.person_sync import sync_lead_person
 
@@ -237,4 +238,8 @@ def submit_site_lead(payload: SiteLeadRequest, db: Session = Depends(get_db)):
     sync_lead_person(db, lead)
     db.commit()
     db.refresh(lead)
+    log_action(
+        db, None, "create" if not existing_lead else "update", "lead", lead.id,
+        {"name": name, "contact": contact, "track": payload.track, "source": "public_site_form"},
+    )
     return {"lead_id": lead.id}

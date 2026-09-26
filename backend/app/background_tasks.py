@@ -18,6 +18,7 @@ from app.background_jobs import (
     run_academy_ingest_expertise,
     run_academy_proactivity_scan,
     run_academy_scheduled_content,
+    run_capture_monthly_snapshots,
     run_expire_student_discounts,
     run_scheduled_messages,
     run_student_class_autopromo,
@@ -110,6 +111,11 @@ def task_academy_proactivity_scan() -> None:
 @dramatiq.actor(queue_name="periodic")
 def task_expire_student_discounts() -> None:
     run_expire_student_discounts()
+
+
+@dramatiq.actor(queue_name="periodic")
+def task_capture_monthly_snapshots() -> None:
+    run_capture_monthly_snapshots()
 
 
 @dramatiq.actor(queue_name="delivery", max_retries=1, time_limit=3_600_000)

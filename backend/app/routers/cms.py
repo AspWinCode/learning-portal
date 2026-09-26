@@ -16,6 +16,7 @@ from app.database import get_db
 from app.models import CmsPage, CmsPageVersion
 from app.auth import require_permission
 from app.models import User
+from app.routers.action_log import log_action
 
 LANDING_URL = os.getenv("LANDING_URL", "https://tirskix-academy.com")
 LANDING_REVALIDATE_SECRET = os.getenv("LANDING_REVALIDATE_SECRET", "")
@@ -216,6 +217,7 @@ def create_custom_page(
     db.add(page)
     db.commit()
     db.refresh(page)
+    log_action(db, current_user.id, "create", "cms_page", page.id, {"slug": page.slug, "label": page.label})
     return CmsPageOut(slug=page.slug, label=page.label, content=page.content, updated_at=page.updated_at)
 
 
@@ -232,8 +234,11 @@ def delete_custom_page(
         raise HTTPException(status_code=404, detail="Страница не найдена")
     if not _is_custom(page):
         raise HTTPException(status_code=400, detail="Нельзя удалить системную страницу")
+    page_id = page.id
+    page_label = page.label
     db.delete(page)
     db.commit()
+    log_action(db, current_user.id, "delete", "cms_page", page_id, {"slug": slug, "label": page_label})
 
 
 @router.put("/pages/{slug}", response_model=CmsPageOut)
@@ -264,6 +269,7 @@ def upsert_page(
     db.add(version)
     db.commit()
     db.refresh(page)
+    log_action(db, current_user.id, "save_draft", "cms_page", page.id, {"slug": slug, "version_id": version.id})
 
     draft = _latest_version(db, page.id, "draft")
     published = _latest_version(db, page.id, "published")
@@ -302,6 +308,7 @@ async def publish_page(
 
     db.commit()
     db.refresh(draft)
+    log_action(db, current_user.id, "publish", "cms_page", page.id, {"slug": slug, "version_id": draft.id})
 
     try:
         await _trigger_revalidate(slug)

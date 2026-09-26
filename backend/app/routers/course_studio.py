@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app import auth
 from app.database import get_db
 from app.models import CourseContent, CourseLesson, User
+from app.routers.action_log import log_action
 
 router = APIRouter()
 
@@ -122,6 +123,7 @@ def create_course(
     db.add(course)
     db.commit()
     db.refresh(course)
+    log_action(db, current_user.id, "create", "course_content", course.id, {"title": course.title, "is_published": course.is_published})
     return course
 
 
@@ -147,6 +149,7 @@ def update_course(
     course.is_published = body.is_published
     db.commit()
     db.refresh(course)
+    log_action(db, current_user.id, "update", "course_content", course.id, body.model_dump())
     return course
 
 
@@ -157,8 +160,10 @@ def delete_course(
     db: Session = Depends(get_db),
 ):
     course = _get_course_or_404(course_id, db)
+    course_title = course.title
     db.delete(course)
     db.commit()
+    log_action(db, current_user.id, "delete", "course_content", course_id, {"title": course_title})
 
 
 # ─── Lessons ─────────────────────────────────────────────────────────────────
@@ -183,6 +188,7 @@ def create_lesson(
     db.add(lesson)
     db.commit()
     db.refresh(lesson)
+    log_action(db, current_user.id, "create", "course_lesson", lesson.id, {"course_id": course_id, "title": lesson.title})
     return lesson
 
 
@@ -201,6 +207,7 @@ def update_lesson(
     lesson.is_published = body.is_published
     db.commit()
     db.refresh(lesson)
+    log_action(db, current_user.id, "update", "course_lesson", lesson.id, body.model_dump())
     return lesson
 
 
@@ -212,6 +219,7 @@ def delete_lesson(
     db: Session = Depends(get_db),
 ):
     lesson = _get_lesson_or_404(course_id, lesson_id, db)
+    lesson_title = lesson.title
     siblings = (
         db.query(CourseLesson)
         .filter(CourseLesson.course_id == course_id)
@@ -223,6 +231,7 @@ def delete_lesson(
     for i, s in enumerate(l for l in siblings if l.id != lesson_id):
         s.sort_order = i
     db.commit()
+    log_action(db, current_user.id, "delete", "course_lesson", lesson_id, {"course_id": course_id, "title": lesson_title})
 
 
 @router.post("/courses/{course_id}/lessons/{lesson_id}/move", response_model=List[LessonOut])
@@ -251,4 +260,5 @@ def move_lesson(
     db.commit()
     for l in lessons:
         db.refresh(l)
+    log_action(db, current_user.id, "move", "course_lesson", lesson_id, {"course_id": course_id, "direction": direction})
     return sorted(lessons, key=lambda l: l.sort_order)

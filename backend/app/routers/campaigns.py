@@ -31,6 +31,7 @@ from app.models import (
     User,
     UserRole,
 )
+from app.routers.action_log import log_action
 from app.services.email_broadcast_service import create_recipients, send_broadcast
 from app.schemas.campaigns import (
     AddSchoolsBody,
@@ -280,6 +281,7 @@ async def create_campaign_setting_item(
     db.add(item)
     db.commit()
     db.refresh(item)
+    log_action(db, current_user.id, "create", "campaign_dictionary_item", item.id, {"category": resolved, "value": value, "label": label})
     return _campaign_dictionary_response(item)
 
 
@@ -310,6 +312,7 @@ async def update_campaign_setting_item(
         item.position = int(data["position"])
     db.commit()
     db.refresh(item)
+    log_action(db, current_user.id, "update", "campaign_dictionary_item", item.id, data)
     return _campaign_dictionary_response(item)
 
 
@@ -327,8 +330,10 @@ async def delete_campaign_setting_item(
     ).first()
     if not item:
         raise HTTPException(status_code=404, detail="Campaign setting item not found")
+    deleted_info = {"category": resolved, "value": item.value, "label": item.label}
     db.delete(item)
     db.commit()
+    log_action(db, current_user.id, "delete", "campaign_dictionary_item", item_id, deleted_info)
     return None
 
 
@@ -374,6 +379,7 @@ async def create_campaign(
     db.refresh(c)
     _seed_campaign_stages(db, c)
     db.commit()
+    log_action(db, current_user.id, "create", "campaign", c.id, {"name": c.name, "type": c.type})
     c = db.query(Campaign).options(joinedload(Campaign.responsible)).filter(Campaign.id == c.id).first()
     return _campaign_to_response(c)
 
@@ -405,6 +411,7 @@ async def update_campaign(
         setattr(c, k, v)
     db.commit()
     db.refresh(c)
+    log_action(db, current_user.id, "update", "campaign", campaign_id, data)
     c = db.query(Campaign).options(joinedload(Campaign.responsible)).filter(Campaign.id == campaign_id).first()
     return _campaign_to_response(c)
 
@@ -418,8 +425,10 @@ async def delete_campaign(
     c = db.query(Campaign).filter(Campaign.id == campaign_id).first()
     if not c:
         raise HTTPException(status_code=404, detail="Campaign not found")
+    deleted_info = {"name": c.name, "type": c.type}
     db.delete(c)
     db.commit()
+    log_action(db, current_user.id, "delete", "campaign", campaign_id, deleted_info)
 
 
 @router.get("/campaigns/{campaign_id}/school-campaigns", response_model=List[SchoolCampaignResponse])
@@ -476,6 +485,7 @@ async def add_schools_to_campaign(
     db.commit()
     for sc in added:
         db.refresh(sc)
+    log_action(db, current_user.id, "add_schools", "campaign", campaign_id, {"added_school_ids": [sc.b2b_school_id for sc in added]})
     rows = (
         db.query(SchoolCampaign)
         .options(joinedload(SchoolCampaign.school))
@@ -537,6 +547,7 @@ async def update_school_campaign(
         setattr(sc, k, v)
     db.commit()
     db.refresh(sc)
+    log_action(db, current_user.id, "update", "school_campaign", sc_id, data)
     return _school_campaign_to_response(sc)
 
 
@@ -552,8 +563,10 @@ async def remove_school_from_campaign(
     ).first()
     if not sc:
         raise HTTPException(status_code=404, detail="SchoolCampaign not found")
+    deleted_info = {"campaign_id": campaign_id, "b2b_school_id": sc.b2b_school_id}
     db.delete(sc)
     db.commit()
+    log_action(db, current_user.id, "remove_school", "school_campaign", sc_id, deleted_info)
 
 
 # --- CampaignStage (произвольные этапы воронки) ---
@@ -614,6 +627,7 @@ async def create_campaign_stage(
     db.add(stage)
     db.commit()
     db.refresh(stage)
+    log_action(db, current_user.id, "create", "campaign_stage", stage.id, {"campaign_id": campaign_id, "label": label})
     return _stage_to_response(stage)
 
 
@@ -644,6 +658,7 @@ async def update_campaign_stage(
         stage.is_terminal = bool(data["is_terminal"])
     db.commit()
     db.refresh(stage)
+    log_action(db, current_user.id, "update", "campaign_stage", stage_id, data)
     return _stage_to_response(stage)
 
 
@@ -662,6 +677,7 @@ async def reorder_campaign_stages(
         if stage:
             stage.position = (index + 1) * 10
     db.commit()
+    log_action(db, current_user.id, "reorder", "campaign_stage", None, {"campaign_id": campaign_id, "ordered_ids": payload.ordered_ids})
     ordered = (
         db.query(CampaignStage)
         .filter(CampaignStage.campaign_id == campaign_id)
@@ -698,8 +714,10 @@ async def delete_campaign_stage(
         SchoolCampaign.campaign_id == campaign_id,
         SchoolCampaign.stage == stage.key,
     ).update({SchoolCampaign.stage: target_key}, synchronize_session=False)
+    deleted_info = {"campaign_id": campaign_id, "label": stage.label, "key": stage.key}
     db.delete(stage)
     db.commit()
+    log_action(db, current_user.id, "delete", "campaign_stage", stage_id, deleted_info)
     return None
 
 
@@ -810,6 +828,7 @@ async def create_campaign_event(
     if campaign.is_game_jam:
         _seed_jam_stages(db, event)
         db.commit()
+    log_action(db, current_user.id, "create", "campaign_event", event.id, {"campaign_id": campaign_id, "title": event.title})
     return _campaign_event_to_response(event)
 
 
@@ -840,6 +859,7 @@ async def update_campaign_event(
         setattr(event, k, v)
     db.commit()
     db.refresh(event)
+    log_action(db, current_user.id, "update", "campaign_event", event_id, data)
     return _campaign_event_to_response(event)
 
 
@@ -868,8 +888,10 @@ async def delete_campaign_event(
     ).first()
     if not event:
         raise HTTPException(status_code=404, detail="Campaign event not found")
+    deleted_info = {"campaign_id": campaign_id, "title": event.title}
     db.delete(event)
     db.commit()
+    log_action(db, current_user.id, "delete", "campaign_event", event_id, deleted_info)
 
 
 # --- CampaignEventStage (этапы внутреннего канбана джема) ---
@@ -934,6 +956,7 @@ async def create_jam_stage(
     db.add(stage)
     db.commit()
     db.refresh(stage)
+    log_action(db, current_user.id, "create", "campaign_event_stage", stage.id, {"campaign_event_id": event_id, "label": label})
     return _jam_stage_to_response(stage)
 
 
@@ -964,6 +987,7 @@ async def update_jam_stage(
         stage.is_terminal = bool(data["is_terminal"])
     db.commit()
     db.refresh(stage)
+    log_action(db, current_user.id, "update", "campaign_event_stage", stage_id, data)
     return _jam_stage_to_response(stage)
 
 
@@ -983,6 +1007,7 @@ async def reorder_jam_stages(
         if s:
             s.position = (index + 1) * 10
     db.commit()
+    log_action(db, current_user.id, "reorder", "campaign_event_stage", None, {"campaign_event_id": event_id, "ordered_ids": payload.ordered_ids})
     ordered = (
         db.query(CampaignEventStage)
         .filter(CampaignEventStage.campaign_event_id == event_id)
@@ -1019,8 +1044,10 @@ async def delete_jam_stage(
         SchoolCampaignEvent.campaign_event_id == event_id,
         SchoolCampaignEvent.jam_stage == stage.key,
     ).update({SchoolCampaignEvent.jam_stage: target_key}, synchronize_session=False)
+    deleted_info = {"campaign_event_id": event_id, "label": stage.label, "key": stage.key}
     db.delete(stage)
     db.commit()
+    log_action(db, current_user.id, "delete", "campaign_event_stage", stage_id, deleted_info)
     return None
 
 
@@ -1315,6 +1342,11 @@ async def upsert_school_campaign_event(
         ))
     db.commit()
     db.refresh(sce)
+    log_action(db, current_user.id, "update", "school_campaign_event", sce.id, {
+        "campaign_event_id": event_id,
+        "school_campaign_id": school_campaign_id,
+        **data,
+    })
     return _sce_to_response(sce)
 
 
@@ -1425,6 +1457,11 @@ async def bulk_update_event_schools(
     db.commit()
     for sce in result:
         db.refresh(sce)
+    log_action(db, current_user.id, "bulk_update", "school_campaign_event", None, {
+        "campaign_event_id": event_id,
+        "school_campaign_ids": list(valid_ids),
+        **data,
+    })
     return [_sce_to_response(sce) for sce in result]
 
 
@@ -1562,6 +1599,7 @@ async def link_broadcast_to_campaign(
     broadcast.campaign_id = campaign_id
     db.commit()
     _ensure_email_stages(db, campaign_id)
+    log_action(db, current_user.id, "link_broadcast", "campaign", campaign_id, {"broadcast_id": broadcast_id})
     return {"ok": True, "campaign_id": campaign_id, "broadcast_id": broadcast_id}
 
 
@@ -1602,6 +1640,7 @@ async def unlink_broadcast_from_campaign(
                 db.delete(stage)
 
     db.commit()
+    log_action(db, current_user.id, "unlink_broadcast", "campaign", campaign_id, {"broadcast_id": broadcast_id})
     return {"ok": True}
 
 
@@ -1661,6 +1700,11 @@ async def sync_broadcast_campaign_stages(
     )
     broadcast.opened_count = actual_opened
     db.commit()
+    log_action(db, current_user.id, "sync_broadcast", "campaign", campaign_id, {
+        "broadcast_id": broadcast_id,
+        "advanced_sent": advanced_sent,
+        "advanced_opened": advanced_opened,
+    })
     return {"advanced_sent": advanced_sent, "advanced_opened": advanced_opened}
 
 
@@ -1725,6 +1769,7 @@ def create_school_campaign_log(
     db.commit()
     db.refresh(log)
     db.refresh(log, attribute_names=["created_by"])
+    log_action(db, current_user.id, "create", "school_campaign_log", log.id, {"school_campaign_id": sc_id, "type": body.type})
     return _log_to_response(log)
 
 
@@ -1743,8 +1788,10 @@ def delete_school_campaign_log(
     )
     if not log:
         raise HTTPException(status_code=404, detail="Log not found")
+    deleted_info = {"school_campaign_id": sc_id, "type": log.type, "text": log.text}
     db.delete(log)
     db.commit()
+    log_action(db, current_user.id, "delete", "school_campaign_log", log_id, deleted_info)
 
 
 # ---------------------------------------------------------------------------
@@ -1819,6 +1866,11 @@ def send_template_to_school(
     db.add(log)
     db.commit()
     db.refresh(log)
+    log_action(db, current_user.id, "send_template", "school_campaign_log", log.id, {
+        "school_campaign_id": sc_id,
+        "template_id": body.template_id,
+        "to_email": to_email,
+    })
 
     return SendTemplateResponse(
         log_id=log.id,

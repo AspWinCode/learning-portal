@@ -26,6 +26,7 @@ from app.schemas.owner_funnels import (
     AddSchoolsByCityPayload,
 )
 from app.models import User
+from app.routers.action_log import log_action
 
 router = APIRouter()
 
@@ -183,6 +184,14 @@ async def add_schools_by_city_to_event(
         db.add(item)
         added += 1
     db.commit()
+    log_action(
+        db,
+        current_user.id,
+        "add_schools_by_city",
+        "owner_funnel_event",
+        event_id,
+        {"city": city, "added": added, "total_in_city": len(schools)},
+    )
     return {"message": "ok", "added": added, "total_in_city": len(schools)}
 
 
@@ -200,6 +209,7 @@ async def create_owner_funnel_event(
     db.add(event)
     db.commit()
     db.refresh(event)
+    log_action(db, current_user.id, "create", "owner_funnel_event", event.id, {"event_name": event.event_name, "event_dates": event.event_dates})
     return OwnerFunnelEventResponse(
         id=event.id,
         event_name=_fix_mojibake(event.event_name) or event.event_name,
@@ -271,6 +281,14 @@ async def create_owner_funnel_item(
     db.add(item)
     db.commit()
     db.refresh(item)
+    log_action(
+        db,
+        current_user.id,
+        "create",
+        "owner_funnel_item",
+        item.id,
+        {"funnel_type": item.funnel_type, "event_id": item.event_id, "stage": item.stage, "title": item.title},
+    )
     return OwnerFunnelItemResponse(
         id=item.id,
         funnel_type=item.funnel_type,
@@ -364,6 +382,14 @@ async def update_owner_funnel_item(
         item.card_data = payload.card_data
     db.commit()
     db.refresh(item)
+    log_action(
+        db,
+        current_user.id,
+        "update",
+        "owner_funnel_item",
+        item.id,
+        payload.model_dump(exclude_unset=True),
+    )
     return OwnerFunnelItemResponse(
         id=item.id,
         funnel_type=item.funnel_type,
@@ -387,6 +413,9 @@ async def delete_owner_funnel_item(
     item = db.query(OwnerFunnelItem).filter(OwnerFunnelItem.id == item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
+    item_title = item.title
+    funnel_type = item.funnel_type
     db.delete(item)
     db.commit()
+    log_action(db, current_user.id, "delete", "owner_funnel_item", item_id, {"title": item_title, "funnel_type": funnel_type})
     return {"message": "ok"}

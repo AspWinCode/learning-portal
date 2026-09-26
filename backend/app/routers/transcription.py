@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app import auth
 from app.models import Transcription, TranscriptionStatus, User
+from app.routers.action_log import log_action
 from app.schemas.transcription import TranscriptionResponse, TranscriptionsListResponse
 from app.database import get_db
 from app.services.transcription_service import TRANSCRIPTION_STORAGE_ROOT, ensure_storage_root
@@ -114,6 +115,8 @@ async def upload_audio(
 
     task_transcribe_audio.send(row.id)
 
+    log_action(db, current_user.id, "create", "transcription", row.id, {"filename": filename, "size_bytes": len(data)})
+
     return _to_response(row)
 
 
@@ -126,8 +129,10 @@ async def delete_transcription(
     row = db.query(Transcription).filter(Transcription.id == transcription_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Transcription not found")
+    filename = row.filename
     audio_path = (TRANSCRIPTION_STORAGE_ROOT / row.storage_key).resolve()
     if TRANSCRIPTION_STORAGE_ROOT in audio_path.parents and audio_path.exists():
         audio_path.unlink()
     db.delete(row)
     db.commit()
+    log_action(db, current_user.id, "delete", "transcription", transcription_id, {"filename": filename})

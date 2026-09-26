@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app import auth
 from app.database import get_db
 from app.models import AppSetting, Note, NoteFolder, User
+from app.routers.action_log import log_action
 from app.schemas.notes import (
     NoteFolderCreate,
     NoteFolderResponse,
@@ -86,6 +87,7 @@ async def create_folder(
     db.add(folder)
     db.commit()
     db.refresh(folder)
+    log_action(db, current_user.id, "create", "note_folder", folder.id, {"name": folder.name, "parent_id": folder.parent_id})
     return folder
 
 
@@ -122,6 +124,7 @@ async def update_folder(
         folder.parent_id = payload.parent_id
     db.commit()
     db.refresh(folder)
+    log_action(db, current_user.id, "update", "note_folder", folder.id, payload.model_dump(exclude_unset=True))
     return folder
 
 
@@ -139,6 +142,7 @@ async def delete_folder(
     )
     if not folder:
         raise HTTPException(status_code=404, detail="Папка не найдена")
+    folder_name = folder.name
     parent_id = folder.parent_id
     # Move child folders up one level
     db.query(NoteFolder).filter(NoteFolder.parent_id == folder_id).update(
@@ -150,6 +154,7 @@ async def delete_folder(
     )
     db.delete(folder)
     db.commit()
+    log_action(db, current_user.id, "delete", "note_folder", folder_id, {"name": folder_name})
 
 
 # ── Notes ────────────────────────────────────────────────────────────────────
@@ -196,6 +201,7 @@ async def create_note(
     db.add(note)
     db.commit()
     db.refresh(note)
+    log_action(db, current_user.id, "create", "note", note.id, {"title": note.title, "folder_id": note.folder_id})
     return note
 
 
@@ -227,6 +233,7 @@ async def update_note(
         note.folder_id = data["folder_id"]
     db.commit()
     db.refresh(note)
+    log_action(db, current_user.id, "update", "note", note.id, data)
     return note
 
 
@@ -240,5 +247,7 @@ async def delete_note(
     note = db.query(Note).filter(Note.id == note_id, Note.user_id == current_user.id).first()
     if not note:
         raise HTTPException(status_code=404, detail="Заметка не найдена")
+    note_title = note.title
     db.delete(note)
     db.commit()
+    log_action(db, current_user.id, "delete", "note", note_id, {"title": note_title})

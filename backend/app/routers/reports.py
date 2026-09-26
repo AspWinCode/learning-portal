@@ -10,6 +10,7 @@ from app.models import (
     GroupStudent, Group, StudentStatus, CharacteristicStatus
 )
 from app.schemas.reports import ReportRequest
+from app.routers.action_log import log_action
 import io
 import csv
 from openpyxl import Workbook
@@ -278,7 +279,12 @@ async def export_report(
         query = query.filter(Grade.created_at <= report_request.end_date)
     
     grades = query.all()
-    
+
+    log_action(
+        db, current_user.id, "export", "grade_report", None,
+        {"format": report_request.format, "count": len(grades), "student_ids": report_request.student_ids, "trainer_ids": report_request.trainer_ids},
+    )
+
     if report_request.format == "csv":
         # CSV экспорт
         output = io.StringIO()

@@ -26,6 +26,7 @@ from app.schemas.sales import (
     PublicMakeupSlotsResponse,
     AbsenceMakeupAssign,
 )
+from app.routers.action_log import log_action
 from app.services.absence_makeup import assign_makeup_for_absence as absence_makeup_assign
 from app.services.makeup_selection import (
     close_send_link_tasks_for_absence,
@@ -141,6 +142,7 @@ async def update_absence_stage(
         absence.makeup_custom_lesson_id = None
     db.commit()
     db.refresh(absence)
+    log_action(db, current_user.id, "update_stage", "absence_follow_up", absence.id, {"prev_stage": prev_stage, "stage": payload.stage})
     if payload.stage == "link_sent" and prev_stage != "link_sent":
         try:
             queue_makeup_selection_request(db, absence, created_by=current_user.id)
@@ -187,6 +189,14 @@ async def assign_makeup(
     )
     db.commit()
     db.refresh(absence)
+    log_action(
+        db,
+        current_user.id,
+        "assign_makeup",
+        "absence_follow_up",
+        absence.id,
+        {"makeup_group_id": absence.makeup_group_id, "makeup_lesson_date": str(getattr(absence, "makeup_lesson_date", None) or "")},
+    )
     return _absence_to_response(db, absence)
 
 
@@ -344,4 +354,12 @@ async def confirm_public_makeup_selection(
     close_send_link_tasks_for_absence(db, absence_id=absence.id)
     db.commit()
     db.refresh(absence)
+    log_action(
+        db,
+        None,
+        "assign_makeup",
+        "absence_follow_up",
+        absence.id,
+        {"makeup_group_id": absence.makeup_group_id, "makeup_lesson_date": str(getattr(absence, "makeup_lesson_date", None) or ""), "source": "public_link"},
+    )
     return _absence_to_response(db, absence)

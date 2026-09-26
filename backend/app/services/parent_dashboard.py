@@ -25,6 +25,7 @@ from app.models import (
     Topic,
     User,
 )
+from app.routers.action_log import log_action
 from app.services.ai_insights import build_student_learning_ai_snapshot
 from app.services.owner_workspace_notifications import (
     _send_web_push,
@@ -192,6 +193,14 @@ async def create_parent_question(
     db.add(row)
     db.commit()
     db.refresh(row)
+    log_action(
+        db,
+        user_id=parent_user.id,
+        action_type="create_parent_question",
+        entity_type="parent_question",
+        entity_id=row.id,
+        details={"student_id": student.id},
+    )
 
     return row
 
@@ -240,6 +249,14 @@ def upsert_parent_web_push_subscription(
         row.auth = auth
         row.user_agent = user_agent
     db.commit()
+    log_action(
+        db,
+        user_id=user_id,
+        action_type="upsert_web_push_subscription",
+        entity_type="owner_workspace_web_push_subscription",
+        entity_id=row.id,
+        details={"endpoint": endpoint},
+    )
     return get_parent_web_push_status(db, user_id)
 
 
@@ -253,6 +270,14 @@ def remove_parent_web_push_subscription(db: Session, *, user_id: int, endpoint: 
         .delete(synchronize_session=False)
     )
     db.commit()
+    log_action(
+        db,
+        user_id=user_id,
+        action_type="remove_web_push_subscription",
+        entity_type="owner_workspace_web_push_subscription",
+        entity_id=None,
+        details={"endpoint": endpoint},
+    )
     return get_parent_web_push_status(db, user_id)
 
 
@@ -289,6 +314,14 @@ def send_characteristic_published_web_push(
             db.query(OwnerWorkspaceWebPushSubscription)
             .filter(OwnerWorkspaceWebPushSubscription.id.in_(stale_ids))
             .delete(synchronize_session=False)
+        )
+        log_action(
+            db,
+            user_id=None,
+            action_type="remove_stale_web_push_subscriptions",
+            entity_type="owner_workspace_web_push_subscription",
+            entity_id=None,
+            details={"user_id": user_id, "stale_ids": stale_ids},
         )
         db.commit()
 

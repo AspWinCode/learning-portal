@@ -12,6 +12,7 @@ from typing import Any, Dict, Optional
 from sqlalchemy.orm import Session
 
 from app.models import Student, StudentCard, StudentStatus, User, UserRole
+from app.routers.action_log import log_action
 from app.services.parent_invite import create_parent_user_no_invite
 from app.services.student_activity import log_student_activity
 from app.services.student_account_finance import ensure_default_student_account
@@ -65,6 +66,14 @@ def convert_student_card_to_student(
         card.student_id = student.id
         card.anketa_status = "converted"
         sync_student_card_person(db, card)
+        log_action(
+            db,
+            user_id=None,
+            action_type="convert_student_card",
+            entity_type="student_card",
+            entity_id=card.id,
+            details={"student_id": student.id, "mode": "existing_student"},
+        )
         db.commit()
         db.refresh(card)
         return ConvertStudentCardResult(student_id=student.id, card=card)
@@ -111,6 +120,14 @@ def convert_student_card_to_student(
             description=f"Анкета #{card.id}",
             created_by=None,
             payload_json={"student_card_id": card.id},
+        )
+        log_action(
+            db,
+            user_id=None,
+            action_type="convert_student_card",
+            entity_type="student_card",
+            entity_id=card.id,
+            details={"student_id": student.id, "parent_id": parent_user.id, "mode": "existing_parent"},
         )
         db.commit()
         db.refresh(card)
@@ -176,6 +193,14 @@ def convert_student_card_to_student(
         description=f"Анкета #{card.id}",
         created_by=None,
         payload_json={"student_card_id": card.id},
+    )
+    log_action(
+        db,
+        user_id=None,
+        action_type="convert_student_card",
+        entity_type="student_card",
+        entity_id=card.id,
+        details={"student_id": student.id, "parent_id": parent_user.id, "mode": "new_parent"},
     )
     db.commit()
     db.refresh(card)

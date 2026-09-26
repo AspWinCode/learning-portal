@@ -79,6 +79,12 @@ def run_expire_student_discounts() -> None:
     _run_db_job("expire_student_discounts", expire_student_discounts)
 
 
+def run_capture_monthly_snapshots() -> None:
+    from app.services.metrics_snapshot import capture_monthly_snapshots
+
+    _run_db_job("capture_monthly_snapshots", capture_monthly_snapshots)
+
+
 def run_lesson_deduction_reconcile() -> None:
     import asyncio
 

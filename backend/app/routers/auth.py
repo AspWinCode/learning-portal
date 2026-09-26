@@ -12,6 +12,7 @@ from app import auth
 from app.database import get_db
 from app.models import User
 from app.rate_limit import limiter
+from app.routers.action_log import log_action
 from app.schemas.auth import (
     PasswordReset,
     PasswordResetConfirm,
@@ -54,16 +55,18 @@ async def login(
         data={"sub": user.email, "role": user.role.value},
         expires_delta=access_token_expires,
     )
+    log_action(db, user.id, "login", "user", user.id)
     return {"access_token": access_token, "token_type": "bearer"}
 
 
 @router.post("/guest", response_model=Token)
-async def guest_login():
+async def guest_login(db: Session = Depends(get_db)):
     access_token_expires = timedelta(hours=auth.GUEST_TOKEN_EXPIRE_HOURS)
     access_token = auth.create_access_token(
         data={"sub": "guest", "role": "guest"},
         expires_delta=access_token_expires,
     )
+    log_action(db, None, "login", "user", auth.GUEST_USER_ID, {"guest": True})
     return {"access_token": access_token, "token_type": "bearer"}
 
 
@@ -71,13 +74,19 @@ async def guest_login():
 async def logout(
     token: str = Depends(auth.oauth2_scheme),
     current_user: User = Depends(auth.get_current_active_user),
+    db: Session = Depends(get_db),
 ):
     auth.blacklist_token(token)
+    log_user_id = None if int(current_user.id) == auth.GUEST_USER_ID else current_user.id
+    log_action(db, log_user_id, "logout", "user", current_user.id)
     return {"message": "Logged out"}
 
 
 @router.post("/refresh", response_model=Token)
-async def refresh_session(current_user: User = Depends(auth.get_current_active_user)):
+async def refresh_session(
+    current_user: User = Depends(auth.get_current_active_user),
+    db: Session = Depends(get_db),
+):
     if int(current_user.id) == auth.GUEST_USER_ID:
         access_token_expires = timedelta(hours=auth.GUEST_TOKEN_EXPIRE_HOURS)
         access_token = auth.create_access_token(
@@ -91,6 +100,8 @@ async def refresh_session(current_user: User = Depends(auth.get_current_active_u
             data={"sub": current_user.email, "role": effective_role.value},
             expires_delta=access_token_expires,
         )
+    log_user_id = None if int(current_user.id) == auth.GUEST_USER_ID else current_user.id
+    log_action(db, log_user_id, "refresh_token", "user", current_user.id)
     return {"access_token": access_token, "token_type": "bearer"}
 
 
@@ -132,6 +143,7 @@ async def _password_reset_request_impl(payload: PasswordReset, db: Session):
         db.add(user)
         db.commit()
         db.refresh(user)
+        log_action(db, user.id, "request_password_reset", "user", user.id)
 
         if is_email_configured():
             try:
@@ -196,6 +208,7 @@ async def password_reset_confirm(
     user.password_reset_expires_at = None
     db.add(user)
     db.commit()
+    log_action(db, user.id, "reset_password", "user", user.id)
 
     bearer_token = _extract_bearer_token(authorization)
     if bearer_token:
@@ -236,6 +249,7 @@ async def set_password_by_invite(
     user.invite_token_expires_at = None
     db.add(user)
     db.commit()
+    log_action(db, user.id, "set_password", "user", user.id, {"via": "invite"})
     return {"message": "Пароль установлен. Можно войти в кабинет."}
 
 

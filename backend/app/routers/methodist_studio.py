@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app import auth
 from app.database import get_db
 from app.models import UserRole
+from app.routers.action_log import log_action
 
 router = APIRouter()
 
@@ -44,6 +45,7 @@ def methodist_login(payload: MethodistLoginRequest, db: Session = Depends(get_db
         data={"sub": str(user.id)},
         expires_delta=timedelta(minutes=METHODIST_TOKEN_EXPIRE_MINUTES),
     )
+    log_action(db, user.id, "login", "methodist_session", user.id, {"email": user.email})
     return MethodistLoginResponse(
         access_token=token,
         full_name=user.full_name or user.email,

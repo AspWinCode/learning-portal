@@ -12,6 +12,7 @@ from uuid import uuid4
 from app.database import get_db
 from app import auth
 from app.models import AppSetting, LeadStatus, OwnerWorkspaceNotification, OwnerWorkspaceWebPushSubscription, StudentCard, User, UserRole
+from app.routers.action_log import log_action
 from app.schemas.notes import NotesEnabledRolesResponse, NotesEnabledRolesUpdate
 from app.schemas.settings import (
     B2BDistrictsResponse,
@@ -1038,6 +1039,7 @@ async def set_logo(
 
     db.commit()
     db.refresh(setting)
+    log_action(db, current_user.id, "set_logo", "app_setting", LOGO_KEY, {"size": len(data_url)})
     return {"data_url": setting.value}
 
 
@@ -1067,6 +1069,7 @@ async def set_pwa_role_settings(
     }
     _set_json_setting(db, PWA_SETTINGS_KEY, next_settings)
     db.commit()
+    log_action(db, current_user.id, "update_pwa_config", "pwa_role_settings", PWA_SETTINGS_KEY, {"role_modules": next_settings["role_modules"]})
     return PwaRoleSettingsResponse(
         modules=[_pwa_module_response(module) for module in PWA_MODULES],
         role_modules=next_settings["role_modules"],
@@ -1106,6 +1109,7 @@ async def set_my_pwa_settings(
     settings["owner_user_modules"][str(current_user.id)] = enabled_modules
     _set_json_setting(db, PWA_SETTINGS_KEY, settings)
     db.commit()
+    log_action(db, current_user.id, "update_pwa_config", "pwa_role_settings", PWA_SETTINGS_KEY, {"owner_user_id": current_user.id, "enabled_modules": enabled_modules})
     available_modules = [
         module for module in PWA_MODULES if _module_available_for_user(current_user, module)
     ]
@@ -1152,6 +1156,7 @@ async def set_b2b_districts(
         db.add(setting)
     db.commit()
     db.refresh(setting)
+    log_action(db, current_user.id, "update_districts", "b2b_district", DISTRICTS_KEY, {"count": len(items)})
     return B2BDistrictsResponse(items=items)
 
 
@@ -1191,6 +1196,7 @@ async def set_refused_reasons(
         db.add(setting)
     db.commit()
     db.refresh(setting)
+    log_action(db, current_user.id, "update_refused_reasons", "app_setting", REFUSED_REASONS_KEY, {"count": len(items)})
     return RefusedReasonsResponse(items=items)
 
 
@@ -1276,6 +1282,7 @@ async def set_lead_pipeline_stages(
         db.add(setting)
     db.commit()
     db.refresh(setting)
+    log_action(db, current_user.id, "update_pipeline_stages", "app_setting", LEAD_PIPELINE_STAGES_KEY, {"count": len(items_sorted)})
     return LeadPipelineStagesResponse(items=items_sorted)
 
 
@@ -1318,6 +1325,7 @@ async def set_learning_links(
         db.add(setting)
     db.commit()
     db.refresh(setting)
+    log_action(db, current_user.id, "update_learning_links", "app_setting", LEARNING_LINKS_KEY, {"count": len(items)})
     return LearningLinksResponse(items=items)
 
 
@@ -1360,6 +1368,7 @@ async def set_payment_links(
         db.add(setting)
     db.commit()
     db.refresh(setting)
+    log_action(db, current_user.id, "update_payment_links", "app_setting", PAYMENT_LINKS_KEY, {"count": len(items)})
     return PaymentLinksResponse(items=items)
 
 
@@ -1380,6 +1389,7 @@ async def set_student_questionnaires(
     items = _normalize_student_questionnaires({"items": body.items})
     _set_json_setting(db, STUDENT_QUESTIONNAIRES_KEY, {"items": items})
     db.commit()
+    log_action(db, current_user.id, "update_student_questionnaires", "app_setting", STUDENT_QUESTIONNAIRES_KEY, {"count": len(items)})
     return StudentQuestionnairesResponse(items=items)
 
 
@@ -1440,6 +1450,7 @@ async def submit_public_student_questionnaire(
     db.add(card)
     db.commit()
     db.refresh(card)
+    log_action(db, None, "submit", "student_card", card.id, {"questionnaire_id": questionnaire_id, "source": card.source})
     return {"ok": True, "card_id": int(card.id)}
 
 
@@ -1472,6 +1483,11 @@ async def set_parent_weekly_digest_settings_route(
             "send_time": body.send_time,
         },
     )
+    log_action(db, current_user.id, "update_parent_weekly_digest", "app_setting", "parent_weekly_digest", {
+        "enabled": bool(body.enabled),
+        "weekday": int(body.weekday),
+        "send_time": body.send_time,
+    })
     return ParentWeeklyDigestSettingsResponse(
         enabled=bool(saved.get("enabled", True)),
         weekday=int(saved.get("weekday", 4)),
@@ -1508,6 +1524,7 @@ async def set_owner_workspace_task_config(
     }
     _set_json_setting(db, OWNER_WS_TASK_CONFIG_KEY, data)
     db.commit()
+    log_action(db, current_user.id, "update_owner_ws_task_config", "app_setting", OWNER_WS_TASK_CONFIG_KEY, data)
     return OwnerWorkspaceTaskConfigResponse.model_validate(data)
 
 
@@ -1535,6 +1552,7 @@ async def set_owner_workspace_project_config(
     }
     _set_json_setting(db, OWNER_WS_PROJECT_CONFIG_KEY, data)
     db.commit()
+    log_action(db, current_user.id, "update_owner_ws_project_config", "app_setting", OWNER_WS_PROJECT_CONFIG_KEY, data)
     return OwnerWorkspaceProjectConfigResponse.model_validate(data)
 
 
@@ -1575,6 +1593,7 @@ async def set_owner_workspace_permission_policy(
     }
     _set_json_setting(db, OWNER_WS_PERMISSION_POLICY_KEY, data)
     db.commit()
+    log_action(db, current_user.id, "update_owner_ws_permission_policy", "app_setting", OWNER_WS_PERMISSION_POLICY_KEY, data)
     return OwnerWorkspacePermissionPolicyResponse.model_validate(data)
 
 
@@ -1602,6 +1621,7 @@ async def set_owner_workspace_notification_config(
     }
     _set_json_setting(db, OWNER_WS_NOTIFICATION_CONFIG_KEY, data)
     db.commit()
+    log_action(db, current_user.id, "update_owner_ws_notification_config", "app_setting", OWNER_WS_NOTIFICATION_CONFIG_KEY, data)
     return OwnerWorkspaceNotificationConfigResponse.model_validate(data)
 
 
@@ -1622,6 +1642,7 @@ async def set_owner_workspace_task_tags(
     items = _normalize_owner_ws_tag_items(body.items)
     _set_json_setting(db, OWNER_WS_TASK_TAGS_KEY, items)
     db.commit()
+    log_action(db, current_user.id, "update_owner_ws_task_tags", "app_setting", OWNER_WS_TASK_TAGS_KEY, {"count": len(items)})
     return OwnerWorkspaceTagDictionaryResponse(items=items)
 
 
@@ -1642,6 +1663,7 @@ async def set_owner_workspace_contact_tags(
     items = _normalize_owner_ws_tag_items(body.items)
     _set_json_setting(db, OWNER_WS_CONTACT_TAGS_KEY, items)
     db.commit()
+    log_action(db, current_user.id, "update_owner_ws_contact_tags", "app_setting", OWNER_WS_CONTACT_TAGS_KEY, {"count": len(items)})
     return OwnerWorkspaceTagDictionaryResponse(items=items)
 
 
@@ -1662,6 +1684,7 @@ async def set_owner_workspace_contact_sources(
     items = _normalize_owner_ws_tag_items(body.items)
     _set_json_setting(db, OWNER_WS_CONTACT_SOURCES_KEY, items)
     db.commit()
+    log_action(db, current_user.id, "update_owner_ws_contact_sources", "app_setting", OWNER_WS_CONTACT_SOURCES_KEY, {"count": len(items)})
     return OwnerWorkspaceTagDictionaryResponse(items=items)
 
 
@@ -1682,6 +1705,7 @@ async def set_owner_workspace_counterparty_roles(
     items = _normalize_owner_ws_tag_items(body.items)
     _set_json_setting(db, OWNER_WS_COUNTERPARTY_ROLES_KEY, items)
     db.commit()
+    log_action(db, current_user.id, "update_owner_ws_counterparty_roles", "app_setting", OWNER_WS_COUNTERPARTY_ROLES_KEY, {"count": len(items)})
     return OwnerWorkspaceTagDictionaryResponse(items=items)
 
 
@@ -1702,6 +1726,7 @@ async def set_owner_workspace_counterparty_industries(
     items = _normalize_owner_ws_tag_items(body.items)
     _set_json_setting(db, OWNER_WS_COUNTERPARTY_INDUSTRIES_KEY, items)
     db.commit()
+    log_action(db, current_user.id, "update_owner_ws_counterparty_industries", "app_setting", OWNER_WS_COUNTERPARTY_INDUSTRIES_KEY, {"count": len(items)})
     return OwnerWorkspaceTagDictionaryResponse(items=items)
 
 
@@ -1725,6 +1750,7 @@ async def set_owner_workspace_settings_bundle(
     bundle = _normalize_owner_ws_settings_bundle(_extract_owner_ws_settings_bundle_update(body))
     _apply_owner_ws_settings_bundle(db, bundle)
     db.commit()
+    log_action(db, current_user.id, "update_owner_ws_settings_bundle", "owner_workspace_settings_bundle", None, None)
     return OwnerWorkspaceSettingsBundleEnvelopeResponse.model_validate(
         _build_owner_ws_settings_bundle_envelope(bundle, current_user)
     )
@@ -1761,6 +1787,7 @@ async def create_owner_workspace_settings_snapshot(
     snapshots.insert(0, snapshot)
     _set_owner_ws_settings_snapshots(db, snapshots[:25])
     db.commit()
+    log_action(db, current_user.id, "create", "owner_workspace_settings_snapshot", None, {"snapshot_id": snapshot["id"], "name": snapshot["name"]})
     return OwnerWorkspaceSettingsSnapshotResponse.model_validate(snapshot)
 
 
@@ -1782,6 +1809,7 @@ async def update_owner_workspace_settings_snapshot(
     snapshot["note"] = ((body.note or "").strip()[:500] or None)
     _set_owner_ws_settings_snapshots(db, snapshots)
     db.commit()
+    log_action(db, current_user.id, "update", "owner_workspace_settings_snapshot", None, {"snapshot_id": snapshot_id, "name": snapshot["name"]})
     return OwnerWorkspaceSettingsSnapshotResponse.model_validate(snapshot)
 
 
@@ -1811,6 +1839,7 @@ async def duplicate_owner_workspace_settings_snapshot(
     snapshots.insert(0, duplicate)
     _set_owner_ws_settings_snapshots(db, snapshots[:25])
     db.commit()
+    log_action(db, current_user.id, "duplicate", "owner_workspace_settings_snapshot", None, {"source_snapshot_id": snapshot_id, "snapshot_id": duplicate["id"], "name": duplicate["name"]})
     return OwnerWorkspaceSettingsSnapshotResponse.model_validate(duplicate)
 
 
@@ -1827,6 +1856,7 @@ async def apply_owner_workspace_settings_snapshot(
     bundle = _normalize_owner_ws_settings_bundle(_extract_owner_ws_settings_bundle_update(snapshot["bundle"]))
     _apply_owner_ws_settings_bundle(db, bundle)
     db.commit()
+    log_action(db, current_user.id, "apply", "owner_workspace_settings_snapshot", None, {"snapshot_id": snapshot_id})
     return OwnerWorkspaceSettingsBundleEnvelopeResponse.model_validate(
         _build_owner_ws_settings_bundle_envelope(bundle, current_user)
     )
@@ -1844,6 +1874,7 @@ async def delete_owner_workspace_settings_snapshot(
         raise HTTPException(status_code=404, detail="snapshot not found")
     _set_owner_ws_settings_snapshots(db, filtered)
     db.commit()
+    log_action(db, current_user.id, "delete", "owner_workspace_settings_snapshot", None, {"snapshot_id": snapshot_id})
     return OwnerWorkspaceSettingsSnapshotsResponse(items=filtered)
 
 
@@ -1961,6 +1992,11 @@ async def retry_owner_workspace_notification_delivery(
               retried_web_push += 1
 
     db.commit()
+    log_action(db, current_user.id, "retry_notification_delivery", "owner_workspace_notification", None, {
+        "notification_ids": notification_ids,
+        "retried_email": retried_email,
+        "retried_web_push": retried_web_push,
+    })
     return OwnerWorkspaceNotificationDeliveryRetryResponse(
         retried_email=retried_email,
         retried_web_push=retried_web_push,
@@ -2013,4 +2049,5 @@ async def set_notes_enabled_roles(
     else:
         db.add(AppSetting(key=NOTES_ENABLED_ROLES_KEY, value=raw))
     db.commit()
+    log_action(db, current_user.id, "update_notes_roles", "app_setting", NOTES_ENABLED_ROLES_KEY, {"enabled_roles": roles})
     return NotesEnabledRolesResponse(enabled_roles=roles)

@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app import auth
 from app.database import get_db
+from app.routers.action_log import log_action
 from app.models import EmailBroadcast, EmailBroadcastAttachment, EmailBroadcastRecipient, SchoolCampaign, User
 from app.schemas.email_broadcasts import (
     EmailBroadcastAttachmentResponse,
@@ -128,6 +129,7 @@ def create_broadcast(
     db.add(broadcast)
     db.commit()
     db.refresh(broadcast)
+    log_action(db, current_user.id, "create", "email_broadcast", broadcast.id, {"name": broadcast.name})
     return _to_response(broadcast)
 
 
@@ -158,10 +160,12 @@ def update_broadcast(
     if broadcast.status not in ("draft",):
         raise HTTPException(status_code=400, detail="Редактировать можно только черновик")
 
-    for field, value in payload.model_dump(exclude_none=True).items():
+    update_data = payload.model_dump(exclude_none=True)
+    for field, value in update_data.items():
         setattr(broadcast, field, value)
     db.commit()
     db.refresh(broadcast)
+    log_action(db, current_user.id, "update", "email_broadcast", broadcast_id, update_data)
     return _to_response(broadcast)
 
 
@@ -177,8 +181,10 @@ def delete_broadcast(
         raise HTTPException(status_code=404, detail="Рассылка не найдена")
     if broadcast.status == "sending":
         raise HTTPException(status_code=400, detail="Нельзя удалить рассылку в процессе отправки")
+    broadcast_name = broadcast.name
     db.delete(broadcast)
     db.commit()
+    log_action(db, current_user.id, "delete", "email_broadcast", broadcast_id, {"name": broadcast_name})
 
 
 # ─── SEND ────────────────────────────────────────────────────────────────────
@@ -215,6 +221,7 @@ def send_broadcast(
     from app.background_tasks import task_send_email_broadcast
     task_send_email_broadcast.send(broadcast_id)
 
+    log_action(db, current_user.id, "send", "email_broadcast", broadcast_id, {"school_ids": school_ids})
     return _to_response(broadcast)
 
 
@@ -254,6 +261,7 @@ def save_recipients(
     broadcast.sent_at = None
     db.commit()
     db.refresh(broadcast)
+    log_action(db, current_user.id, "save_recipients", "email_broadcast", broadcast_id, {"school_ids": school_ids})
     return _to_response(broadcast)
 
 
@@ -288,6 +296,7 @@ def launch_broadcast(
     from app.background_tasks import task_send_email_broadcast
     task_send_email_broadcast.send(broadcast_id)
 
+    log_action(db, current_user.id, "launch", "email_broadcast", broadcast_id)
     return _to_response(broadcast)
 
 
@@ -314,6 +323,7 @@ def test_send_broadcast(
     )
     if not ok:
         raise HTTPException(status_code=502, detail="Ошибка отправки — проверьте SMTP-настройки")
+    log_action(db, current_user.id, "test_send", "email_broadcast", broadcast_id, {"to_email": payload.to_email})
     return {"ok": True}
 
 
@@ -346,6 +356,7 @@ def retry_failed(
     from app.background_tasks import task_send_email_broadcast
     task_send_email_broadcast.send(broadcast_id)
 
+    log_action(db, current_user.id, "retry_failed", "email_broadcast", broadcast_id, {"failed_count": failed_count})
     return _to_response(broadcast)
 
 
@@ -385,6 +396,7 @@ def resume_broadcast(
     from app.background_tasks import task_send_email_broadcast
     task_send_email_broadcast.send(broadcast_id)
 
+    log_action(db, current_user.id, "resume", "email_broadcast", broadcast_id, {"pending_count": pending_count})
     return _to_response(broadcast, db)
 
 
@@ -426,6 +438,14 @@ async def upload_attachment(
     db.add(attachment)
     db.commit()
     db.refresh(attachment)
+    log_action(
+        db,
+        current_user.id,
+        "upload_attachment",
+        "email_broadcast_attachment",
+        attachment.id,
+        {"broadcast_id": broadcast_id, "original_filename": original_filename},
+    )
     return EmailBroadcastAttachmentResponse(
         id=attachment.id,
         broadcast_id=attachment.broadcast_id,
@@ -457,8 +477,17 @@ def delete_attachment(
     except Exception:
         pass
 
+    attachment_filename = attachment.original_filename
     db.delete(attachment)
     db.commit()
+    log_action(
+        db,
+        current_user.id,
+        "delete_attachment",
+        "email_broadcast_attachment",
+        attachment_id,
+        {"broadcast_id": broadcast_id, "original_filename": attachment_filename},
+    )
 
 
 # ─── ANALYTICS ───────────────────────────────────────────────────────────────

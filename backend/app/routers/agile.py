@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app import auth
 from app.database import get_db
+from app.routers.action_log import log_action
 from app.models import (
     AgileRoleAccess,
     ItChecklistItem,
@@ -318,6 +319,7 @@ async def update_role_access(
     row.updated_by_id = current_user.id
     db.commit()
     db.refresh(row)
+    log_action(db, current_user.id, "update", "agile_role_access", None, {"role": row.role, "enabled": row.enabled, "access_level": row.access_level})
     return AgileRoleAccessItem(role=row.role, enabled=row.enabled, access_level=row.access_level)
 
 
@@ -369,6 +371,7 @@ async def create_project(
     db.add(ItProjectMember(project_id=project.id, user_id=current_user.id, role="owner"))
     db.commit()
     db.refresh(project)
+    log_action(db, current_user.id, "create", "agile_project", project.id, {"name": project.name, "key": project.key})
     return _project_to_response(project, db)
 
 
@@ -402,10 +405,12 @@ async def update_project(
 ):
     project = _get_project_or_404(project_id, db)
     _assert_project_access(project, current_user, db)
-    for field, value in body.model_dump(exclude_unset=True).items():
+    update_data = body.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
         setattr(project, field, value)
     db.commit()
     db.refresh(project)
+    log_action(db, current_user.id, "update", "agile_project", project_id, update_data)
     return _project_to_response(project, db)
 
 
@@ -452,6 +457,7 @@ async def add_member(
     db.add(m)
     db.commit()
     db.refresh(m)
+    log_action(db, current_user.id, "add_member", "agile_project", project_id, {"user_id": body.user_id, "role": body.role})
     return ItMemberResponse(
         id=m.id, project_id=m.project_id, user_id=m.user_id,
         role=m.role, joined_at=m.joined_at,
@@ -476,6 +482,7 @@ async def update_member(
     m.role = body.role
     db.commit()
     db.refresh(m)
+    log_action(db, current_user.id, "update_member", "agile_project", project_id, {"user_id": user_id, "role": m.role})
     return ItMemberResponse(
         id=m.id, project_id=m.project_id, user_id=m.user_id,
         role=m.role, joined_at=m.joined_at,
@@ -501,6 +508,7 @@ async def remove_member(
         raise HTTPException(status_code=404, detail="Участник не найден")
     db.delete(m)
     db.commit()
+    log_action(db, current_user.id, "remove_member", "agile_project", project_id, {"user_id": user_id})
 
 
 # ─── Эпики ──────────────────────────────────────────────────────────────────
@@ -539,6 +547,7 @@ async def create_epic(
     db.add(epic)
     db.commit()
     db.refresh(epic)
+    log_action(db, current_user.id, "create", "agile_epic", epic.id, {"project_id": project_id, "title": epic.title})
     return _epic_to_response(epic, db)
 
 
@@ -553,10 +562,12 @@ async def update_epic(
     epic = db.query(ItEpic).filter(ItEpic.id == epic_id, ItEpic.project_id == project_id).first()
     if not epic:
         raise HTTPException(status_code=404, detail="Эпик не найден")
-    for field, value in body.model_dump(exclude_unset=True).items():
+    update_data = body.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
         setattr(epic, field, value)
     db.commit()
     db.refresh(epic)
+    log_action(db, current_user.id, "update", "agile_epic", epic_id, update_data)
     return _epic_to_response(epic, db)
 
 
@@ -570,9 +581,11 @@ async def delete_epic(
     epic = db.query(ItEpic).filter(ItEpic.id == epic_id, ItEpic.project_id == project_id).first()
     if not epic:
         raise HTTPException(status_code=404, detail="Эпик не найден")
+    epic_title = epic.title
     db.query(ItIssue).filter(ItIssue.epic_id == epic_id).update({"epic_id": None})
     db.delete(epic)
     db.commit()
+    log_action(db, current_user.id, "delete", "agile_epic", epic_id, {"project_id": project_id, "title": epic_title})
 
 
 # ─── Спринты ────────────────────────────────────────────────────────────────
@@ -608,6 +621,7 @@ async def create_sprint(
     db.add(sprint)
     db.commit()
     db.refresh(sprint)
+    log_action(db, current_user.id, "create", "agile_sprint", sprint.id, {"project_id": project_id, "name": sprint.name})
     return _sprint_to_response(sprint, db)
 
 
@@ -622,10 +636,12 @@ async def update_sprint(
     sprint = db.query(ItSprint).filter(ItSprint.id == sprint_id, ItSprint.project_id == project_id).first()
     if not sprint:
         raise HTTPException(status_code=404, detail="Спринт не найден")
-    for field, value in body.model_dump(exclude_unset=True).items():
+    update_data = body.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
         setattr(sprint, field, value)
     db.commit()
     db.refresh(sprint)
+    log_action(db, current_user.id, "update", "agile_sprint", sprint_id, update_data)
     return _sprint_to_response(sprint, db)
 
 
@@ -651,6 +667,7 @@ async def start_sprint(
     sprint.status = "active"
     db.commit()
     db.refresh(sprint)
+    log_action(db, current_user.id, "start", "agile_sprint", sprint_id, {"project_id": project_id})
     return _sprint_to_response(sprint, db)
 
 
@@ -675,6 +692,7 @@ async def complete_sprint(
     sprint.status = "completed"
     db.commit()
     db.refresh(sprint)
+    log_action(db, current_user.id, "complete", "agile_sprint", sprint_id, {"project_id": project_id, "move_to_backlog": move_to_backlog})
     return _sprint_to_response(sprint, db)
 
 
@@ -826,6 +844,7 @@ async def create_issue(
     )
     db.add(issue)
     db.commit()
+    log_action(db, current_user.id, "create", "agile_issue", issue.id, {"project_id": project_id, "title": issue.title, "type": issue.type})
     issue = (
         _base_issue_query(project_id, db)
         .filter(ItIssue.id == issue.id)
@@ -860,9 +879,11 @@ async def update_issue(
     issue = db.query(ItIssue).filter(ItIssue.id == issue_id, ItIssue.project_id == project_id).first()
     if not issue:
         raise HTTPException(status_code=404, detail="Задача не найдена")
-    for field, value in body.model_dump(exclude_unset=True).items():
+    update_data = body.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
         setattr(issue, field, value)
     db.commit()
+    log_action(db, current_user.id, "update", "agile_issue", issue_id, update_data)
     issue = _base_issue_query(project_id, db).filter(ItIssue.id == issue_id).first()
     return _issue_to_full(issue)
 
@@ -884,6 +905,7 @@ async def move_issue(
     if body.sprint_id is not None:
         issue.sprint_id = body.sprint_id
     db.commit()
+    log_action(db, current_user.id, "move", "agile_issue", issue_id, {"status": body.status, "position": body.position, "sprint_id": body.sprint_id})
     issue = _base_issue_query(project_id, db).filter(ItIssue.id == issue_id).first()
     return _issue_to_full(issue)
 
@@ -898,8 +920,10 @@ async def delete_issue(
     issue = db.query(ItIssue).filter(ItIssue.id == issue_id, ItIssue.project_id == project_id).first()
     if not issue:
         raise HTTPException(status_code=404, detail="Задача не найдена")
+    issue_title = issue.title
     db.delete(issue)
     db.commit()
+    log_action(db, current_user.id, "delete", "agile_issue", issue_id, {"project_id": project_id, "title": issue_title})
 
 
 # ─── Чеклист ────────────────────────────────────────────────────────────────
@@ -923,6 +947,7 @@ async def add_checklist_item(
     db.add(item)
     db.commit()
     db.refresh(item)
+    log_action(db, current_user.id, "create", "agile_checklist_item", item.id, {"issue_id": issue_id, "text": item.text})
     return ItChecklistItemResponse(id=item.id, issue_id=item.issue_id, text=item.text, completed=item.completed, assignee_id=item.assignee_id, order=item.order)
 
 
@@ -938,10 +963,12 @@ async def update_checklist_item(
     item = db.query(ItChecklistItem).filter(ItChecklistItem.id == item_id, ItChecklistItem.issue_id == issue_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Пункт не найден")
-    for field, value in body.model_dump(exclude_unset=True).items():
+    update_data = body.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
         setattr(item, field, value)
     db.commit()
     db.refresh(item)
+    log_action(db, current_user.id, "update", "agile_checklist_item", item_id, update_data)
     return ItChecklistItemResponse(id=item.id, issue_id=item.issue_id, text=item.text, completed=item.completed, assignee_id=item.assignee_id, order=item.order)
 
 
@@ -956,8 +983,10 @@ async def delete_checklist_item(
     item = db.query(ItChecklistItem).filter(ItChecklistItem.id == item_id, ItChecklistItem.issue_id == issue_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Пункт не найден")
+    item_text = item.text
     db.delete(item)
     db.commit()
+    log_action(db, current_user.id, "delete", "agile_checklist_item", item_id, {"issue_id": issue_id, "text": item_text})
 
 
 # ─── Комментарии ────────────────────────────────────────────────────────────
@@ -977,6 +1006,7 @@ async def add_comment(
     db.add(comment)
     db.commit()
     db.refresh(comment)
+    log_action(db, current_user.id, "create", "agile_comment", comment.id, {"issue_id": issue_id})
     return ItIssueCommentResponse(
         id=comment.id, issue_id=comment.issue_id, author_id=comment.author_id,
         author_name=current_user.full_name, text=comment.text,
@@ -1003,6 +1033,7 @@ async def delete_comment(
         raise HTTPException(status_code=403, detail="Можно удалять только свои комментарии")
     db.delete(comment)
     db.commit()
+    log_action(db, current_user.id, "delete", "agile_comment", comment_id, {"issue_id": issue_id})
 
 
 # ─── Аналитика ──────────────────────────────────────────────────────────────

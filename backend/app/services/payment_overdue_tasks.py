@@ -17,6 +17,7 @@ from app.models import (
     GroupStudent,
 )
 from app.student_display import get_student_display_name
+from app.routers.action_log import log_action
 from app.services.student_activity import log_student_activity
 
 
@@ -171,7 +172,7 @@ def create_payment_overdue_tasks(db: Session) -> int:
         # Этап 2: просрочка 10+ дней, нет активной задачи этапа 2
         if next_pay <= deadline_2:
             if not _has_active_task(db, student_id, TASK_KIND_PAYMENT_OVERDUE, 2):
-                _create_payment_overdue_task(
+                task = _create_payment_overdue_task(
                     db,
                     student_id=student_id,
                     student_name=student_name,
@@ -189,13 +190,21 @@ def create_payment_overdue_tasks(db: Session) -> int:
                     created_by=created_by_id,
                     payload_json={"stage": 2, "next_payment_date": next_pay.isoformat()},
                 )
+                log_action(
+                    db,
+                    user_id=None,
+                    action_type="create_overdue_task",
+                    entity_type="task",
+                    entity_id=task.id,
+                    details={"student_id": student_id, "stage": 2, "next_payment_date": next_pay.isoformat()},
+                )
                 created += 1
                 continue
 
         # Этап 1: просрочка 3+ дней, нет активной задачи этапа 1
         if next_pay <= deadline_1:
             if not _has_active_task(db, student_id, TASK_KIND_PAYMENT_OVERDUE, 1):
-                _create_payment_overdue_task(
+                task = _create_payment_overdue_task(
                     db,
                     student_id=student_id,
                     student_name=student_name,
@@ -212,6 +221,14 @@ def create_payment_overdue_tasks(db: Session) -> int:
                     description=f"Первое напоминание, дата оплаты: {next_pay}",
                     created_by=created_by_id,
                     payload_json={"stage": 1, "next_payment_date": next_pay.isoformat()},
+                )
+                log_action(
+                    db,
+                    user_id=None,
+                    action_type="create_overdue_task",
+                    entity_type="task",
+                    entity_id=task.id,
+                    details={"student_id": student_id, "stage": 1, "next_payment_date": next_pay.isoformat()},
                 )
                 created += 1
 

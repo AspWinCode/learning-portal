@@ -262,6 +262,11 @@ async def create_owner_useful_link_folder(
         created_by_id=current_user.id,
     )
     db.add(folder)
+    db.flush()
+    _log_audit(
+        db, entity_type="useful_link_folder", entity_id=folder.id, action_type="create",
+        author_id=current_user.id, new_value={"name": folder.name, "parent_id": folder.parent_id},
+    )
     db.commit()
     db.refresh(folder)
     return _useful_link_folder_response(folder)
@@ -291,6 +296,10 @@ async def update_owner_useful_link_folder(
         folder.description = (payload.description or "").strip() or None
     if "sort_order" in updates:
         folder.sort_order = payload.sort_order or 0
+    _log_audit(
+        db, entity_type="useful_link_folder", entity_id=folder.id, action_type="update",
+        author_id=current_user.id, new_value=updates,
+    )
     db.commit()
     db.refresh(folder)
     return _useful_link_folder_response(folder)
@@ -311,6 +320,10 @@ async def delete_owner_useful_link_folder(
         synchronize_session=False,
     )
     db.query(OwnerUsefulLinkFolder).filter(OwnerUsefulLinkFolder.id.in_(folder_ids)).delete(synchronize_session=False)
+    _log_audit(
+        db, entity_type="useful_link_folder", entity_id=folder_id, action_type="delete",
+        author_id=current_user.id, old_value={"name": folder.name, "descendant_folder_ids": folder_ids},
+    )
     db.commit()
     return None
 
@@ -335,6 +348,11 @@ async def create_owner_useful_link(
         created_by_id=current_user.id,
     )
     db.add(link)
+    db.flush()
+    _log_audit(
+        db, entity_type="useful_link", entity_id=link.id, action_type="create",
+        author_id=current_user.id, new_value={"title": link.title, "url": link.url, "folder_id": link.folder_id},
+    )
     db.commit()
     db.refresh(link)
     return _useful_link_response(link)
@@ -367,6 +385,10 @@ async def update_owner_useful_link(
         link.tags = payload.tags
     if "sort_order" in updates:
         link.sort_order = payload.sort_order or 0
+    _log_audit(
+        db, entity_type="useful_link", entity_id=link.id, action_type="update",
+        author_id=current_user.id, new_value=updates,
+    )
     db.commit()
     db.refresh(link)
     return _useful_link_response(link)
@@ -381,6 +403,10 @@ async def delete_owner_useful_link(
     link = db.query(OwnerUsefulLink).filter(OwnerUsefulLink.id == link_id).first()
     if not link:
         raise HTTPException(status_code=404, detail="Link not found")
+    _log_audit(
+        db, entity_type="useful_link", entity_id=link.id, action_type="delete",
+        author_id=current_user.id, old_value={"title": link.title, "url": link.url, "folder_id": link.folder_id},
+    )
     db.delete(link)
     db.commit()
     return None

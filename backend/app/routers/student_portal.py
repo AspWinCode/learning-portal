@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app import auth
 from app.database import get_db
+from app.routers.action_log import log_action
 from app.models import (
     AppSetting,
     CourseCatalogItem,
@@ -183,6 +184,7 @@ async def update_portal_settings(
     else:
         row.value = _json.dumps(payload.model_dump())
     db.commit()
+    log_action(db, current_user.id, "update", "student_portal_settings", None, payload.model_dump())
     return payload
 
 
@@ -519,6 +521,7 @@ async def admin_create_catalog_item(
     db.add(item)
     db.commit()
     db.refresh(item)
+    log_action(db, current_user.id, "create", "course_catalog_item", item.id, {"code": item.code, "name": item.name})
     return CourseCatalogItemOut(
         id=item.id, code=item.code, name=item.name, description=item.description,
         cover_image_url=item.cover_image_url, kind=item.kind, has_access=False,
@@ -535,10 +538,12 @@ async def admin_update_catalog_item(
     item = db.query(CourseCatalogItem).filter(CourseCatalogItem.id == item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Курс не найден")
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    update_data = payload.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
         setattr(item, field, value)
     db.commit()
     db.refresh(item)
+    log_action(db, current_user.id, "update", "course_catalog_item", item.id, update_data)
     return CourseCatalogItemOut(
         id=item.id, code=item.code, name=item.name, description=item.description,
         cover_image_url=item.cover_image_url, kind=item.kind, has_access=False,
@@ -609,6 +614,7 @@ async def admin_create_student_credential(
     db.add(credential)
     db.commit()
     db.refresh(credential)
+    log_action(db, current_user.id, "create", "student_credential", credential.id, {"student_id": student.id, "login": credential.login})
     return StudentCredentialOut.model_validate(credential)
 
 
@@ -641,6 +647,10 @@ async def admin_update_student_credential(
 
     db.commit()
     db.refresh(credential)
+    log_action(
+        db, current_user.id, "update", "student_credential", credential.id,
+        payload.model_dump(exclude_unset=True, exclude={"password"}),
+    )
     return StudentCredentialOut.model_validate(credential)
 
 
@@ -686,6 +696,10 @@ async def admin_grant_course_access(
             ).delete()
         db.commit()
         db.refresh(existing)
+        log_action(
+            db, current_user.id, "grant_course_access", "student_course_access", existing.id,
+            {"student_id": student.id, "catalog_item_id": item.id, "reactivated": True},
+        )
         await _sync_pixelforge_enrollment(item, student.id, enroll=True)
         await _sync_codelab_enrollment(item, student.id, enroll=True)
         return StudentCourseAccessOut.model_validate(existing)
@@ -701,6 +715,10 @@ async def admin_grant_course_access(
     db.add(grant)
     db.commit()
     db.refresh(grant)
+    log_action(
+        db, current_user.id, "grant_course_access", "student_course_access", grant.id,
+        {"student_id": student.id, "catalog_item_id": item.id},
+    )
     await _sync_pixelforge_enrollment(item, student.id, enroll=True)
     await _sync_codelab_enrollment(item, student.id, enroll=True)
     return StudentCourseAccessOut.model_validate(grant)
@@ -799,6 +817,17 @@ async def admin_bulk_grant_course_access(
             _logger.warning("Bulk grant failed for student %s: %s", sid, e)
             results.append(BulkGrantOutcome(student_id=sid, full_name=student.full_name, outcome="error", detail=str(e)))
 
+    log_action(
+        db, current_user.id, "bulk_grant_course_access", "student_course_access", None,
+        {
+            "catalog_item_id": item.id,
+            "group_id": payload.group_id,
+            "granted": sum(1 for r in results if r.outcome == "granted"),
+            "reactivated": sum(1 for r in results if r.outcome == "reactivated"),
+            "already_active": sum(1 for r in results if r.outcome == "already_active"),
+            "errors": sum(1 for r in results if r.outcome == "error"),
+        },
+    )
     return BulkGrantCourseAccessResponse(dry_run=False, catalog_item_id=item.id, results=results)
 
 
@@ -816,6 +845,10 @@ async def admin_revoke_course_access(
     grant.status = StudentCourseAccessStatus.REVOKED
     grant.revoked_at = datetime.now(timezone.utc)
     db.commit()
+    log_action(
+        db, current_user.id, "revoke_course_access", "student_course_access", grant.id,
+        {"student_id": grant.student_id, "catalog_item_id": grant.catalog_item_id},
+    )
 
     item = db.query(CourseCatalogItem).filter(CourseCatalogItem.id == grant.catalog_item_id).first()
     if item:

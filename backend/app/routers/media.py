@@ -10,9 +10,12 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 from app.auth import require_any_permission
+from app.database import get_db
 from app.models import User
+from app.routers.action_log import log_action
 
 router = APIRouter()
 
@@ -54,6 +57,7 @@ class MediaUploadOut(BaseModel):
 @router.post("/upload", response_model=MediaUploadOut)
 async def upload_media(
     file: UploadFile = File(...),
+    db: Session = Depends(get_db),
     current_user: User = Depends(
         require_any_permission("seo.manage", "kodex.manage", "technolab.manage", "media.upload")
     ),
@@ -86,6 +90,10 @@ async def upload_media(
         raise HTTPException(status_code=500, detail="Ошибка хранилища")
 
     dest.write_bytes(data)
+    log_action(
+        db, current_user.id, "upload", "media_file", None,
+        {"key": key, "filename": file.filename, "content_type": file.content_type, "size_bytes": len(data)},
+    )
     return MediaUploadOut(url=f"{PORTAL_BASE_URL}/api/v1/media/files/{key}", key=key)
 
 

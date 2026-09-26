@@ -25,6 +25,7 @@ from app.services.max_messenger import (
     get_personal_qr,
     MAX_MESSAGE_TEXT_LIMIT,
 )
+from app.routers.action_log import log_action
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +134,9 @@ def _send_max_immediately(
         )
         db.add(comm)
         db.commit()
+        log_action(db, current_user.id, "send", "max_message", comm.id, {"lead_id": lead.id, "message": message})
+    else:
+        log_action(db, current_user.id, "send", "max_message", None, {"user_id": user_id, "message": message})
 
     return MaxSendResponse(success=True, message_id=message_id, error=None)
 
@@ -176,6 +180,7 @@ def api_max_send(
     db.add(m)
     db.commit()
     db.refresh(m)
+    log_action(db, current_user.id, "schedule", "max_message", m.id, {"phone": phone, "scheduled_at": send_at.isoformat()})
     return MaxSendResponse(success=True, message_id=m.id, error=None)
 
 
@@ -238,4 +243,5 @@ def api_max_process_scheduled(
         processed += 1
 
     db.commit()
+    log_action(db, current_user.id, "process_scheduled", "max_message", None, {"processed": processed})
     return processed

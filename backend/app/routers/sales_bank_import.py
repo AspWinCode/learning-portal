@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app import auth
 from app.database import get_db
 from app.models import BankTransaction, BankTransactionStatus, User
+from app.routers.action_log import log_action
 from app.services.finance_ledger import ensure_finance_transaction_for_bank_transaction
 from app.utils.phone import normalize_phone
 
@@ -263,7 +264,12 @@ async def import_bank_transactions_from_excel(
         )
     )
     if is_vertical:
-        return _import_bank_transactions_vertical(rows, db)
+        result = _import_bank_transactions_vertical(rows, db)
+        log_action(
+            db, current_user.id, "import", "bank_transaction", None,
+            {"filename": file.filename, "imported": result.get("imported"), "skipped": result.get("skipped")},
+        )
+        return result
 
     headers = [str(header).strip().lower() if header is not None else "" for header in rows[0]]
     header_map = {name: index for index, name in enumerate(headers)}
@@ -349,4 +355,8 @@ async def import_bank_transactions_from_excel(
         errors.append(
             "Ни одна строка не подошла. Проверьте: в первой строке — заголовки (Дата, Зачисление/Списание или Кредит/Дебет, Назначение/Контрагент); даты в формате ДД.ММ.ГГГГ или число Excel; суммы — числа с запятой или точкой."
         )
+    log_action(
+        db, current_user.id, "import", "bank_transaction", None,
+        {"filename": file.filename, "imported": imported, "skipped": skipped},
+    )
     return {"imported": imported, "skipped": skipped, "errors": errors}

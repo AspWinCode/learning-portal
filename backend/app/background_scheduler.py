@@ -8,6 +8,7 @@ from app.background_tasks import (
     task_absence_link_tasks,
     task_academy_proactivity_scan,
     task_academy_scheduled_content,
+    task_capture_monthly_snapshots,
     task_communication_queue,
     task_daily_task_digest,
     task_expire_student_discounts,
@@ -55,6 +56,7 @@ def main() -> None:
     scheduler.add_job(lambda: task_academy_scheduled_content.send(), "interval", minutes=15, id="academy_scheduled_content", max_instances=1)
     scheduler.add_job(lambda: task_academy_proactivity_scan.send(), "cron", hour=7, minute=30, id="academy_proactivity_scan", max_instances=1)
     scheduler.add_job(lambda: task_expire_student_discounts.send(), "cron", hour=0, minute=10, id="expire_student_discounts", max_instances=1)
+    scheduler.add_job(lambda: task_capture_monthly_snapshots.send(), "cron", day="last", hour=23, minute=50, id="capture_monthly_snapshots", max_instances=1)
     logger.info("Starting background scheduler")
     _enqueue_fast_cycle_jobs()
     scheduler.start()

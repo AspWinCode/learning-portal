@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.academic_month import get_academic_window
 from app.database import get_db
 from app import auth
+from app.routers.action_log import log_action
 from app.services.communication_hub import CommunicationService
 from app.services.student_activity import log_student_activity
 from app.services.student_card_period import (
@@ -966,6 +967,10 @@ async def save_attendance(
                     },
                 )
     db.commit()
+    log_action(
+        db, current_user.id, "save_attendance", "lesson_attendance", None,
+        {"group_id": payload.group_id, "lesson_date": payload.lesson_date, "count": len(payload.attendances)},
+    )
 
     attended_student_ids = {
         att.student_id for att in attendances_saved
@@ -1092,6 +1097,7 @@ async def save_custom_lesson_attendance(
         _close_absence_for_custom_lesson(db, lesson=lesson, lesson_student=row)
 
     db.commit()
+    log_action(db, current_user.id, "save_attendance", "custom_lesson", payload.lesson_id, {"items": len(payload.items)})
     return {"ok": True}
 
 
@@ -1157,6 +1163,10 @@ async def add_student_to_lesson(
         trainer_id=effective_trainer_id,
     ))
     db.commit()
+    log_action(
+        db, current_user.id, "add_student", "lesson_attendance", None,
+        {"group_id": payload.group_id, "lesson_date": payload.lesson_date, "student_id": payload.student_id},
+    )
     return {"ok": True}
 
 
@@ -1205,6 +1215,10 @@ async def remove_student_from_lesson(
         )
         db.delete(att)
     db.commit()
+    log_action(
+        db, current_user.id, "remove_student", "lesson_attendance", None,
+        {"group_id": payload.group_id, "lesson_date": payload.lesson_date, "student_id": payload.student_id},
+    )
     return {"ok": True}
 
 
@@ -1293,6 +1307,10 @@ async def create_lesson_slot(
         )
     )
     db.commit()
+    log_action(
+        db, current_user.id, "create_slot", "lesson_attendance", None,
+        {"group_id": payload.group_id, "lesson_date": payload.lesson_date, "start_time": payload.start_time, "end_time": payload.end_time},
+    )
     return {"ok": True}
 
 
@@ -1455,6 +1473,10 @@ async def move_lesson(
             current_user=current_user,
         )
         db.commit()
+        log_action(
+            db, current_user.id, "move", "lesson", None,
+            {"group_id": payload.group_id, "from_date": payload.from_date, "to_date": payload.to_date, "moved_count": created},
+        )
         return {"ok": True, "moved_count": created}
     _enqueue_lesson_change_notifications(
         db,
@@ -1466,6 +1488,10 @@ async def move_lesson(
         current_user=current_user,
     )
     db.commit()
+    log_action(
+        db, current_user.id, "move", "lesson", None,
+        {"group_id": payload.group_id, "from_date": payload.from_date, "to_date": payload.to_date, "moved_count": len(attendances)},
+    )
     return {"ok": True, "moved_count": len(attendances)}
 
 
@@ -1538,6 +1564,10 @@ async def cancel_lesson(
         current_user=current_user,
     )
     db.commit()
+    log_action(
+        db, current_user.id, "cancel", "lesson", None,
+        {"group_id": payload.group_id, "lesson_date": payload.lesson_date},
+    )
     return {"ok": True}
 
 
@@ -1586,6 +1616,10 @@ async def set_lesson_trainer(
         LessonAttendance.lesson_end_time == end_t,
     ).update({LessonAttendance.trainer_id: payload.trainer_id}, synchronize_session=False)
     db.commit()
+    log_action(
+        db, current_user.id, "set_trainer", "lesson", None,
+        {"group_id": payload.group_id, "lesson_date": payload.lesson_date, "trainer_id": payload.trainer_id},
+    )
     return {"ok": True}
 
 

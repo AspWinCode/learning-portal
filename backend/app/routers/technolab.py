@@ -73,35 +73,57 @@ async def update_course(
     course_id: int,
     payload: TechnoLabCourseUpdate,
     current_user: User = Depends(auth.require_permission("technolab.manage")),
+    db: Session = Depends(get_db),
 ):
     try:
-        return await tl.update_course(course_id, payload.model_dump(exclude_unset=True))
+        result = await tl.update_course(course_id, payload.model_dump(exclude_unset=True))
     except TechnoLabError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "update", "technolab_course", course_id, payload.model_dump(exclude_unset=True))
+    return result
 
 
 @router.delete("/courses/{course_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_course(course_id: int, current_user: User = Depends(auth.require_permission("technolab.manage"))):
+async def delete_course(
+    course_id: int,
+    current_user: User = Depends(auth.require_permission("technolab.manage")),
+    db: Session = Depends(get_db),
+):
     try:
         await tl.delete_course(course_id)
     except TechnoLabError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "delete", "technolab_course", course_id, {})
 
 
 @router.post("/courses/{course_id}/archive", status_code=status.HTTP_204_NO_CONTENT)
-async def archive_course(course_id: int, current_user: User = Depends(auth.require_permission("technolab.manage"))):
+async def archive_course(
+    course_id: int,
+    current_user: User = Depends(auth.require_permission("technolab.manage")),
+    db: Session = Depends(get_db),
+):
     try:
         await tl.archive_course(course_id)
     except TechnoLabError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "archive", "technolab_course", course_id)
 
 
 @router.post("/courses/{course_id}/unarchive", status_code=status.HTTP_204_NO_CONTENT)
-async def unarchive_course(course_id: int, current_user: User = Depends(auth.require_permission("technolab.manage"))):
+async def unarchive_course(
+    course_id: int,
+    current_user: User = Depends(auth.require_permission("technolab.manage")),
+    db: Session = Depends(get_db),
+):
     try:
         await tl.unarchive_course(course_id)
     except TechnoLabError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "unarchive", "technolab_course", course_id)
 
 
 @router.get("/courses/{course_id}/tree")
@@ -127,11 +149,15 @@ async def create_node(
     course_id: int,
     payload: TechnoLabNodeCreate,
     current_user: User = Depends(auth.require_permission("technolab.manage")),
+    db: Session = Depends(get_db),
 ):
     try:
-        return await tl.create_node(course_id, payload.model_dump(exclude_unset=True))
+        node = await tl.create_node(course_id, payload.model_dump(exclude_unset=True))
     except TechnoLabError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "create", "technolab_node", node.get("id") if isinstance(node, dict) else None, {"course_id": course_id, "title": payload.model_dump(exclude_unset=True).get("title")})
+    return node
 
 
 @router.patch("/nodes/{node_id}")
@@ -139,35 +165,57 @@ async def update_node(
     node_id: int,
     payload: TechnoLabNodeUpdate,
     current_user: User = Depends(auth.require_permission("technolab.manage")),
+    db: Session = Depends(get_db),
 ):
     try:
-        return await tl.update_node(node_id, payload.model_dump(exclude_unset=True))
+        result = await tl.update_node(node_id, payload.model_dump(exclude_unset=True))
     except TechnoLabError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "update", "technolab_node", node_id, payload.model_dump(exclude_unset=True))
+    return result
 
 
 @router.delete("/nodes/{node_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_node(node_id: int, current_user: User = Depends(auth.require_permission("technolab.manage"))):
+async def delete_node(
+    node_id: int,
+    current_user: User = Depends(auth.require_permission("technolab.manage")),
+    db: Session = Depends(get_db),
+):
     try:
         await tl.delete_node(node_id)
     except TechnoLabError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "delete", "technolab_node", node_id, {})
 
 
 @router.post("/nodes/{node_id}/archive", status_code=status.HTTP_204_NO_CONTENT)
-async def archive_node(node_id: int, current_user: User = Depends(auth.require_permission("technolab.manage"))):
+async def archive_node(
+    node_id: int,
+    current_user: User = Depends(auth.require_permission("technolab.manage")),
+    db: Session = Depends(get_db),
+):
     try:
         await tl.archive_node(node_id)
     except TechnoLabError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "archive", "technolab_node", node_id)
 
 
 @router.post("/nodes/{node_id}/unarchive", status_code=status.HTTP_204_NO_CONTENT)
-async def unarchive_node(node_id: int, current_user: User = Depends(auth.require_permission("technolab.manage"))):
+async def unarchive_node(
+    node_id: int,
+    current_user: User = Depends(auth.require_permission("technolab.manage")),
+    db: Session = Depends(get_db),
+):
     try:
         await tl.unarchive_node(node_id)
     except TechnoLabError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "unarchive", "technolab_node", node_id)
 
 
 @router.post("/nodes/{node_id}/move")
@@ -175,22 +223,30 @@ async def move_node(
     node_id: int,
     payload: TechnoLabNodeMove,
     current_user: User = Depends(auth.require_permission("technolab.manage")),
+    db: Session = Depends(get_db),
 ):
     try:
-        return await tl.move_node(node_id, payload.model_dump(exclude_unset=True))
+        result = await tl.move_node(node_id, payload.model_dump(exclude_unset=True))
     except TechnoLabError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "move", "technolab_node", node_id, payload.model_dump(exclude_unset=True))
+    return result
 
 
 @router.post("/nodes/reorder")
 async def reorder_nodes(
     payload: Dict[str, Any],
     current_user: User = Depends(auth.require_permission("technolab.manage")),
+    db: Session = Depends(get_db),
 ):
     try:
-        return await tl.reorder_nodes(payload)
+        result = await tl.reorder_nodes(payload)
     except TechnoLabError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "reorder", "technolab_node", None, payload if isinstance(payload, dict) else {})
+    return result
 
 
 @router.get("/nodes/{node_id}/content")
@@ -209,11 +265,15 @@ async def create_node_content(
     node_id: int,
     payload: TechnoLabNodeContentCreate,
     current_user: User = Depends(auth.require_permission("technolab.manage")),
+    db: Session = Depends(get_db),
 ):
     try:
-        return await tl.create_node_content(node_id, payload.model_dump())
+        content = await tl.create_node_content(node_id, payload.model_dump())
     except TechnoLabError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "create", "technolab_node_content", content.get("id") if isinstance(content, dict) else None, {"node_id": node_id})
+    return content
 
 
 @router.patch("/nodes/{node_id}/content/{content_id}")
@@ -222,11 +282,15 @@ async def update_node_content(
     content_id: int,
     payload: Dict[str, Any],
     current_user: User = Depends(auth.require_permission("technolab.manage")),
+    db: Session = Depends(get_db),
 ):
     try:
-        return await tl.update_node_content(node_id, content_id, payload)
+        result = await tl.update_node_content(node_id, content_id, payload)
     except TechnoLabError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "update", "technolab_node_content", content_id, payload if isinstance(payload, dict) else {})
+    return result
 
 
 @router.delete("/nodes/{node_id}/content/{content_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -234,11 +298,14 @@ async def delete_node_content(
     node_id: int,
     content_id: int,
     current_user: User = Depends(auth.require_permission("technolab.manage")),
+    db: Session = Depends(get_db),
 ):
     try:
         await tl.delete_node_content(node_id, content_id)
     except TechnoLabError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "delete", "technolab_node_content", content_id, {"node_id": node_id})
 
 
 # ─── Node ↔ task attachment (создание задачи методистом) ────────────────────
@@ -248,11 +315,15 @@ async def create_node_task(
     node_id: int,
     payload: TechnoLabNodeTaskCreate,
     current_user: User = Depends(auth.require_permission("technolab.manage")),
+    db: Session = Depends(get_db),
 ):
     try:
-        return await tl.create_node_task(node_id, payload.model_dump(exclude_unset=True))
+        node_task = await tl.create_node_task(node_id, payload.model_dump(exclude_unset=True))
     except TechnoLabError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "create", "technolab_node_task", node_task.get("id") if isinstance(node_task, dict) else None, {"node_id": node_id})
+    return node_task
 
 
 @router.patch("/nodes/{node_id}/tasks/{node_task_id}")
@@ -261,11 +332,15 @@ async def update_node_task(
     node_task_id: int,
     payload: Dict[str, Any],
     current_user: User = Depends(auth.require_permission("technolab.manage")),
+    db: Session = Depends(get_db),
 ):
     try:
-        return await tl.update_node_task(node_id, node_task_id, payload)
+        result = await tl.update_node_task(node_id, node_task_id, payload)
     except TechnoLabError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "update", "technolab_node_task", node_task_id, payload if isinstance(payload, dict) else {})
+    return result
 
 
 @router.delete("/nodes/{node_id}/tasks/{node_task_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -273,11 +348,14 @@ async def delete_node_task(
     node_id: int,
     node_task_id: int,
     current_user: User = Depends(auth.require_permission("technolab.manage")),
+    db: Session = Depends(get_db),
 ):
     try:
         await tl.delete_node_task(node_id, node_task_id)
     except TechnoLabError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "delete", "technolab_node_task", node_task_id, {"node_id": node_id})
 
 
 @router.post("/nodes/{node_id}/tasks/reorder")
@@ -285,11 +363,15 @@ async def reorder_node_tasks(
     node_id: int,
     payload: Dict[str, Any],
     current_user: User = Depends(auth.require_permission("technolab.manage")),
+    db: Session = Depends(get_db),
 ):
     try:
-        return await tl.reorder_node_tasks(node_id, payload)
+        result = await tl.reorder_node_tasks(node_id, payload)
     except TechnoLabError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "reorder", "technolab_node_task", None, {"node_id": node_id})
+    return result
 
 
 # ─── Tasks ─────────────────────────────────────────────────────────────────
@@ -307,19 +389,29 @@ async def update_task(
     task_id: int,
     payload: TechnoLabTaskUpdate,
     current_user: User = Depends(auth.require_permission("technolab.manage")),
+    db: Session = Depends(get_db),
 ):
     try:
-        return await tl.update_task(task_id, payload.model_dump(exclude_unset=True))
+        result = await tl.update_task(task_id, payload.model_dump(exclude_unset=True))
     except TechnoLabError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "update", "technolab_task", task_id, payload.model_dump(exclude_unset=True))
+    return result
 
 
 @router.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_task(task_id: int, current_user: User = Depends(auth.require_permission("technolab.manage"))):
+async def delete_task(
+    task_id: int,
+    current_user: User = Depends(auth.require_permission("technolab.manage")),
+    db: Session = Depends(get_db),
+):
     try:
         await tl.delete_task(task_id)
     except TechnoLabError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "delete", "technolab_task", task_id, {})
 
 
 # ─── Tests (автотесты кода) ──────────────────────────────────────────────────
@@ -329,11 +421,15 @@ async def create_task_test(
     task_id: int,
     payload: TechnoLabTaskTestCreate,
     current_user: User = Depends(auth.require_permission("technolab.manage")),
+    db: Session = Depends(get_db),
 ):
     try:
-        return await tl.create_task_test(task_id, payload.model_dump(exclude_unset=True))
+        test = await tl.create_task_test(task_id, payload.model_dump(exclude_unset=True))
     except TechnoLabError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "create", "technolab_test", test.get("id") if isinstance(test, dict) else None, {"task_id": task_id})
+    return test
 
 
 @router.patch("/tests/{test_id}")
@@ -341,19 +437,29 @@ async def update_task_test(
     test_id: int,
     payload: Dict[str, Any],
     current_user: User = Depends(auth.require_permission("technolab.manage")),
+    db: Session = Depends(get_db),
 ):
     try:
-        return await tl.update_task_test(test_id, payload)
+        result = await tl.update_task_test(test_id, payload)
     except TechnoLabError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "update", "technolab_test", test_id, payload if isinstance(payload, dict) else {})
+    return result
 
 
 @router.delete("/tests/{test_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_task_test(test_id: int, current_user: User = Depends(auth.require_permission("technolab.manage"))):
+async def delete_task_test(
+    test_id: int,
+    current_user: User = Depends(auth.require_permission("technolab.manage")),
+    db: Session = Depends(get_db),
+):
     try:
         await tl.delete_task_test(test_id)
     except TechnoLabError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "delete", "technolab_test", test_id, {})
 
 
 # ─── Lectures ──────────────────────────────────────────────────────────────
@@ -363,11 +469,15 @@ async def create_task_lecture(
     task_id: int,
     payload: TechnoLabTaskLectureCreate,
     current_user: User = Depends(auth.require_permission("technolab.manage")),
+    db: Session = Depends(get_db),
 ):
     try:
-        return await tl.create_task_lecture(task_id, payload.model_dump())
+        lecture = await tl.create_task_lecture(task_id, payload.model_dump())
     except TechnoLabError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "create", "technolab_lecture", lecture.get("id") if isinstance(lecture, dict) else None, {"task_id": task_id})
+    return lecture
 
 
 @router.patch("/lectures/{lecture_id}")
@@ -375,22 +485,29 @@ async def update_task_lecture(
     lecture_id: int,
     payload: Dict[str, Any],
     current_user: User = Depends(auth.require_permission("technolab.manage")),
+    db: Session = Depends(get_db),
 ):
     try:
-        return await tl.update_task_lecture(lecture_id, payload)
+        result = await tl.update_task_lecture(lecture_id, payload)
     except TechnoLabError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "update", "technolab_lecture", lecture_id, payload if isinstance(payload, dict) else {})
+    return result
 
 
 @router.delete("/lectures/{lecture_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_task_lecture(
     lecture_id: int,
     current_user: User = Depends(auth.require_permission("technolab.manage")),
+    db: Session = Depends(get_db),
 ):
     try:
         await tl.delete_task_lecture(lecture_id)
     except TechnoLabError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "delete", "technolab_lecture", lecture_id, {})
 
 
 # ─── Hints ─────────────────────────────────────────────────────────────────
@@ -400,11 +517,15 @@ async def create_task_hint(
     task_id: int,
     payload: TechnoLabTaskHintCreate,
     current_user: User = Depends(auth.require_permission("technolab.manage")),
+    db: Session = Depends(get_db),
 ):
     try:
-        return await tl.create_task_hint(task_id, payload.model_dump())
+        hint = await tl.create_task_hint(task_id, payload.model_dump())
     except TechnoLabError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "create", "technolab_hint", hint.get("id") if isinstance(hint, dict) else None, {"task_id": task_id})
+    return hint
 
 
 @router.patch("/hints/{hint_id}")
@@ -412,19 +533,29 @@ async def update_task_hint(
     hint_id: int,
     payload: Dict[str, Any],
     current_user: User = Depends(auth.require_permission("technolab.manage")),
+    db: Session = Depends(get_db),
 ):
     try:
-        return await tl.update_task_hint(hint_id, payload)
+        result = await tl.update_task_hint(hint_id, payload)
     except TechnoLabError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "update", "technolab_hint", hint_id, payload if isinstance(payload, dict) else {})
+    return result
 
 
 @router.delete("/hints/{hint_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_task_hint(hint_id: int, current_user: User = Depends(auth.require_permission("technolab.manage"))):
+async def delete_task_hint(
+    hint_id: int,
+    current_user: User = Depends(auth.require_permission("technolab.manage")),
+    db: Session = Depends(get_db),
+):
     try:
         await tl.delete_task_hint(hint_id)
     except TechnoLabError as e:
         _raise(e)
+        return
+    log_action(db, current_user.id, "delete", "technolab_hint", hint_id, {})
 
 
 # ─── Прогресс ученика (методист/тренер — детально; родитель — своих детей) ──

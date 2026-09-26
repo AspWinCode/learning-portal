@@ -13,6 +13,7 @@ from app.schemas.search import (
     PersonAttachRecordRequest,
 )
 from app.models import Student, Group, User, UserRole, StudentStatus, GroupStudent, GroupStatus, Lead, StudentCard, Person
+from app.routers.action_log import log_action
 from app.utils.phone import normalize_phone
 from app.services.person_sync import search_persons, merge_persons, attach_record_to_person
 
@@ -248,6 +249,14 @@ async def merge_person_registry_items(
     merged_person = merge_persons(db, source_person=source_person, target_person=target_person)
     db.commit()
     db.refresh(merged_person)
+    log_action(
+        db,
+        current_user.id,
+        "merge",
+        "person",
+        merged_person.id,
+        {"source_person_id": payload.source_person_id, "target_person_id": payload.target_person_id},
+    )
     return _build_person_search_item(merged_person)
 
 
@@ -271,5 +280,13 @@ async def attach_record_to_person_registry(
         raise HTTPException(status_code=404, detail="Record not found")
     db.commit()
     db.refresh(person)
+    log_action(
+        db,
+        current_user.id,
+        "attach_record",
+        "person",
+        person.id,
+        {"entity_type": payload.entity_type, "entity_id": payload.entity_id},
+    )
     return _build_person_search_item(person)
 

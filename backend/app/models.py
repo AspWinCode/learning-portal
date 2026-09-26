@@ -1951,6 +1951,20 @@ class ActionLog(Base):
     user = relationship("User")
 
 
+class MetricsSnapshot(Base):
+    __tablename__ = "metrics_snapshots"
+
+    id = Column(Integer, primary_key=True, index=True)
+    period_month = Column(Date, nullable=False, index=True)
+    category = Column(String, nullable=False)
+    payload = Column(JSON, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("period_month", "category", name="uq_metrics_snapshot_period_category"),
+    )
+
+
 class AppSetting(Base):
     __tablename__ = "app_settings"
 

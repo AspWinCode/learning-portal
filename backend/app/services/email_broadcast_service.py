@@ -22,6 +22,7 @@ from app.models import (
 )
 
 _BROADCAST_STORAGE_ROOT = os.getenv("DISK_STORAGE_ROOT", "/app/storage/disk")
+from app.routers.action_log import log_action
 from app.services.email_sender import is_email_configured, send_email_html
 from app.utils.datetime import utcnow
 
@@ -103,6 +104,18 @@ def _advance_campaign_stage(db: Session, campaign_id: int, school_id: int, targe
     # Продвигаем только вперёд (никогда не откатываем)
     if not current_stage or current_stage.position < target_stage.position:
         sc.stage = target_stage_key
+        log_action(
+            db,
+            user_id=None,
+            action_type="advance_campaign_stage",
+            entity_type="school_campaign",
+            entity_id=sc.id,
+            details={
+                "campaign_id": campaign_id,
+                "school_id": school_id,
+                "new_stage": target_stage_key,
+            },
+        )
 
 
 def create_recipients(db: Session, broadcast: EmailBroadcast, school_ids: List[int], limit: int | None = None) -> int:
@@ -134,6 +147,14 @@ def create_recipients(db: Session, broadcast: EmailBroadcast, school_ids: List[i
     broadcast.status = "sending"
     broadcast.sent_at = utcnow()
     db.commit()
+    log_action(
+        db,
+        user_id=None,
+        action_type="create_broadcast_recipients",
+        entity_type="email_broadcast",
+        entity_id=broadcast.id,
+        details={"added": added, "school_ids_count": len(school_ids)},
+    )
     return added
 
 
@@ -145,6 +166,14 @@ def send_broadcast(db: Session, broadcast_id: int) -> None:
 
     if not is_email_configured():
         broadcast.status = "failed"
+        log_action(
+            db,
+            user_id=None,
+            action_type="broadcast_send_failed",
+            entity_type="email_broadcast",
+            entity_id=broadcast.id,
+            details={"reason": "smtp_not_configured"},
+        )
         db.commit()
         logger.error("SMTP not configured, broadcast %d aborted", broadcast_id)
         return
@@ -217,6 +246,14 @@ def send_broadcast(db: Session, broadcast_id: int) -> None:
     broadcast.sent_count = sent
     broadcast.failed_count = failed
     broadcast.status = "done"
+    log_action(
+        db,
+        user_id=None,
+        action_type="send_broadcast",
+        entity_type="email_broadcast",
+        entity_id=broadcast.id,
+        details={"sent": sent, "failed": failed, "total_recipients": len(recipients)},
+    )
     db.commit()
     logger.info("Broadcast %d done: sent=%d failed=%d", broadcast_id, sent, failed)
 
@@ -255,6 +292,15 @@ def record_open(db: Session, token: str) -> None:
             )
             db.add(interaction)
 
+        log_action(
+            db,
+            user_id=None,
+            action_type="record_broadcast_open",
+            entity_type="email_broadcast_recipient",
+            entity_id=recipient.id,
+            details={"broadcast_id": recipient.broadcast_id, "school_id": recipient.school_id},
+        )
+
     db.commit()
 
 
@@ -274,5 +320,14 @@ def record_click(db: Session, token: str) -> None:
         broadcast = db.query(EmailBroadcast).filter(EmailBroadcast.id == recipient.broadcast_id).first()
         if broadcast:
             broadcast.clicked_count = (broadcast.clicked_count or 0) + 1
+
+        log_action(
+            db,
+            user_id=None,
+            action_type="record_broadcast_click",
+            entity_type="email_broadcast_recipient",
+            entity_id=recipient.id,
+            details={"broadcast_id": recipient.broadcast_id, "school_id": recipient.school_id},
+        )
 
     db.commit()

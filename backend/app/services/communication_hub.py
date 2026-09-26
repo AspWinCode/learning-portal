@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional, Tuple
 from sqlalchemy.orm import Session
 
 from app.models import CommunicationQueue, Lead, MaxMessage, SmsMessage, SmsTemplate, Student, StudentCard, User
+from app.routers.action_log import log_action
 from app.services.email_sender import is_email_configured, send_email
 from app.services.max_messenger import is_configured as max_is_configured
 from app.services.max_messenger import send_message, send_message_personal
@@ -223,6 +224,14 @@ class CommunicationService:
         db.add(item)
         db.commit()
         db.refresh(item)
+        log_action(
+            db,
+            user_id=created_by,
+            action_type="queue_communication",
+            entity_type="communication_queue",
+            entity_id=item.id,
+            details={"channel": normalized_channel, "recipient_type": recipient_type, "recipient_id": recipient_id},
+        )
         return item
 
     @staticmethod
@@ -263,6 +272,14 @@ class CommunicationService:
                 item.status = "failed"
             else:
                 item.status = "pending"
+        log_action(
+            db,
+            user_id=None,
+            action_type="dispatch_communication",
+            entity_type="communication_queue",
+            entity_id=item.id,
+            details={"channel": item.channel, "status": item.status, "attempt_count": item.attempt_count},
+        )
         db.commit()
 
 

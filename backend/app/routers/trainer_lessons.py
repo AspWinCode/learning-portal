@@ -612,11 +612,11 @@ def _close_absence_for_group_makeup(
     if not absence:
         return
     absence.stage = "made_up"
+    # Реальный урок отработки (attendance) остаётся источником правды и
+    # продолжает считаться в «Количество посещений» как посещённое занятие;
+    # исходный пропущенный урок при этом исключается из подсчёта, но не
+    # переписывается — см. credit_makeup_for_absence.
     credit_makeup_for_absence(db, absence)
-    # Кредит за отработку уже отдан исходному пропущенному уроку выше —
-    # эта запись (реальный урок в группе отработки) не должна ещё раз
-    # плюсоваться к «Количество посещений», иначе один пропуск задвоится.
-    attendance.excluded_from_attendance_stats = True
     log_student_activity(
         db,
         student_id=attendance.student_id,

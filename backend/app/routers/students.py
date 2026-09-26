@@ -882,15 +882,25 @@ async def get_students_attendance_summary(
             LessonAttendance.lesson_date >= date_from,
             LessonAttendance.lesson_date <= date_to,
             LessonAttendance.excluded_from_attendance_stats.is_(False),
-            # Считаем только занятия его собственных групп: если тренер отметил
-            # ученика разово на чужом уроке (например, для отработки в другой
-            # группе), это не должно засчитываться в его личную посещаемость.
-            db.query(GroupStudent.id)
-            .filter(
-                GroupStudent.group_id == LessonAttendance.group_id,
-                GroupStudent.student_id == LessonAttendance.student_id,
-            )
-            .exists(),
+            # Считаем занятия либо его собственных групп, либо реального
+            # урока отработки в чужой группе (привязан через AbsenceFollowUp).
+            # Разовая отметка на постороннем уроке без этой привязки в счёт
+            # не идёт — это не его хождение.
+            or_(
+                db.query(GroupStudent.id)
+                .filter(
+                    GroupStudent.group_id == LessonAttendance.group_id,
+                    GroupStudent.student_id == LessonAttendance.student_id,
+                )
+                .exists(),
+                db.query(AbsenceFollowUp.id)
+                .filter(
+                    AbsenceFollowUp.makeup_group_id == LessonAttendance.group_id,
+                    AbsenceFollowUp.makeup_lesson_date == LessonAttendance.lesson_date,
+                    AbsenceFollowUp.student_id == LessonAttendance.student_id,
+                )
+                .exists(),
+            ),
         )
         .group_by(LessonAttendance.student_id)
         .all()

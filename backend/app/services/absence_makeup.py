@@ -8,6 +8,7 @@ Use case: назначение отработки по пропуску (assign_
 
 from dataclasses import dataclass
 from datetime import date
+from typing import Optional
 import logging
 
 from sqlalchemy.orm import Session
@@ -85,19 +86,51 @@ def remove_stale_makeup_placement(
     ).delete()
 
 
+def _find_real_makeup_attendance(db: Session, absence: AbsenceFollowUp) -> Optional[LessonAttendance]:
+    """Найти реальную запись посещаемости отработки (если она физически
+    проведена в другой группе/дате — через _place_student_on_makeup_lesson
+    или ручное добавление на урок)."""
+    if not absence.makeup_group_id or not absence.makeup_lesson_date:
+        return None
+    return (
+        db.query(LessonAttendance)
+        .filter(
+            LessonAttendance.group_id == absence.makeup_group_id,
+            LessonAttendance.lesson_date == absence.makeup_lesson_date,
+            LessonAttendance.student_id == absence.student_id,
+        )
+        .first()
+    )
+
+
 def credit_makeup_for_absence(db: Session, absence: AbsenceFollowUp) -> None:
-    """Засчитать пропуск как отработанный: исходный урок (lesson_attendance_id)
-    помечается посещённым, чтобы пропуск перестал считаться пропуском и
-    учитывался как +1 к «Отходил» — без появления лишнего «нового» занятия
-    в «Количество посещений» (там, где отработка проходит отдельным
-    физическим уроком, эта отдельная запись исключается из статистики
-    отдельно, см. excluded_from_attendance_stats)."""
+    """Засчитать пропуск как отработанный.
+
+    Если отработка физически прошла отдельным уроком (в другой группе/дате,
+    и там реально отмечено присутствие) — эта запись и остаётся источником
+    правды: она продолжает считаться в «Количество посещений» как
+    самостоятельное посещённое занятие, а исходный пропущенный урок не
+    переписывается («был» → «не был» остаётся как было исторически), а
+    просто исключается из подсчёта (excluded_from_attendance_stats), чтобы
+    не считаться пропуском и не задваивать урок.
+
+    Если отдельного физического урока отработки нет (закрыли пропуск прямо
+    в CRM-статусе, без назначения слота, либо отработка прошла ручным
+    уроком без привязки к LessonAttendance) — тогда единственный способ
+    дать кредит — пометить сам исходный урок посещённым."""
     original = (
         db.query(LessonAttendance)
         .filter(LessonAttendance.id == absence.lesson_attendance_id)
         .first()
     )
-    if original and not original.attended:
+    if not original:
+        return
+
+    makeup_attendance = _find_real_makeup_attendance(db, absence)
+    if makeup_attendance and makeup_attendance.attended:
+        original.excluded_from_attendance_stats = True
+        makeup_attendance.excluded_from_attendance_stats = False
+    elif not original.attended:
         original.attended = True
 
 
@@ -109,7 +142,11 @@ def uncredit_makeup_for_absence(db: Session, absence: AbsenceFollowUp) -> None:
         .filter(LessonAttendance.id == absence.lesson_attendance_id)
         .first()
     )
-    if original and original.attended:
+    if not original:
+        return
+    if original.excluded_from_attendance_stats:
+        original.excluded_from_attendance_stats = False
+    elif original.attended:
         original.attended = False
 
 

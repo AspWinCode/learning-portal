@@ -32,7 +32,7 @@ from app.schemas.sales import (
     LeadResponse,
     LeadSidebarSummary,
 )
-from app.utils.datetime import utcnow
+from app.utils.datetime import as_naive_utc, utcnow
 from app.services.ai_insights import build_lead_ai_insight
 from app.services.lead_post_visit import update_lead_post_visit_stage as lead_post_visit_update_stage
 
@@ -232,10 +232,11 @@ async def get_lead_card(
     today_start = datetime.combine(date.today(), dt_time.min)
     today_end = datetime.combine(date.today(), dt_time.max)
     if next_task:
-        if next_task.due_at:
-            if next_task.due_at < now:
+        due_at = as_naive_utc(next_task.due_at)
+        if due_at:
+            if due_at < now:
                 state = "overdue"
-            elif today_start <= next_task.due_at <= today_end:
+            elif today_start <= due_at <= today_end:
                 state = "today"
             else:
                 state = "on_time"
@@ -250,9 +251,10 @@ async def get_lead_card(
             state=state,
         )
     elif lead.next_contact_at:
-        if lead.next_contact_at < now:
+        next_contact_at = as_naive_utc(lead.next_contact_at)
+        if next_contact_at < now:
             state = "overdue"
-        elif today_start <= lead.next_contact_at <= today_end:
+        elif today_start <= next_contact_at <= today_end:
             state = "today"
         else:
             state = "on_time"
@@ -474,7 +476,7 @@ async def update_lead_post_visit_stage(
         db.add(auto_task)
         db.flush()
         log_action(db, current_user.id, "create", "lead_task", auto_task.id, {"lead_id": lead.id, "type": "auto_post_visit_agreed"})
-        if lead.next_contact_at is None or (auto_task.due_at and lead.next_contact_at > auto_task.due_at):
+        if lead.next_contact_at is None or (auto_task.due_at and as_naive_utc(lead.next_contact_at) > as_naive_utc(auto_task.due_at)):
             lead.next_contact_at = auto_task.due_at
 
     db.commit()

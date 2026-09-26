@@ -24,7 +24,7 @@ from app.models import (
 )
 from app.routers.action_log import log_action
 from app.schemas.sales import EventCreate, EventRegistrationCreate, EventRegistrationResponse, EventResponse, EventUpdate
-from app.utils.datetime import utcnow
+from app.utils.datetime import as_naive_utc, utcnow
 
 router = APIRouter()
 
@@ -360,7 +360,7 @@ async def mark_event_registration_came(
             db.add(auto_task)
             db.flush()
             log_action(db, current_user.id, "create", "lead_task", auto_task.id, {"lead_id": lead.id, "type": "auto_attended_offer"})
-            if lead.next_contact_at is None or (auto_task.due_at and lead.next_contact_at > auto_task.due_at):
+            if lead.next_contact_at is None or (auto_task.due_at and as_naive_utc(lead.next_contact_at) > as_naive_utc(auto_task.due_at)):
                 lead.next_contact_at = auto_task.due_at
             db.commit()
     except Exception:
@@ -402,7 +402,7 @@ async def mark_event_registration_no_show(
         )
         db.flush()
         log_action(db, current_user.id, "create", "lead_task", auto_task.id, {"lead_id": lead.id, "type": "auto_no_show_reactivate"})
-        if lead.next_contact_at is None or (auto_task.due_at and lead.next_contact_at > auto_task.due_at):
+        if lead.next_contact_at is None or (auto_task.due_at and as_naive_utc(lead.next_contact_at) > as_naive_utc(auto_task.due_at)):
             lead.next_contact_at = auto_task.due_at
     db.commit()
     db.refresh(registration)

@@ -6,11 +6,13 @@ import {
   Button,
   Chip,
   CircularProgress,
+  Collapse,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   Divider,
+  IconButton,
   Paper,
   Stack,
   Table,
@@ -22,7 +24,14 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { Add as AddIcon, DoneAll, Payments, ReceiptLong } from '@mui/icons-material';
+import {
+  Add as AddIcon,
+  DoneAll,
+  ExpandLess,
+  ExpandMore,
+  Payments,
+  ReceiptLong,
+} from '@mui/icons-material';
 import { ownerCalculationsApi, type TrainerCalculationRow, type TrainerGroupCalculationRow } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 
@@ -164,6 +173,7 @@ const CalculationsPage: React.FC = () => {
   const [bonusAmount, setBonusAmount] = useState<string>('');
   const [bonusSaving, setBonusSaving] = useState(false);
   const [payingId, setPayingId] = useState<number | null>(null);
+  const [expandedTrainerId, setExpandedTrainerId] = useState<number | null>(null);
 
   const summary = useMemo(
     () => ({
@@ -427,6 +437,7 @@ const CalculationsPage: React.FC = () => {
                         },
                       }}
                     >
+                      <TableCell sx={{ width: 44 }} />
                       <TableCell sx={{ width: 56 }}>№</TableCell>
                       <TableCell>Тренер</TableCell>
                       <TableCell align="right">Нагрузка</TableCell>
@@ -440,6 +451,18 @@ const CalculationsPage: React.FC = () => {
                     {rows.map((row, idx) => (
                       <React.Fragment key={row.trainer_id}>
                       <TableRow hover sx={{ '& td': { py: 1.5 } }}>
+                        <TableCell>
+                          {row.groups.length > 0 && (
+                            <IconButton
+                              size="small"
+                              onClick={() =>
+                                setExpandedTrainerId((prev) => (prev === row.trainer_id ? null : row.trainer_id))
+                              }
+                            >
+                              {expandedTrainerId === row.trainer_id ? <ExpandLess /> : <ExpandMore />}
+                            </IconButton>
+                          )}
+                        </TableCell>
                         <TableCell>{idx + 1}</TableCell>
                         <TableCell>
                           <Typography variant="body2" fontWeight={800}>
@@ -463,12 +486,14 @@ const CalculationsPage: React.FC = () => {
                       </TableRow>
                       {row.groups.length > 0 && (
                         <TableRow>
-                          <TableCell colSpan={6} sx={{ p: 0 }}>
-                            <GroupRatesTable
-                              groups={row.groups}
-                              onChange={(groupId, patch) => updateGroupRow(row.trainer_id, groupId, patch)}
-                              onBlur={handleGroupRateBlur}
-                            />
+                          <TableCell colSpan={7} sx={{ p: 0, borderBottom: expandedTrainerId === row.trainer_id ? undefined : 'none' }}>
+                            <Collapse in={expandedTrainerId === row.trainer_id} unmountOnExit>
+                              <GroupRatesTable
+                                groups={row.groups}
+                                onChange={(groupId, patch) => updateGroupRow(row.trainer_id, groupId, patch)}
+                                onBlur={handleGroupRateBlur}
+                              />
+                            </Collapse>
                           </TableCell>
                         </TableRow>
                       )}
@@ -525,11 +550,24 @@ const CalculationsPage: React.FC = () => {
                       </Box>
 
                       {row.groups.length > 0 && (
-                        <GroupRatesTable
-                          groups={row.groups}
-                          onChange={(groupId, patch) => updateGroupRow(row.trainer_id, groupId, patch)}
-                          onBlur={handleGroupRateBlur}
-                        />
+                        <>
+                          <Button
+                            size="small"
+                            onClick={() =>
+                              setExpandedTrainerId((prev) => (prev === row.trainer_id ? null : row.trainer_id))
+                            }
+                            endIcon={expandedTrainerId === row.trainer_id ? <ExpandLess /> : <ExpandMore />}
+                          >
+                            Ставки по группам ({row.groups.length})
+                          </Button>
+                          <Collapse in={expandedTrainerId === row.trainer_id} unmountOnExit>
+                            <GroupRatesTable
+                              groups={row.groups}
+                              onChange={(groupId, patch) => updateGroupRow(row.trainer_id, groupId, patch)}
+                              onBlur={handleGroupRateBlur}
+                            />
+                          </Collapse>
+                        </>
                       )}
                       {renderActions(row)}
                     </Stack>

@@ -11,11 +11,12 @@ import { useAuth } from '../contexts/AuthContext';
 import { getEffectiveRole, hasPermission } from '../utils/permissions';
 import {
   CODELAB_CHILD_STRUCTURAL_TYPE, CODELAB_STRUCTURAL_LABEL, CodelabCourse, CodelabCourseAnalytics,
-  CodelabLearningItem, CodelabLoginEvent, CodelabProblemTest, CodelabQuizQuestion, CodelabSnapStep, CodelabStructuralType,
+  CodelabLearningItem, CodelabLoginEvent, CodelabProblemTest, CodelabProjectSubmission, CodelabProjectSubmissionReview,
+  CodelabQuizQuestion, CodelabSnapStep, CodelabStructuralType,
   CodelabSubmissionReview, CodelabSystemStatus, CodelabUser, codelabStudioApi as api,
 } from '../services/codelabApi';
 
-const CONTENT_TYPE_LABEL: Record<string, string> = { theory: 'Материал', task: 'Задача', snap_task: 'Snap!', quiz: 'Тест' };
+const CONTENT_TYPE_LABEL: Record<string, string> = { theory: 'Материал', task: 'Задача', snap_task: 'Snap!', quiz: 'Тест', project: 'Проект' };
 
 const STRUCTURAL_TYPE_SET = new Set<string>(['module', 'submodule', 'topic', 'subtopic']);
 
@@ -77,6 +78,7 @@ function TreeItemRow({ item, depth, onAddChild, onEdit, onArchive, onDelete }: {
           {isStructural && <MenuItem onClick={() => { onAddChild(item.id, 'task'); close(); }}>+ Задача</MenuItem>}
           {isStructural && <MenuItem onClick={() => { onAddChild(item.id, 'snap_task'); close(); }}>+ Snap-задание</MenuItem>}
           {isStructural && <MenuItem onClick={() => { onAddChild(item.id, 'quiz'); close(); }}>+ Тест</MenuItem>}
+          {isStructural && <MenuItem onClick={() => { onAddChild(item.id, 'project'); close(); }}>+ Проект</MenuItem>}
           {isStructural && <Divider />}
           <MenuItem onClick={() => { onEdit(item); close(); }}>Редактировать</MenuItem>
           <MenuItem onClick={() => { onArchive(item); close(); }}>{item.is_archived ? 'Разархивировать' : 'Архивировать'}</MenuItem>
@@ -170,6 +172,10 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
     { text: '', options: [{ text: '', correct: false }, { text: '', correct: false }] },
   ]);
 
+  // Проект (type=project): содержимое — те же rich-text инструкции, что у
+  // материала (nodeContent), плюс необязательный срок сдачи.
+  const [projectDueAt, setProjectDueAt] = useState('');
+
   const loadCourses = () => api.listCourses().then(setCourses).catch((e) => onToast({ msg: e.message, err: true }));
 
   useEffect(() => { loadCourses(); }, []);
@@ -211,6 +217,7 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
     setTaskTests([{ input: '', expected: '', is_hidden: false }]);
     setSnapSteps([{ title: '', content: '' }]);
     setQuizQuestions([{ text: '', options: [{ text: '', correct: false }, { text: '', correct: false }] }]);
+    setProjectDueAt('');
   };
 
   const openEdit = (item: CodelabLearningItem) => {
@@ -238,6 +245,9 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
           ? item.quiz_questions
           : [{ text: '', options: [{ text: '', correct: false }, { text: '', correct: false }] }],
       );
+    }
+    if (item.type === 'project') {
+      setProjectDueAt(item.due_at ? item.due_at.slice(0, 16) : '');
     }
   };
 
@@ -327,6 +337,18 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
             parent_id: nodeDialog.parentId, position: siblingCount(nodeDialog.parentId),
           });
           onToast({ msg: 'Тест добавлен' });
+        }
+      } else if (nodeDialog.type === 'project') {
+        const patch = { title: nodeTitle, content: nodeContent, due_at: projectDueAt || null };
+        if (nodeDialog.editing) {
+          await api.updateItem(nodeDialog.editing.id, patch);
+          onToast({ msg: 'Проект обновлён' });
+        } else {
+          await api.createItem(selected.id, {
+            type: 'project', ...patch,
+            parent_id: nodeDialog.parentId, position: siblingCount(nodeDialog.parentId),
+          });
+          onToast({ msg: 'Проект добавлен' });
         }
       } else if (nodeDialog.editing) {
         const patch: Record<string, unknown> = { title: nodeTitle };
@@ -548,6 +570,7 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
                 <Button size="small" variant="outlined" onClick={() => openCreate(null, 'task')}>+ Задача</Button>
                 <Button size="small" variant="outlined" onClick={() => openCreate(null, 'snap_task')}>+ Snap-задание</Button>
                 <Button size="small" variant="outlined" onClick={() => openCreate(null, 'quiz')}>+ Тест</Button>
+                <Button size="small" variant="outlined" onClick={() => openCreate(null, 'project')}>+ Проект</Button>
                 {selected.status === 'published' ? (
                   <Button size="small" startIcon={<UnpublishIcon />} onClick={unpublish}>Снять с публикации</Button>
                 ) : (
@@ -586,21 +609,27 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
       <Dialog
         open={!!nodeDialog && nodeDialog.type !== 'task' && nodeDialog.type !== 'snap_task' && nodeDialog.type !== 'quiz'}
         onClose={() => setNodeDialog(null)} fullWidth
-        maxWidth={nodeDialog?.type === 'theory' ? 'md' : 'sm'}
+        maxWidth={nodeDialog?.type === 'theory' || nodeDialog?.type === 'project' ? 'md' : 'sm'}
       >
         <DialogTitle>
           {nodeDialog?.editing ? 'Редактирование' : STRUCTURAL_TYPE_SET.has(nodeDialog?.type || '')
             ? `Новый узел «${CODELAB_STRUCTURAL_LABEL[nodeDialog?.type as CodelabStructuralType]}»`
-            : 'Новый материал'}
+            : nodeDialog?.type === 'project' ? 'Новый проект' : 'Новый материал'}
         </DialogTitle>
         <DialogContent>
           <TextField autoFocus fullWidth label="Заголовок" value={nodeTitle} onChange={(e) => setNodeTitle(e.target.value)} sx={{ mt: 1, mb: 2 }} />
-          {nodeDialog?.type === 'theory' && (
+          {(nodeDialog?.type === 'theory' || nodeDialog?.type === 'project') && (
             <NotesEditor
               value={nodeContent}
               onChange={setNodeContent}
-              placeholder="Текст лекции — форматирование, изображения (вставьте через Ctrl+V), видео, ссылки…"
+              placeholder={nodeDialog?.type === 'project' ? 'Условие проекта — что сдать, требования к файлам…' : 'Текст лекции — форматирование, изображения (вставьте через Ctrl+V), видео, ссылки…'}
               onUploadImage={async (file) => (await api.uploadFile(file)).url}
+            />
+          )}
+          {nodeDialog?.type === 'project' && (
+            <TextField
+              fullWidth type="datetime-local" label="Срок сдачи (необязательно)" InputLabelProps={{ shrink: true }}
+              value={projectDueAt} onChange={(e) => setProjectDueAt(e.target.value)} sx={{ mt: 2 }}
             />
           )}
         </DialogContent>
@@ -785,11 +814,249 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
   );
 }
 
+const PROJECT_STATUS_LABEL: Record<string, string> = {
+  draft: 'Черновик', submitted: 'Ждёт проверки', needs_revision: 'На доработке', accepted: 'Принято',
+};
+
+function collectProjectItems(nodes: CodelabLearningItem[]): CodelabLearningItem[] {
+  return nodes.flatMap((n) => [...(n.type === 'project' ? [n] : []), ...collectProjectItems(n.children)]);
+}
+
+// ────────────────────── Проекты (файлы ученика, ручная проверка) ──────────────
+
+function ProjectReviewDialog({ courseId, itemId, submissionId, onClose, onSaved, onToast }: {
+  courseId: number; itemId: number; submissionId: number;
+  onClose: () => void; onSaved: () => void; onToast: (t: Toast) => void;
+}) {
+  const [detail, setDetail] = useState<CodelabProjectSubmission | null>(null);
+  const [score, setScore] = useState('');
+  const [comment, setComment] = useState('');
+  const [commentDrafts, setCommentDrafts] = useState<Record<number, string>>({});
+  const [saving, setSaving] = useState(false);
+
+  const load = () => api.getProjectSubmission(courseId, itemId, submissionId).then(setDetail).catch((e) => onToast({ msg: e.message, err: true }));
+
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [submissionId]);
+
+  const addComment = async (fileId: number) => {
+    const body = (commentDrafts[fileId] || '').trim();
+    if (!body) return;
+    try {
+      await api.commentProjectFile(courseId, itemId, submissionId, fileId, body);
+      setCommentDrafts((prev) => ({ ...prev, [fileId]: '' }));
+      load();
+    } catch (e: any) {
+      onToast({ msg: e.message, err: true });
+    }
+  };
+
+  const review = async (decision: 'accepted' | 'needs_revision') => {
+    if (!comment.trim()) { onToast({ msg: 'Комментарий обязателен', err: true }); return; }
+    if (decision === 'accepted' && score === '') { onToast({ msg: 'При принятии нужно поставить оценку', err: true }); return; }
+    setSaving(true);
+    try {
+      await api.reviewProjectSubmission(courseId, itemId, submissionId, decision, score === '' ? null : Number(score), comment);
+      onToast({ msg: decision === 'accepted' ? 'Работа принята' : 'Отправлено на доработку' });
+      onSaved();
+      onClose();
+    } catch (e: any) {
+      onToast({ msg: e.message, err: true });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const canReview = detail?.status === 'submitted';
+
+  return (
+    <Dialog open onClose={onClose} fullWidth maxWidth="md">
+      <DialogTitle>Проверка проекта{detail ? ` — попытка ${detail.attempt_number}` : ''}</DialogTitle>
+      <DialogContent>
+        {!detail ? <CircularProgress size={24} /> : (
+          <Stack spacing={2}>
+            <Stack direction="row" spacing={1}>
+              <Chip size="small" label={PROJECT_STATUS_LABEL[detail.status] || detail.status} />
+              {detail.is_overdue && <Chip size="small" color="error" label="Просрочено" />}
+            </Stack>
+
+            <Stack spacing={1.5}>
+              {detail.files.map((f) => (
+                <Paper key={f.id} variant="outlined" sx={{ p: 1.5 }}>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center">
+                    <Typography variant="body2">{f.original_filename} <Typography component="span" variant="caption" color="text.secondary">({(f.size / 1024).toFixed(1)} КБ)</Typography></Typography>
+                    <Button size="small" onClick={() => api.downloadProjectFile(courseId, itemId, submissionId, f.id).catch((e: any) => onToast({ msg: e.message, err: true }))}>
+                      Скачать
+                    </Button>
+                  </Stack>
+                  {f.comments.length > 0 && (
+                    <Stack spacing={0.5} sx={{ mt: 1 }}>
+                      {f.comments.map((c) => (
+                        <Typography key={c.id} variant="body2" color="text.secondary"><b>{c.author_full_name}:</b> {c.body}</Typography>
+                      ))}
+                    </Stack>
+                  )}
+                  <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+                    <TextField
+                      size="small" fullWidth placeholder="Комментарий к файлу"
+                      value={commentDrafts[f.id] || ''}
+                      onChange={(e) => setCommentDrafts((prev) => ({ ...prev, [f.id]: e.target.value }))}
+                    />
+                    <Button size="small" onClick={() => addComment(f.id)}>Отправить</Button>
+                  </Stack>
+                </Paper>
+              ))}
+              {detail.files.length === 0 && <Typography variant="body2" color="text.secondary">Файлов нет.</Typography>}
+            </Stack>
+
+            {detail.history.length > 0 && (
+              <Box>
+                <Typography variant="subtitle2" sx={{ mb: 1 }}>Предыдущие попытки</Typography>
+                <Stack spacing={0.5}>
+                  {detail.history.map((h) => (
+                    <Typography key={h.id} variant="body2" color="text.secondary">
+                      Попытка {h.attempt_number} — {PROJECT_STATUS_LABEL[h.status] || h.status}{h.score !== null ? ` · ${h.score}` : ''}
+                    </Typography>
+                  ))}
+                </Stack>
+              </Box>
+            )}
+
+            {canReview ? (
+              <Box>
+                <Typography variant="subtitle2" sx={{ mb: 1 }}>Решение</Typography>
+                <Stack direction="row" spacing={2}>
+                  <TextField size="small" type="number" label="Оценка" value={score} onChange={(e) => setScore(e.target.value)} sx={{ width: 120 }} />
+                  <TextField size="small" fullWidth label="Комментарий (обязателен)" value={comment} onChange={(e) => setComment(e.target.value)} />
+                </Stack>
+              </Box>
+            ) : (
+              detail.review_comment && (
+                <Box>
+                  <Typography variant="subtitle2">Комментарий тренера</Typography>
+                  <Typography variant="body2" color="text.secondary">{detail.review_comment}{detail.score !== null ? ` · Оценка: ${detail.score}` : ''}</Typography>
+                </Box>
+              )
+            )}
+          </Stack>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Закрыть</Button>
+        {canReview && (
+          <>
+            <Button color="warning" disabled={saving} onClick={() => review('needs_revision')}>На доработку</Button>
+            <Button variant="contained" disabled={saving} onClick={() => review('accepted')}>Принять</Button>
+          </>
+        )}
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+function ProjectsPanel({ courseId, onToast }: { courseId: number; onToast: (t: Toast) => void }) {
+  const [items, setItems] = useState<CodelabLearningItem[]>([]);
+  const [itemId, setItemId] = useState<number | ''>('');
+  const [rows, setRows] = useState<CodelabProjectSubmissionReview[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [reviewingId, setReviewingId] = useState<number | null>(null);
+
+  useEffect(() => {
+    api.getTree(courseId).then((t) => setItems(collectProjectItems(t))).catch((e) => onToast({ msg: e.message, err: true }));
+    setItemId('');
+    setRows([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [courseId]);
+
+  const loadRows = async (id: number) => {
+    setLoading(true);
+    try {
+      setRows(await api.listProjectSubmissions(courseId, id));
+    } catch (e: any) {
+      onToast({ msg: e.message, err: true });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const remind = async (submissionId: number) => {
+    try {
+      await api.remindProjectSubmission(courseId, itemId as number, submissionId);
+      onToast({ msg: 'Напоминание отправлено' });
+    } catch (e: any) {
+      onToast({ msg: e.message, err: true });
+    }
+  };
+
+  return (
+    <Box>
+      <Select
+        size="small" displayEmpty value={itemId}
+        onChange={(e) => { const id = e.target.value as number; setItemId(id); loadRows(id); }}
+        sx={{ minWidth: 260, mb: 2 }}
+      >
+        <MenuItem value="" disabled>Выберите проект</MenuItem>
+        {items.map((i) => <MenuItem key={i.id} value={i.id}>{i.title}</MenuItem>)}
+        {items.length === 0 && <MenuItem value="" disabled>В курсе нет проектов</MenuItem>}
+      </Select>
+
+      {loading ? <CircularProgress size={24} /> : itemId && (
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell>Ученик</TableCell>
+              <TableCell>Статус</TableCell>
+              <TableCell>Попытка</TableCell>
+              <TableCell>Оценка</TableCell>
+              <TableCell />
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {rows.map((r) => (
+              <TableRow key={`${r.student_external_ref}-${r.id}`}>
+                <TableCell>{r.student_full_name}</TableCell>
+                <TableCell>
+                  <Stack direction="row" spacing={0.5} alignItems="center">
+                    <Chip size="small" label={PROJECT_STATUS_LABEL[r.status] || r.status} />
+                    {r.is_overdue && <Chip size="small" color="error" label="просрочено" />}
+                  </Stack>
+                </TableCell>
+                <TableCell>{r.attempt_number}</TableCell>
+                <TableCell>{r.score ?? '—'}</TableCell>
+                <TableCell>
+                  <Stack direction="row" spacing={1}>
+                    <Button size="small" onClick={() => setReviewingId(r.id)}>Открыть</Button>
+                    {(r.status === 'draft' || r.status === 'needs_revision') && (
+                      <Button size="small" onClick={() => remind(r.id)}>Напомнить</Button>
+                    )}
+                  </Stack>
+                </TableCell>
+              </TableRow>
+            ))}
+            {rows.length === 0 && (
+              <TableRow><TableCell colSpan={5}><Typography variant="caption" color="text.secondary">На этот проект пока никто не зачислен</Typography></TableCell></TableRow>
+            )}
+          </TableBody>
+        </Table>
+      )}
+
+      {reviewingId && itemId && (
+        <ProjectReviewDialog
+          courseId={courseId} itemId={itemId as number} submissionId={reviewingId}
+          onClose={() => setReviewingId(null)}
+          onSaved={() => loadRows(itemId as number)}
+          onToast={onToast}
+        />
+      )}
+    </Box>
+  );
+}
+
 // ────────────────────── Посылки учеников (преподаватель) ──────────────────────
 
 function SubmissionsTab({ onToast }: { onToast: (t: Toast) => void }) {
   const { user } = useAuth();
   const canRerun = hasPermission(user, 'codelab.manage'); // TASK-007 — авторское действие, не тренеру
+  const [mode, setMode] = useState<'tasks' | 'projects'>('tasks');
   const [courses, setCourses] = useState<CodelabCourse[]>([]);
   const [courseId, setCourseId] = useState<number | ''>('');
   const [submissions, setSubmissions] = useState<CodelabSubmissionReview[]>([]);
@@ -851,6 +1118,11 @@ function SubmissionsTab({ onToast }: { onToast: (t: Toast) => void }) {
 
   return (
     <Box>
+      <Tabs value={mode} onChange={(_, v) => setMode(v)} sx={{ mb: 2 }}>
+        <Tab value="tasks" label="Задачи" />
+        <Tab value="projects" label="Проекты" />
+      </Tabs>
+
       <Select
         size="small"
         displayEmpty
@@ -858,7 +1130,7 @@ function SubmissionsTab({ onToast }: { onToast: (t: Toast) => void }) {
         onChange={(e) => {
           const id = e.target.value as number;
           setCourseId(id);
-          loadSubmissions(id);
+          if (mode === 'tasks') loadSubmissions(id);
         }}
         sx={{ minWidth: 260, mb: 2 }}
       >
@@ -866,7 +1138,9 @@ function SubmissionsTab({ onToast }: { onToast: (t: Toast) => void }) {
         {courses.map((c) => <MenuItem key={c.id} value={c.id}>{c.title}</MenuItem>)}
       </Select>
 
-      {canRerun && courseId && (
+      {mode === 'projects' && courseId && <ProjectsPanel courseId={courseId} onToast={onToast} />}
+
+      {mode === 'tasks' && canRerun && courseId && (
         <Button
           size="small"
           variant="outlined"
@@ -878,7 +1152,7 @@ function SubmissionsTab({ onToast }: { onToast: (t: Toast) => void }) {
         </Button>
       )}
 
-      {loading ? <CircularProgress size={24} /> : courseId && (
+      {mode === 'tasks' && (loading ? <CircularProgress size={24} /> : courseId && (
         <Table size="small">
           <TableHead>
             <TableRow>
@@ -919,7 +1193,7 @@ function SubmissionsTab({ onToast }: { onToast: (t: Toast) => void }) {
             )}
           </TableBody>
         </Table>
-      )}
+      ))}
 
       <Dialog open={!!grading} onClose={() => setGrading(null)} fullWidth maxWidth="sm">
         <DialogTitle>Ручная оценка — {grading?.student_full_name}</DialogTitle>

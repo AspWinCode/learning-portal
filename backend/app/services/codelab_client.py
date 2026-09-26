@@ -82,6 +82,25 @@ async def _request(
     return res.json()
 
 
+async def _request_raw(method: str, path: str, user) -> httpx.Response:
+    """Как _request, но не парсит тело как JSON — для скачивания файла
+    проекта (см. download_project_file), где нужны байты + заголовки, а не dict."""
+    params = _staff_params(user)
+    signature = _sign(params["staff_external_ref"])
+    url = f"{CODELAB_ADMIN_BASE}{path}?{urlencode(params)}"
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        res = await client.request(method, url, headers={"X-LP-Signature": signature})
+
+    if not res.is_success:
+        try:
+            detail = res.json().get("detail", res.text)
+        except Exception:
+            detail = res.text
+        raise CodelabError(res.status_code, detail)
+    return res
+
+
 # ─── Курсы и дерево ─────────────────────────────────────────────────────────
 
 async def list_courses(user) -> List[dict]:
@@ -207,3 +226,32 @@ async def upload_file(user, filename: str, content_type: str, data: bytes) -> di
         "POST", "/api/lms-admin/uploads", user,
         files={"file": (filename, data, content_type or "application/octet-stream")},
     )
+
+
+# ─── Проект с ручной проверкой (файлы ученика) ──────────────────────────────
+
+async def list_project_submissions(user, course_id: int, item_id: int) -> List[dict]:
+    return await _request("GET", f"/api/lms-admin/courses/{course_id}/projects/{item_id}/submissions", user)
+
+
+async def get_project_submission(user, submission_id: int) -> dict:
+    return await _request("GET", f"/api/lms-admin/projects/submissions/{submission_id}", user)
+
+
+async def download_project_file(user, file_id: int) -> httpx.Response:
+    return await _request_raw("GET", f"/api/lms-admin/projects/files/{file_id}/download", user)
+
+
+async def comment_project_file(user, file_id: int, body: str) -> dict:
+    return await _request("POST", f"/api/lms-admin/projects/files/{file_id}/comments", user, json={"body": body})
+
+
+async def review_project_submission(user, submission_id: int, decision: str, score: Optional[float], comment: str) -> dict:
+    return await _request(
+        "PUT", f"/api/lms-admin/projects/submissions/{submission_id}/review", user,
+        json={"decision": decision, "score": score, "comment": comment},
+    )
+
+
+async def remind_project_submission(user, submission_id: int) -> dict:
+    return await _request("POST", f"/api/lms-admin/projects/submissions/{submission_id}/remind", user)

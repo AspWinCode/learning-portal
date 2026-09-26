@@ -91,7 +91,56 @@ export interface CodelabLearningItem {
   is_archived: boolean;
   steps: CodelabSnapStep[] | null;
   quiz_questions: CodelabQuizQuestion[] | null;
+  due_at: string | null; // только для type="project" — срок сдачи
   children: CodelabLearningItem[];
+}
+
+// ─── Проект с ручной проверкой (файлы ученика) ─────────────────────────────────
+
+export interface CodelabProjectFileComment {
+  id: number;
+  author_id: number;
+  author_full_name: string;
+  body: string;
+  created_at: string;
+}
+
+export interface CodelabProjectFile {
+  id: number;
+  original_filename: string;
+  content_type: string;
+  size: number;
+  uploaded_at: string;
+  comments: CodelabProjectFileComment[];
+}
+
+export interface CodelabProjectAttemptSummary {
+  id: number;
+  attempt_number: number;
+  status: string;
+  submitted_at: string | null;
+  score: number | null;
+}
+
+export interface CodelabProjectSubmission {
+  id: number;
+  learning_item_id: number;
+  attempt_number: number;
+  status: 'draft' | 'submitted' | 'needs_revision' | 'accepted';
+  submitted_at: string | null;
+  reviewed_at: string | null;
+  score: number | null;
+  review_comment: string | null;
+  due_at: string | null;
+  is_overdue: boolean;
+  files: CodelabProjectFile[];
+  history: CodelabProjectAttemptSummary[];
+}
+
+export interface CodelabProjectSubmissionReview extends CodelabProjectSubmission {
+  student_external_ref: string;
+  student_full_name: string;
+  item_title: string;
 }
 
 // Тесты — видимые ученику (примеры) и скрытые (только для проверки).
@@ -214,6 +263,40 @@ export const codelabStudioApi = {
   getAnalytics: (courseId: number): Promise<CodelabCourseAnalytics> =>
     api.get(`${B}/courses/${courseId}/analytics`).then((r) => r.data),
   getSystemStatus: (): Promise<CodelabSystemStatus> => api.get(`${B}/status`).then((r) => r.data),
+
+  listProjectSubmissions: (courseId: number, itemId: number): Promise<CodelabProjectSubmissionReview[]> =>
+    api.get(`${B}/courses/${courseId}/projects/${itemId}/submissions`).then((r) => r.data),
+  getProjectSubmission: (courseId: number, itemId: number, submissionId: number): Promise<CodelabProjectSubmission> =>
+    api.get(`${B}/courses/${courseId}/projects/${itemId}/submissions/${submissionId}`).then((r) => r.data),
+  commentProjectFile: (courseId: number, itemId: number, submissionId: number, fileId: number, body: string): Promise<CodelabProjectFileComment> =>
+    api.post(`${B}/courses/${courseId}/projects/${itemId}/submissions/${submissionId}/files/${fileId}/comments`, { body }).then((r) => r.data),
+  reviewProjectSubmission: (
+    courseId: number, itemId: number, submissionId: number,
+    decision: 'accepted' | 'needs_revision', score: number | null, comment: string,
+  ): Promise<CodelabProjectSubmission> =>
+    api.put(`${B}/courses/${courseId}/projects/${itemId}/submissions/${submissionId}/review`, { decision, score, comment }).then((r) => r.data),
+  remindProjectSubmission: (courseId: number, itemId: number, submissionId: number): Promise<void> =>
+    api.post(`${B}/courses/${courseId}/projects/${itemId}/submissions/${submissionId}/remind`).then(() => undefined),
+  // Bearer-токен идёт заголовком (см. api/client.ts), не cookie — обычная
+  // <a href="..."> ссылка на этот эндпоинт получила бы 401, поэтому качаем
+  // через axios (responseType: 'blob') и триггерим сохранение сами.
+  downloadProjectFile: async (courseId: number, itemId: number, submissionId: number, fileId: number): Promise<void> => {
+    const response = await api.get(
+      `${B}/courses/${courseId}/projects/${itemId}/submissions/${submissionId}/files/${fileId}/download`,
+      { responseType: 'blob' },
+    );
+    const disposition = String(response.headers['content-disposition'] || '');
+    const match = disposition.match(/filename\*=UTF-8''([^;]+)|filename="([^"]+)"/);
+    const filename = match ? decodeURIComponent(match[1] || match[2] || 'file') : 'file';
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  },
 
   listUsers: (q?: string): Promise<CodelabUser[]> =>
     api.get(`${B}/users`, { params: q ? { q } : undefined }).then((r) => r.data),

@@ -74,3 +74,16 @@ class CodelabCourseArchiveIn(BaseModel):
 class CodelabGradeIn(BaseModel):
     score: float
     comment: str
+
+
+# ─── Проект с ручной проверкой (файлы ученика) ─────────────────────────────────
+
+
+class CodelabProjectCommentIn(BaseModel):
+    body: str
+
+
+class CodelabProjectReviewIn(BaseModel):
+    decision: str  # accepted | needs_revision
+    score: Optional[float] = None
+    comment: str

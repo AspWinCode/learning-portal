@@ -2,7 +2,7 @@ import hashlib
 import hmac
 import logging
 
-from fastapi import APIRouter, Depends, File as FastAPIFile, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File as FastAPIFile, HTTPException, Request, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app import auth
@@ -15,6 +15,8 @@ from app.schemas.codelab import (
     CodelabCourseUpdate,
     CodelabCourseWebhook,
     CodelabGradeIn,
+    CodelabProjectCommentIn,
+    CodelabProjectReviewIn,
     CodelabStudentProgress,
 )
 from app.services import codelab_client as cl
@@ -396,6 +398,131 @@ async def admin_rerun_submissions(
         _raise(e)
         return
     log_action(db, current_user.id, "rerun", "codelab_submissions", course_id, {"count": len(payload.get("submission_ids", []))})
+    return result
+
+
+async def _get_and_authorize_project_row(
+    current_user: User, db: Session, course_id: int, item_id: int, submission_id: int,
+) -> dict:
+    """RBAC-002 для проектов — по образцу admin_grade_submission: сверяем
+    принадлежность сдачи группе тренера через ростер (в нём же и весь список
+    файлов сдачи — используется ниже, чтобы не разрешить скачать/прокомментировать
+    файл ЧУЖОЙ сдачи, даже если её id угадать, см. вызовы ниже)."""
+    try:
+        rows = await cl.list_project_submissions(current_user, course_id, item_id)
+    except CodelabError as e:
+        _raise(e)
+        return {}
+    target = next((r for r in rows if r.get("id") == submission_id), None)
+    if not target:
+        raise HTTPException(status_code=404, detail="Сдача не найдена в этом проекте")
+    if auth.resolve_effective_role(current_user) == UserRole.TRAINER:
+        my_student_ids = _trainer_student_ids(db, current_user.id)
+        if _student_id_from_external_ref(target.get("student_external_ref", "")) not in my_student_ids:
+            raise HTTPException(status_code=403, detail="Ученик не из ваших групп")
+    return target
+
+
+@router.get("/admin/courses/{course_id}/projects/{item_id}/submissions")
+async def admin_list_project_submissions(
+    course_id: int, item_id: int, current_user: User = Depends(_access), db: Session = Depends(get_db),
+):
+    """RBAC-002: методист/админ видят весь ростер проекта; тренер — только
+    учеников своих групп (включая тех, кто ещё не начал сдавать — заводится
+    пустой черновик на стороне Codelab, см. project_admin._ensure_roster_submissions,
+    иначе некому было бы слать напоминание)."""
+    try:
+        rows = await cl.list_project_submissions(current_user, course_id, item_id)
+    except CodelabError as e:
+        _raise(e)
+        return
+
+    if auth.resolve_effective_role(current_user) == UserRole.TRAINER:
+        my_student_ids = _trainer_student_ids(db, current_user.id)
+        rows = [r for r in rows if _student_id_from_external_ref(r.get("student_external_ref", "")) in my_student_ids]
+    return rows
+
+
+@router.get("/admin/courses/{course_id}/projects/{item_id}/submissions/{submission_id}")
+async def admin_get_project_submission(
+    course_id: int, item_id: int, submission_id: int,
+    current_user: User = Depends(_access), db: Session = Depends(get_db),
+):
+    await _get_and_authorize_project_row(current_user, db, course_id, item_id, submission_id)
+    try:
+        return await cl.get_project_submission(current_user, submission_id)
+    except CodelabError as e:
+        _raise(e)
+
+
+@router.get("/admin/courses/{course_id}/projects/{item_id}/submissions/{submission_id}/files/{file_id}/download")
+async def admin_download_project_file(
+    course_id: int, item_id: int, submission_id: int, file_id: int,
+    current_user: User = Depends(_access), db: Session = Depends(get_db),
+):
+    target = await _get_and_authorize_project_row(current_user, db, course_id, item_id, submission_id)
+    if not any(f.get("id") == file_id for f in target.get("files", [])):
+        raise HTTPException(status_code=404, detail="Файл не относится к этой сдаче")
+
+    try:
+        upstream = await cl.download_project_file(current_user, file_id)
+    except CodelabError as e:
+        _raise(e)
+        return
+    return Response(
+        content=upstream.content,
+        media_type=upstream.headers.get("content-type", "application/octet-stream"),
+        headers={"Content-Disposition": upstream.headers.get("content-disposition", "attachment")},
+    )
+
+
+@router.post("/admin/courses/{course_id}/projects/{item_id}/submissions/{submission_id}/files/{file_id}/comments")
+async def admin_comment_project_file(
+    course_id: int, item_id: int, submission_id: int, file_id: int, payload: CodelabProjectCommentIn,
+    current_user: User = Depends(_access), db: Session = Depends(get_db),
+):
+    target = await _get_and_authorize_project_row(current_user, db, course_id, item_id, submission_id)
+    if not any(f.get("id") == file_id for f in target.get("files", [])):
+        raise HTTPException(status_code=404, detail="Файл не относится к этой сдаче")
+
+    try:
+        result = await cl.comment_project_file(current_user, file_id, payload.body)
+    except CodelabError as e:
+        _raise(e)
+        return
+    log_action(db, current_user.id, "comment", "codelab_project_file", file_id, {})
+    return result
+
+
+@router.put("/admin/courses/{course_id}/projects/{item_id}/submissions/{submission_id}/review")
+async def admin_review_project_submission(
+    course_id: int, item_id: int, submission_id: int, payload: CodelabProjectReviewIn,
+    current_user: User = Depends(_access), db: Session = Depends(get_db),
+):
+    """GRD-004-аналог: тренер (только своей группы) или методист/админ
+    принимает работу или отправляет на доработку."""
+    await _get_and_authorize_project_row(current_user, db, course_id, item_id, submission_id)
+    try:
+        result = await cl.review_project_submission(current_user, submission_id, payload.decision, payload.score, payload.comment)
+    except CodelabError as e:
+        _raise(e)
+        return
+    log_action(db, current_user.id, payload.decision, "codelab_project_submission", submission_id, {"score": payload.score})
+    return result
+
+
+@router.post("/admin/courses/{course_id}/projects/{item_id}/submissions/{submission_id}/remind")
+async def admin_remind_project_submission(
+    course_id: int, item_id: int, submission_id: int,
+    current_user: User = Depends(_access), db: Session = Depends(get_db),
+):
+    await _get_and_authorize_project_row(current_user, db, course_id, item_id, submission_id)
+    try:
+        result = await cl.remind_project_submission(current_user, submission_id)
+    except CodelabError as e:
+        _raise(e)
+        return
+    log_action(db, current_user.id, "remind", "codelab_project_submission", submission_id, {})
     return result
 
 

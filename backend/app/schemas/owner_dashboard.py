@@ -87,6 +87,7 @@ class AcademyMetricsGroupBreakdown(BaseModel):
     students_count: int
     total_amount: float
     average_check: float
+    trainer_cost: float
 
 
 class AcademyMetricsNpsResponse(BaseModel):

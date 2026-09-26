@@ -250,6 +250,7 @@ const AcademyMetricsTab: React.FC = () => {
                     <TableCell align="right">Учеников</TableCell>
                     <TableCell align="right">Выручка</TableCell>
                     <TableCell align="right">Средний чек</TableCell>
+                    <TableCell align="right">Расход на тренера</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -260,6 +261,7 @@ const AcademyMetricsTab: React.FC = () => {
                       <TableCell align="right">{row.students_count}</TableCell>
                       <TableCell align="right">{rub(row.total_amount)}</TableCell>
                       <TableCell align="right">{rub(row.average_check)}</TableCell>
+                      <TableCell align="right">{rub(row.trainer_cost)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -269,6 +271,9 @@ const AcademyMetricsTab: React.FC = () => {
               Выручка группы = сумма чеков учеников, у которых сейчас активное членство в этой группе и
               которые заплатили в выбранном периоде. Ученик без активной группы (например, чисто
               индивидуальный) сюда не попадает, но учтён в общей цифре и разбивке по форматам выше.
+              <br />
+              Расход на тренера = ставка группы (за занятие или за час — как задано в «Расчётах») × число
+              занятий/часов за выбранный период. Если ставка группе не задана, расход будет 0 ₽.
             </Typography>
           </Paper>
 

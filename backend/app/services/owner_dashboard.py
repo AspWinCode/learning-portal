@@ -1,5 +1,5 @@
-from datetime import datetime, timedelta
-from typing import Dict, List, Tuple
+from datetime import date, datetime, time, timedelta
+from typing import Dict, List, Optional, Tuple
 
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
@@ -13,6 +13,7 @@ from app.models import (
     GroupStudent,
     Lead,
     LeadStatus,
+    LessonAttendance,
     OwnerWorkspaceTask,
     Student,
     StudentAccount,
@@ -297,7 +298,9 @@ def build_academy_metrics(
         })
     breakdown.sort(key=lambda row: row["total_amount"], reverse=True)
 
-    groups_breakdown = _build_groups_revenue(db, student_checks=student_checks)
+    groups_breakdown = _build_groups_revenue(
+        db, student_checks=student_checks, period_start=period_start, period_end=period_end
+    )
 
     period_length = period_end - period_start
     prev_start = period_start - period_length
@@ -332,7 +335,63 @@ def build_academy_metrics(
     }
 
 
-def _build_groups_revenue(db: Session, *, student_checks: Dict[int, float]) -> List[dict]:
+def _slot_duration_hours(start_t: Optional[time], end_t: Optional[time]) -> float:
+    if start_t is None or end_t is None:
+        return 0.0
+    d = datetime.combine(date.today(), end_t) - datetime.combine(date.today(), start_t)
+    return max(0.0, d.total_seconds() / 3600.0)
+
+
+def _compute_trainer_cost_by_group(
+    db: Session, *, group_ids: List[int], period_start: datetime, period_end: datetime
+) -> Dict[int, float]:
+    """Расход на тренера по группе за период — та же методика, что и на странице
+    «Расчёты» (Group.trainer_rate за занятие / trainer_rate_per_hour за час,
+    в зависимости от формата группы), но без учёта подмен тренера внутри
+    периода: ставка задаётся на уровне группы, поэтому кто именно вёл занятие,
+    на сумму не влияет."""
+
+    if not group_ids:
+        return {}
+
+    groups = {g.id: g for g in db.query(Group).filter(Group.id.in_(group_ids)).all()}
+    attendances = (
+        db.query(LessonAttendance)
+        .filter(
+            LessonAttendance.group_id.in_(group_ids),
+            LessonAttendance.lesson_date >= period_start.date(),
+            LessonAttendance.lesson_date < period_end.date(),
+        )
+        .all()
+    )
+
+    slots: Dict[int, List[Tuple[bool, float]]] = {}
+    seen = set()
+    for att in attendances:
+        group = groups.get(att.group_id)
+        if not group:
+            continue
+        key = (att.group_id, att.lesson_date, att.lesson_start_time, att.lesson_end_time)
+        if key in seen:
+            continue
+        seen.add(key)
+        is_individual = (group.lesson_format or "group").strip().lower() == "individual"
+        hours = _slot_duration_hours(att.lesson_start_time, att.lesson_end_time) if is_individual else 0.0
+        slots.setdefault(group.id, []).append((is_individual, hours))
+
+    result: Dict[int, float] = {}
+    for group_id, group_slots in slots.items():
+        group = groups[group_id]
+        lessons_count = sum(1 for is_individual, _ in group_slots if not is_individual)
+        hours_count = sum(hours for is_individual, hours in group_slots if is_individual)
+        cost = (group.trainer_rate or 0.0) * lessons_count + (group.trainer_rate_per_hour or 0.0) * hours_count
+        result[group_id] = round(cost, 2)
+    return result
+
+
+def _build_groups_revenue(
+    db: Session, *, student_checks: Dict[int, float], period_start: datetime, period_end: datetime
+) -> List[dict]:
     """Выручка группы = сумма чеков (см. build_academy_metrics) учеников,
     у которых сейчас активное членство в этой группе (GroupStudent.left_at IS NULL)
     и которые заплатили в выбранном периоде. Ученик без активной группы
@@ -365,6 +424,9 @@ def _build_groups_revenue(db: Session, *, student_checks: Dict[int, float]) -> L
         user.id: user.full_name
         for user in db.query(User).filter(User.id.in_(trainer_ids)).all()
     } if trainer_ids else {}
+    trainer_costs = _compute_trainer_cost_by_group(
+        db, group_ids=[group.id for group in groups], period_start=period_start, period_end=period_end
+    )
 
     rows = []
     for group in groups:
@@ -379,6 +441,7 @@ def _build_groups_revenue(db: Session, *, student_checks: Dict[int, float]) -> L
             "students_count": bucket_count,
             "total_amount": bucket_sum,
             "average_check": round(bucket_sum / bucket_count, 2) if bucket_count else 0.0,
+            "trainer_cost": trainer_costs.get(group.id, 0.0),
         })
     rows.sort(key=lambda row: row["total_amount"], reverse=True)
     return rows

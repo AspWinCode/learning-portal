@@ -240,6 +240,7 @@ export interface AcademyMetricsGroupBreakdown {
   students_count: number;
   total_amount: number;
   average_check: number;
+  trainer_cost: number;
 }
 
 export interface AcademyMetricsNps {

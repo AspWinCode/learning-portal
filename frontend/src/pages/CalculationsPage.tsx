@@ -184,6 +184,16 @@ const CalculationsPage: React.FC = () => {
       total: rows.reduce((acc, row) => acc + row.total_payment, 0),
       unpaid: rows.reduce((acc, row) => acc + (row.already_paid ? 0 : row.total_payment), 0),
       paid: rows.filter((row) => row.already_paid).length,
+      groupPayment: rows.reduce(
+        (acc, row) =>
+          acc + row.groups.reduce((sum, g) => sum + (g.is_individual_format ? 0 : g.subtotal), 0),
+        0,
+      ),
+      individualPayment: rows.reduce(
+        (acc, row) =>
+          acc + row.groups.reduce((sum, g) => sum + (g.is_individual_format ? g.subtotal : 0), 0),
+        0,
+      ),
     }),
     [rows],
   );
@@ -338,6 +348,16 @@ const CalculationsPage: React.FC = () => {
               { label: 'Не выплачено', value: formatCurrency(summary.unpaid), icon: <ReceiptLong color="warning" /> },
               { label: 'Премии', value: formatCurrency(summary.bonus), icon: <AddIcon color="success" /> },
               { label: 'Тренеры', value: `${summary.trainers}`, icon: <DoneAll color="action" /> },
+              {
+                label: 'Оплата групповые занятия',
+                value: formatCurrency(summary.groupPayment),
+                icon: <Payments color="primary" />,
+              },
+              {
+                label: 'Оплата индивидуальные',
+                value: formatCurrency(summary.individualPayment),
+                icon: <Payments color="primary" />,
+              },
             ].map((item) => (
               <Paper
                 key={item.label}

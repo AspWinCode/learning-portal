@@ -1441,6 +1441,10 @@ class Group(Base):
     duration_minutes = Column(Integer, default=60, nullable=False, server_default="60")
     # Ставка за доп. юнит (сверх 8), когда extra_policy=paid; если NULL — берём price/8
     extra_rate_per_unit = Column(Float, nullable=True)
+    # Переопределение ставки тренера конкретно для этой группы (за урок/за час);
+    # если NULL — используется ставка тренера (User.trainer_rate / trainer_rate_per_hour).
+    trainer_rate = Column(Float, nullable=True)
+    trainer_rate_per_hour = Column(Float, nullable=True)
     # С какой даты группа считается работающей — уроки нельзя создавать раньше этой даты
     start_date = Column(Date, nullable=True)
     # group = групповой (лимит 8 занятий/юнитов), individual = индивидуальный (без лимита 8)

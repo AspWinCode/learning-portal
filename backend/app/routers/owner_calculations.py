@@ -1,6 +1,6 @@
-"""Страница «Расчёты» для owner: тренеры, ставки, уроки/часы, премии, выплаты."""
+"""Страница «Расчёты» для owner: тренеры, ставки (в т.ч. по группам), уроки/часы, премии, выплаты."""
 from datetime import date, datetime, time, timedelta, timezone
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, selectinload
@@ -24,8 +24,10 @@ from app.models import (
     UserRole,
 )
 from app.schemas.owner_calculations import (
+    GroupRateUpdate,
     TrainerBonusPayload,
     TrainerCalculationRow,
+    TrainerGroupCalculationRow,
     TrainerPayPayload,
     TrainerRateUpdate,
 )
@@ -75,7 +77,7 @@ async def get_calculations_trainers(
         return []
 
     trainer_ids = {t.id for t in trainers}
-    trainer_lessons, trainer_hours = _compute_trainer_lessons_hours(db, trainer_ids, period_start, period_end)
+    breakdowns = _compute_trainer_breakdowns(db, trainers, period_start, period_end)
 
     bonuses = {
         (b.trainer_id, b.period): b.bonus
@@ -84,43 +86,27 @@ async def get_calculations_trainers(
     paid_periods = {
         (p.trainer_id, p.period) for p in db.query(TrainerPayout).filter(TrainerPayout.period == month).all()
     }
-    trainer_has_individual = {}
-    for t in trainers:
-        has_ind = (
-            db.query(Group)
-            .filter(Group.trainer_id == t.id, Group.status == GroupStatus.ACTIVE)
-            .filter(Group.lesson_format == "individual")
-            .limit(1)
-            .first()
-            is not None
-        )
-        trainer_has_individual[t.id] = bool(has_ind)
 
     result = []
     for t in trainers:
         tid = t.id
-        rate_lesson = getattr(t, "trainer_rate", None)
-        rate_hour = getattr(t, "trainer_rate_per_hour", None)
-        lessons = trainer_lessons.get(tid, 0)
-        hours = trainer_hours.get(tid, 0.0)
-        is_ind = trainer_has_individual.get(tid, False)
-        # Оплата: уроки × ставка_урока + часы × ставка_часа (тренер может вести и группы, и индивид)
-        base = (rate_lesson or 0) * lessons + (rate_hour or 0) * hours
+        b = breakdowns[tid]
         bonus = bonuses.get((tid, month), 0.0)
-        total = base + bonus
+        total = b.base_payment + bonus
         result.append(
             TrainerCalculationRow(
                 trainer_id=tid,
                 full_name=t.full_name or "",
-                is_individual_format=is_ind,
-                rate_per_lesson=rate_lesson,
-                rate_per_hour=rate_hour,
-                lessons_count=lessons,
-                hours_count=round(hours, 2),
-                base_payment=round(base, 2),
+                is_individual_format=b.is_individual_format,
+                rate_per_lesson=getattr(t, "trainer_rate", None),
+                rate_per_hour=getattr(t, "trainer_rate_per_hour", None),
+                lessons_count=b.lessons_count,
+                hours_count=round(b.hours_count, 2),
+                base_payment=round(b.base_payment, 2),
                 bonus=round(bonus, 2),
                 total_payment=round(total, 2),
                 already_paid=(tid, month) in paid_periods,
+                groups=b.groups,
             )
         )
     return result
@@ -133,7 +119,7 @@ async def update_trainer_rate(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_permission("owner_calculations.manage")),
 ):
-    """Обновить ставку за урок и/или за час у тренера. Только owner."""
+    """Обновить ставку за урок и/или за час у тренера (базовая, используется для групп без своей ставки). Только owner."""
     user = db.query(User).filter(User.id == trainer_id, User.role == UserRole.TRAINER).first()
     if not user:
         raise HTTPException(status_code=404, detail="Trainer not found")
@@ -150,6 +136,34 @@ async def update_trainer_rate(
         "trainer_rate",
         trainer_id,
         {"rate_per_lesson": user.trainer_rate, "rate_per_hour": user.trainer_rate_per_hour},
+    )
+    return {"ok": True}
+
+
+@router.put("/owner/calculations/groups/{group_id}/rate")
+async def update_group_rate(
+    group_id: int,
+    payload: GroupRateUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("owner_calculations.manage")),
+):
+    """Задать ставку за урок/час конкретно для группы (переопределяет ставку тренера). Только owner."""
+    group = db.query(Group).filter(Group.id == group_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    payload_fields = getattr(payload, "model_fields_set", getattr(payload, "__fields_set__", set()))
+    if "rate_per_lesson" in payload_fields:
+        group.trainer_rate = payload.rate_per_lesson
+    if "rate_per_hour" in payload_fields:
+        group.trainer_rate_per_hour = payload.rate_per_hour
+    db.commit()
+    log_action(
+        db,
+        current_user.id,
+        "update",
+        "group_trainer_rate",
+        group_id,
+        {"rate_per_lesson": group.trainer_rate, "rate_per_hour": group.trainer_rate_per_hour},
     )
     return {"ok": True}
 
@@ -187,13 +201,41 @@ async def add_trainer_bonus(
     return {"ok": True}
 
 
-def _compute_trainer_lessons_hours(
+class _TrainerBreakdown:
+    __slots__ = ("lessons_count", "hours_count", "base_payment", "is_individual_format", "groups")
+
+    def __init__(self) -> None:
+        self.lessons_count = 0
+        self.hours_count = 0.0
+        self.base_payment = 0.0
+        self.is_individual_format = False
+        self.groups: List[TrainerGroupCalculationRow] = []
+
+
+def _compute_trainer_breakdowns(
     db: Session,
-    trainer_ids: Set[int],
+    trainers: List[User],
     period_start: date,
     period_end: date,
-) -> Tuple[Dict[int, int], Dict[int, float]]:
-    """По каждому trainer_id возвращает (lessons_count, hours_count) за период с учётом подмен."""
+) -> Dict[int, _TrainerBreakdown]:
+    """Для каждого тренера — итоги за период и разбивка оплаты по его группам.
+
+    Ставка группы (Group.trainer_rate / trainer_rate_per_hour), если задана,
+    переопределяет базовую ставку тренера для расчёта именно этой группы —
+    так разные группы одного тренера могут стоить по-разному.
+    """
+    trainer_ids = {t.id for t in trainers}
+    trainers_by_id = {t.id: t for t in trainers}
+
+    active_groups = (
+        db.query(Group)
+        .filter(Group.trainer_id.in_(trainer_ids), Group.status == GroupStatus.ACTIVE)
+        .all()
+    )
+    groups_by_trainer: Dict[int, List[Group]] = {tid: [] for tid in trainer_ids}
+    for g in active_groups:
+        groups_by_trainer.setdefault(g.trainer_id, []).append(g)
+
     attendances = (
         db.query(LessonAttendance)
         .filter(
@@ -215,12 +257,16 @@ def _compute_trainer_lessons_hours(
         (o.group_id, o.lesson_date, o.start_time, o.end_time): o.trainer_id
         for o in overrides
     }
-    slots_by_trainer: Dict[int, List[Tuple[bool, float]]] = {tid: [] for tid in trainer_ids}
+
+    # (trainer_id, group_id) -> список (is_individual, hours) по слотам
+    slots: Dict[Tuple[int, int], List[Tuple[bool, float]]] = {}
+    group_objects: Dict[int, Group] = {g.id: g for g in active_groups}
     seen = set()
     for att in attendances:
         group = att.group
         if not group:
             continue
+        group_objects.setdefault(group.id, group)
         start_t = getattr(att, "lesson_start_time", None)
         end_t = getattr(att, "lesson_end_time", None)
         key = (att.group_id, att.lesson_date, start_t, end_t)
@@ -234,13 +280,55 @@ def _compute_trainer_lessons_hours(
         # 2) Иначе — подмена по LessonTrainerOverride.
         # 3) Фолбэк — текущий trainer_id у группы (для старых данных без trainer_id).
         tid = getattr(att, "trainer_id", None) or override_map.get(key, group.trainer_id)
-        if tid not in slots_by_trainer:
+        if tid not in trainer_ids:
             continue
         h = _slot_duration_hours(start_t, end_t) if is_ind else 0.0
-        slots_by_trainer[tid].append((is_ind, h))
-    trainer_lessons = {tid: sum(1 for is_ind, _ in slots if not is_ind) for tid, slots in slots_by_trainer.items()}
-    trainer_hours = {tid: round(sum(h for is_ind, h in slots if is_ind), 2) for tid, slots in slots_by_trainer.items()}
-    return trainer_lessons, trainer_hours
+        slots.setdefault((tid, group.id), []).append((is_ind, h))
+
+    result: Dict[int, _TrainerBreakdown] = {}
+    for tid in trainer_ids:
+        t = trainers_by_id[tid]
+        b = _TrainerBreakdown()
+        group_ids = {g.id for g in groups_by_trainer.get(tid, [])} | {
+            gid for (ttid, gid) in slots.keys() if ttid == tid
+        }
+        group_rows = []
+        for gid in group_ids:
+            g = group_objects.get(gid)
+            if g is None:
+                continue
+            group_slots = slots.get((tid, gid), [])
+            lessons = sum(1 for is_ind, _ in group_slots if not is_ind)
+            hours = round(sum(h for is_ind, h in group_slots if is_ind), 2)
+            is_ind_group = (getattr(g, "lesson_format", None) or "group").strip().lower() == "individual"
+            rate_lesson = g.trainer_rate if g.trainer_rate is not None else getattr(t, "trainer_rate", None)
+            rate_hour = (
+                g.trainer_rate_per_hour if g.trainer_rate_per_hour is not None else getattr(t, "trainer_rate_per_hour", None)
+            )
+            subtotal = (rate_lesson or 0) * lessons + (rate_hour or 0) * hours
+            b.lessons_count += lessons
+            b.hours_count += hours
+            b.base_payment += subtotal
+            if is_ind_group:
+                b.is_individual_format = True
+            group_rows.append(
+                TrainerGroupCalculationRow(
+                    group_id=gid,
+                    group_name=g.name or "",
+                    is_individual_format=is_ind_group,
+                    rate_per_lesson=g.trainer_rate,
+                    rate_per_hour=g.trainer_rate_per_hour,
+                    lessons_count=lessons,
+                    hours_count=hours,
+                    subtotal=round(subtotal, 2),
+                )
+            )
+        group_rows.sort(key=lambda r: r.group_name)
+        b.groups = group_rows
+        b.hours_count = round(b.hours_count, 2)
+        b.base_payment = round(b.base_payment, 2)
+        result[tid] = b
+    return result
 
 
 @router.post("/owner/calculations/trainers/{trainer_id}/pay")
@@ -267,9 +355,9 @@ async def pay_trainer(
     year, month_num = int(payload.period[:4]), int(payload.period[5:7])
     period_start = date(year, month_num, 1)
     period_end = (date(year, month_num + 1, 1) - timedelta(days=1)) if month_num < 12 else date(year, 12, 31)
-    trainer_lessons, trainer_hours = _compute_trainer_lessons_hours(db, {trainer_id}, period_start, period_end)
-    lessons_count = trainer_lessons.get(trainer_id, 0)
-    hours_count = trainer_hours.get(trainer_id, 0.0)
+    breakdown = _compute_trainer_breakdowns(db, [user], period_start, period_end)[trainer_id]
+    lessons_count = breakdown.lessons_count
+    hours_count = breakdown.hours_count
     bonus_rec = (
         db.query(TrainerPeriodBonus)
         .filter(TrainerPeriodBonus.trainer_id == trainer_id, TrainerPeriodBonus.period == payload.period)
@@ -278,8 +366,9 @@ async def pay_trainer(
     bonus = (getattr(bonus_rec, "bonus", None) or 0) if bonus_rec else 0
     rate_lesson = getattr(user, "trainer_rate", None)
     rate_hour = getattr(user, "trainer_rate_per_hour", None)
-    # Оплата: уроки × ставка_урока + часы × ставка_часа (тренер может вести и группы, и индивид)
-    base_payment = (rate_lesson or 0) * lessons_count + (rate_hour or 0) * hours_count
+    # Оплата считается по факту: сумма subtotal каждой группы тренера
+    # (со своей ставкой, если задана, иначе — базовая ставка тренера).
+    base_payment = breakdown.base_payment
     total = base_payment + bonus
     db.add(
         TrainerPayout(

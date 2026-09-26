@@ -3342,6 +3342,17 @@ export const ownerFunnelsApi = {
   },
 };
 
+export interface TrainerGroupCalculationRow {
+  group_id: number;
+  group_name: string;
+  is_individual_format: boolean;
+  rate_per_lesson: number | null;
+  rate_per_hour: number | null;
+  lessons_count: number;
+  hours_count: number;
+  subtotal: number;
+}
+
 export interface TrainerCalculationRow {
   trainer_id: number;
   full_name: string;
@@ -3354,6 +3365,7 @@ export interface TrainerCalculationRow {
   bonus: number;
   total_payment: number;
   already_paid: boolean;
+  groups: TrainerGroupCalculationRow[];
 }
 
 export const ownerCalculationsApi = {
@@ -3366,6 +3378,13 @@ export const ownerCalculationsApi = {
     payload: { rate_per_lesson?: number | null; rate_per_hour?: number | null }
   ): Promise<{ ok: boolean }> => {
     const response = await api.put(`/api/owner/calculations/trainers/${trainerId}/rate`, payload);
+    return response.data;
+  },
+  updateGroupRate: async (
+    groupId: number,
+    payload: { rate_per_lesson?: number | null; rate_per_hour?: number | null }
+  ): Promise<{ ok: boolean }> => {
+    const response = await api.put(`/api/owner/calculations/groups/${groupId}/rate`, payload);
     return response.data;
   },
   addBonus: async (trainerId: number, period: string, bonus: number): Promise<{ ok: boolean }> => {

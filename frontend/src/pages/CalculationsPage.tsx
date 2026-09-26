@@ -6,11 +6,13 @@ import {
   Button,
   Chip,
   CircularProgress,
+  Collapse,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   Divider,
+  IconButton,
   Paper,
   Stack,
   Table,
@@ -22,8 +24,15 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { Add as AddIcon, DoneAll, Payments, ReceiptLong } from '@mui/icons-material';
-import { ownerCalculationsApi, type TrainerCalculationRow } from '../services/api';
+import {
+  Add as AddIcon,
+  DoneAll,
+  ExpandLess,
+  ExpandMore,
+  Payments,
+  ReceiptLong,
+} from '@mui/icons-material';
+import { ownerCalculationsApi, type TrainerCalculationRow, type TrainerGroupCalculationRow } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 
 const getDefaultMonth = () => {
@@ -94,6 +103,67 @@ const RateField: React.FC<RateFieldProps> = ({ value, disabled, onChange, onBlur
   );
 };
 
+type GroupRatesTableProps = {
+  groups: TrainerGroupCalculationRow[];
+  onChange: (groupId: number, patch: Partial<TrainerGroupCalculationRow>) => void;
+  onBlur: (groupId: number, payload: { rate_per_lesson?: number | null; rate_per_hour?: number | null }) => void;
+};
+
+const GroupRatesTable: React.FC<GroupRatesTableProps> = ({ groups, onChange, onBlur }) => (
+  <Box sx={{ px: { xs: 0, md: 2 }, py: 1.5, bgcolor: 'rgba(248, 250, 252, 0.6)' }}>
+    <Typography variant="caption" color="text.secondary" sx={{ px: { xs: 1.5, md: 0 }, display: 'block', mb: 0.5 }}>
+      Ставка по каждой группе переопределяет базовую ставку тренера — удобно, если разные группы стоят по-разному.
+    </Typography>
+    <Table size="small">
+      <TableHead>
+        <TableRow>
+          <TableCell>Группа</TableCell>
+          <TableCell sx={{ width: 150 }}>Ставка за урок</TableCell>
+          <TableCell sx={{ width: 150 }}>Ставка за час</TableCell>
+          <TableCell align="right">Нагрузка</TableCell>
+          <TableCell align="right">Сумма</TableCell>
+        </TableRow>
+      </TableHead>
+      <TableBody>
+        {groups.map((g) => (
+          <TableRow key={g.group_id}>
+            <TableCell>
+              <Typography variant="body2" fontWeight={700}>
+                {g.group_name}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {g.is_individual_format ? 'Индивидуальный формат' : 'Групповой формат'}
+              </Typography>
+            </TableCell>
+            <TableCell>
+              <RateField
+                label="Ставка за урок для группы"
+                disabled={g.is_individual_format}
+                value={g.rate_per_lesson}
+                onChange={(value) => onChange(g.group_id, { rate_per_lesson: value })}
+                onBlur={(value) => onBlur(g.group_id, { rate_per_lesson: value, rate_per_hour: g.rate_per_hour })}
+              />
+            </TableCell>
+            <TableCell>
+              <RateField
+                label="Ставка за час для группы"
+                disabled={!g.is_individual_format}
+                value={g.rate_per_hour}
+                onChange={(value) => onChange(g.group_id, { rate_per_hour: value })}
+                onBlur={(value) => onBlur(g.group_id, { rate_per_lesson: g.rate_per_lesson, rate_per_hour: value })}
+              />
+            </TableCell>
+            <TableCell align="right">
+              {g.is_individual_format ? `${formatDecimal(g.hours_count)} ч` : `${g.lessons_count} уроков`}
+            </TableCell>
+            <TableCell align="right">{formatCurrency(g.subtotal)}</TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  </Box>
+);
+
 const CalculationsPage: React.FC = () => {
   const [month, setMonth] = useState(getDefaultMonth);
   const [rows, setRows] = useState<TrainerCalculationRow[]>([]);
@@ -103,6 +173,7 @@ const CalculationsPage: React.FC = () => {
   const [bonusAmount, setBonusAmount] = useState<string>('');
   const [bonusSaving, setBonusSaving] = useState(false);
   const [payingId, setPayingId] = useState<number | null>(null);
+  const [expandedTrainerId, setExpandedTrainerId] = useState<number | null>(null);
 
   const summary = useMemo(
     () => ({
@@ -178,6 +249,28 @@ const CalculationsPage: React.FC = () => {
 
   const updateRow = (trainerId: number, patch: Partial<TrainerCalculationRow>) => {
     setRows((prev) => prev.map((row) => (row.trainer_id === trainerId ? { ...row, ...patch } : row)));
+  };
+
+  const updateGroupRow = (trainerId: number, groupId: number, patch: Partial<TrainerGroupCalculationRow>) => {
+    setRows((prev) =>
+      prev.map((row) =>
+        row.trainer_id === trainerId
+          ? { ...row, groups: row.groups.map((g) => (g.group_id === groupId ? { ...g, ...patch } : g)) }
+          : row,
+      ),
+    );
+  };
+
+  const handleGroupRateBlur = async (
+    groupId: number,
+    payload: { rate_per_lesson?: number | null; rate_per_hour?: number | null },
+  ) => {
+    try {
+      await ownerCalculationsApi.updateGroupRate(groupId, payload);
+      load();
+    } catch (err: any) {
+      setError(extractApiError(err, 'Не удалось сохранить ставку группы'));
+    }
   };
 
   const renderActions = (row: TrainerCalculationRow) => (
@@ -360,6 +453,7 @@ const CalculationsPage: React.FC = () => {
                         },
                       }}
                     >
+                      <TableCell sx={{ width: 44 }} />
                       <TableCell sx={{ width: 56 }}>№</TableCell>
                       <TableCell>Тренер</TableCell>
                       <TableCell sx={{ width: 150 }}>Ставка за урок</TableCell>
@@ -373,7 +467,20 @@ const CalculationsPage: React.FC = () => {
                   </TableHead>
                   <TableBody>
                     {rows.map((row, idx) => (
-                      <TableRow key={row.trainer_id} hover sx={{ '& td': { py: 1.5 } }}>
+                      <React.Fragment key={row.trainer_id}>
+                      <TableRow hover sx={{ '& td': { py: 1.5 } }}>
+                        <TableCell>
+                          {row.groups.length > 0 && (
+                            <IconButton
+                              size="small"
+                              onClick={() =>
+                                setExpandedTrainerId((prev) => (prev === row.trainer_id ? null : row.trainer_id))
+                              }
+                            >
+                              {expandedTrainerId === row.trainer_id ? <ExpandLess /> : <ExpandMore />}
+                            </IconButton>
+                          )}
+                        </TableCell>
                         <TableCell>{idx + 1}</TableCell>
                         <TableCell>
                           <Typography variant="body2" fontWeight={800}>
@@ -385,7 +492,7 @@ const CalculationsPage: React.FC = () => {
                         </TableCell>
                         <TableCell>
                           <RateField
-                            label="Ставка за урок"
+                            label="Ставка за урок (базовая)"
                             disabled={row.is_individual_format}
                             value={row.rate_per_lesson}
                             onChange={(value) => updateRow(row.trainer_id, { rate_per_lesson: value })}
@@ -417,6 +524,20 @@ const CalculationsPage: React.FC = () => {
                         </TableCell>
                         <TableCell>{renderActions(row)}</TableCell>
                       </TableRow>
+                      {row.groups.length > 0 && (
+                        <TableRow>
+                          <TableCell colSpan={9} sx={{ p: 0, borderBottom: expandedTrainerId === row.trainer_id ? undefined : 'none' }}>
+                            <Collapse in={expandedTrainerId === row.trainer_id} unmountOnExit>
+                              <GroupRatesTable
+                                groups={row.groups}
+                                onChange={(groupId, patch) => updateGroupRow(row.trainer_id, groupId, patch)}
+                                onBlur={handleGroupRateBlur}
+                              />
+                            </Collapse>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                      </React.Fragment>
                     ))}
                   </TableBody>
                 </Table>
@@ -488,6 +609,26 @@ const CalculationsPage: React.FC = () => {
                           onBlur={(value) => handleRateBlur(row.trainer_id, { rate_per_hour: value })}
                         />
                       </Stack>
+                      {row.groups.length > 0 && (
+                        <>
+                          <Button
+                            size="small"
+                            onClick={() =>
+                              setExpandedTrainerId((prev) => (prev === row.trainer_id ? null : row.trainer_id))
+                            }
+                            endIcon={expandedTrainerId === row.trainer_id ? <ExpandLess /> : <ExpandMore />}
+                          >
+                            Ставки по группам ({row.groups.length})
+                          </Button>
+                          <Collapse in={expandedTrainerId === row.trainer_id} unmountOnExit>
+                            <GroupRatesTable
+                              groups={row.groups}
+                              onChange={(groupId, patch) => updateGroupRow(row.trainer_id, groupId, patch)}
+                              onBlur={handleGroupRateBlur}
+                            />
+                          </Collapse>
+                        </>
+                      )}
                       {renderActions(row)}
                     </Stack>
                   </Paper>

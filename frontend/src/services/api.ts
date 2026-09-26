@@ -539,6 +539,16 @@ export const studentsApi = {
     const response = await api.get(`/api/students/${studentId}/attendances`, { params: limit ? { limit } : {} });
     return response.data;
   },
+  getAttendanceSummary: async (
+    dateFrom: string,
+    dateTo: string,
+    params?: { status?: string; q?: string }
+  ): Promise<Array<{ student_id: number; full_name: string; total: number; attended: number; missed: number; percent: number }>> => {
+    const response = await api.get('/api/students/attendance-summary', {
+      params: { date_from: dateFrom, date_to: dateTo, ...params },
+    });
+    return response.data;
+  },
   getTimeline: async (
     studentId: number,
     params?: { offset?: number; limit?: number; event_type?: string; date_from?: string; date_to?: string }

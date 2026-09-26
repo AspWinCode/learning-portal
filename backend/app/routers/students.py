@@ -1,8 +1,8 @@
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import List, Optional
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session, selectinload, joinedload
-from sqlalchemy import func, or_
+from sqlalchemy import case, func, or_
 from sqlalchemy.exc import IntegrityError
 from app.database import get_db
 from app import auth
@@ -847,6 +847,62 @@ async def read_students(
         )
         for s in students
     ]
+
+
+@router.get("/attendance-summary")
+async def get_students_attendance_summary(
+    date_from: date = Query(..., description="Начало периода"),
+    date_to: date = Query(..., description="Конец периода"),
+    status_filter: Optional[StudentStatus] = Query(StudentStatus.ACTIVE, alias="status"),
+    q: Optional[str] = Query(None, description="Поиск по ФИО (подстрока)"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """Сводка посещаемости учеников за период: сколько занятий было, сколько посещено и пропущено."""
+    auth.ensure_permission(current_user, "students.access")
+    if date_to < date_from:
+        raise HTTPException(status_code=400, detail="date_to must be >= date_from")
+
+    query = _build_students_query(db, current_user, status_filter, q, None)
+    students = query.order_by(Student.full_name.asc()).all()
+    if not students:
+        return []
+
+    student_ids = [s.id for s in students]
+    display_names = get_students_display_names(db, student_ids, students=students)
+
+    rows = (
+        db.query(
+            LessonAttendance.student_id,
+            func.count(LessonAttendance.id).label("total"),
+            func.sum(case((LessonAttendance.attended.is_(True), 1), else_=0)).label("attended"),
+        )
+        .filter(
+            LessonAttendance.student_id.in_(student_ids),
+            LessonAttendance.lesson_date >= date_from,
+            LessonAttendance.lesson_date <= date_to,
+        )
+        .group_by(LessonAttendance.student_id)
+        .all()
+    )
+    stats = {row.student_id: (row.total, int(row.attended or 0)) for row in rows}
+
+    result = []
+    for s in students:
+        total, attended = stats.get(s.id, (0, 0))
+        missed = total - attended
+        percent = round(attended / total * 100) if total else 0
+        result.append(
+            {
+                "student_id": s.id,
+                "full_name": display_names.get(s.id, s.full_name),
+                "total": total,
+                "attended": attended,
+                "missed": missed,
+                "percent": percent,
+            }
+        )
+    return result
 
 
 @router.get("/{student_id}", response_model=StudentResponse)

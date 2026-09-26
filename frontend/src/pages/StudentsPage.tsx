@@ -34,6 +34,7 @@ import {
   IconButton,
   Grid,
   TableSortLabel,
+  LinearProgress,
 } from '@mui/material';
 import { Add as AddIcon, Edit as EditIcon, AccountBalance as AccountBalanceIcon, Person as PersonIcon, MoreVert as MoreVertIcon } from '@mui/icons-material';
 import { studentsApi, usersApi, groupsApi, programsApi, abonementsApi, studentAccountsApi, studentCardsApi, salesApi, settingsApi } from '../services/api';
@@ -167,16 +168,30 @@ const StudentsPage: React.FC = () => {
   const [trainersLoaded, setTrainersLoaded] = useState(false);
   const [refDataLoaded, setRefDataLoaded] = useState(false);
 
-  type PageTab = 'students' | 'parents';
+  type PageTab = 'students' | 'parents' | 'attendance';
   const tabParam = searchParams.get('tab');
   const studentsTab: PageTab =
-    tabParam === 'parents' ? tabParam : 'students';
+    tabParam === 'parents' || tabParam === 'attendance' ? tabParam : 'students';
   const setStudentsTab = (tab: PageTab) => {
     const next = new URLSearchParams(searchParams);
     if (tab === 'students') next.delete('tab');
     else next.set('tab', tab);
     setSearchParams(next, { replace: true });
   };
+
+  const firstDayOfMonth = () => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
+  };
+  const today = () => new Date().toISOString().slice(0, 10);
+  const [attendanceDateFrom, setAttendanceDateFrom] = useState(firstDayOfMonth());
+  const [attendanceDateTo, setAttendanceDateTo] = useState(today());
+  const [attendanceSummary, setAttendanceSummary] = useState<
+    Array<{ student_id: number; full_name: string; total: number; attended: number; missed: number; percent: number }>
+  >([]);
+  const [attendanceLoading, setAttendanceLoading] = useState(false);
+  const [attendanceError, setAttendanceError] = useState('');
+  const [attendanceSearch, setAttendanceSearch] = useState('');
 
   const [quickFilterNoGroup, setQuickFilterNoGroup] = useState(false);
   const [quickFilterFromLead, setQuickFilterFromLead] = useState(false);
@@ -219,6 +234,19 @@ const StudentsPage: React.FC = () => {
       loadParents().then(() => setParentsLoaded(true));
     }
   }, [hasFullStudentsView, studentsTab, editOpen, parentsLoaded]);
+
+  // Посещаемость: загружаем при открытии вкладки или изменении периода
+  useEffect(() => {
+    if (!hasFullStudentsView || studentsTab !== 'attendance') return;
+    if (!attendanceDateFrom || !attendanceDateTo) return;
+    setAttendanceLoading(true);
+    setAttendanceError('');
+    studentsApi
+      .getAttendanceSummary(attendanceDateFrom, attendanceDateTo)
+      .then(setAttendanceSummary)
+      .catch((err: any) => setAttendanceError(err.response?.data?.detail || 'Не удалось загрузить посещаемость'))
+      .finally(() => setAttendanceLoading(false));
+  }, [hasFullStudentsView, studentsTab, attendanceDateFrom, attendanceDateTo]);
 
   // Справочники для диалогов (города, школы, классы) и абонементы — по требованию при открытии добавления/редактирования
   useEffect(() => {
@@ -1171,6 +1199,7 @@ const StudentsPage: React.FC = () => {
         <Tabs value={studentsTab} onChange={(_, v) => setStudentsTab(v as PageTab)}>
           <Tab label="Ученики" value="students" />
           {hasFullStudentsView && <Tab label="Родители" value="parents" />}
+          {hasFullStudentsView && <Tab label="Количество посещений" value="attendance" />}
         </Tabs>
       </Box>
 
@@ -1574,6 +1603,95 @@ const StudentsPage: React.FC = () => {
               </TableBody>
             </Table>
           </TableContainer>
+        </>
+      )}
+
+      {studentsTab === 'attendance' && hasFullStudentsView && (
+        <>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 2 }}>
+            <Typography variant="h5">Количество посещений</Typography>
+          </Box>
+          <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap" sx={{ mb: 2 }}>
+            <TextField
+              size="small"
+              type="date"
+              label="С"
+              value={attendanceDateFrom}
+              onChange={(e) => setAttendanceDateFrom(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+            />
+            <TextField
+              size="small"
+              type="date"
+              label="По"
+              value={attendanceDateTo}
+              onChange={(e) => setAttendanceDateTo(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+            />
+            <TextField
+              size="small"
+              placeholder="Поиск по ФИО..."
+              value={attendanceSearch}
+              onChange={(e) => setAttendanceSearch(e.target.value)}
+              sx={{ minWidth: 240 }}
+            />
+          </Stack>
+          {attendanceError && <Alert severity="error" sx={{ mb: 2 }}>{attendanceError}</Alert>}
+          {attendanceLoading ? (
+            <Typography variant="body2" color="text.secondary">Загрузка...</Typography>
+          ) : (
+            <TableContainer component={Paper}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell width={48}>№</TableCell>
+                    <TableCell>Ученик</TableCell>
+                    <TableCell width={280}>Посещаемость</TableCell>
+                    <TableCell align="center">Всего занятий</TableCell>
+                    <TableCell align="center">Отходил</TableCell>
+                    <TableCell align="center">Пропустил</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {attendanceSummary
+                    .filter((row) => !attendanceSearch.trim() || row.full_name.toLowerCase().includes(attendanceSearch.trim().toLowerCase()))
+                    .map((row, idx) => (
+                      <TableRow key={row.student_id}>
+                        <TableCell>{idx + 1}</TableCell>
+                        <TableCell>{row.full_name}</TableCell>
+                        <TableCell>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Box sx={{ flexGrow: 1 }}>
+                              <LinearProgress
+                                variant="determinate"
+                                value={row.percent}
+                                color={row.percent >= 80 ? 'success' : row.percent >= 50 ? 'warning' : 'error'}
+                                sx={{ height: 8, borderRadius: 4 }}
+                              />
+                            </Box>
+                            <Typography variant="caption" color="text.secondary" sx={{ minWidth: 36, textAlign: 'right' }}>
+                              {row.percent}%
+                            </Typography>
+                          </Box>
+                        </TableCell>
+                        <TableCell align="center">{row.total}</TableCell>
+                        <TableCell align="center">{row.attended}</TableCell>
+                        <TableCell align="center">{row.missed}</TableCell>
+                      </TableRow>
+                    ))}
+                  {attendanceSummary.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={6} align="center">
+                        <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
+                          Нет данных за выбранный период
+                        </Typography>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
         </>
       )}
 

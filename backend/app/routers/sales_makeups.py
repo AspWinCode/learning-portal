@@ -12,7 +12,6 @@ from app.models import (
     Group,
     GroupProgram,
     GroupSchedule,
-    ProgramMakeupCompatibility,
     Student,
     StudentCard,
     StudentProgram,
@@ -223,49 +222,20 @@ async def suggest_makeups(
     absence = db.query(AbsenceFollowUp).filter(AbsenceFollowUp.id == absence_id).first()
     if not absence:
         raise HTTPException(status_code=404, detail="Пропуск не найден")
-    student_id = absence.student_id
     today = date.today()
     end_date = today + timedelta(days=days_ahead)
-    student_programs = (
-        db.query(StudentProgram)
-        .filter(StudentProgram.student_id == student_id, StudentProgram.status == "active")
+    # Отработка не привязана к совместимости программ — предлагаем любую
+    # активную групповую (не индивидуальную) группу, включая исходную группу
+    # ученика (другой день той же группы — валидный вариант отработки).
+    groups_active = (
+        db.query(Group)
+        .filter(Group.status == "active")
         .all()
     )
-    source_program_ids = [student_program.program_id for student_program in student_programs if student_program.program_id]
-    if not source_program_ids:
-        group_program = db.query(GroupProgram).filter(GroupProgram.group_id == absence.group_id).first()
-        if group_program:
-            source_program_ids = [group_program.program_id]
-    allowed_target_ids = set()
-    for program_id in source_program_ids:
-        compatibilities = (
-            db.query(ProgramMakeupCompatibility)
-            .filter(ProgramMakeupCompatibility.source_program_id == program_id)
-            .all()
-        )
-        for compatibility in compatibilities:
-            allowed_target_ids.add(compatibility.target_program_id)
-    if not allowed_target_ids and source_program_ids:
-        allowed_target_ids = set(source_program_ids)
-    group_ids = (
-        list(
-            {
-                row[0]
-                for row in db.query(GroupProgram.group_id)
-                .filter(GroupProgram.program_id.in_(allowed_target_ids))
-                .distinct()
-                .all()
-            }
-        )
-        if allowed_target_ids
-        else []
-    )
-    groups_active = (
-        db.query(Group).filter(Group.id.in_(group_ids), Group.status == "active").all()
-        if group_ids
-        else []
-    )
-    groups_active = [group for group in groups_active if "индивид" not in (group.name or "").lower()]
+    groups_active = [
+        group for group in groups_active
+        if (getattr(group, "lesson_format", None) or "group").strip().lower() != "individual"
+    ]
     group_ids = [group.id for group in groups_active]
     slots = []
     for schedule in db.query(GroupSchedule).filter(GroupSchedule.group_id.in_(group_ids)).all():
@@ -282,8 +252,7 @@ async def suggest_makeups(
         group = next((item for item in groups_active if item.id == group_id), None) or db.query(Group).filter(Group.id == group_id).first()
         if not group:
             continue
-        group_program = db.query(GroupProgram).filter(GroupProgram.group_id == group_id).first()
-        program_name = group_program.program.name if group_program and group_program.program else None
+        program_name = getattr(group, "direction", None)
         result.append(
             MakeupSuggestionItem(
                 group_id=group_id,

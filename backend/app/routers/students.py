@@ -882,6 +882,15 @@ async def get_students_attendance_summary(
             LessonAttendance.lesson_date >= date_from,
             LessonAttendance.lesson_date <= date_to,
             LessonAttendance.excluded_from_attendance_stats.is_(False),
+            # Считаем только занятия его собственных групп: если тренер отметил
+            # ученика разово на чужом уроке (например, для отработки в другой
+            # группе), это не должно засчитываться в его личную посещаемость.
+            db.query(GroupStudent.id)
+            .filter(
+                GroupStudent.group_id == LessonAttendance.group_id,
+                GroupStudent.student_id == LessonAttendance.student_id,
+            )
+            .exists(),
         )
         .group_by(LessonAttendance.student_id)
         .all()

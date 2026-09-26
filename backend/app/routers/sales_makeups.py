@@ -30,6 +30,7 @@ from app.routers.action_log import log_action
 from app.services.absence_makeup import (
     assign_makeup_for_absence as absence_makeup_assign,
     credit_makeup_for_absence,
+    remove_stale_makeup_placement,
     uncredit_makeup_for_absence,
 )
 from app.services.makeup_selection import (
@@ -141,6 +142,9 @@ async def update_absence_stage(
     prev_stage = absence.stage
     absence.stage = payload.stage
     if payload.stage in ("missed_makeup", "no_makeup_needed"):
+        remove_stale_makeup_placement(
+            db, student_id=absence.student_id, group_id=absence.makeup_group_id, lesson_date=absence.makeup_lesson_date
+        )
         absence.makeup_group_id = None
         absence.makeup_lesson_date = None
         absence.makeup_custom_lesson_id = None

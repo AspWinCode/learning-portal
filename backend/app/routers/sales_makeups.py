@@ -27,7 +27,11 @@ from app.schemas.sales import (
     AbsenceMakeupAssign,
 )
 from app.routers.action_log import log_action
-from app.services.absence_makeup import assign_makeup_for_absence as absence_makeup_assign
+from app.services.absence_makeup import (
+    assign_makeup_for_absence as absence_makeup_assign,
+    credit_makeup_for_absence,
+    uncredit_makeup_for_absence,
+)
 from app.services.makeup_selection import (
     close_send_link_tasks_for_absence,
     create_sales_confirmation_task,
@@ -140,6 +144,10 @@ async def update_absence_stage(
         absence.makeup_group_id = None
         absence.makeup_lesson_date = None
         absence.makeup_custom_lesson_id = None
+    if payload.stage == "made_up" and prev_stage != "made_up":
+        credit_makeup_for_absence(db, absence)
+    elif prev_stage == "made_up" and payload.stage != "made_up":
+        uncredit_makeup_for_absence(db, absence)
     db.commit()
     db.refresh(absence)
     log_action(db, current_user.id, "update_stage", "absence_follow_up", absence.id, {"prev_stage": prev_stage, "stage": payload.stage})

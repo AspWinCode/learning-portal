@@ -11,6 +11,7 @@ from app.academic_month import get_academic_window
 from app.database import get_db
 from app import auth
 from app.routers.action_log import log_action
+from app.services.absence_makeup import credit_makeup_for_absence
 from app.services.communication_hub import CommunicationService
 from app.services.student_activity import log_student_activity
 from app.services.student_card_period import (
@@ -579,6 +580,7 @@ def _close_absence_for_custom_lesson(
 
     absence.stage = "made_up"
     absence.makeup_custom_lesson_id = lesson.id
+    credit_makeup_for_absence(db, absence)
     log_student_activity(
         db,
         student_id=student_id,
@@ -610,6 +612,11 @@ def _close_absence_for_group_makeup(
     if not absence:
         return
     absence.stage = "made_up"
+    credit_makeup_for_absence(db, absence)
+    # Кредит за отработку уже отдан исходному пропущенному уроку выше —
+    # эта запись (реальный урок в группе отработки) не должна ещё раз
+    # плюсоваться к «Количество посещений», иначе один пропуск задвоится.
+    attendance.excluded_from_attendance_stats = True
     log_student_activity(
         db,
         student_id=attendance.student_id,

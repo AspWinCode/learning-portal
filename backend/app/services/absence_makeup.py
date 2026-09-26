@@ -12,9 +12,37 @@ import logging
 
 from sqlalchemy.orm import Session
 
-from app.models import AbsenceFollowUp, Group
+from app.models import AbsenceFollowUp, Group, LessonAttendance
 
 logger = logging.getLogger(__name__)
+
+
+def credit_makeup_for_absence(db: Session, absence: AbsenceFollowUp) -> None:
+    """Засчитать пропуск как отработанный: исходный урок (lesson_attendance_id)
+    помечается посещённым, чтобы пропуск перестал считаться пропуском и
+    учитывался как +1 к «Отходил» — без появления лишнего «нового» занятия
+    в «Количество посещений» (там, где отработка проходит отдельным
+    физическим уроком, эта отдельная запись исключается из статистики
+    отдельно, см. excluded_from_attendance_stats)."""
+    original = (
+        db.query(LessonAttendance)
+        .filter(LessonAttendance.id == absence.lesson_attendance_id)
+        .first()
+    )
+    if original and not original.attended:
+        original.attended = True
+
+
+def uncredit_makeup_for_absence(db: Session, absence: AbsenceFollowUp) -> None:
+    """Откатить зачёт отработки (пропуск вернули в работу): исходный урок
+    снова считается пропущенным."""
+    original = (
+        db.query(LessonAttendance)
+        .filter(LessonAttendance.id == absence.lesson_attendance_id)
+        .first()
+    )
+    if original and original.attended:
+        original.attended = False
 
 
 @dataclass

@@ -881,6 +881,7 @@ async def get_students_attendance_summary(
             LessonAttendance.student_id.in_(student_ids),
             LessonAttendance.lesson_date >= date_from,
             LessonAttendance.lesson_date <= date_to,
+            LessonAttendance.excluded_from_attendance_stats.is_(False),
         )
         .group_by(LessonAttendance.student_id)
         .all()

@@ -1595,6 +1595,10 @@ class LessonAttendance(Base):
     # Дробные значения (напр. 1.5) — если длительность занятия не кратна часу.
     base_units_applied = Column(Float, nullable=True)
     extra_units_applied = Column(Float, nullable=True)
+    # Урок-отработка, физически проведённый в другой группе/дате ради уже
+    # зачтённого через неё пропуска (см. credit_makeup_for_absence) — не
+    # учитывается в «Количество посещений», чтобы не задваивать урок.
+    excluded_from_attendance_stats = Column(Boolean, default=False, nullable=False, server_default="false")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     group = relationship("Group", back_populates="lesson_attendances")

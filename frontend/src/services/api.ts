@@ -3357,8 +3357,6 @@ export interface TrainerCalculationRow {
   trainer_id: number;
   full_name: string;
   is_individual_format: boolean;
-  rate_per_lesson: number | null;
-  rate_per_hour: number | null;
   lessons_count: number;
   hours_count: number;
   base_payment: number;
@@ -3371,13 +3369,6 @@ export interface TrainerCalculationRow {
 export const ownerCalculationsApi = {
   getTrainers: async (month: string): Promise<TrainerCalculationRow[]> => {
     const response = await api.get('/api/owner/calculations/trainers', { params: { month } });
-    return response.data;
-  },
-  updateTrainerRate: async (
-    trainerId: number,
-    payload: { rate_per_lesson?: number | null; rate_per_hour?: number | null }
-  ): Promise<{ ok: boolean }> => {
-    const response = await api.put(`/api/owner/calculations/trainers/${trainerId}/rate`, payload);
     return response.data;
   },
   updateGroupRate: async (

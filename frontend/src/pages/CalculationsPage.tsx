@@ -6,13 +6,11 @@ import {
   Button,
   Chip,
   CircularProgress,
-  Collapse,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   Divider,
-  IconButton,
   Paper,
   Stack,
   Table,
@@ -24,14 +22,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import {
-  Add as AddIcon,
-  DoneAll,
-  ExpandLess,
-  ExpandMore,
-  Payments,
-  ReceiptLong,
-} from '@mui/icons-material';
+import { Add as AddIcon, DoneAll, Payments, ReceiptLong } from '@mui/icons-material';
 import { ownerCalculationsApi, type TrainerCalculationRow, type TrainerGroupCalculationRow } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 
@@ -112,7 +103,7 @@ type GroupRatesTableProps = {
 const GroupRatesTable: React.FC<GroupRatesTableProps> = ({ groups, onChange, onBlur }) => (
   <Box sx={{ px: { xs: 0, md: 2 }, py: 1.5, bgcolor: 'rgba(248, 250, 252, 0.6)' }}>
     <Typography variant="caption" color="text.secondary" sx={{ px: { xs: 1.5, md: 0 }, display: 'block', mb: 0.5 }}>
-      Ставка по каждой группе переопределяет базовую ставку тренера — удобно, если разные группы стоят по-разному.
+      Ставка задаётся по каждой группе отдельно — разные группы одного тренера могут стоить по-разному.
     </Typography>
     <Table size="small">
       <TableHead>
@@ -173,7 +164,6 @@ const CalculationsPage: React.FC = () => {
   const [bonusAmount, setBonusAmount] = useState<string>('');
   const [bonusSaving, setBonusSaving] = useState(false);
   const [payingId, setPayingId] = useState<number | null>(null);
-  const [expandedTrainerId, setExpandedTrainerId] = useState<number | null>(null);
 
   const summary = useMemo(
     () => ({
@@ -233,22 +223,6 @@ const CalculationsPage: React.FC = () => {
     } finally {
       setPayingId(null);
     }
-  };
-
-  const handleRateBlur = async (
-    trainerId: number,
-    payload: { rate_per_lesson?: number | null; rate_per_hour?: number | null },
-  ) => {
-    try {
-      await ownerCalculationsApi.updateTrainerRate(trainerId, payload);
-      load();
-    } catch (err: any) {
-      setError(extractApiError(err, 'Не удалось сохранить ставку'));
-    }
-  };
-
-  const updateRow = (trainerId: number, patch: Partial<TrainerCalculationRow>) => {
-    setRows((prev) => prev.map((row) => (row.trainer_id === trainerId ? { ...row, ...patch } : row)));
   };
 
   const updateGroupRow = (trainerId: number, groupId: number, patch: Partial<TrainerGroupCalculationRow>) => {
@@ -453,11 +427,8 @@ const CalculationsPage: React.FC = () => {
                         },
                       }}
                     >
-                      <TableCell sx={{ width: 44 }} />
                       <TableCell sx={{ width: 56 }}>№</TableCell>
                       <TableCell>Тренер</TableCell>
-                      <TableCell sx={{ width: 150 }}>Ставка за урок</TableCell>
-                      <TableCell sx={{ width: 150 }}>Ставка за час</TableCell>
                       <TableCell align="right">Нагрузка</TableCell>
                       <TableCell align="right">Оплата</TableCell>
                       <TableCell align="right">Премия</TableCell>
@@ -469,18 +440,6 @@ const CalculationsPage: React.FC = () => {
                     {rows.map((row, idx) => (
                       <React.Fragment key={row.trainer_id}>
                       <TableRow hover sx={{ '& td': { py: 1.5 } }}>
-                        <TableCell>
-                          {row.groups.length > 0 && (
-                            <IconButton
-                              size="small"
-                              onClick={() =>
-                                setExpandedTrainerId((prev) => (prev === row.trainer_id ? null : row.trainer_id))
-                              }
-                            >
-                              {expandedTrainerId === row.trainer_id ? <ExpandLess /> : <ExpandMore />}
-                            </IconButton>
-                          )}
-                        </TableCell>
                         <TableCell>{idx + 1}</TableCell>
                         <TableCell>
                           <Typography variant="body2" fontWeight={800}>
@@ -489,28 +448,6 @@ const CalculationsPage: React.FC = () => {
                           <Typography variant="caption" color="text.secondary">
                             {row.is_individual_format ? 'Индивидуальный формат' : 'Групповой формат'}
                           </Typography>
-                        </TableCell>
-                        <TableCell>
-                          <RateField
-                            label="Ставка за урок (базовая)"
-                            disabled={row.is_individual_format}
-                            value={row.rate_per_lesson}
-                            onChange={(value) => updateRow(row.trainer_id, { rate_per_lesson: value })}
-                            onBlur={(value) =>
-                              handleRateBlur(row.trainer_id, {
-                                rate_per_lesson: value,
-                                rate_per_hour: row.rate_per_hour,
-                              })
-                            }
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <RateField
-                            label="Ставка за час"
-                            value={row.rate_per_hour}
-                            onChange={(value) => updateRow(row.trainer_id, { rate_per_hour: value })}
-                            onBlur={(value) => handleRateBlur(row.trainer_id, { rate_per_hour: value })}
-                          />
                         </TableCell>
                         <TableCell align="right">
                           <Typography variant="body2" fontWeight={800}>
@@ -526,14 +463,12 @@ const CalculationsPage: React.FC = () => {
                       </TableRow>
                       {row.groups.length > 0 && (
                         <TableRow>
-                          <TableCell colSpan={9} sx={{ p: 0, borderBottom: expandedTrainerId === row.trainer_id ? undefined : 'none' }}>
-                            <Collapse in={expandedTrainerId === row.trainer_id} unmountOnExit>
-                              <GroupRatesTable
-                                groups={row.groups}
-                                onChange={(groupId, patch) => updateGroupRow(row.trainer_id, groupId, patch)}
-                                onBlur={handleGroupRateBlur}
-                              />
-                            </Collapse>
+                          <TableCell colSpan={6} sx={{ p: 0 }}>
+                            <GroupRatesTable
+                              groups={row.groups}
+                              onChange={(groupId, patch) => updateGroupRow(row.trainer_id, groupId, patch)}
+                              onBlur={handleGroupRateBlur}
+                            />
                           </TableCell>
                         </TableRow>
                       )}
@@ -589,45 +524,12 @@ const CalculationsPage: React.FC = () => {
                         </Box>
                       </Box>
 
-                      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                        <RateField
-                          label="Ставка за урок"
-                          disabled={row.is_individual_format}
-                          value={row.rate_per_lesson}
-                          onChange={(value) => updateRow(row.trainer_id, { rate_per_lesson: value })}
-                          onBlur={(value) =>
-                            handleRateBlur(row.trainer_id, {
-                              rate_per_lesson: value,
-                              rate_per_hour: row.rate_per_hour,
-                            })
-                          }
-                        />
-                        <RateField
-                          label="Ставка за час"
-                          value={row.rate_per_hour}
-                          onChange={(value) => updateRow(row.trainer_id, { rate_per_hour: value })}
-                          onBlur={(value) => handleRateBlur(row.trainer_id, { rate_per_hour: value })}
-                        />
-                      </Stack>
                       {row.groups.length > 0 && (
-                        <>
-                          <Button
-                            size="small"
-                            onClick={() =>
-                              setExpandedTrainerId((prev) => (prev === row.trainer_id ? null : row.trainer_id))
-                            }
-                            endIcon={expandedTrainerId === row.trainer_id ? <ExpandLess /> : <ExpandMore />}
-                          >
-                            Ставки по группам ({row.groups.length})
-                          </Button>
-                          <Collapse in={expandedTrainerId === row.trainer_id} unmountOnExit>
-                            <GroupRatesTable
-                              groups={row.groups}
-                              onChange={(groupId, patch) => updateGroupRow(row.trainer_id, groupId, patch)}
-                              onBlur={handleGroupRateBlur}
-                            />
-                          </Collapse>
-                        </>
+                        <GroupRatesTable
+                          groups={row.groups}
+                          onChange={(groupId, patch) => updateGroupRow(row.trainer_id, groupId, patch)}
+                          onBlur={handleGroupRateBlur}
+                        />
                       )}
                       {renderActions(row)}
                     </Stack>

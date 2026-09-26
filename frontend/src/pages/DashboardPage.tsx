@@ -3,10 +3,16 @@ import { useNavigate } from 'react-router-dom';
 import {
   Alert,
   Box,
+  Button,
   Card,
   CardActionArea,
   CardContent,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Divider,
   Grid,
   Paper,
   Tab,
@@ -41,7 +47,8 @@ const MetricCard: React.FC<{
   value: React.ReactNode;
   subtitle?: string;
   to?: string;
-}> = ({ title, value, subtitle, to }) => {
+  onClick?: () => void;
+}> = ({ title, value, subtitle, to, onClick }) => {
   const navigate = useNavigate();
   const body = (
     <CardContent>
@@ -58,16 +65,68 @@ const MetricCard: React.FC<{
       ) : null}
     </CardContent>
   );
+  const handleClick = onClick ?? (to ? () => navigate(to) : undefined);
   return (
     <Card variant="outlined" sx={{ height: '100%' }}>
-      {to ? (
-        <CardActionArea onClick={() => navigate(to)} sx={{ height: '100%' }}>
+      {handleClick ? (
+        <CardActionArea onClick={handleClick} sx={{ height: '100%' }}>
           {body}
         </CardActionArea>
       ) : (
         body
       )}
     </Card>
+  );
+};
+
+const PaymentsBreakdownDialog: React.FC<{
+  open: boolean;
+  onClose: () => void;
+  monthLabel?: string;
+  groupAmount: number;
+  groupCount: number;
+  individualAmount: number;
+  individualCount: number;
+  totalAmount: number;
+}> = ({ open, onClose, monthLabel, groupAmount, groupCount, individualAmount, individualCount, totalAmount }) => {
+  const navigate = useNavigate();
+  const rows = [
+    { label: 'Групповые занятия', amount: groupAmount, count: groupCount },
+    { label: 'Индивидуальные занятия', amount: individualAmount, count: individualCount },
+  ];
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
+      <DialogTitle>Оплаты за месяц{monthLabel ? ` (${monthLabel})` : ''}</DialogTitle>
+      <DialogContent>
+        {rows.map((row, index) => (
+          <Box key={row.label}>
+            <Box display="flex" justifyContent="space-between" alignItems="baseline" sx={{ py: 1.25 }}>
+              <Typography variant="body1">{row.label}</Typography>
+              <Box textAlign="right">
+                <Typography variant="h6">{row.amount.toLocaleString('ru-RU')} ₽</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Транзакций: {row.count}
+                </Typography>
+              </Box>
+            </Box>
+            {index < rows.length - 1 ? <Divider /> : null}
+          </Box>
+        ))}
+        <Divider sx={{ mt: 1 }} />
+        <Box display="flex" justifyContent="space-between" alignItems="baseline" sx={{ pt: 1.25 }}>
+          <Typography variant="subtitle2" color="text.secondary">
+            Итого
+          </Typography>
+          <Typography variant="subtitle1">{totalAmount.toLocaleString('ru-RU')} ₽</Typography>
+        </Box>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Закрыть</Button>
+        <Button variant="contained" onClick={() => navigate('/finance/overview')}>
+          К финансам
+        </Button>
+      </DialogActions>
+    </Dialog>
   );
 };
 
@@ -97,6 +156,7 @@ const TrendPanel: React.FC<{
 const DashboardOwnerTabs: React.FC = () => {
   const { user } = useAuth();
   const [tab, setTab] = React.useState<'overview' | 'characteristics' | 'operational' | 'academy_metrics'>('overview');
+  const [paymentsBreakdownOpen, setPaymentsBreakdownOpen] = React.useState(false);
   const canAccessOwnerMetrics = hasPermission(user, 'owner_dashboard.access');
 
   const summaryQuery = useQuery({
@@ -151,7 +211,7 @@ const DashboardOwnerTabs: React.FC = () => {
                   title="Оплаты за месяц"
                   value={`${summaryQuery.data.payments_received_month.toLocaleString('ru-RU')} ₽`}
                   subtitle={`Транзакций: ${summaryQuery.data.payments_transactions_month}`}
-                  to="/finance/overview"
+                  onClick={() => setPaymentsBreakdownOpen(true)}
                 />
               </Grid>
               <Grid item xs={12} md={3}>
@@ -251,6 +311,18 @@ const DashboardOwnerTabs: React.FC = () => {
                 </Paper>
               </Grid>
             </Grid>
+          ) : null}
+          {summaryQuery.data ? (
+            <PaymentsBreakdownDialog
+              open={paymentsBreakdownOpen}
+              onClose={() => setPaymentsBreakdownOpen(false)}
+              monthLabel={summaryQuery.data.month_label}
+              groupAmount={summaryQuery.data.payments_group_month}
+              groupCount={summaryQuery.data.payments_group_count_month}
+              individualAmount={summaryQuery.data.payments_individual_month}
+              individualCount={summaryQuery.data.payments_individual_count_month}
+              totalAmount={summaryQuery.data.payments_received_month}
+            />
           ) : null}
         </Box>
       )}

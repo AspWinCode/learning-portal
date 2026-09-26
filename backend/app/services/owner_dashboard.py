@@ -144,7 +144,8 @@ def build_owner_dashboard_summary(db: Session) -> Dict[str, object]:
     )
 
     payment_rows_month = (
-        db.query(StudentAccountTransaction.amount)
+        db.query(StudentAccountTransaction.amount, StudentAccount.student_id)
+        .join(StudentAccount, StudentAccountTransaction.account_id == StudentAccount.id)
         .filter(
             StudentAccountTransaction.kind == StudentAccountTransactionKind.PAYMENT,
             StudentAccountTransaction.created_at >= start_month,
@@ -154,6 +155,34 @@ def build_owner_dashboard_summary(db: Session) -> Dict[str, object]:
     )
     payments_received_month = round(sum(float(row[0] or 0) for row in payment_rows_month), 2)
     payments_transactions_month = len(payment_rows_month)
+
+    payment_student_ids = {row[1] for row in payment_rows_month if row[1] is not None}
+    students_format_map: Dict[int, str] = {}
+    if payment_student_ids:
+        paying_students = (
+            db.query(Student)
+            .filter(Student.id.in_(payment_student_ids))
+            .all()
+        )
+        for student in paying_students:
+            abonement = student.abonement
+            fmt = (getattr(abonement, "abonement_format", None) or "").strip().lower()
+            students_format_map[student.id] = "individual" if fmt == "individual" else "group"
+
+    payments_individual_month = 0.0
+    payments_group_month = 0.0
+    payments_individual_count_month = 0
+    payments_group_count_month = 0
+    for amount, student_id in payment_rows_month:
+        fmt = students_format_map.get(student_id, "group")
+        if fmt == "individual":
+            payments_individual_month += float(amount or 0)
+            payments_individual_count_month += 1
+        else:
+            payments_group_month += float(amount or 0)
+            payments_group_count_month += 1
+    payments_individual_month = round(payments_individual_month, 2)
+    payments_group_month = round(payments_group_month, 2)
     payment_summary = get_payment_status_summary(db, today=now.date())
 
     owner_workspace_overdue_tasks = (
@@ -231,6 +260,10 @@ def build_owner_dashboard_summary(db: Session) -> Dict[str, object]:
         "registered_events_month": int(registered_events_month),
         "payments_received_month": float(payments_received_month),
         "payments_transactions_month": int(payments_transactions_month),
+        "payments_group_month": float(payments_group_month),
+        "payments_individual_month": float(payments_individual_month),
+        "payments_group_count_month": int(payments_group_count_month),
+        "payments_individual_count_month": int(payments_individual_count_month),
         "overdue_payments_3_count": int(payment_summary["overdue_3_count"]),
         "overdue_payments_10_count": int(payment_summary["overdue_10_count"]),
         "owner_workspace_overdue_tasks": int(owner_workspace_overdue_tasks),

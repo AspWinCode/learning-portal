@@ -210,6 +210,10 @@ export interface OwnerDashboardSummary {
   registered_events_month: number;
   payments_received_month: number;
   payments_transactions_month: number;
+  payments_group_month: number;
+  payments_individual_month: number;
+  payments_group_count_month: number;
+  payments_individual_count_month: number;
   overdue_payments_3_count: number;
   overdue_payments_10_count: number;
   owner_workspace_overdue_tasks: number;

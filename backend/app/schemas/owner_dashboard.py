@@ -57,6 +57,10 @@ class OwnerDashboardSummaryResponse(BaseModel):
     registered_events_month: int
     payments_received_month: float
     payments_transactions_month: int
+    payments_group_month: float
+    payments_individual_month: float
+    payments_group_count_month: int
+    payments_individual_count_month: int
     overdue_payments_3_count: int
     overdue_payments_10_count: int
     owner_workspace_overdue_tasks: int

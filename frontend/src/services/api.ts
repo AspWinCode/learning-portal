@@ -1335,6 +1335,7 @@ export const programsApi = {
       topics: Array<{
         name: string;
         description?: string;
+        project?: string;
         final_result?: string;
         order: number;
       }>;
@@ -1349,6 +1350,17 @@ export const programsApi = {
   },
   update: async (id: number, data: { name?: string; modules?: any[] }): Promise<Program> => {
     const response = await api.put(`/api/programs/${id}`, data);
+    return response.data;
+  },
+  importTopicsDocx: async (
+    programId: number,
+    file: File
+  ): Promise<{ modules_created: number; topics_created: number; topics_skipped: number }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await api.post(`/api/programs/${programId}/import-topics-docx`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
     return response.data;
   },
   archiveTopic: async (programId: number, topicId: number): Promise<void> => {

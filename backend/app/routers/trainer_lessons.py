@@ -628,6 +628,244 @@ def _close_absence_for_group_makeup(
     )
 
 
+def _process_attendance_deduction(
+    db: Session,
+    att: LessonAttendance,
+    group: Group,
+    is_individual: bool,
+    default_hours: float,
+    group_students_by_student_id: dict,
+    window_start: date,
+    window_end: date,
+    start_t: time,
+    end_t: time,
+    effective_trainer: Optional[User],
+    current_user: User,
+    new_absence_notifications: List[AbsenceFollowUp],
+) -> None:
+    """Списание за один урок + учёт пропуска. Вызывается изолированно (SAVEPOINT)
+    на каждое посещение отдельно, чтобы сбой на одном уроке/ученике (например,
+    при отправке уведомления) не терял списание остальных за ту же дату."""
+    from app.services.pricing import student_abonement_price, lesson_duration_hours
+
+    DEFAULT_BASE_HOURS = 8.0  # фолбэк для абонементов без явно заданного base_hours
+
+    is_present = att.attended and (not att.absence_reason or att.absence_reason == "was")
+    is_absence = not att.attended or (att.absence_reason and att.absence_reason != "was")
+
+    if is_present:
+        _close_absence_for_group_makeup(db, attendance=att, group=group)
+        # Если студент исправлен на "присутствовал" — убираем ошибочную запись пропуска
+        stale_absence = db.query(AbsenceFollowUp).filter(
+            AbsenceFollowUp.lesson_attendance_id == att.id,
+        ).first()
+        if stale_absence:
+            db.delete(stale_absence)
+
+    student = db.query(Student).filter(Student.id == att.student_id).first()
+    if not student:
+        return
+
+    # Списание начисляется за сам факт проведённого по расписанию занятия
+    # (присутствие, болезнь, прогул и т.п. — кроме периода заморозки).
+    # Грантовики не платят: суммы остаются 0, прежние списания за урок сторнируются ниже.
+    on_grant = is_student_on_grant(db, att.student_id)
+    in_freeze = db.query(StudentFreeze).filter(
+        StudentFreeze.student_id == att.student_id,
+        StudentFreeze.freeze_start <= att.lesson_date,
+        StudentFreeze.freeze_end >= att.lesson_date,
+    ).first()
+
+    target_base = 0.0
+    target_extra = 0.0
+    base_units_to_apply = 0.0
+    extra_units_to_apply = 0.0
+    price_per_unit = 0.0
+
+    if not in_freeze and not on_grant:
+        abonement = getattr(student, "abonement", None)
+        if not abonement and student.abonement_id:
+            abonement = db.query(Abonement).filter(Abonement.id == student.abonement_id).first()
+
+        if is_individual:
+            # Индивидуальный абонемент тарифицируется почасово: цена абонемента — ставка за час.
+            duration_hours = lesson_duration_hours(att.lesson_start_time, att.lesson_end_time)
+            hourly_rate = student_abonement_price(student, abonement) if abonement else 0.0
+            target_base = round(hourly_rate * duration_hours, 2)
+            base_units_to_apply = 1 if target_base > 0 else 0
+        else:
+            group_student = group_students_by_student_id.get(att.student_id)
+            if group_student and group_student.custom_duration_minutes:
+                U = group_student.custom_duration_minutes / 60.0
+            else:
+                U = default_hours
+            base_hours = (abonement.base_hours if abonement and abonement.base_hours else None) or DEFAULT_BASE_HOURS
+
+            all_in_window = (
+                db.query(LessonAttendance)
+                .filter(
+                    LessonAttendance.group_id == att.group_id,
+                    LessonAttendance.student_id == att.student_id,
+                    LessonAttendance.lesson_date >= window_start,
+                    LessonAttendance.lesson_date <= window_end,
+                )
+                .all()
+            )
+            current_key = _slot_key(att)
+            base_used = sum(
+                (att2.base_units_applied or 0)
+                for att2 in all_in_window
+                if _slot_key(att2) < current_key
+            )
+            base_left = max(0.0, base_hours - base_used)
+            base_units_to_apply = min(base_left, U)
+            extra_units_to_apply = U - base_units_to_apply
+
+            if abonement and abonement.price is not None and base_hours > 0:
+                price_per_unit = student_abonement_price(student, abonement) / base_hours
+            if base_units_to_apply > 0 and price_per_unit > 0:
+                target_base = round(price_per_unit * base_units_to_apply, 2)
+
+            if extra_units_to_apply > 0:
+                try:
+                    policy = (
+                        db.query(LessonSlotExtraPolicy)
+                        .filter(
+                            LessonSlotExtraPolicy.group_id == att.group_id,
+                            LessonSlotExtraPolicy.lesson_date == att.lesson_date,
+                            LessonSlotExtraPolicy.start_time == start_t,
+                            LessonSlotExtraPolicy.end_time == end_t,
+                        )
+                        .first()
+                    )
+                except Exception:
+                    policy = None
+                extra_policy = (policy.extra_policy if policy else None) or "free"
+                if extra_policy == "paid":
+                    extra_rate = None
+                    if policy and getattr(policy, "extra_rate_per_unit", None) is not None:
+                        extra_rate = float(policy.extra_rate_per_unit)
+                    if extra_rate is None and getattr(group, "extra_rate_per_unit", None) is not None:
+                        extra_rate = float(group.extra_rate_per_unit)
+                    if extra_rate is None:
+                        extra_rate = price_per_unit
+                    deduct_extra = extra_rate * extra_units_to_apply
+                    if deduct_extra > 0:
+                        target_extra = round(deduct_extra, 2)
+
+    att.base_units_applied = base_units_to_apply
+    att.extra_units_applied = extra_units_to_apply
+
+    account = None
+    accounts = db.query(StudentAccount).filter(
+        StudentAccount.student_id == att.student_id
+    ).order_by(StudentAccount.id).all()
+    if accounts:
+        direction_hint = None
+        gr = att.group
+        if gr:
+            try:
+                programs = list(getattr(gr, "programs", []) or [])
+            except Exception:
+                programs = []
+            if programs:
+                prog_name = (programs[0].name or "").strip()
+                if prog_name:
+                    direction_hint = prog_name.lower()
+            if not direction_hint and getattr(gr, "direction", None):
+                direction_hint = str(gr.direction).strip().lower()
+        for acc in accounts:
+            acc_name = (acc.name or "").strip().lower()
+            if acc_name and direction_hint and direction_hint in acc_name:
+                account = acc
+                break
+        if account is None:
+            account = accounts[0]
+
+    # Существующие проводки за это же занятие — обновляем (сторно), а не дублируем,
+    # если сумма к списанию изменилась (правка времени, скидки, заморозки и т.п.).
+    existing_txs = list(
+        db.query(StudentAccountTransaction).filter(
+            StudentAccountTransaction.lesson_attendance_id == att.id,
+        )
+    )
+    base_tx = next((t for t in existing_txs if t.kind == StudentAccountTransactionKind.LESSON_DEDUCTION), None)
+    extra_tx = next((t for t in existing_txs if t.kind == StudentAccountTransactionKind.EXTRA_LESSON_DEDUCTION), None)
+
+    new_base_amount = -target_base if target_base > 0 else 0.0
+    new_extra_amount = -target_extra if target_extra > 0 else 0.0
+
+    if account:
+        lesson_label = "Индивидуальное занятие" if is_individual else "Занятие"
+        if base_tx:
+            diff = round(new_base_amount - float(base_tx.amount or 0.0), 2)
+            if abs(diff) >= 0.01:
+                base_tx.amount = new_base_amount
+                base_tx.note = f"{lesson_label} {att.lesson_date} (корректировка)"
+                account.balance += diff
+        elif new_base_amount < 0:
+            account.balance += new_base_amount
+            db.add(
+                StudentAccountTransaction(
+                    account_id=account.id,
+                    amount=new_base_amount,
+                    kind=StudentAccountTransactionKind.LESSON_DEDUCTION,
+                    note=f"{lesson_label} {att.lesson_date}",
+                    lesson_attendance_id=att.id,
+                )
+            )
+
+        if extra_tx:
+            diff = round(new_extra_amount - float(extra_tx.amount or 0.0), 2)
+            if abs(diff) >= 0.01:
+                extra_tx.amount = new_extra_amount
+                account.balance += diff
+        elif new_extra_amount < 0:
+            account.balance += new_extra_amount
+            db.add(
+                StudentAccountTransaction(
+                    account_id=account.id,
+                    amount=new_extra_amount,
+                    kind=StudentAccountTransactionKind.EXTRA_LESSON_DEDUCTION,
+                    note=f"Доп. занятие (сверх 8) {att.lesson_date}",
+                    lesson_attendance_id=att.id,
+                )
+            )
+
+    # Грантовикам отработки не заводим — в «Пропуски» они не попадают.
+    if is_absence and not in_freeze and not on_grant:
+        absence = db.query(AbsenceFollowUp).filter(
+            AbsenceFollowUp.lesson_attendance_id == att.id,
+        ).first()
+        if not absence:
+            absence = AbsenceFollowUp(
+                lesson_attendance_id=att.id,
+                student_id=att.student_id,
+                group_id=att.group_id,
+                lesson_date=att.lesson_date,
+                stage="missed",
+                absence_reason=att.absence_reason,
+                absence_comment=att.absence_comment,
+            )
+            db.add(absence)
+            new_absence_notifications.append(absence)
+            CommunicationService.send(
+                db,
+                channel="email",
+                recipient_type="student",
+                recipient_id=student.id,
+                event_key="student_absent",
+                created_by=current_user.id,
+                context={
+                    "student_name": student.full_name,
+                    "group_name": group.name,
+                    "lesson_date": att.lesson_date.isoformat(),
+                    "lesson_time": start_t.strftime("%H:%M") if start_t else "",
+                    "trainer_name": effective_trainer.full_name if effective_trainer else "",
+                },
+            )
+
+
 @router.post("/attendance")
 async def save_attendance(
     payload: LessonAttendanceSave,
@@ -744,7 +982,6 @@ async def save_attendance(
         LessonAttendance.lesson_date == payload.lesson_date,
     ).all()
     is_individual = (getattr(group, "lesson_format", None) or "group").strip().lower() == "individual"
-    DEFAULT_BASE_HOURS = 8.0  # фолбэк для абонементов без явно заданного base_hours
     default_hours = (getattr(group, "duration_minutes", None) or 60) / 60.0
     group_students_by_student_id = {
         gs.student_id: gs
@@ -756,223 +993,33 @@ async def save_attendance(
     window_start, window_end = get_academic_window(payload.lesson_date)
     effective_trainer = db.query(User).filter(User.id == effective_trainer_id).first() if effective_trainer_id else None
 
-    from app.services.pricing import student_abonement_price, lesson_duration_hours
-
     for att in attendances_saved:
-        is_present = att.attended and (not att.absence_reason or att.absence_reason == "was")
-        is_absence = not att.attended or (att.absence_reason and att.absence_reason != "was")
-
-        if is_present:
-            _close_absence_for_group_makeup(db, attendance=att, group=group)
-            # Если студент исправлен на "присутствовал" — убираем ошибочную запись пропуска
-            stale_absence = db.query(AbsenceFollowUp).filter(
-                AbsenceFollowUp.lesson_attendance_id == att.id,
-            ).first()
-            if stale_absence:
-                db.delete(stale_absence)
-
-        student = db.query(Student).filter(Student.id == att.student_id).first()
-        if not student:
-            continue
-
-        # Списание начисляется за сам факт проведённого по расписанию занятия
-        # (присутствие, болезнь, прогул и т.п. — кроме периода заморозки).
-        # Грантовики не платят: суммы остаются 0, прежние списания за урок сторнируются ниже.
-        on_grant = is_student_on_grant(db, att.student_id)
-        in_freeze = db.query(StudentFreeze).filter(
-            StudentFreeze.student_id == att.student_id,
-            StudentFreeze.freeze_start <= att.lesson_date,
-            StudentFreeze.freeze_end >= att.lesson_date,
-        ).first()
-
-        target_base = 0.0
-        target_extra = 0.0
-        base_units_to_apply = 0.0
-        extra_units_to_apply = 0.0
-        price_per_unit = 0.0
-
-        if not in_freeze and not on_grant:
-            abonement = getattr(student, "abonement", None)
-            if not abonement and student.abonement_id:
-                abonement = db.query(Abonement).filter(Abonement.id == student.abonement_id).first()
-
-            if is_individual:
-                # Индивидуальный абонемент тарифицируется почасово: цена абонемента — ставка за час.
-                duration_hours = lesson_duration_hours(att.lesson_start_time, att.lesson_end_time)
-                hourly_rate = student_abonement_price(student, abonement) if abonement else 0.0
-                target_base = round(hourly_rate * duration_hours, 2)
-                base_units_to_apply = 1 if target_base > 0 else 0
-            else:
-                group_student = group_students_by_student_id.get(att.student_id)
-                if group_student and group_student.custom_duration_minutes:
-                    U = group_student.custom_duration_minutes / 60.0
-                else:
-                    U = default_hours
-                base_hours = (abonement.base_hours if abonement and abonement.base_hours else None) or DEFAULT_BASE_HOURS
-
-                all_in_window = (
-                    db.query(LessonAttendance)
-                    .filter(
-                        LessonAttendance.group_id == att.group_id,
-                        LessonAttendance.student_id == att.student_id,
-                        LessonAttendance.lesson_date >= window_start,
-                        LessonAttendance.lesson_date <= window_end,
-                    )
-                    .all()
+        try:
+            with db.begin_nested():
+                _process_attendance_deduction(
+                    db=db,
+                    att=att,
+                    group=group,
+                    is_individual=is_individual,
+                    default_hours=default_hours,
+                    group_students_by_student_id=group_students_by_student_id,
+                    window_start=window_start,
+                    window_end=window_end,
+                    start_t=start_t,
+                    end_t=end_t,
+                    effective_trainer=effective_trainer,
+                    current_user=current_user,
+                    new_absence_notifications=new_absence_notifications,
                 )
-                current_key = _slot_key(att)
-                base_used = sum(
-                    (att2.base_units_applied or 0)
-                    for att2 in all_in_window
-                    if _slot_key(att2) < current_key
-                )
-                base_left = max(0.0, base_hours - base_used)
-                base_units_to_apply = min(base_left, U)
-                extra_units_to_apply = U - base_units_to_apply
-
-                if abonement and abonement.price is not None and base_hours > 0:
-                    price_per_unit = student_abonement_price(student, abonement) / base_hours
-                if base_units_to_apply > 0 and price_per_unit > 0:
-                    target_base = round(price_per_unit * base_units_to_apply, 2)
-
-                if extra_units_to_apply > 0:
-                    try:
-                        policy = (
-                            db.query(LessonSlotExtraPolicy)
-                            .filter(
-                                LessonSlotExtraPolicy.group_id == att.group_id,
-                                LessonSlotExtraPolicy.lesson_date == att.lesson_date,
-                                LessonSlotExtraPolicy.start_time == start_t,
-                                LessonSlotExtraPolicy.end_time == end_t,
-                            )
-                            .first()
-                        )
-                    except Exception:
-                        policy = None
-                    extra_policy = (policy.extra_policy if policy else None) or "free"
-                    if extra_policy == "paid":
-                        extra_rate = None
-                        if policy and getattr(policy, "extra_rate_per_unit", None) is not None:
-                            extra_rate = float(policy.extra_rate_per_unit)
-                        if extra_rate is None and getattr(group, "extra_rate_per_unit", None) is not None:
-                            extra_rate = float(group.extra_rate_per_unit)
-                        if extra_rate is None:
-                            extra_rate = price_per_unit
-                        deduct_extra = extra_rate * extra_units_to_apply
-                        if deduct_extra > 0:
-                            target_extra = round(deduct_extra, 2)
-
-        att.base_units_applied = base_units_to_apply
-        att.extra_units_applied = extra_units_to_apply
-
-        account = None
-        accounts = db.query(StudentAccount).filter(
-            StudentAccount.student_id == att.student_id
-        ).order_by(StudentAccount.id).all()
-        if accounts:
-            direction_hint = None
-            gr = att.group
-            if gr:
-                try:
-                    programs = list(getattr(gr, "programs", []) or [])
-                except Exception:
-                    programs = []
-                if programs:
-                    prog_name = (programs[0].name or "").strip()
-                    if prog_name:
-                        direction_hint = prog_name.lower()
-                if not direction_hint and getattr(gr, "direction", None):
-                    direction_hint = str(gr.direction).strip().lower()
-            for acc in accounts:
-                acc_name = (acc.name or "").strip().lower()
-                if acc_name and direction_hint and direction_hint in acc_name:
-                    account = acc
-                    break
-            if account is None:
-                account = accounts[0]
-
-        # Существующие проводки за это же занятие — обновляем (сторно), а не дублируем,
-        # если сумма к списанию изменилась (правка времени, скидки, заморозки и т.п.).
-        existing_txs = list(
-            db.query(StudentAccountTransaction).filter(
-                StudentAccountTransaction.lesson_attendance_id == att.id,
+        except Exception:
+            # Изолируем сбой одного урока/ученика через SAVEPOINT: раньше исключение здесь
+            # (например, при отправке уведомления) откатывало db.commit() ниже целиком —
+            # посещаемость уже была сохранена отдельным commit'ом выше, а списание за урок
+            # молча терялось для ВСЕХ учеников этой даты, не только для того, кто вызвал сбой.
+            logger.exception(
+                "Failed to process lesson deduction for lesson_attendance id=%s (student_id=%s, lesson_date=%s)",
+                att.id, att.student_id, att.lesson_date,
             )
-        )
-        base_tx = next((t for t in existing_txs if t.kind == StudentAccountTransactionKind.LESSON_DEDUCTION), None)
-        extra_tx = next((t for t in existing_txs if t.kind == StudentAccountTransactionKind.EXTRA_LESSON_DEDUCTION), None)
-
-        new_base_amount = -target_base if target_base > 0 else 0.0
-        new_extra_amount = -target_extra if target_extra > 0 else 0.0
-
-        if account:
-            lesson_label = "Индивидуальное занятие" if is_individual else "Занятие"
-            if base_tx:
-                diff = round(new_base_amount - float(base_tx.amount or 0.0), 2)
-                if abs(diff) >= 0.01:
-                    base_tx.amount = new_base_amount
-                    base_tx.note = f"{lesson_label} {att.lesson_date} (корректировка)"
-                    account.balance += diff
-            elif new_base_amount < 0:
-                account.balance += new_base_amount
-                db.add(
-                    StudentAccountTransaction(
-                        account_id=account.id,
-                        amount=new_base_amount,
-                        kind=StudentAccountTransactionKind.LESSON_DEDUCTION,
-                        note=f"{lesson_label} {att.lesson_date}",
-                        lesson_attendance_id=att.id,
-                    )
-                )
-
-            if extra_tx:
-                diff = round(new_extra_amount - float(extra_tx.amount or 0.0), 2)
-                if abs(diff) >= 0.01:
-                    extra_tx.amount = new_extra_amount
-                    account.balance += diff
-            elif new_extra_amount < 0:
-                account.balance += new_extra_amount
-                db.add(
-                    StudentAccountTransaction(
-                        account_id=account.id,
-                        amount=new_extra_amount,
-                        kind=StudentAccountTransactionKind.EXTRA_LESSON_DEDUCTION,
-                        note=f"Доп. занятие (сверх 8) {att.lesson_date}",
-                        lesson_attendance_id=att.id,
-                    )
-                )
-
-        # Грантовикам отработки не заводим — в «Пропуски» они не попадают.
-        if is_absence and not in_freeze and not on_grant:
-            absence = db.query(AbsenceFollowUp).filter(
-                AbsenceFollowUp.lesson_attendance_id == att.id,
-            ).first()
-            if not absence:
-                absence = AbsenceFollowUp(
-                    lesson_attendance_id=att.id,
-                    student_id=att.student_id,
-                    group_id=att.group_id,
-                    lesson_date=att.lesson_date,
-                    stage="missed",
-                    absence_reason=att.absence_reason,
-                    absence_comment=att.absence_comment,
-                )
-                db.add(absence)
-                new_absence_notifications.append(absence)
-                CommunicationService.send(
-                    db,
-                    channel="email",
-                    recipient_type="student",
-                    recipient_id=student.id,
-                    event_key="student_absent",
-                    created_by=current_user.id,
-                    context={
-                        "student_name": student.full_name,
-                        "group_name": group.name,
-                        "lesson_date": att.lesson_date.isoformat(),
-                        "lesson_time": start_t.strftime("%H:%M") if start_t else "",
-                        "trainer_name": effective_trainer.full_name if effective_trainer else "",
-                    },
-                )
     db.commit()
     log_action(
         db, current_user.id, "save_attendance", "lesson_attendance", None,

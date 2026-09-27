@@ -563,6 +563,7 @@ export interface Topic {
   id: number;
   name: string;
   description?: string;
+  project?: string;
   final_result?: string;
   order: number;
   status: string;

@@ -28,8 +28,17 @@ import {
   ExpandLess,
   ExpandMore,
   Save as SaveIcon,
+  UploadFile as UploadFileIcon,
 } from '@mui/icons-material';
-import { courseStudioApi, CourseFull, CourseSummary, CourseLesson } from '../services/courseStudioApi';
+import {
+  courseStudioApi,
+  CourseFull,
+  CourseSummary,
+  CourseLesson,
+  CourseModule,
+  CourseTopic,
+  ImportPreview,
+} from '../services/courseStudioApi';
 
 // ─── Brand ───────────────────────────────────────────────────────────────────
 const K = {
@@ -55,11 +64,12 @@ interface LessonRowProps {
   isLast: boolean;
   onUpdate: (l: CourseLesson) => void;
   onDelete: (id: number) => void;
-  onMove: (id: number, dir: 'up' | 'down') => void;
+  onMove?: (id: number, dir: 'up' | 'down') => void;
   saving: boolean;
+  hideMove?: boolean;
 }
 
-function LessonRow({ lesson, isFirst, isLast, onUpdate, onDelete, onMove, saving }: LessonRowProps) {
+function LessonRow({ lesson, isFirst, isLast, onUpdate, onDelete, onMove, saving, hideMove }: LessonRowProps) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(lesson);
   const [tab, setTab] = useState(0);
@@ -84,14 +94,16 @@ function LessonRow({ lesson, isFirst, isLast, onUpdate, onDelete, onMove, saving
     <Box sx={{ border: `1px solid ${K.border}`, borderRadius: 1.5, overflow: 'hidden', bgcolor: K.surface }}>
       {/* Header row */}
       <Box sx={{ display: 'flex', alignItems: 'center', px: 2, py: 1.25, gap: 1 }}>
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-          <IconButton size="small" disabled={isFirst || saving} onClick={() => onMove(lesson.id, 'up')} sx={{ p: 0.25, color: K.textFaint }}>
-            <UpIcon sx={{ fontSize: 14 }} />
-          </IconButton>
-          <IconButton size="small" disabled={isLast || saving} onClick={() => onMove(lesson.id, 'down')} sx={{ p: 0.25, color: K.textFaint }}>
-            <DownIcon sx={{ fontSize: 14 }} />
-          </IconButton>
-        </Box>
+        {!hideMove && onMove && (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            <IconButton size="small" disabled={isFirst || saving} onClick={() => onMove(lesson.id, 'up')} sx={{ p: 0.25, color: K.textFaint }}>
+              <UpIcon sx={{ fontSize: 14 }} />
+            </IconButton>
+            <IconButton size="small" disabled={isLast || saving} onClick={() => onMove(lesson.id, 'down')} sx={{ p: 0.25, color: K.textFaint }}>
+              <DownIcon sx={{ fontSize: 14 }} />
+            </IconButton>
+          </Box>
+        )}
         <Typography sx={{ fontFamily: K.mono, fontSize: 11, color: K.textFaint, minWidth: 24 }}>
           {String(lesson.sort_order + 1).padStart(2, '0')}
         </Typography>
@@ -194,6 +206,233 @@ function LessonRow({ lesson, isFirst, isLast, onUpdate, onDelete, onMove, saving
   );
 }
 
+// ─── Модуль / тема (программа обучения) ────────────────────────────────────────
+const sectionLabelSx = {
+  fontFamily: K.mono,
+  fontSize: 10,
+  color: K.textFaint,
+  letterSpacing: '0.15em',
+  textTransform: 'uppercase' as const,
+};
+
+interface TopicBlockProps {
+  topic: CourseTopic;
+  onUpdateLesson: (l: CourseLesson) => void;
+  onDeleteLesson: (id: number) => void;
+  saving: boolean;
+}
+
+function TopicBlock({ topic, onUpdateLesson, onDeleteLesson, saving }: TopicBlockProps) {
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+      <Typography sx={{ fontSize: 12, color: K.accent, fontWeight: 600 }}>{topic.title}</Typography>
+      {topic.lessons.length === 0 ? (
+        <Typography sx={{ fontSize: 11, color: K.textFaint, fontStyle: 'italic', pl: 1 }}>Нет занятий</Typography>
+      ) : (
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+          {topic.lessons.map((lesson) => (
+            <LessonRow
+              key={lesson.id}
+              lesson={lesson}
+              isFirst
+              isLast
+              hideMove
+              onUpdate={onUpdateLesson}
+              onDelete={onDeleteLesson}
+              saving={saving}
+            />
+          ))}
+        </Box>
+      )}
+    </Box>
+  );
+}
+
+interface ModuleBlockProps {
+  module: CourseModule;
+  onUpdateLesson: (l: CourseLesson) => void;
+  onDeleteLesson: (id: number) => void;
+  onDeleteModule: (id: number) => void;
+  saving: boolean;
+}
+
+function ModuleBlock({ module, onUpdateLesson, onDeleteLesson, onDeleteModule, saving }: ModuleBlockProps) {
+  const [open, setOpen] = useState(true);
+  return (
+    <Box sx={{ border: `1px solid ${K.border}`, borderRadius: 1.5, bgcolor: K.surface, overflow: 'hidden' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', px: 2, py: 1.25, gap: 1 }}>
+        <IconButton size="small" onClick={() => setOpen((v) => !v)} sx={{ color: K.textDim }}>
+          {open ? <ExpandLess sx={{ fontSize: 16 }} /> : <ExpandMore sx={{ fontSize: 16 }} />}
+        </IconButton>
+        <Typography sx={{ fontSize: 13, color: K.text, fontWeight: 700, flex: 1 }}>{module.title}</Typography>
+        <Tooltip title="Удалить модуль">
+          <IconButton size="small" disabled={saving} onClick={() => onDeleteModule(module.id)} sx={{ color: K.textFaint, '&:hover': { color: K.danger } }}>
+            <DeleteIcon sx={{ fontSize: 16 }} />
+          </IconButton>
+        </Tooltip>
+      </Box>
+      {open && (
+        <Box sx={{ borderTop: `1px solid ${K.border}`, p: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {module.topics.map((topic) => (
+            <TopicBlock key={topic.id} topic={topic} onUpdateLesson={onUpdateLesson} onDeleteLesson={onDeleteLesson} saving={saving} />
+          ))}
+          {module.submodules.map((sub) => (
+            <Box key={sub.id} sx={{ pl: 2, borderLeft: `2px solid ${K.border}`, display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <Typography sx={{ fontSize: 12, color: K.textDim, fontWeight: 600 }}>{sub.title}</Typography>
+              {sub.topics.map((topic) => (
+                <TopicBlock key={topic.id} topic={topic} onUpdateLesson={onUpdateLesson} onDeleteLesson={onDeleteLesson} saving={saving} />
+              ))}
+            </Box>
+          ))}
+        </Box>
+      )}
+    </Box>
+  );
+}
+
+// ─── Импорт программы обучения из .docx ───────────────────────────────────────
+function ImportPreviewTree({ preview }: { preview: ImportPreview }) {
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, maxHeight: 320, overflowY: 'auto', pr: 1 }}>
+      {preview.modules.map((m, mi) => (
+        <Box key={mi} sx={{ border: `1px solid ${K.border}`, borderRadius: 1, p: 1.5 }}>
+          <Typography sx={{ fontSize: 12, color: K.text, fontWeight: 700 }}>{m.title}</Typography>
+          <Box sx={{ pl: 2, mt: 0.5, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+            {m.topics.map((t, ti) => (
+              <Typography key={ti} sx={{ fontSize: 11, color: K.textDim }}>
+                {t.title} — {t.lessons.length} {t.lessons.length === 1 ? 'занятие' : 'занятий'}
+              </Typography>
+            ))}
+            {m.submodules.map((s, si) => (
+              <Box key={si} sx={{ pl: 1.5, borderLeft: `2px solid ${K.border}` }}>
+                <Typography sx={{ fontSize: 11, color: K.textDim, fontWeight: 600 }}>{s.title}</Typography>
+                {s.topics.map((t, ti) => (
+                  <Typography key={ti} sx={{ fontSize: 11, color: K.textFaint, pl: 1 }}>
+                    {t.title} — {t.lessons.length} {t.lessons.length === 1 ? 'занятие' : 'занятий'}
+                  </Typography>
+                ))}
+              </Box>
+            ))}
+          </Box>
+        </Box>
+      ))}
+    </Box>
+  );
+}
+
+interface ImportProgramDialogProps {
+  open: boolean;
+  onClose: () => void;
+  courseId: number;
+  onImported: () => void;
+}
+
+function ImportProgramDialog({ open, onClose, courseId, onImported }: ImportProgramDialogProps) {
+  const [file, setFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<ImportPreview | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const reset = () => {
+    setFile(null);
+    setPreview(null);
+    setError(null);
+  };
+
+  const handleFile = async (f: File) => {
+    setFile(f);
+    setPreview(null);
+    setError(null);
+    setLoading(true);
+    try {
+      const p = await courseStudioApi.previewImport(courseId, f);
+      setPreview(p);
+    } catch (e: any) {
+      setError(e?.response?.data?.detail || 'Не удалось разобрать файл');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const confirmImport = async () => {
+    if (!file) return;
+    setImporting(true);
+    setError(null);
+    try {
+      await courseStudioApi.commitImport(courseId, file);
+      reset();
+      onImported();
+      onClose();
+    } catch (e: any) {
+      setError(e?.response?.data?.detail || 'Ошибка импорта');
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onClose={() => { reset(); onClose(); }} maxWidth="sm" fullWidth PaperProps={{ sx: { bgcolor: K.surfaceUp, color: K.text, fontFamily: K.mono } }}>
+      <DialogTitle sx={{ fontFamily: K.mono, fontSize: 14 }}>Импорт программы обучения (.docx)</DialogTitle>
+      <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <Typography sx={{ fontSize: 11, color: K.textDim }}>
+          Heading 1 — модуль, Heading 2 — подмодуль (необязателен), Heading 3 — тема, Heading 4 — занятие.
+          Программа добавится к уже существующим модулям курса.
+        </Typography>
+        <Button
+          component="label"
+          variant="outlined"
+          startIcon={<UploadFileIcon sx={{ fontSize: 16 }} />}
+          sx={{ fontFamily: K.mono, fontSize: 12, color: K.accent, borderColor: K.border, alignSelf: 'flex-start' }}
+        >
+          {file ? file.name : 'Выбрать .docx файл'}
+          <input
+            type="file"
+            accept=".docx"
+            hidden
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
+          />
+        </Button>
+
+        {loading && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+            <CircularProgress size={20} sx={{ color: K.accent }} />
+          </Box>
+        )}
+
+        {error && (
+          <Alert severity="error" sx={{ fontFamily: K.mono, fontSize: 12 }}>{error}</Alert>
+        )}
+
+        {preview && (
+          <>
+            <Typography sx={{ fontSize: 11, color: K.textDim }}>
+              Найдено: {preview.module_count} {preview.module_count === 1 ? 'модуль' : 'модулей'}, {preview.topic_count} тем, {preview.lesson_count} занятий
+            </Typography>
+            {preview.warnings.length > 0 && (
+              <Alert severity="warning" sx={{ fontFamily: K.mono, fontSize: 11 }}>
+                {preview.warnings.join('; ')}
+              </Alert>
+            )}
+            <ImportPreviewTree preview={preview} />
+          </>
+        )}
+      </DialogContent>
+      <DialogActions sx={{ px: 2.5, pb: 2 }}>
+        <Button onClick={() => { reset(); onClose(); }} sx={{ fontFamily: K.mono, fontSize: 12, color: K.textDim }}>Отмена</Button>
+        <Button
+          variant="contained"
+          disabled={!preview || importing}
+          onClick={confirmImport}
+          sx={{ bgcolor: K.accent, color: '#fff', fontFamily: K.mono, fontSize: 12, '&:hover': { bgcolor: K.accentDim } }}
+        >
+          Импортировать
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
 // ─── TextField style helper ───────────────────────────────────────────────────
 const textFieldSx = {
   '& .MuiInputBase-root': { fontFamily: '"JetBrains Mono","SFMono-Regular",Consolas,monospace', fontSize: 13, bgcolor: '#0d1117' },
@@ -222,6 +461,7 @@ function CourseEditor({ courseId, onUpdated, onDeleted }: CourseEditorProps) {
   const [addDialog, setAddDialog] = useState(false);
   const [newLessonTitle, setNewLessonTitle] = useState('');
   const [delCourseDialog, setDelCourseDialog] = useState(false);
+  const [importDialog, setImportDialog] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -315,6 +555,50 @@ function CourseEditor({ courseId, onUpdated, onDeleted }: CourseEditorProps) {
     }
   };
 
+  const updateTopicLesson = async (updated: CourseLesson) => {
+    setSaving(true);
+    try {
+      await courseStudioApi.updateLesson(courseId, updated.id, {
+        title: updated.title,
+        theory_md: updated.theory_md || undefined,
+        homework_md: updated.homework_md || undefined,
+        is_published: updated.is_published,
+      });
+      await load();
+      setToast({ msg: 'Занятие сохранено' });
+    } catch {
+      setToast({ msg: 'Ошибка сохранения занятия', err: true });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteTopicLesson = async (lessonId: number) => {
+    setSaving(true);
+    try {
+      await courseStudioApi.deleteLesson(courseId, lessonId);
+      await load();
+      setToast({ msg: 'Занятие удалено' });
+    } catch {
+      setToast({ msg: 'Ошибка удаления занятия', err: true });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteModule = async (moduleId: number) => {
+    setSaving(true);
+    try {
+      await courseStudioApi.deleteModule(courseId, moduleId);
+      await load();
+      setToast({ msg: 'Модуль удалён' });
+    } catch {
+      setToast({ msg: 'Ошибка удаления модуля', err: true });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const deleteCourse = async () => {
     setSaving(true);
     try {
@@ -393,12 +677,49 @@ function CourseEditor({ courseId, onUpdated, onDeleted }: CourseEditorProps) {
         </Box>
       </Box>
 
-      {/* Lessons */}
+      {/* Программа обучения (модули) */}
       <Box>
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 1.5 }}>
-          <Typography sx={{ fontFamily: K.mono, fontSize: 10, color: K.textFaint, letterSpacing: '0.2em', textTransform: 'uppercase', flex: 1 }}>
-            Уроки ({course.lessons.length})
+          <Typography sx={sectionLabelSx}>Программа обучения ({course.modules.length})</Typography>
+          <Box sx={{ flex: 1 }} />
+          <Button
+            size="small"
+            startIcon={<UploadFileIcon sx={{ fontSize: 14 }} />}
+            onClick={() => setImportDialog(true)}
+            sx={{ fontSize: 11, fontFamily: K.mono, color: K.accent, border: `1px solid ${K.border}`, px: 1.5, height: 28 }}
+          >
+            Импортировать программу
+          </Button>
+        </Box>
+        {course.modules.length === 0 ? (
+          <Box sx={{ p: 3, textAlign: 'center', border: `1px dashed ${K.border}`, borderRadius: 1.5 }}>
+            <Typography sx={{ fontSize: 12, color: K.textFaint, fontStyle: 'italic' }}>
+              Программа ещё не импортирована. Загрузите .docx с модулями, темами и занятиями.
+            </Typography>
+          </Box>
+        ) : (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+            {course.modules.map((module) => (
+              <ModuleBlock
+                key={module.id}
+                module={module}
+                onUpdateLesson={updateTopicLesson}
+                onDeleteLesson={deleteTopicLesson}
+                onDeleteModule={deleteModule}
+                saving={saving}
+              />
+            ))}
+          </Box>
+        )}
+      </Box>
+
+      {/* Занятия без темы (созданы вручную, без импорта) */}
+      <Box>
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: 1.5 }}>
+          <Typography sx={sectionLabelSx}>
+            Занятия без темы ({course.lessons.filter((l) => !l.topic_id).length})
           </Typography>
+          <Box sx={{ flex: 1 }} />
           <Button
             size="small"
             startIcon={<AddIcon sx={{ fontSize: 14 }} />}
@@ -409,19 +730,19 @@ function CourseEditor({ courseId, onUpdated, onDeleted }: CourseEditorProps) {
           </Button>
         </Box>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-          {course.lessons.length === 0 ? (
+          {course.lessons.filter((l) => !l.topic_id).length === 0 ? (
             <Box sx={{ p: 3, textAlign: 'center', border: `1px dashed ${K.border}`, borderRadius: 1.5 }}>
               <Typography sx={{ fontSize: 12, color: K.textFaint, fontStyle: 'italic' }}>
                 Нет уроков. Добавьте первый урок с теорией и заданием.
               </Typography>
             </Box>
           ) : (
-            course.lessons.map((lesson, i) => (
+            course.lessons.filter((l) => !l.topic_id).map((lesson, i, arr) => (
               <LessonRow
                 key={lesson.id}
                 lesson={lesson}
                 isFirst={i === 0}
-                isLast={i === course.lessons.length - 1}
+                isLast={i === arr.length - 1}
                 onUpdate={updateLesson}
                 onDelete={deleteLesson}
                 onMove={moveLesson}
@@ -431,6 +752,13 @@ function CourseEditor({ courseId, onUpdated, onDeleted }: CourseEditorProps) {
           )}
         </Box>
       </Box>
+
+      <ImportProgramDialog
+        open={importDialog}
+        onClose={() => setImportDialog(false)}
+        courseId={courseId}
+        onImported={load}
+      />
 
       {/* Add lesson dialog */}
       <Dialog open={addDialog} onClose={() => setAddDialog(false)} PaperProps={{ sx: { bgcolor: K.surfaceUp, color: K.text, fontFamily: K.mono } }}>

@@ -287,6 +287,11 @@ const GuestProgramsPage: React.FC = () => {
                                             {t.description}
                                           </Typography>
                                         )}
+                                        {t.project && (
+                                          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, whiteSpace: 'pre-wrap' }}>
+                                            <strong>Проект:</strong> {t.project}
+                                          </Typography>
+                                        )}
                                         {t.final_result && (
                                           <Typography
                                             variant="body2"

@@ -1,5 +1,6 @@
-from typing import List
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from typing import List, Optional
+import io
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, status
 from fastapi_cache.decorator import cache
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_
@@ -93,6 +94,7 @@ async def create_program(
                 module_id=db_module.id,
                 name=topic_data.name,
                 description=topic_data.description,
+                project=topic_data.project,
                 final_result=topic_data.final_result,
                 order=topic_data.order,
                 status=TopicStatus.ACTIVE
@@ -360,6 +362,7 @@ async def update_program(
                     module=new_module,
                     name=topic_data["name"],
                     description=topic_data.get("description"),
+                    project=topic_data.get("project"),
                     final_result=topic_data.get("final_result"),
                     order=topic_data.get("order", 0),
                     status=TopicStatus.ACTIVE
@@ -596,6 +599,180 @@ async def unarchive_module(
     log_action(db, current_user.id, "unarchive", "module", module_id, {"program_id": program_id})
     await invalidate_namespace(CACHE_NS_PROGRAMS)
     return {"message": "Module unarchived"}
+
+
+_TOPIC_FIELD_LABELS = {
+    "описание": "description",
+    "проект": "project",
+    "результат": "final_result",
+    "итоговый результат": "final_result",
+}
+
+
+def _match_field_label(line: str) -> Optional[tuple]:
+    """
+    Если строка начинается с подписи вида "Описание:", "Проект:", "Результат:" —
+    вернуть (имя_поля, остаток_строки_после_двоеточия). Иначе None.
+    """
+    if ":" not in line:
+        return None
+    label, rest = line.split(":", 1)
+    field = _TOPIC_FIELD_LABELS.get(label.strip().lower())
+    if field is None:
+        return None
+    return field, rest.strip()
+
+
+def _parse_topics_docx(content: bytes) -> List[dict]:
+    """
+    Разбор docx по стилям заголовков Word:
+    Heading 1 -> модуль, Heading 2 -> тема.
+    Внутри темы подписанные абзацы "Описание:", "Проект:", "Результат:"
+    заполняют соответствующие поля (многострочные значения — продолжение
+    предыдущей подписи до следующей подписи/заголовка).
+    """
+    import docx
+
+    document = docx.Document(io.BytesIO(content))
+
+    modules: List[dict] = []
+    current_module: Optional[dict] = None
+    current_topic: Optional[dict] = None
+    current_field: Optional[str] = None
+
+    def flush_topic():
+        nonlocal current_topic, current_field
+        if current_topic is not None and current_module is not None:
+            current_module["topics"].append(current_topic)
+        current_topic = None
+        current_field = None
+
+    for para in document.paragraphs:
+        text = para.text.strip()
+        if not text:
+            continue
+        style_name = (para.style.name if para.style else "") or ""
+
+        if style_name.startswith("Heading 1"):
+            flush_topic()
+            current_module = {"name": text, "topics": []}
+            modules.append(current_module)
+            continue
+
+        if style_name.startswith("Heading 2"):
+            flush_topic()
+            if current_module is None:
+                current_module = {"name": "Без названия", "topics": []}
+                modules.append(current_module)
+            current_topic = {"name": text, "description": None, "project": None, "final_result": None}
+            continue
+
+        if current_topic is None:
+            # Текст встретился до первой темы (Heading 2) — игнорируем
+            continue
+
+        match = _match_field_label(text)
+        if match:
+            field, value = match
+            current_topic[field] = value or None
+            current_field = field
+        elif current_field:
+            existing = current_topic.get(current_field) or ""
+            current_topic[current_field] = (existing + "\n" + text).strip()
+
+    flush_topic()
+    return modules
+
+
+@router.post("/{program_id}/import-topics-docx")
+async def import_topics_docx(
+    program_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("programs.edit"))
+):
+    """
+    Импорт модулей/тем из docx-файла в существующую программу.
+    Формат: Heading 1 = модуль, Heading 2 = тема, подписанные абзацы
+    "Описание:", "Проект:", "Результат:" внутри темы.
+    Существующие модули/темы не удаляются: недостающие модули создаются,
+    темы добавляются в конец списка (темы с уже существующим именем в модуле пропускаются).
+    """
+    db_program = db.query(Program).options(
+        joinedload(Program.modules).joinedload(Module.topics)
+    ).filter(Program.id == program_id).first()
+    if db_program is None:
+        raise HTTPException(status_code=404, detail="Program not found")
+
+    if not file.filename or not file.filename.lower().endswith(".docx"):
+        raise HTTPException(status_code=400, detail="Ожидается файл в формате .docx")
+
+    content = await file.read()
+    try:
+        parsed_modules = _parse_topics_docx(content)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Не удалось прочитать docx-файл")
+
+    modules_created = 0
+    topics_created = 0
+    topics_skipped = 0
+
+    existing_modules_by_name = {m.name.strip().lower(): m for m in db_program.modules}
+    next_module_order = (max((m.order or 0 for m in db_program.modules), default=-1)) + 1
+
+    for module_data in parsed_modules:
+        key = module_data["name"].strip().lower()
+        db_module = existing_modules_by_name.get(key)
+        if db_module is None:
+            db_module = Module(
+                program_id=db_program.id,
+                name=module_data["name"],
+                order=next_module_order,
+                status=ProgramStatus.ACTIVE
+            )
+            db.add(db_module)
+            db.flush()
+            existing_modules_by_name[key] = db_module
+            next_module_order += 1
+            modules_created += 1
+
+        existing_topic_names = {t.name.strip().lower() for t in db_module.topics}
+        next_topic_order = (max((t.order or 0 for t in db_module.topics), default=-1)) + 1
+
+        for topic_data in module_data["topics"]:
+            topic_key = topic_data["name"].strip().lower()
+            if topic_key in existing_topic_names:
+                topics_skipped += 1
+                continue
+            db_topic = Topic(
+                module_id=db_module.id,
+                name=topic_data["name"],
+                description=topic_data.get("description"),
+                project=topic_data.get("project"),
+                final_result=topic_data.get("final_result"),
+                order=next_topic_order,
+                status=TopicStatus.ACTIVE
+            )
+            db.add(db_topic)
+            db.flush()
+            existing_topic_names.add(topic_key)
+            next_topic_order += 1
+            topics_created += 1
+
+    db.commit()
+
+    log_action(db, current_user.id, "import_topics", "program", program_id, {
+        "modules_created": modules_created,
+        "topics_created": topics_created,
+        "topics_skipped": topics_skipped,
+    })
+    await invalidate_namespace(CACHE_NS_PROGRAMS)
+
+    return {
+        "modules_created": modules_created,
+        "topics_created": topics_created,
+        "topics_skipped": topics_skipped,
+    }
 
 
 @router.post("/{program_id}/assign-to-group/{group_id}")

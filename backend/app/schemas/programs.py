@@ -16,6 +16,7 @@ class ProgramSummaryResponse(BaseModel):
 class TopicBase(BaseModel):
     name: str
     description: Optional[str] = None
+    project: Optional[str] = None
     final_result: Optional[str] = None
     order: int = 0
 

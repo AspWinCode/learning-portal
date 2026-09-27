@@ -423,7 +423,80 @@ class CourseContent(Base):
         cascade="all, delete-orphan",
         order_by="CourseLesson.sort_order",
     )
+    modules = relationship(
+        "CourseModule",
+        back_populates="course",
+        cascade="all, delete-orphan",
+        order_by="CourseModule.sort_order",
+    )
     author = relationship("User", foreign_keys=[author_id])
+
+
+class CourseModule(Base):
+    """Модуль программы обучения курса (создаётся вручную или импортом из .docx)."""
+
+    __tablename__ = "course_modules"
+
+    id = Column(Integer, primary_key=True, index=True)
+    course_id = Column(Integer, ForeignKey("course_contents.id", ondelete="CASCADE"), nullable=False, index=True)
+    title = Column(String(256), nullable=False)
+    sort_order = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    course = relationship("CourseContent", back_populates="modules")
+    submodules = relationship(
+        "CourseSubmodule",
+        back_populates="module",
+        cascade="all, delete-orphan",
+        order_by="CourseSubmodule.sort_order",
+    )
+    topics = relationship(
+        "CourseTopic",
+        back_populates="module",
+        cascade="all, delete-orphan",
+        order_by="CourseTopic.sort_order",
+    )
+
+
+class CourseSubmodule(Base):
+    """Подмодуль — необязательный уровень вложенности внутри модуля курса."""
+
+    __tablename__ = "course_submodules"
+
+    id = Column(Integer, primary_key=True, index=True)
+    module_id = Column(Integer, ForeignKey("course_modules.id", ondelete="CASCADE"), nullable=False, index=True)
+    title = Column(String(256), nullable=False)
+    sort_order = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    module = relationship("CourseModule", back_populates="submodules")
+    topics = relationship(
+        "CourseTopic",
+        back_populates="submodule",
+        cascade="all, delete-orphan",
+        order_by="CourseTopic.sort_order",
+    )
+
+
+class CourseTopic(Base):
+    """Тема курса: крепится к модулю напрямую или через подмодуль."""
+
+    __tablename__ = "course_topics"
+
+    id = Column(Integer, primary_key=True, index=True)
+    module_id = Column(Integer, ForeignKey("course_modules.id", ondelete="CASCADE"), nullable=False, index=True)
+    submodule_id = Column(Integer, ForeignKey("course_submodules.id", ondelete="CASCADE"), nullable=True, index=True)
+    title = Column(String(256), nullable=False)
+    sort_order = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    module = relationship("CourseModule", back_populates="topics")
+    submodule = relationship("CourseSubmodule", back_populates="topics")
+    lessons = relationship(
+        "CourseLesson",
+        back_populates="topic",
+        order_by="CourseLesson.sort_order",
+    )
 
 
 class CourseLesson(Base):
@@ -433,6 +506,7 @@ class CourseLesson(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     course_id = Column(Integer, ForeignKey("course_contents.id", ondelete="CASCADE"), nullable=False, index=True)
+    topic_id = Column(Integer, ForeignKey("course_topics.id", ondelete="CASCADE"), nullable=True, index=True)
     title = Column(String(256), nullable=False)
     theory_md = Column(Text, nullable=True)
     homework_md = Column(Text, nullable=True)
@@ -442,6 +516,7 @@ class CourseLesson(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     course = relationship("CourseContent", back_populates="lessons")
+    topic = relationship("CourseTopic", back_populates="lessons")
 
 
 class StudentAccountTransactionKind(str, enum.Enum):
@@ -1842,6 +1917,7 @@ class Topic(Base):
     module_id = Column(Integer, ForeignKey("modules.id"), nullable=False)
     name = Column(String, nullable=False)
     description = Column(Text, nullable=True)
+    project = Column(Text, nullable=True)  # Проект: что делаем в рамках темы
     final_result = Column(Text, nullable=True)  # ╨Ш╤В╨╛╨│╤В╨╡╨╝╤Л╨┤╨╗╤П╤Г╤З╨╡╨╜╨╕╨║╨░
     order = Column(Integer, default=0)
     status = Column(_TopicStatusType(), default=TopicStatus.ACTIVE)

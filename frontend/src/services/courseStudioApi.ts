@@ -12,11 +12,34 @@ export interface CourseSummary {
 export interface CourseLesson {
   id: number;
   course_id: number;
+  topic_id: number | null;
   title: string;
   theory_md: string | null;
   homework_md: string | null;
   sort_order: number;
   is_published: boolean;
+}
+
+export interface CourseTopic {
+  id: number;
+  title: string;
+  sort_order: number;
+  lessons: CourseLesson[];
+}
+
+export interface CourseSubmodule {
+  id: number;
+  title: string;
+  sort_order: number;
+  topics: CourseTopic[];
+}
+
+export interface CourseModule {
+  id: number;
+  title: string;
+  sort_order: number;
+  submodules: CourseSubmodule[];
+  topics: CourseTopic[];
 }
 
 export interface CourseFull {
@@ -26,6 +49,37 @@ export interface CourseFull {
   is_published: boolean;
   sort_order: number;
   lessons: CourseLesson[];
+  modules: CourseModule[];
+}
+
+export interface ImportPreviewLesson {
+  title: string;
+  theory_md: string;
+  homework_md: string;
+}
+
+export interface ImportPreviewTopic {
+  title: string;
+  lessons: ImportPreviewLesson[];
+}
+
+export interface ImportPreviewSubmodule {
+  title: string;
+  topics: ImportPreviewTopic[];
+}
+
+export interface ImportPreviewModule {
+  title: string;
+  submodules: ImportPreviewSubmodule[];
+  topics: ImportPreviewTopic[];
+}
+
+export interface ImportPreview {
+  modules: ImportPreviewModule[];
+  warnings: string[];
+  module_count: number;
+  topic_count: number;
+  lesson_count: number;
 }
 
 export interface CourseIn {
@@ -72,4 +126,23 @@ export const courseStudioApi = {
     api
       .post(`${BASE}/courses/${courseId}/lessons/${lessonId}/move?direction=${direction}`)
       .then((r) => r.data),
+
+  deleteModule: (courseId: number, moduleId: number): Promise<void> =>
+    api.delete(`${BASE}/courses/${courseId}/modules/${moduleId}`).then(() => undefined),
+
+  previewImport: (courseId: number, file: File): Promise<ImportPreview> => {
+    const form = new FormData();
+    form.append('file', file);
+    return api
+      .post(`${BASE}/courses/${courseId}/import/preview`, form, { headers: { 'Content-Type': 'multipart/form-data' } })
+      .then((r) => r.data);
+  },
+
+  commitImport: (courseId: number, file: File): Promise<CourseFull> => {
+    const form = new FormData();
+    form.append('file', file);
+    return api
+      .post(`${BASE}/courses/${courseId}/import/commit`, form, { headers: { 'Content-Type': 'multipart/form-data' } })
+      .then((r) => r.data);
+  },
 };

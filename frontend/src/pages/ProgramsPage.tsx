@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Layout from '../components/Layout';
 import {
   Typography,
@@ -18,7 +18,7 @@ import {
   Grid,
   Chip,
 } from '@mui/material';
-import { ExpandMore, Add as AddIcon, Delete as DeleteIcon, Edit as EditIcon } from '@mui/icons-material';
+import { ExpandMore, Add as AddIcon, Delete as DeleteIcon, Edit as EditIcon, UploadFile as UploadFileIcon } from '@mui/icons-material';
 import { programsApi } from '../services/api';
 import { Program } from '../types';
 import { useAuth } from '../contexts/AuthContext';
@@ -28,6 +28,7 @@ import { ConfirmDialog, EmptyState, FormDialog, StatusChip } from '../components
 interface TopicForm {
   name: string;
   description: string;
+  project: string;
   final_result: string;
 }
 
@@ -44,6 +45,7 @@ type ProgramCreatePayload = {
     topics: Array<{
       name: string;
       description?: string;
+      project?: string;
       final_result?: string;
       order: number;
     }>;
@@ -59,7 +61,7 @@ const ProgramsPage: React.FC = () => {
   const [modules, setModules] = useState<ModuleForm[]>([
     {
       name: 'Основной модуль',
-      topics: [{ name: '', description: '', final_result: '' }],
+      topics: [{ name: '', description: '', project: '', final_result: '' }],
     },
   ]);
   const [versionOpen, setVersionOpen] = useState(false);
@@ -68,9 +70,11 @@ const ProgramsPage: React.FC = () => {
   const [editNameProgram, setEditNameProgram] = useState<Program | null>(null);
   const [editNameValue, setEditNameValue] = useState('');
   const [versionModules, setVersionModules] = useState<ModuleForm[]>([
-    { name: 'Основной модуль', topics: [{ name: '', description: '', final_result: '' }] },
+    { name: 'Основной модуль', topics: [{ name: '', description: '', project: '', final_result: '' }] },
   ]);
   const [deleteProgram, setDeleteProgram] = useState<Program | null>(null);
+  const [importTargetProgram, setImportTargetProgram] = useState<Program | null>(null);
+  const importFileInputRef = useRef<HTMLInputElement>(null);
   const { user } = useAuth();
   const canManagePrograms = hasPermission(user, 'programs.manage');
 
@@ -123,7 +127,7 @@ const ProgramsPage: React.FC = () => {
   const handleAddModule = () => {
     setModules([
       ...modules,
-      { name: `Модуль ${modules.length + 1}`, topics: [{ name: '', description: '', final_result: '' }] },
+      { name: `Модуль ${modules.length + 1}`, topics: [{ name: '', description: '', project: '', final_result: '' }] },
     ]);
   };
 
@@ -144,7 +148,7 @@ const ProgramsPage: React.FC = () => {
     const module = next[moduleIndex];
     next[moduleIndex] = {
       ...module,
-      topics: [...module.topics, { name: '', description: '', final_result: '' }],
+      topics: [...module.topics, { name: '', description: '', project: '', final_result: '' }],
     };
     setModules(next);
   };
@@ -178,7 +182,7 @@ const ProgramsPage: React.FC = () => {
   const vAddModule = () => {
     setVersionModules([
       ...versionModules,
-      { name: `Модуль ${versionModules.length + 1}`, topics: [{ name: '', description: '', final_result: '' }] },
+      { name: `Модуль ${versionModules.length + 1}`, topics: [{ name: '', description: '', project: '', final_result: '' }] },
     ]);
   };
   const vRemoveModule = (moduleIndex: number) => {
@@ -192,7 +196,7 @@ const ProgramsPage: React.FC = () => {
   const vAddTopic = (moduleIndex: number) => {
     const next = [...versionModules];
     const m = next[moduleIndex];
-    next[moduleIndex] = { ...m, topics: [...m.topics, { name: '', description: '', final_result: '' }] };
+    next[moduleIndex] = { ...m, topics: [...m.topics, { name: '', description: '', project: '', final_result: '' }] };
     setVersionModules(next);
   };
   const vRemoveTopic = (moduleIndex: number, topicIndex: number) => {
@@ -226,10 +230,11 @@ const ProgramsPage: React.FC = () => {
               .map((t) => ({
                 name: t.name,
                 description: t.description || '',
+                project: t.project || '',
                 final_result: t.final_result || '',
               })),
           }))
-      : [{ name: 'Основной модуль', topics: [{ name: '', description: '', final_result: '' }] }];
+      : [{ name: 'Основной модуль', topics: [{ name: '', description: '', project: '', final_result: '' }] }];
     setVersionModules(mapped);
     setVersionOpen(true);
   };
@@ -255,6 +260,7 @@ const ProgramsPage: React.FC = () => {
             topics: validTopics.map((t, topicIndex) => ({
               name: t.name.trim(),
               description: t.description.trim() || undefined,
+              project: t.project.trim() || undefined,
               final_result: t.final_result.trim() || undefined,
               order: topicIndex,
             })),
@@ -282,6 +288,31 @@ const ProgramsPage: React.FC = () => {
     } catch (err: any) {
       setDeleteProgram(null);
       setError(err.response?.data?.detail || 'Ошибка удаления программы');
+    }
+  };
+
+  const handleImportClick = (program: Program) => {
+    setError('');
+    setInfo('');
+    setImportTargetProgram(program);
+    importFileInputRef.current?.click();
+  };
+
+  const handleImportFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !importTargetProgram) return;
+    try {
+      const result = await programsApi.importTopicsDocx(importTargetProgram.id, file);
+      setInfo(
+        `Импорт завершён: модулей создано — ${result.modules_created}, тем добавлено — ${result.topics_created}` +
+          (result.topics_skipped ? `, пропущено дубликатов — ${result.topics_skipped}` : '')
+      );
+      await loadPrograms();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Ошибка импорта тем из docx');
+    } finally {
+      setImportTargetProgram(null);
     }
   };
 
@@ -327,6 +358,7 @@ const ProgramsPage: React.FC = () => {
               topics: validTopics.map((topic, topicIndex) => ({
                 name: topic.name.trim(),
                 description: topic.description.trim() || undefined,
+                project: topic.project.trim() || undefined,
                 final_result: topic.final_result.trim() || undefined,
                 order: topicIndex,
               })),
@@ -338,7 +370,7 @@ const ProgramsPage: React.FC = () => {
       await programsApi.create(payload);
       setOpen(false);
       setProgramName('');
-      setModules([{ name: 'Основной модуль', topics: [{ name: '', description: '', final_result: '' }] }]);
+      setModules([{ name: 'Основной модуль', topics: [{ name: '', description: '', project: '', final_result: '' }] }]);
       setError('');
       setInfo('Программа создана');
       loadPrograms();
@@ -348,6 +380,13 @@ const ProgramsPage: React.FC = () => {
   };
   return (
     <Layout>
+      <input
+        type="file"
+        accept=".docx"
+        ref={importFileInputRef}
+        style={{ display: 'none' }}
+        onChange={handleImportFileChange}
+      />
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2, alignItems: 'center' }}>
         <Typography variant="h4">Программы обучения</Typography>
         {canManagePrograms && (
@@ -357,7 +396,7 @@ const ProgramsPage: React.FC = () => {
             onClick={() => {
               setOpen(true);
               setProgramName('');
-              setModules([{ name: 'Основной модуль', topics: [{ name: '', description: '', final_result: '' }] }]);
+              setModules([{ name: 'Основной модуль', topics: [{ name: '', description: '', project: '', final_result: '' }] }]);
             }}
           >
             Создать программу
@@ -425,6 +464,14 @@ const ProgramsPage: React.FC = () => {
                         <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
                           <Button variant="outlined" onClick={() => openNewVersionDialog(program)}>
                             Создать новую версию от v{program.version}
+                          </Button>
+                          <Button
+                            variant="outlined"
+                            startIcon={<UploadFileIcon />}
+                            onClick={() => handleImportClick(program)}
+                            title="Docx: заголовок Heading 1 — модуль, Heading 2 — тема, далее абзацы «Описание:», «Проект:», «Результат:»"
+                          >
+                            Импортировать темы (docx)
                           </Button>
                           <Button
                             variant="outlined"
@@ -521,6 +568,11 @@ const ProgramsPage: React.FC = () => {
                               {topic.description && (
                                 <Typography variant="caption" color="text.secondary" display="block">
                                   Описание: {topic.description}
+                                </Typography>
+                              )}
+                              {topic.project && (
+                                <Typography variant="caption" color="text.secondary" display="block">
+                                  Проект: {topic.project}
                                 </Typography>
                               )}
                               {topic.final_result && (
@@ -631,6 +683,19 @@ const ProgramsPage: React.FC = () => {
                       <Grid item xs={12}>
                         <TextField
                           fullWidth
+                          label="Проект"
+                          value={topic.project}
+                          onChange={(e) =>
+                            handleTopicChange(moduleIndex, topicIndex, 'project', e.target.value)
+                          }
+                          multiline
+                          rows={2}
+                          helperText="Необязательно: какой проект делаем в рамках темы"
+                        />
+                      </Grid>
+                      <Grid item xs={12}>
+                        <TextField
+                          fullWidth
                           label="Результат изучения темы"
                           value={topic.final_result}
                           onChange={(e) =>
@@ -728,6 +793,17 @@ const ProgramsPage: React.FC = () => {
                           onChange={(e) => vTopicChange(moduleIndex, topicIndex, 'description', e.target.value)}
                           multiline
                           rows={2}
+                        />
+                      </Grid>
+                      <Grid item xs={12}>
+                        <TextField
+                          fullWidth
+                          label="Проект"
+                          value={topic.project}
+                          onChange={(e) => vTopicChange(moduleIndex, topicIndex, 'project', e.target.value)}
+                          multiline
+                          rows={2}
+                          helperText="Необязательно: какой проект делаем в рамках темы"
                         />
                       </Grid>
                       <Grid item xs={12}>

@@ -17,14 +17,15 @@ import {
 } from '../services/codelabApi';
 
 const CONTENT_TYPE_LABEL: Record<string, string> = {
-  theory: 'Материал', task: 'Задача', snap_task: 'Snap!', gdevelop_task: 'GDevelop', quiz: 'Тест', project: 'Проект',
+  theory: 'Материал', task: 'Задача', snap_task: 'Snap!', gdevelop_task: 'GDevelop', turtle_task: 'Черепашка', quiz: 'Тест', project: 'Проект',
 };
 
-// snap_task и gdevelop_task устроены одинаково (шаги слева, статичная
-// панель редактора справа) — общий диалог и state, разные только подписи.
-const STEP_TASK_LABEL: Record<string, string> = { snap_task: 'Snap-задание', gdevelop_task: 'GDevelop-задание' };
+// snap_task, gdevelop_task и turtle_task устроены одинаково (шаги слева,
+// статичная панель редактора справа) — общий диалог и state, разные только подписи.
+const STEP_TASK_LABEL: Record<string, string> = { snap_task: 'Snap-задание', gdevelop_task: 'GDevelop-задание', turtle_task: 'Задание Черепашка' };
 const STEP_TASK_HINT: Record<string, string> = {
   snap_task: 'Snap! (snap.tirskix.space)', gdevelop_task: 'GDevelop (gdevelop.tirskix.space)',
+  turtle_task: 'Черепашка (turtle.tirskix.space)',
 };
 
 const STRUCTURAL_TYPE_SET = new Set<string>(['module', 'submodule', 'topic', 'subtopic']);
@@ -87,6 +88,7 @@ function TreeItemRow({ item, depth, onAddChild, onEdit, onArchive, onDelete }: {
           {isStructural && <MenuItem onClick={() => { onAddChild(item.id, 'task'); close(); }}>+ Задача</MenuItem>}
           {isStructural && <MenuItem onClick={() => { onAddChild(item.id, 'snap_task'); close(); }}>+ Snap-задание</MenuItem>}
           {isStructural && <MenuItem onClick={() => { onAddChild(item.id, 'gdevelop_task'); close(); }}>+ GDevelop-задание</MenuItem>}
+          {isStructural && <MenuItem onClick={() => { onAddChild(item.id, 'turtle_task'); close(); }}>+ Задание Черепашка</MenuItem>}
           {isStructural && <MenuItem onClick={() => { onAddChild(item.id, 'quiz'); close(); }}>+ Тест</MenuItem>}
           {isStructural && <MenuItem onClick={() => { onAddChild(item.id, 'project'); close(); }}>+ Проект</MenuItem>}
           {isStructural && <Divider />}
@@ -246,7 +248,7 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
         .catch((e: any) => onToast({ msg: e.message, err: true }))
         .finally(() => setTaskLoading(false));
     }
-    if (item.type === 'snap_task' || item.type === 'gdevelop_task') {
+    if (item.type === 'snap_task' || item.type === 'gdevelop_task' || item.type === 'turtle_task') {
       setSnapSteps(item.steps && item.steps.length > 0 ? item.steps : [{ title: '', content: '' }]);
     }
     if (item.type === 'quiz') {
@@ -322,7 +324,7 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
           });
           onToast({ msg: 'Задача добавлена' });
         }
-      } else if (nodeDialog.type === 'snap_task' || nodeDialog.type === 'gdevelop_task') {
+      } else if (nodeDialog.type === 'snap_task' || nodeDialog.type === 'gdevelop_task' || nodeDialog.type === 'turtle_task') {
         const stepTaskLabel = STEP_TASK_LABEL[nodeDialog.type];
         const steps = snapSteps.filter((s) => s.title.trim() || s.content.trim());
         if (nodeDialog.editing) {
@@ -581,6 +583,7 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
                 <Button size="small" variant="outlined" onClick={() => openCreate(null, 'task')}>+ Задача</Button>
                 <Button size="small" variant="outlined" onClick={() => openCreate(null, 'snap_task')}>+ Snap-задание</Button>
                 <Button size="small" variant="outlined" onClick={() => openCreate(null, 'gdevelop_task')}>+ GDevelop-задание</Button>
+                <Button size="small" variant="outlined" onClick={() => openCreate(null, 'turtle_task')}>+ Задание Черепашка</Button>
                 <Button size="small" variant="outlined" onClick={() => openCreate(null, 'quiz')}>+ Тест</Button>
                 <Button size="small" variant="outlined" onClick={() => openCreate(null, 'project')}>+ Проект</Button>
                 {selected.status === 'published' ? (
@@ -619,7 +622,7 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
       </Dialog>
 
       <Dialog
-        open={!!nodeDialog && nodeDialog.type !== 'task' && nodeDialog.type !== 'snap_task' && nodeDialog.type !== 'gdevelop_task' && nodeDialog.type !== 'quiz'}
+        open={!!nodeDialog && nodeDialog.type !== 'task' && nodeDialog.type !== 'snap_task' && nodeDialog.type !== 'gdevelop_task' && nodeDialog.type !== 'turtle_task' && nodeDialog.type !== 'quiz'}
         onClose={() => setNodeDialog(null)} fullWidth
         maxWidth={nodeDialog?.type === 'theory' || nodeDialog?.type === 'project' ? 'md' : 'sm'}
       >
@@ -712,7 +715,7 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
       </Dialog>
 
       <Dialog
-        open={nodeDialog?.type === 'snap_task' || nodeDialog?.type === 'gdevelop_task'}
+        open={nodeDialog?.type === 'snap_task' || nodeDialog?.type === 'gdevelop_task' || nodeDialog?.type === 'turtle_task'}
         onClose={() => setNodeDialog(null)} fullWidth maxWidth="md"
       >
         <DialogTitle>

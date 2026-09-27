@@ -617,7 +617,6 @@ const ProgramsPage: React.FC = () => {
           submitLabel="Создать"
           maxWidth="md"
         >
-          <DialogTitle>Создать программу</DialogTitle>
             <TextField
               fullWidth
               label="Название программы *"
@@ -738,10 +737,6 @@ const ProgramsPage: React.FC = () => {
             <Button variant="outlined" startIcon={<AddIcon />} onClick={handleAddModule} sx={{ mt: 1 }}>
               Добавить модуль
             </Button>
-            <Button onClick={() => setOpen(false)}>Отмена</Button>
-            <Button onClick={handleCreate} variant="contained">
-              Создать
-            </Button>
         </FormDialog>
       )}
 
@@ -857,42 +852,20 @@ const ProgramsPage: React.FC = () => {
       {/* Диалог редактирования названия программы (кнопка только у админа, диалог общий) */}
       <FormDialog
         open={editNameOpen}
-        title=""
+        title="Изменить название программы"
         onClose={() => setEditNameOpen(false)}
         onSubmit={handleSaveProgramName}
         submitLabel="Сохранить"
+        submitDisabled={!editNameValue.trim()}
         maxWidth="sm"
       >
-        <DialogTitle>Изменить название программы</DialogTitle>
-        <DialogContent>
-          <TextField
-            fullWidth
-            label="Название программы"
-            value={editNameValue}
-            onChange={(e) => setEditNameValue(e.target.value)}
-            sx={{ mt: 1 }}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setEditNameOpen(false)}>Отмена</Button>
-          <Button
-            variant="contained"
-            onClick={async () => {
-              if (!editNameProgram || !editNameValue.trim()) return;
-              try {
-                await programsApi.update(editNameProgram.id, { name: editNameValue.trim() });
-                setEditNameOpen(false);
-                setEditNameProgram(null);
-                setInfo('Название программы обновлено');
-                loadPrograms();
-              } catch (err: any) {
-                setError(err.response?.data?.detail || 'Ошибка обновления названия');
-              }
-            }}
-          >
-            Сохранить
-          </Button>
-        </DialogActions>
+        <TextField
+          fullWidth
+          label="Название программы"
+          value={editNameValue}
+          onChange={(e) => setEditNameValue(e.target.value)}
+          sx={{ mt: 1 }}
+        />
       </FormDialog>
 
       <ConfirmDialog

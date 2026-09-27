@@ -525,63 +525,78 @@ const ProgramsPage: React.FC = () => {
                               </Button>
                             )}
                           </Box>
-                          {module.topics.map((topic) => (
-                            <Paper key={topic.id} sx={{ p: 1, mt: 1, ml: 2 }}>
-                              <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1 }}>
-                                <Typography variant="body2">{topic.name}</Typography>
-                                {topic.status === 'archived' && <StatusChip status="archived" label="Архив" />}
-                                {canManagePrograms && topic.status !== 'archived' && (
-                                  <Button
-                                    size="small"
-                                    color="warning"
-                                    onClick={async () => {
-                                      try {
-                                        await programsApi.archiveTopic(program.id, topic.id);
-                                        setInfo('Тема архивирована');
-                                        loadPrograms();
-                                      } catch (err: any) {
-                                        setError(err.response?.data?.detail || 'Ошибка архивации темы');
-                                      }
-                                    }}
-                                  >
-                                    Архивировать
-                                  </Button>
-                                )}
-                                {canManagePrograms && topic.status === 'archived' && (
-                                  <Button
-                                    size="small"
-                                    color="success"
-                                    onClick={async () => {
-                                      try {
-                                        await programsApi.unarchiveTopic(program.id, topic.id);
-                                        setInfo('Тема разархивирована');
-                                        loadPrograms();
-                                      } catch (err: any) {
-                                        setError(err.response?.data?.detail || 'Ошибка разархивации темы');
-                                      }
-                                    }}
-                                  >
-                                    Разархивировать
-                                  </Button>
-                                )}
-                              </Box>
-                              {topic.description && (
-                                <Typography variant="caption" color="text.secondary" display="block">
-                                  Описание: {topic.description}
-                                </Typography>
-                              )}
-                              {topic.project && (
-                                <Typography variant="caption" color="text.secondary" display="block">
-                                  Проект: {topic.project}
-                                </Typography>
-                              )}
-                              {topic.final_result && (
-                                <Typography variant="caption" color="text.secondary" display="block">
-                                  Результат изучения: {topic.final_result}
-                                </Typography>
-                              )}
-                            </Paper>
-                          ))}
+                          {module.topics.map((topic) => {
+                            const hasDetails = !!(topic.description || topic.project || topic.final_result);
+                            return (
+                              <Accordion key={topic.id} disableGutters sx={{ mt: 1, ml: 2, '&:before': { display: 'none' } }}>
+                                <AccordionSummary expandIcon={<ExpandMore />}>
+                                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1, width: '100%', pr: 1 }}>
+                                    <Typography variant="body2">{topic.name}</Typography>
+                                    {topic.status === 'archived' && <StatusChip status="archived" label="Архив" />}
+                                  </Box>
+                                </AccordionSummary>
+                                <AccordionDetails>
+                                  {topic.description && (
+                                    <Typography variant="body2" color="text.secondary" display="block" sx={{ whiteSpace: 'pre-wrap', mb: 1 }}>
+                                      <strong>Описание:</strong> {topic.description}
+                                    </Typography>
+                                  )}
+                                  {topic.project && (
+                                    <Typography variant="body2" color="text.secondary" display="block" sx={{ whiteSpace: 'pre-wrap', mb: 1 }}>
+                                      <strong>Проект:</strong> {topic.project}
+                                    </Typography>
+                                  )}
+                                  {topic.final_result && (
+                                    <Typography variant="body2" color="text.secondary" display="block" sx={{ whiteSpace: 'pre-wrap', mb: 1 }}>
+                                      <strong>Результат изучения:</strong> {topic.final_result}
+                                    </Typography>
+                                  )}
+                                  {!hasDetails && (
+                                    <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', mb: 1 }}>
+                                      Описание, проект и результат не заполнены
+                                    </Typography>
+                                  )}
+                                  {canManagePrograms && (
+                                    <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                                      {topic.status !== 'archived' ? (
+                                        <Button
+                                          size="small"
+                                          color="warning"
+                                          onClick={async () => {
+                                            try {
+                                              await programsApi.archiveTopic(program.id, topic.id);
+                                              setInfo('Тема архивирована');
+                                              loadPrograms();
+                                            } catch (err: any) {
+                                              setError(err.response?.data?.detail || 'Ошибка архивации темы');
+                                            }
+                                          }}
+                                        >
+                                          Архивировать
+                                        </Button>
+                                      ) : (
+                                        <Button
+                                          size="small"
+                                          color="success"
+                                          onClick={async () => {
+                                            try {
+                                              await programsApi.unarchiveTopic(program.id, topic.id);
+                                              setInfo('Тема разархивирована');
+                                              loadPrograms();
+                                            } catch (err: any) {
+                                              setError(err.response?.data?.detail || 'Ошибка разархивации темы');
+                                            }
+                                          }}
+                                        >
+                                          Разархивировать
+                                        </Button>
+                                      )}
+                                    </Box>
+                                  )}
+                                </AccordionDetails>
+                              </Accordion>
+                            );
+                          })}
                         </Box>
                       ))}
                     </AccordionDetails>

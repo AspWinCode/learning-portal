@@ -1221,8 +1221,9 @@ export const trainerLessonsApi = {
       absence_reason?: string | null;
       absence_comment?: string | null;
     }>;
-  }): Promise<void> => {
-    await api.post('/api/trainer-lessons/attendance', data);
+  }): Promise<{ ok: boolean; deduction_failures?: Array<{ student_id: number; lesson_attendance_id: number; error: string }> }> => {
+    const response = await api.post('/api/trainer-lessons/attendance', data);
+    return response.data;
   },
   moveLesson: async (data: {
     group_id: number;

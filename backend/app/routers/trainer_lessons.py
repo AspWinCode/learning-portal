@@ -993,6 +993,7 @@ async def save_attendance(
     window_start, window_end = get_academic_window(payload.lesson_date)
     effective_trainer = db.query(User).filter(User.id == effective_trainer_id).first() if effective_trainer_id else None
 
+    deduction_failures = []
     for att in attendances_saved:
         try:
             with db.begin_nested():
@@ -1011,7 +1012,7 @@ async def save_attendance(
                     current_user=current_user,
                     new_absence_notifications=new_absence_notifications,
                 )
-        except Exception:
+        except Exception as e:
             # Изолируем сбой одного урока/ученика через SAVEPOINT: раньше исключение здесь
             # (например, при отправке уведомления) откатывало db.commit() ниже целиком —
             # посещаемость уже была сохранена отдельным commit'ом выше, а списание за урок
@@ -1020,6 +1021,11 @@ async def save_attendance(
                 "Failed to process lesson deduction for lesson_attendance id=%s (student_id=%s, lesson_date=%s)",
                 att.id, att.student_id, att.lesson_date,
             )
+            deduction_failures.append({
+                "student_id": att.student_id,
+                "lesson_attendance_id": att.id,
+                "error": str(e),
+            })
     db.commit()
     log_action(
         db, current_user.id, "save_attendance", "lesson_attendance", None,
@@ -1043,6 +1049,8 @@ async def save_attendance(
     if attended_student_ids:
         db.commit()
 
+    if deduction_failures:
+        return {"ok": True, "deduction_failures": deduction_failures}
     return {"ok": True}
 
 

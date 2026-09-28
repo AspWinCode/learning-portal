@@ -70,8 +70,8 @@ const TrainerCockpitPage: React.FC = () => {
 
   const attendanceMutation = useMutation({
     mutationFn: async () => {
-      if (!attendanceSlot) return;
-      await trainerLessonsApi.saveAttendance({
+      if (!attendanceSlot) return { ok: true };
+      return trainerLessonsApi.saveAttendance({
         group_id: attendanceSlot.group_id,
         lesson_date: attendanceSlot.lesson_date,
         start_time: attendanceSlot.start_time,
@@ -82,9 +82,13 @@ const TrainerCockpitPage: React.FC = () => {
         })),
       });
     },
-    onSuccess: async () => {
+    onSuccess: async (result) => {
       setPageError(null);
-      setPageInfo('Посещаемость сохранена.');
+      setPageInfo(
+        result?.deduction_failures?.length
+          ? `Посещаемость сохранена, но не удалось списать оплату за ${result.deduction_failures.length} ученик(ов). Сообщите администратору.`
+          : 'Посещаемость сохранена.'
+      );
       setAttendanceDialogOpen(false);
       setAttendanceSlot(null);
       await Promise.all([

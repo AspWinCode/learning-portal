@@ -544,6 +544,8 @@ class StudentAccount(Base):
         cascade="all, delete-orphan",
     )
 
+    __table_args__ = (UniqueConstraint("student_id", "name", name="uq_student_accounts_student_name"),)
+
 
 class StudentAccountTransaction(Base):
     """Операция по счету: пополнение или списание за занятие."""

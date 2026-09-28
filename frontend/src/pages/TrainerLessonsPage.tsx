@@ -583,7 +583,7 @@ const TrainerLessonsPage: React.FC = () => {
           : selectedSlot.end_time
             ? `${String((selectedSlot.end_time as { hour?: number }).hour ?? 0).padStart(2, '0')}:${String((selectedSlot.end_time as { minute?: number }).minute ?? 0).padStart(2, '0')}`
             : undefined;
-      await trainerLessonsApi.saveAttendance({
+      const result = await trainerLessonsApi.saveAttendance({
         group_id: selectedSlot.group_id,
         lesson_date: selectedSlot.lesson_date,
         ...(startTime && endTime ? { start_time: startTime, end_time: endTime } : {}),
@@ -602,6 +602,11 @@ const TrainerLessonsPage: React.FC = () => {
       setPopupOpen(false);
       setSelectedSlot(null);
       loadSlots();
+      if (result.deduction_failures?.length) {
+        setError(
+          `Посещаемость сохранена, но не удалось списать оплату за ${result.deduction_failures.length} ученик(ов). Сообщите администратору.`
+        );
+      }
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось сохранить посещаемость'));
     } finally {

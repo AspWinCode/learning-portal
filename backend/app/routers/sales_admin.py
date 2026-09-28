@@ -77,7 +77,7 @@ router = APIRouter()
 
 
 def _filter_query_by_role(query, user: User):
-    if auth.resolve_effective_role(user) in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES):
+    if auth.resolve_effective_role(user) in (UserRole.ADMIN, UserRole.OWNER, UserRole.SALES, UserRole.MANAGER):
         return query
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions")
 

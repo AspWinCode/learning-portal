@@ -35,7 +35,7 @@ def staff_role_for_codelab(user_role: str) -> Optional[str]:
     """Роли портала -> роли Codelab. None — пользователь не должен иметь
     доступа к студии Codelab (эндпоинты и так проверяют permission отдельно,
     это дополнительная проверка на случай нестандартной роли)."""
-    return {"methodist": "methodist", "trainer": "teacher", "admin": "admin", "owner": "admin"}.get(user_role)
+    return {"methodist": "methodist", "trainer": "teacher", "admin": "admin", "owner": "admin", "manager": "methodist"}.get(user_role)
 
 
 def _staff_params(user) -> Dict[str, str]:

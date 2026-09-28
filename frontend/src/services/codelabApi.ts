@@ -50,7 +50,7 @@ export interface CodelabCourse {
 export type CodelabStructuralType = 'module' | 'submodule' | 'topic' | 'subtopic';
 export const CODELAB_STRUCTURAL_TYPES: CodelabStructuralType[] = ['module', 'submodule', 'topic', 'subtopic'];
 export const CODELAB_STRUCTURAL_LABEL: Record<CodelabStructuralType, string> = {
-  module: 'Модуль', submodule: 'Подмодуль', topic: 'Тема', subtopic: 'Подтема',
+  module: 'Модуль', submodule: 'Занятие', topic: 'Тема', subtopic: 'Подтема',
 };
 // Прямой дочерний структурный уровень для каждого — null у "module" (верхний уровень).
 export const CODELAB_CHILD_STRUCTURAL_TYPE: Record<CodelabStructuralType, CodelabStructuralType | null> = {

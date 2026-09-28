@@ -93,6 +93,7 @@ export interface LessonIn {
   theory_md?: string;
   homework_md?: string;
   is_published?: boolean;
+  topic_id?: number | null;
 }
 
 const BASE = '/course-studio';

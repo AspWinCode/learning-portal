@@ -297,13 +297,23 @@ def create_lesson(
     db: Session = Depends(get_db),
 ):
     _get_course_or_404(course_id, db)
+    if body.topic_id is not None:
+        topic = (
+            db.query(CourseTopic)
+            .join(CourseModule, CourseTopic.module_id == CourseModule.id)
+            .filter(CourseTopic.id == body.topic_id, CourseModule.course_id == course_id)
+            .first()
+        )
+        if not topic:
+            raise HTTPException(status_code=404, detail="Тема не найдена")
     count = (
         db.query(CourseLesson)
-        .filter(CourseLesson.course_id == course_id, CourseLesson.topic_id.is_(None))
+        .filter(CourseLesson.course_id == course_id, CourseLesson.topic_id == body.topic_id)
         .count()
     )
     lesson = CourseLesson(
         course_id=course_id,
+        topic_id=body.topic_id,
         title=body.title,
         theory_md=body.theory_md,
         homework_md=body.homework_md,

@@ -9,6 +9,7 @@ class LessonIn(BaseModel):
     theory_md: Optional[str] = None
     homework_md: Optional[str] = None
     is_published: bool = False
+    topic_id: Optional[int] = None
 
 
 class LessonOut(BaseModel):

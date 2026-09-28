@@ -219,13 +219,25 @@ interface TopicBlockProps {
   topic: CourseTopic;
   onUpdateLesson: (l: CourseLesson) => void;
   onDeleteLesson: (id: number) => void;
+  onAddLesson: (topicId: number) => void;
   saving: boolean;
 }
 
-function TopicBlock({ topic, onUpdateLesson, onDeleteLesson, saving }: TopicBlockProps) {
+function TopicBlock({ topic, onUpdateLesson, onDeleteLesson, onAddLesson, saving }: TopicBlockProps) {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-      <Typography sx={{ fontSize: 12, color: K.accent, fontWeight: 600 }}>{topic.title}</Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Typography sx={{ fontSize: 12, color: K.accent, fontWeight: 600, flex: 1 }}>{topic.title}</Typography>
+        <Button
+          size="small"
+          startIcon={<AddIcon sx={{ fontSize: 12 }} />}
+          onClick={() => onAddLesson(topic.id)}
+          disabled={saving}
+          sx={{ fontSize: 10, fontFamily: K.mono, color: K.accent, minWidth: 0, px: 1, height: 22 }}
+        >
+          Материал
+        </Button>
+      </Box>
       {topic.lessons.length === 0 ? (
         <Typography sx={{ fontSize: 11, color: K.textFaint, fontStyle: 'italic', pl: 1 }}>Нет занятий</Typography>
       ) : (
@@ -252,11 +264,12 @@ interface ModuleBlockProps {
   module: CourseModule;
   onUpdateLesson: (l: CourseLesson) => void;
   onDeleteLesson: (id: number) => void;
+  onAddLesson: (topicId: number) => void;
   onDeleteModule: (id: number) => void;
   saving: boolean;
 }
 
-function ModuleBlock({ module, onUpdateLesson, onDeleteLesson, onDeleteModule, saving }: ModuleBlockProps) {
+function ModuleBlock({ module, onUpdateLesson, onDeleteLesson, onAddLesson, onDeleteModule, saving }: ModuleBlockProps) {
   const [open, setOpen] = useState(true);
   return (
     <Box sx={{ border: `1px solid ${K.border}`, borderRadius: 1.5, bgcolor: K.surface, overflow: 'hidden' }}>
@@ -274,13 +287,13 @@ function ModuleBlock({ module, onUpdateLesson, onDeleteLesson, onDeleteModule, s
       {open && (
         <Box sx={{ borderTop: `1px solid ${K.border}`, p: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
           {module.topics.map((topic) => (
-            <TopicBlock key={topic.id} topic={topic} onUpdateLesson={onUpdateLesson} onDeleteLesson={onDeleteLesson} saving={saving} />
+            <TopicBlock key={topic.id} topic={topic} onUpdateLesson={onUpdateLesson} onDeleteLesson={onDeleteLesson} onAddLesson={onAddLesson} saving={saving} />
           ))}
           {module.submodules.map((sub) => (
             <Box key={sub.id} sx={{ pl: 2, borderLeft: `2px solid ${K.border}`, display: 'flex', flexDirection: 'column', gap: 2 }}>
               <Typography sx={{ fontSize: 12, color: K.textDim, fontWeight: 600 }}>{sub.title}</Typography>
               {sub.topics.map((topic) => (
-                <TopicBlock key={topic.id} topic={topic} onUpdateLesson={onUpdateLesson} onDeleteLesson={onDeleteLesson} saving={saving} />
+                <TopicBlock key={topic.id} topic={topic} onUpdateLesson={onUpdateLesson} onDeleteLesson={onDeleteLesson} onAddLesson={onAddLesson} saving={saving} />
               ))}
             </Box>
           ))}
@@ -462,6 +475,8 @@ function CourseEditor({ courseId, onUpdated, onDeleted }: CourseEditorProps) {
   const [newLessonTitle, setNewLessonTitle] = useState('');
   const [delCourseDialog, setDelCourseDialog] = useState(false);
   const [importDialog, setImportDialog] = useState(false);
+  const [addTopicLessonId, setAddTopicLessonId] = useState<number | null>(null);
+  const [newTopicLessonTitle, setNewTopicLessonTitle] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -568,6 +583,22 @@ function CourseEditor({ courseId, onUpdated, onDeleted }: CourseEditorProps) {
       setToast({ msg: 'Занятие сохранено' });
     } catch {
       setToast({ msg: 'Ошибка сохранения занятия', err: true });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const addTopicLesson = async () => {
+    if (addTopicLessonId === null || !newTopicLessonTitle.trim()) return;
+    setSaving(true);
+    try {
+      await courseStudioApi.createLesson(courseId, { title: newTopicLessonTitle.trim(), topic_id: addTopicLessonId });
+      await load();
+      setNewTopicLessonTitle('');
+      setAddTopicLessonId(null);
+      setToast({ msg: 'Материал добавлен' });
+    } catch {
+      setToast({ msg: 'Ошибка добавления материала', err: true });
     } finally {
       setSaving(false);
     }
@@ -705,6 +736,7 @@ function CourseEditor({ courseId, onUpdated, onDeleted }: CourseEditorProps) {
                 module={module}
                 onUpdateLesson={updateTopicLesson}
                 onDeleteLesson={deleteTopicLesson}
+                onAddLesson={(topicId) => { setNewTopicLessonTitle(''); setAddTopicLessonId(topicId); }}
                 onDeleteModule={deleteModule}
                 saving={saving}
               />
@@ -759,6 +791,33 @@ function CourseEditor({ courseId, onUpdated, onDeleted }: CourseEditorProps) {
         courseId={courseId}
         onImported={load}
       />
+
+      {/* Add material to topic dialog */}
+      <Dialog open={addTopicLessonId !== null} onClose={() => setAddTopicLessonId(null)} PaperProps={{ sx: { bgcolor: K.surfaceUp, color: K.text, fontFamily: K.mono } }}>
+        <DialogTitle sx={{ fontFamily: K.mono, fontSize: 14 }}>Новый материал в тему</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            label="Название материала"
+            value={newTopicLessonTitle}
+            onChange={(e) => setNewTopicLessonTitle(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') addTopicLesson(); }}
+            size="small"
+            sx={{ mt: 1, minWidth: 340, ...textFieldSx }}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 2.5, pb: 2 }}>
+          <Button onClick={() => setAddTopicLessonId(null)} sx={{ fontFamily: K.mono, fontSize: 12, color: K.textDim }}>Отмена</Button>
+          <Button
+            variant="contained"
+            disabled={!newTopicLessonTitle.trim() || saving}
+            onClick={addTopicLesson}
+            sx={{ bgcolor: K.accent, color: '#fff', fontFamily: K.mono, fontSize: 12, '&:hover': { bgcolor: K.accentDim } }}
+          >
+            Создать
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Add lesson dialog */}
       <Dialog open={addDialog} onClose={() => setAddDialog(false)} PaperProps={{ sx: { bgcolor: K.surfaceUp, color: K.text, fontFamily: K.mono } }}>

@@ -169,6 +169,7 @@ const LeadCardPage: React.FC = () => {
   // Convert to student
   const [convertDialogOpen, setConvertDialogOpen] = useState(false);
   const [convertLoading, setConvertLoading] = useState(false);
+  const [convertEmail, setConvertEmail] = useState('');
 
   // Delete lead
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -441,7 +442,7 @@ const LeadCardPage: React.FC = () => {
                   <Button size="small" variant="outlined" onClick={() => setQuickActionDialog('follow_up')}>Повторный контакт</Button>
                   <Button size="small" variant="outlined" onClick={() => setQuickActionDialog('payment_received')}>Получил оплату</Button>
                   <Button size="small" variant="outlined" color="primary" onClick={() => setEventDialogOpen(true)}>На мероприятие</Button>
-                  <Button size="small" variant="outlined" color="success" onClick={() => setConvertDialogOpen(true)}>Конвертировать</Button>
+                  <Button size="small" variant="outlined" color="success" onClick={() => { setConvertEmail(lead?.email || ''); setConvertDialogOpen(true); }}>Конвертировать</Button>
                   <Button size="small" variant="outlined" color="error" onClick={() => setQuickActionDialog('refused')}>Отказ</Button>
                   <Button size="small" variant="outlined" color="success" onClick={() => setQuickActionDialog('won')}>Записан</Button>
                   <Button size="small" variant="outlined" color="error" startIcon={<DeleteIcon />} onClick={() => setDeleteDialogOpen(true)}>
@@ -851,15 +852,30 @@ const LeadCardPage: React.FC = () => {
             Лид будет переведён в ученика. Будет создан родитель (если нет) и ученик с данными из лида.
             Статус лида изменится на «Успешно».
           </Typography>
+          {!lead?.email && (
+            <TextField
+              label="Email родителя"
+              placeholder="Нужен для создания аккаунта родителя"
+              value={convertEmail}
+              onChange={(e) => setConvertEmail(e.target.value)}
+              type="email"
+              fullWidth
+              size="small"
+              sx={{ mb: 2 }}
+            />
+          )}
           <Stack direction="row" spacing={2}>
             <Button
               variant="contained"
               color="success"
-              disabled={convertLoading}
+              disabled={convertLoading || (!lead?.email && !convertEmail.trim())}
               onClick={async () => {
                 if (!leadId) return;
                 setConvertLoading(true);
                 try {
+                  if (!lead?.email && convertEmail.trim()) {
+                    await salesApi.updateLead(Number(leadId), { email: convertEmail.trim() });
+                  }
                   const result = await salesApi.convertLeadToStudent(Number(leadId));
                   setActionToast(`Ученик создан (ID: ${result.student_id})`);
                   setConvertDialogOpen(false);

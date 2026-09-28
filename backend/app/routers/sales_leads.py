@@ -56,6 +56,8 @@ from app.schemas.sales import (
     PixelForgeQuestionnaireResponse,
     ProgrammerQuestionnaireRequest,
     ProgrammerQuestionnaireResponse,
+    ExpertQuestionnaireRequest,
+    ExpertQuestionnaireResponse,
     QuestionnaireAttemptCreate,
     QuestionnaireAttemptResponse,
     TildaLeadRequest,
@@ -1169,6 +1171,122 @@ async def submit_programmer_questionnaire(
     db.commit()
     db.refresh(lead)
     return ProgrammerQuestionnaireResponse(lead_id=lead.id)
+
+
+@router.post(
+    "/public/leads/expert-questionnaire",
+    response_model=ExpertQuestionnaireResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def submit_expert_questionnaire(
+    payload: ExpertQuestionnaireRequest,
+    db: Session = Depends(get_db),
+):
+    owner = (
+        db.query(User)
+        .filter(User.role.in_([UserRole.SALES, UserRole.OWNER, UserRole.ADMIN]))
+        .order_by(User.id)
+        .first()
+    )
+    if not owner:
+        raise HTTPException(status_code=500, detail="No sales/owner/admin user configured")
+
+    max_comment = None
+    if payload.has_max is not None:
+        max_comment = f"Есть MAX: {'Да' if payload.has_max else 'Нет'}"
+
+    base_comment = payload.comment or ""
+    full_comment = base_comment
+    if max_comment:
+        full_comment = (base_comment + "\n\n" if base_comment else "") + max_comment
+
+    card = StudentCard(
+        student_full_name=payload.child_full_name,
+        birth_date=payload.birth_date,
+        student_phone=payload.child_phone,
+        phone_normalized=normalize_phone(payload.parent_phone or payload.child_phone or "") or None,
+        gender=payload.gender,
+        on_grant=False,
+        format_type=None,
+        city=payload.city,
+        school=payload.school_name,
+        grade=payload.school_class,
+        parent_full_name=payload.parent_full_name,
+        parent_phone=payload.parent_phone,
+        parent_phone_2=payload.parent_phone_2,
+        parent_email=payload.parent_email,
+        student_email=payload.student_email,
+        comment=full_comment or None,
+        source=payload.source or "Анкета Эксперт",
+        discount_type=DiscountType.NONE,
+        discount_value=0.0,
+        anketa_status="filled",
+    )
+
+    questionnaire_data = payload.model_dump(mode="json")
+    phone_norm = normalize_phone(payload.parent_phone or payload.child_phone or "") or None
+
+    db.add(card)
+    db.flush()
+    sync_student_card_person(db, card)
+
+    # Ищем уже существующий лид по телефону ИЛИ email — чтобы не плодить дубли,
+    # если человек уже приходил (вручную, с другой анкеты или другого источника).
+    existing_lead = _find_existing_lead(
+        db, phone_normalized=phone_norm, email=payload.parent_email or payload.student_email
+    )
+    if existing_lead:
+        lead = existing_lead
+        lead.contact_name = payload.parent_full_name
+        lead.phone = payload.parent_phone
+        lead.phone_normalized = lead.phone_normalized or phone_norm
+        lead.parent_full_name = payload.parent_full_name
+        lead.child_full_name = payload.child_full_name
+        lead.parent_phone = payload.parent_phone
+        lead.child_phone = payload.child_phone
+        lead.email = payload.parent_email or payload.student_email or lead.email
+        lead.city = payload.city or lead.city
+        lead.school_name = payload.school_name or lead.school_name
+        lead.school_class = payload.school_class or lead.school_class
+        lead.comment = (f"{lead.comment}\n\n" if lead.comment else "") + full_comment if full_comment else lead.comment
+        lead.tags = sorted(set((lead.tags or []) + ["direction:expert"]))
+        lead.questionnaire_filled = True
+        if not lead.arrival_channel:
+            lead.arrival_channel = "questionnaire"
+        lead.questionnaire_data = questionnaire_data
+        lead.student_card_id = card.id
+        if not lead.source:
+            lead.source = payload.source or "Анкета Эксперт"
+    else:
+        lead = Lead(
+            owner_id=owner.id,
+            contact_name=payload.parent_full_name,
+            phone=payload.parent_phone,
+            phone_normalized=phone_norm,
+            parent_full_name=payload.parent_full_name,
+            child_full_name=payload.child_full_name,
+            parent_phone=payload.parent_phone,
+            child_phone=payload.child_phone,
+            email=payload.parent_email or payload.student_email,
+            city=payload.city,
+            school_name=payload.school_name,
+            school_class=payload.school_class,
+            comment=full_comment or None,
+            source=payload.source or "Анкета Эксперт",
+            tags=["direction:expert"],
+            status=LeadStatus.NEW,
+            questionnaire_filled=True,
+            arrival_channel="questionnaire",
+            questionnaire_data=questionnaire_data,
+            student_card_id=card.id,
+        )
+        db.add(lead)
+
+    db.flush()
+    sync_lead_person(db, lead)
+    db.commit()
+    db.refresh(lead)
+    return ExpertQuestionnaireResponse(lead_id=lead.id)
 
 
 @router.post("/public/leads/tilda-lead", response_model=TildaLeadResponse, status_code=status.HTTP_201_CREATED)

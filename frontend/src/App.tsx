@@ -79,6 +79,7 @@ const SpecialistQuestionnairePage = React.lazy(() => import('./pages/SpecialistQ
 const IndividualLessonsQuestionnairePage = React.lazy(() => import('./pages/IndividualLessonsQuestionnairePage'));
 const PixelForgeQuestionnairePage = React.lazy(() => import('./pages/PixelForgeQuestionnairePage'));
 const ProgrammerQuestionnairePage = React.lazy(() => import('./pages/ProgrammerQuestionnairePage'));
+const ExpertQuestionnairePage = React.lazy(() => import('./pages/ExpertQuestionnairePage'));
 const EgeTrialQuestionnairePage = React.lazy(() => import('./pages/EgeTrialQuestionnairePage'));
 const PublicStudentQuestionnairePage = React.lazy(() => import('./pages/PublicStudentQuestionnairePage'));
 const TildaLeadPage = React.lazy(() => import('./pages/TildaLeadPage'));
@@ -280,6 +281,7 @@ function App() {
             <Route path="/anketa/novichok" element={<PixelForgeQuestionnairePage />} />
             <Route path="/anketa/pixelforge" element={<Navigate to="/anketa/novichok" replace />} />
             <Route path="/anketa/programmist" element={<ProgrammerQuestionnairePage />} />
+            <Route path="/anketa/ekspert" element={<ExpertQuestionnairePage />} />
             <Route path="/anketa/ege-trial" element={<EgeTrialQuestionnairePage />} />
             <Route path="/anketa/student/:questionnaireId" element={<PublicStudentQuestionnairePage />} />
             <Route

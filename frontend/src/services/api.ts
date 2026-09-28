@@ -2608,6 +2608,26 @@ export const salesApi = {
     const response = await api.post(`/api/sales/questionnaire-attempts/${id}/dismiss`);
     return response.data;
   },
+  submitExpertQuestionnaire: async (payload: {
+    child_full_name: string;
+    birth_date: string;
+    child_phone: string;
+    student_email: string;
+    gender?: string;
+    city: string;
+    school_name: string;
+    school_class: string;
+    parent_full_name: string;
+    parent_phone: string;
+    parent_phone_2?: string;
+    parent_email: string;
+    has_max?: boolean;
+    comment?: string;
+    source?: string;
+  }): Promise<{ lead_id: number }> => {
+    const response = await api.post('/api/sales/public/leads/expert-questionnaire', payload);
+    return response.data;
+  },
   submitEgeTrialQuestionnaire: async (payload: {
     full_name: string;
     phone: string;

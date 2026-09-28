@@ -24,6 +24,7 @@ const ANKETA_TYPE_LABELS: Record<string, string> = {
   individual: 'Индивидуальные занятия',
   novichok: 'Новичок',
   programmist: 'Программист',
+  expert: 'Эксперт',
 };
 
 const REASON_LABELS: Record<string, string> = {

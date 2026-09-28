@@ -7,6 +7,7 @@ import {
   Group,
   Program,
   ProgramSummary,
+  Topic,
   Grade,
   Characteristic,
   CharacteristicTemplate,
@@ -1361,6 +1362,14 @@ export const programsApi = {
     const response = await api.post(`/api/programs/${programId}/import-topics-docx`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
+    return response.data;
+  },
+  editTopic: async (
+    programId: number,
+    topicId: number,
+    data: { name?: string; description?: string | null; project?: string | null; final_result?: string | null }
+  ): Promise<Topic> => {
+    const response = await api.put(`/api/programs/${programId}/topics/${topicId}`, data);
     return response.data;
   },
   archiveTopic: async (programId: number, topicId: number): Promise<void> => {

@@ -25,6 +25,14 @@ class TopicCreate(TopicBase):
     pass
 
 
+class TopicEdit(BaseModel):
+    """Точечное редактирование содержимого темы без версионирования программы."""
+    name: Optional[str] = None
+    description: Optional[str] = None
+    project: Optional[str] = None
+    final_result: Optional[str] = None
+
+
 class TopicResponse(TopicBase):
     id: int
     status: str

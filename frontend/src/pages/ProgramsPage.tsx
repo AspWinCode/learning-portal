@@ -20,7 +20,7 @@ import {
 } from '@mui/material';
 import { ExpandMore, Add as AddIcon, Delete as DeleteIcon, Edit as EditIcon, UploadFile as UploadFileIcon } from '@mui/icons-material';
 import { programsApi } from '../services/api';
-import { Program } from '../types';
+import { Program, Topic } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { hasPermission } from '../utils/permissions';
 import { ConfirmDialog, EmptyState, FormDialog, StatusChip } from '../components/ui';
@@ -75,6 +75,8 @@ const ProgramsPage: React.FC = () => {
   const [deleteProgram, setDeleteProgram] = useState<Program | null>(null);
   const [importTargetProgram, setImportTargetProgram] = useState<Program | null>(null);
   const importFileInputRef = useRef<HTMLInputElement>(null);
+  const [editTopicCtx, setEditTopicCtx] = useState<{ programId: number; topic: Topic } | null>(null);
+  const [editTopicForm, setEditTopicForm] = useState<TopicForm>({ name: '', description: '', project: '', final_result: '' });
   const { user } = useAuth();
   const canManagePrograms = hasPermission(user, 'programs.manage');
 
@@ -313,6 +315,35 @@ const ProgramsPage: React.FC = () => {
       setError(err.response?.data?.detail || 'Ошибка импорта тем из docx');
     } finally {
       setImportTargetProgram(null);
+    }
+  };
+
+  const openEditTopic = (programId: number, topic: Topic) => {
+    setError('');
+    setInfo('');
+    setEditTopicCtx({ programId, topic });
+    setEditTopicForm({
+      name: topic.name,
+      description: topic.description || '',
+      project: topic.project || '',
+      final_result: topic.final_result || '',
+    });
+  };
+
+  const handleSaveTopic = async () => {
+    if (!editTopicCtx || !editTopicForm.name.trim()) return;
+    try {
+      await programsApi.editTopic(editTopicCtx.programId, editTopicCtx.topic.id, {
+        name: editTopicForm.name.trim(),
+        description: editTopicForm.description.trim() || null,
+        project: editTopicForm.project.trim() || null,
+        final_result: editTopicForm.final_result.trim() || null,
+      });
+      setEditTopicCtx(null);
+      setInfo('Тема обновлена');
+      await loadPrograms();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Ошибка обновления темы');
     }
   };
 
@@ -557,7 +588,14 @@ const ProgramsPage: React.FC = () => {
                                     </Typography>
                                   )}
                                   {canManagePrograms && (
-                                    <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+                                      <Button
+                                        size="small"
+                                        startIcon={<EditIcon fontSize="small" />}
+                                        onClick={() => openEditTopic(program.id, topic)}
+                                      >
+                                        Редактировать
+                                      </Button>
                                       {topic.status !== 'archived' ? (
                                         <Button
                                           size="small"
@@ -848,6 +886,52 @@ const ProgramsPage: React.FC = () => {
           </DialogActions>
         </Dialog>
       )}
+
+      {/* Диалог точечного редактирования темы */}
+      <FormDialog
+        open={!!editTopicCtx}
+        title="Редактировать тему"
+        onClose={() => setEditTopicCtx(null)}
+        onSubmit={handleSaveTopic}
+        submitLabel="Сохранить"
+        submitDisabled={!editTopicForm.name.trim()}
+        maxWidth="sm"
+      >
+        <TextField
+          fullWidth
+          label="Название темы *"
+          value={editTopicForm.name}
+          onChange={(e) => setEditTopicForm({ ...editTopicForm, name: e.target.value })}
+          sx={{ mt: 1, mb: 2 }}
+          required
+        />
+        <TextField
+          fullWidth
+          label="Описание"
+          value={editTopicForm.description}
+          onChange={(e) => setEditTopicForm({ ...editTopicForm, description: e.target.value })}
+          multiline
+          rows={2}
+          sx={{ mb: 2 }}
+        />
+        <TextField
+          fullWidth
+          label="Проект"
+          value={editTopicForm.project}
+          onChange={(e) => setEditTopicForm({ ...editTopicForm, project: e.target.value })}
+          multiline
+          rows={2}
+          sx={{ mb: 2 }}
+        />
+        <TextField
+          fullWidth
+          label="Результат изучения темы"
+          value={editTopicForm.final_result}
+          onChange={(e) => setEditTopicForm({ ...editTopicForm, final_result: e.target.value })}
+          multiline
+          rows={2}
+        />
+      </FormDialog>
 
       {/* Диалог редактирования названия программы (кнопка только у админа, диалог общий) */}
       <FormDialog

@@ -7,7 +7,7 @@ from sqlalchemy import or_
 from app.cache import CACHE_NS_PROGRAMS, invalidate_namespace, user_role_key_builder
 from app.database import get_db
 from app import auth
-from app.schemas.programs import ProgramCreate, ProgramListResponse, ProgramResponse, ProgramUpdate
+from app.schemas.programs import ProgramCreate, ProgramListResponse, ProgramResponse, ProgramUpdate, TopicEdit, TopicResponse
 from app.models import (
     Program, Module, Topic, User, ProgramStatus, TopicStatus,
     ProgramTrainer, GroupProgram, StudentProgram, Grade, UserRole,
@@ -539,6 +539,41 @@ async def unarchive_topic(
     log_action(db, current_user.id, "unarchive", "topic", topic_id)
     await invalidate_namespace(CACHE_NS_PROGRAMS)
     return {"message": "Topic unarchived"}
+
+
+@router.put("/{program_id}/topics/{topic_id}", response_model=TopicResponse)
+async def edit_topic(
+    program_id: int,
+    topic_id: int,
+    topic_update: TopicEdit,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("programs.edit"))
+):
+    """
+    Точечное редактирование содержимого темы (название/описание/проект/результат)
+    без версионирования программы — для правки опечаток и наполнения контента
+    после импорта, когда менять состав тем/модулей не требуется.
+    """
+    topic = db.query(Topic).filter(
+        Topic.id == topic_id,
+        Topic.module.has(Module.program_id == program_id)
+    ).first()
+
+    if not topic:
+        raise HTTPException(status_code=404, detail="Topic not found")
+
+    update_data = topic_update.dict(exclude_unset=True)
+    if "name" in update_data and not update_data["name"].strip():
+        raise HTTPException(status_code=400, detail="Название темы не может быть пустым")
+
+    for field, value in update_data.items():
+        setattr(topic, field, value.strip() if isinstance(value, str) else value)
+
+    db.commit()
+    db.refresh(topic)
+    log_action(db, current_user.id, "edit", "topic", topic_id, update_data)
+    await invalidate_namespace(CACHE_NS_PROGRAMS)
+    return topic
 
 
 @router.post("/{program_id}/archive-module/{module_id}")

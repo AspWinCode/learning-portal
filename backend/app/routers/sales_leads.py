@@ -218,6 +218,29 @@ def _find_existing_lead(
     return db.query(Lead).filter(or_(*conditions)).order_by(Lead.id.asc()).first()
 
 
+def _same_child(existing_name: Optional[str], new_name: Optional[str]) -> bool:
+    a = (existing_name or "").strip().casefold()
+    b = (new_name or "").strip().casefold()
+    return not a or a == b
+
+
+def _find_existing_lead_for_child(
+    db: Session,
+    *,
+    phone_normalized: Optional[str] = None,
+    email: Optional[str] = None,
+    child_full_name: Optional[str] = None,
+) -> Optional[Lead]:
+    """Как _find_existing_lead, но не переиспользует чужой лид: если по этому
+    телефону/email уже есть лид с ДРУГИМ ребёнком (например, родитель уже
+    записывал одного ребёнка и сейчас анкетирует второго), создаём новый лид,
+    а не затираем существующий чужими данными."""
+    existing_lead = _find_existing_lead(db, phone_normalized=phone_normalized, email=email)
+    if existing_lead and not _same_child(existing_lead.child_full_name, child_full_name):
+        return None
+    return existing_lead
+
+
 def _add_activity(
     db: Session,
     lead_id: int,
@@ -685,8 +708,11 @@ async def submit_specialist_questionnaire(
 
     # Ищем уже существующий лид по телефону ИЛИ email — чтобы не плодить дубли,
     # если человек уже приходил (вручную, с другой анкеты или другого источника).
-    existing_lead = _find_existing_lead(
-        db, phone_normalized=phone_norm, email=payload.parent_email or payload.student_email
+    existing_lead = _find_existing_lead_for_child(
+        db,
+        phone_normalized=phone_norm,
+        email=payload.parent_email or payload.student_email,
+        child_full_name=payload.child_full_name,
     )
     if existing_lead:
         lead = existing_lead
@@ -884,8 +910,11 @@ async def submit_individual_lessons_questionnaire(
 
     # Ищем уже существующий лид по телефону ИЛИ email — чтобы не плодить дубли,
     # если человек уже приходил (вручную, с другой анкеты или другого источника).
-    existing_lead = _find_existing_lead(
-        db, phone_normalized=phone_norm, email=payload.parent_email or payload.student_email
+    existing_lead = _find_existing_lead_for_child(
+        db,
+        phone_normalized=phone_norm,
+        email=payload.parent_email or payload.student_email,
+        child_full_name=payload.child_full_name,
     )
     if existing_lead:
         lead = existing_lead
@@ -1000,8 +1029,11 @@ async def submit_pixelforge_questionnaire(
 
     # Ищем уже существующий лид по телефону ИЛИ email — чтобы не плодить дубли,
     # если человек уже приходил (вручную, с другой анкеты или другого источника).
-    existing_lead = _find_existing_lead(
-        db, phone_normalized=phone_norm, email=payload.parent_email or payload.student_email
+    existing_lead = _find_existing_lead_for_child(
+        db,
+        phone_normalized=phone_norm,
+        email=payload.parent_email or payload.student_email,
+        child_full_name=payload.child_full_name,
     )
     if existing_lead:
         lead = existing_lead
@@ -1116,8 +1148,11 @@ async def submit_programmer_questionnaire(
 
     # Ищем уже существующий лид по телефону ИЛИ email — чтобы не плодить дубли,
     # если человек уже приходил (вручную, с другой анкеты или другого источника).
-    existing_lead = _find_existing_lead(
-        db, phone_normalized=phone_norm, email=payload.parent_email or payload.student_email
+    existing_lead = _find_existing_lead_for_child(
+        db,
+        phone_normalized=phone_norm,
+        email=payload.parent_email or payload.student_email,
+        child_full_name=payload.child_full_name,
     )
     if existing_lead:
         lead = existing_lead
@@ -1232,8 +1267,11 @@ async def submit_expert_questionnaire(
 
     # Ищем уже существующий лид по телефону ИЛИ email — чтобы не плодить дубли,
     # если человек уже приходил (вручную, с другой анкеты или другого источника).
-    existing_lead = _find_existing_lead(
-        db, phone_normalized=phone_norm, email=payload.parent_email or payload.student_email
+    existing_lead = _find_existing_lead_for_child(
+        db,
+        phone_normalized=phone_norm,
+        email=payload.parent_email or payload.student_email,
+        child_full_name=payload.child_full_name,
     )
     if existing_lead:
         lead = existing_lead

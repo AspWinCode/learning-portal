@@ -241,6 +241,12 @@ def update_card_payment_dates(db: Session, student_id: int, payment_date: date) 
     card = _get_or_create_card(db, student_id)
     if not card:
         return
+    # payment_date иногда приходит из даты банковской операции (tx_date), которая может
+    # на день опережать created_at зачисленной проводки (часовой пояс банка). Если период
+    # стартует позже, чем сама проводка, _has_payment_since (сверяет по created_at) не
+    # увидит только что зачисленный платёж, и у ученика тут же выставится next_payment_date,
+    # хотя он оплатил — см. баг с Баженовым/Москвиным.
+    payment_date = min(payment_date, date.today())
     if card.learning_period_start is not None and card.next_payment_date is None:
         card.prepaid_periods = (card.prepaid_periods or 0) + 1
         return

@@ -2,8 +2,10 @@
 
 SpreadsheetOperation — discriminated union, единственный способ изменить
 данные листа (см. app/services/smart_tables/executor.py). Phase 1 покрывает
-базовый набор операций (создание/переименование, строки/колонки, set_cell);
-формулы, форматирование, sort/filter — следующие фазы (docs/smart-tables-architecture.md).
+базовый набор операций (создание/переименование, строки/колонки, set_cell).
+Phase 2 добавляет format_range/set_conditional_format/sort_rows — формулы
+(Phase 3), import/export (Phase 4) и AI (Phase 5) — следующие фазы
+(docs/smart-tables-architecture.md).
 """
 from datetime import datetime
 from typing import Annotated, Any, List, Literal, Optional, Union
@@ -17,6 +19,31 @@ ColumnType = Literal[
 ]
 
 CellValue = Union[str, float, bool, None]
+
+ConditionOperator = Literal["less_than", "greater_than", "equals", "contains"]
+
+TextAlign = Literal["left", "center", "right"]
+
+
+class CellFormatting(BaseModel):
+    """Частичный патч форматирования — поля, которых нет в запросе, не трогаются.
+    None у присутствующего поля — явный сброс этого атрибута."""
+    bold: Optional[bool] = None
+    italic: Optional[bool] = None
+    align: Optional[TextAlign] = None
+    bg_color: Optional[str] = None
+    text_color: Optional[str] = None
+    number_format: Optional[str] = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class ConditionalFormatRule(BaseModel):
+    operator: ConditionOperator
+    value: Union[str, float]
+    bg_color: Optional[str] = None
+    text_color: Optional[str] = None
+    bold: Optional[bool] = None
 
 
 # ── Сущности ────────────────────────────────────────────────────
@@ -80,12 +107,9 @@ class ColumnOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class CellOut(BaseModel):
-    column_id: int
-    raw_value: Optional[str] = None
-    formula: Optional[str] = None
-    computed_value: Any = None
-    metadata: dict = Field(default_factory=dict)
+class CellSnapshot(BaseModel):
+    """Значение из cells_snapshot (Row.cells_snapshot[columnId]) — см. раздел C документа."""
+    value: CellValue = None
     formatting: dict = Field(default_factory=dict)
 
 
@@ -94,7 +118,7 @@ class RowOut(BaseModel):
     sheet_id: int
     position: float
     height: int
-    cells: dict[str, CellValue]  # {columnId(str): computedValue} — из cells_snapshot
+    cells: dict[str, CellSnapshot]  # {columnId(str): {value, formatting}} — из cells_snapshot
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -152,6 +176,25 @@ class OpSetCell(BaseModel):
     value: CellValue = None
 
 
+class OpFormatRange(BaseModel):
+    type: Literal["format_range"] = "format_range"
+    row_ids: List[int] = Field(..., min_length=1, max_length=5000)
+    column_ids: List[int] = Field(..., min_length=1, max_length=500)
+    formatting: CellFormatting
+
+
+class OpSetConditionalFormat(BaseModel):
+    type: Literal["set_conditional_format"] = "set_conditional_format"
+    column_id: int
+    rules: List[ConditionalFormatRule] = Field(default_factory=list, max_length=20)
+
+
+class OpSortRows(BaseModel):
+    type: Literal["sort_rows"] = "sort_rows"
+    column_id: int
+    direction: Literal["asc", "desc"] = "asc"
+
+
 SpreadsheetOperation = Annotated[
     Union[
         OpInsertRow,
@@ -161,6 +204,9 @@ SpreadsheetOperation = Annotated[
         OpResizeColumn,
         OpResizeRow,
         OpSetCell,
+        OpFormatRange,
+        OpSetConditionalFormat,
+        OpSortRows,
     ],
     Field(discriminator="type"),
 ]

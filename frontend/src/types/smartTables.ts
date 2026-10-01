@@ -1,5 +1,5 @@
-// Типы «Умных таблиц» — зеркало backend/app/schemas/smart_tables.py (Phase 1).
-// См. docs/smart-tables-architecture.md.
+// Типы «Умных таблиц» — зеркало backend/app/schemas/smart_tables.py.
+// Phase 1 (ядро грида) + Phase 2 (форматирование/sort/filter). См. docs/smart-tables-architecture.md.
 
 export type ColumnType =
   | 'text' | 'number' | 'currency' | 'percentage' | 'date' | 'datetime'
@@ -27,6 +27,36 @@ export interface SheetSummary {
   frozen_columns: number;
 }
 
+export type TextAlign = 'left' | 'center' | 'right';
+
+// Частичный патч (как у backend CellFormatting): отсутствующее поле — не
+// трогать, поле со значением null — явно сбросить. Используется и как
+// "текущее форматирование ячейки" (тогда все заданные поля не-null), и как
+// operation-патч при format_range.
+export interface CellFormatting {
+  bold?: boolean | null;
+  italic?: boolean | null;
+  align?: TextAlign | null;
+  bg_color?: string | null;
+  text_color?: string | null;
+  number_format?: string | null;
+}
+
+export type ConditionOperator = 'less_than' | 'greater_than' | 'equals' | 'contains';
+
+export interface ConditionalFormatRule {
+  operator: ConditionOperator;
+  value: string | number;
+  bg_color?: string | null;
+  text_color?: string | null;
+  bold?: boolean | null;
+}
+
+export interface ColumnConfig {
+  conditional_formats?: ConditionalFormatRule[];
+  [key: string]: unknown;
+}
+
 export interface ColumnOut {
   id: number;
   sheet_id: number;
@@ -34,7 +64,12 @@ export interface ColumnOut {
   position: number;
   type: ColumnType;
   width: number;
-  config: Record<string, unknown>;
+  config: ColumnConfig;
+}
+
+export interface CellSnapshot {
+  value: CellValue;
+  formatting: CellFormatting;
 }
 
 export interface RowOut {
@@ -42,7 +77,7 @@ export interface RowOut {
   sheet_id: number;
   position: number;
   height: number;
-  cells: Record<string, CellValue>; // columnId(string) -> computed value
+  cells: Record<string, CellSnapshot>; // columnId(string) -> {value, formatting}
 }
 
 export interface SheetDetail {
@@ -51,7 +86,7 @@ export interface SheetDetail {
   rows: RowOut[];
 }
 
-// ── SpreadsheetOperation (подмножество Phase 1, discriminated union) ──
+// ── SpreadsheetOperation (Phase 1 + Phase 2, discriminated union) ──
 
 export type SpreadsheetOperation =
   | { type: 'insert_row'; after_row_id: number | null }
@@ -60,7 +95,10 @@ export type SpreadsheetOperation =
   | { type: 'insert_column'; after_column_id: number | null; name: string; column_type: ColumnType }
   | { type: 'delete_column'; column_id: number }
   | { type: 'resize_column'; column_id: number; width: number }
-  | { type: 'set_cell'; row_id: number; column_id: number; value: CellValue };
+  | { type: 'set_cell'; row_id: number; column_id: number; value: CellValue }
+  | { type: 'format_range'; row_ids: number[]; column_ids: number[]; formatting: CellFormatting }
+  | { type: 'set_conditional_format'; column_id: number; rules: ConditionalFormatRule[] }
+  | { type: 'sort_rows'; column_id: number; direction: 'asc' | 'desc' };
 
 export interface OperationResult {
   sheet: SheetDetail;

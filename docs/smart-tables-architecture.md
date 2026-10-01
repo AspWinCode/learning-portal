@@ -6,10 +6,10 @@
 модуль живёт как ещё один домен (`routers/smart_tables.py`, `schemas/smart_tables.py`, `services/smart_tables/`),
 аналогично `agile`/`course_studio`.
 
-Статус: раздел A–N — проектный план. Реализован (код в репозитории): **Phase 1 — ядро грида + базовая
-персистенция** (вертикальный срез, объединяющий исходные Phase 1 и Phase 2 из раздела M, чтобы сразу получить
-рабочий end-to-end кусок, а не изолированный фронтенд). Формулы, форматирование, AI, realtime — спроектированы,
-но не реализованы.
+Статус: раздел A–N — проектный план. Реализованы (код в репозитории):
+**Phase 1 — ядро грида + базовая персистенция** и **Phase 2 — форматирование/sort/filter**
+(format_range, conditional_format, sort_rows, клиентские per-column текстовые фильтры).
+Формулы, import/export, AI, realtime — спроектированы, но не реализованы.
 
 ---
 
@@ -385,8 +385,8 @@ sheet (не на каждое изменение), для "вернуться к
 
 | Phase | Реализует | Зависимости | Acceptance criteria |
 |---|---|---|---|
-| **1 — ядро грида + персистенция** (реализовано сейчас) | Workbook/Sheet/Column/Row/Cell модели, миграция, REST CRUD, базовые операции (`create_workbook/sheet`, `insert/delete row/column`, `set_cell`) через executor с undo-логом, React Grid с виртуализацией, keyboard nav, inline editing, базовый undo/redo | — | Пользователь создаёт workbook, лист, добавляет/удаляет строки и колонки, редактирует ячейки, Ctrl+Z отменяет последнее действие — всё переживает reload страницы |
-| 2 — форматирование/sort/filter | `format_range`, `conditional_format`, `sort_range`, фильтры в UI | Phase 1 | Можно отсортировать по колонке, применить фильтр, покрасить ячейки, сохранить формат |
+| **1 — ядро грида + персистенция** (реализовано) | Workbook/Sheet/Column/Row/Cell модели, миграция, REST CRUD, базовые операции (`create_workbook/sheet`, `insert/delete row/column`, `set_cell`) через executor с undo-логом, React Grid с виртуализацией, keyboard nav, inline editing, базовый undo/redo | — | Пользователь создаёт workbook, лист, добавляет/удаляет строки и колонки, редактирует ячейки, Ctrl+Z отменяет последнее действие — всё переживает reload страницы |
+| **2 — форматирование/sort/filter** (реализовано) | `format_range` (bold/italic/align/bg/text color, patch-семантика на частичный выбор полей), `set_conditional_format` (правила less_than/greater_than/equals/contains, вычисляются на фронте при рендере), `sort_rows` (asc/desc по колонке, с undo через снимок позиций), выделение диапазона мышью/Shift+стрелками, клиентские per-column текстовые фильтры (не мутируют данные, только вид) | Phase 1 | Можно выделить диапазон, покрасить/выделить жирным, настроить условное форматирование на колонку, отсортировать по колонке, отфильтровать по тексту — всё отменяется через Ctrl+Z/undo и переживает reload |
 | 3 — формулы | Парсер формул, dependency graph, recalculation, SUM/AVERAGE/IF/VLOOKUP и др. | Phase 1 | `=SUM(A1:A10)` пересчитывается при правке A1, циклическая ссылка даёт `#CIRCULAR`, не падение |
 | 4 — import/export | CSV/XLSX import с автоопределением типов колонок, CSV/XLSX export | Phase 1–2 | Импорт CSV 10k строк создаёт sheet с нужными типами колонок за разумное время |
 | 5 — AI | AI tools API, AICommandBar, AI-column pipeline, preview для деструктивных операций | Phase 1, 3 (для формульных AI-команд) | «Добавь колонку Маржа» создаёт formula-колонку с превью; «удали строки без email» показывает preview перед удалением |
@@ -431,20 +431,27 @@ frontend/src/
   stores/smartTablesStore.ts         # zustand: selection, operation queue, undo stack
 ```
 
-## O. Код Phase 1
+## O. Код Phase 1 + Phase 2
 
 Реализовано в репозитории:
 
 - [backend/app/models.py](../backend/app/models.py) — модели `SmartTableWorkbook`, `SmartTableMember`,
   `SmartTableSheet`, `SmartTableColumn`, `SmartTableRow`, `SmartTableCell`, `SmartTableOperationLog`.
+  `SmartTableCell.formatting` и `SmartTableColumn.config.conditional_formats` — Phase 2.
 - [backend/alembic/versions/0210_smart_tables.py](../backend/alembic/versions/0210_smart_tables.py) — миграция.
 - [backend/app/schemas/smart_tables.py](../backend/app/schemas/smart_tables.py) — Pydantic-схемы,
-  discriminated union `SpreadsheetOperation` для Phase 1 набора операций.
+  discriminated union `SpreadsheetOperation` (Phase 1: insert/delete row/column, resize, set_cell;
+  Phase 2: `format_range`, `set_conditional_format`, `sort_rows`). `RowOut.cells` — `{columnId: {value, formatting}}`.
 - [backend/app/services/smart_tables/executor.py](../backend/app/services/smart_tables/executor.py) —
-  `OperationExecutor` (validate/apply/invert, запись в operation log).
+  `OperationExecutor` (validate/apply/invert, запись в operation log). Все обращения к позициям строк/колонок
+  идут через свежие SQL-запросы (`_fresh_rows`/`_fresh_columns`), а не через закэшированную ORM-relationship —
+  иначе несколько `insert_row`/`insert_column` подряд в одном батче получали одинаковую позицию (найдено и
+  исправлено тестами при разработке Phase 2).
 - [backend/app/routers/smart_tables.py](../backend/app/routers/smart_tables.py) — REST API.
 - [frontend/src/types/smartTables.ts](../frontend/src/types/smartTables.ts)
-- [frontend/src/services/smartTablesApi.ts](../frontend/src/services/smartTablesApi.ts)
-- [frontend/src/pages/SmartTablesPage.tsx](../frontend/src/pages/SmartTablesPage.tsx) + `components/smartTables/Grid.tsx`
+- [frontend/src/services/api/smartTables.ts](../frontend/src/services/api/smartTables.ts)
+- [frontend/src/pages/SmartTablesPage.tsx](../frontend/src/pages/SmartTablesPage.tsx) +
+  [components/smartTables/Grid.tsx](../frontend/src/components/smartTables/Grid.tsx) — грид, тулбар
+  форматирования, выделение диапазона, меню сортировки/условного форматирования, строка фильтров.
 
-Формулы, форматирование, sort/filter, import/export, AI, realtime — не реализованы (Phases 2–6, план выше).
+Формулы, import/export, AI, realtime — не реализованы (Phases 3, 4, 5, 6, план выше).

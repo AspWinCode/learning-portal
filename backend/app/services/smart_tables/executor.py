@@ -15,8 +15,10 @@ pydantic-модель): это позволяет одинаково прого�
 
 Phase 1: структурные операции над строками/колонками и set_cell.
 Phase 2: format_range/set_conditional_format/sort_rows.
-Формулы и пересчёт зависимостей — Phase 3, здесь computed_value == raw_value
-(с приведением типа для number/boolean).
+Phase 3: set_formula — после любой операции, способной повлиять на значения
+(см. _VALUE_AFFECTING_OPS), весь лист пересчитывается через FormulaEngine
+(app/services/smart_tables/formula/engine.py). Для обычных (нe-формульных)
+ячеек computed_value — это raw_value с приведением типа под column.type.
 """
 from typing import Optional
 
@@ -24,6 +26,7 @@ from sqlalchemy.orm import Session
 
 from app.models import SmartTableCell, SmartTableColumn, SmartTableOperationLog, SmartTableRow, SmartTableSheet
 from app.schemas.smart_tables import SpreadsheetOperation
+from app.services.smart_tables.formula.engine import FormulaEngine
 
 
 class OperationError(ValueError):
@@ -55,16 +58,30 @@ def _coerce_value(value, column_type: str):
     return value
 
 
+_VALUE_AFFECTING_OPS = {
+    "set_cell", "set_formula", "insert_row", "delete_row", "insert_column", "delete_column",
+    "_restore_row", "_restore_column",
+}
+
+
 class OperationExecutor:
     def __init__(self, db: Session, sheet: SmartTableSheet, user_id: int):
         self.db = db
         self.sheet = sheet
         self.user_id = user_id
+        self._formula_engine: Optional[FormulaEngine] = None
+
+    @property
+    def formula_engine(self) -> FormulaEngine:
+        if self._formula_engine is None:
+            self._formula_engine = FormulaEngine(self.db, self.sheet.workbook_id)
+        return self._formula_engine
 
     # ── public ──────────────────────────────────────────────────
 
     def apply_batch(self, ops: list[SpreadsheetOperation]) -> int:
         applied = 0
+        needs_recalc = False
         for op in ops:
             # exclude_unset: поля, которые клиент не прислал (в т.ч. вложенные в
             # CellFormatting), не попадают в dict — это даёт format_range
@@ -72,6 +89,8 @@ class OperationExecutor:
             op_dict = op.model_dump(mode="json", exclude_unset=True)
             op_dict["type"] = op.type  # дискриминатор нужен диспетчеру всегда, даже если не был "set" явно
             inverse = self._apply_one(op_dict)
+            if op_dict["type"] in _VALUE_AFFECTING_OPS:
+                needs_recalc = True
             self.db.add(
                 SmartTableOperationLog(
                     sheet_id=self.sheet.id,
@@ -81,6 +100,8 @@ class OperationExecutor:
                 )
             )
             applied += 1
+        if needs_recalc:
+            self.formula_engine.recalculate_sheet(self.sheet.id)
         self.db.flush()
         return applied
 
@@ -103,6 +124,8 @@ class OperationExecutor:
                 inverse_operation=inverse,
             )
         )
+        if last.inverse_operation.get("type") in _VALUE_AFFECTING_OPS:
+            self.formula_engine.recalculate_sheet(self.sheet.id)
         self.db.flush()
         return True
 
@@ -297,9 +320,38 @@ class OperationExecutor:
             .filter(SmartTableCell.row_id == row.id, SmartTableCell.column_id == column.id)
             .first()
         )
-        prev_value = existing.raw_value if existing else None
+        # если в ячейке была формула — undo должен вернуть формулу, а не её
+        # последний computed_value (иначе откат set_cell поверх формульной
+        # ячейки необратимо стирает формулу)
+        if existing is not None and existing.formula:
+            inverse = {"type": "set_formula", "row_id": row.id, "column_id": column.id, "formula": existing.formula}
+        else:
+            inverse = {"type": "set_cell", "row_id": row.id, "column_id": column.id, "value": existing.raw_value if existing else None}
         self._write_cell(row, column, op.get("value"), formula=None)
-        return {"type": "set_cell", "row_id": row.id, "column_id": column.id, "value": prev_value}
+        return inverse
+
+    def _op_set_formula(self, op: dict) -> dict:
+        row = self.db.get(SmartTableRow, op["row_id"])
+        if row is None or row.sheet_id != self.sheet.id:
+            raise OperationError("row_id не найден на этом листе")
+        column = self.db.get(SmartTableColumn, op["column_id"])
+        if column is None or column.sheet_id != self.sheet.id:
+            raise OperationError("column_id не найден на этом листе")
+
+        existing = (
+            self.db.query(SmartTableCell)
+            .filter(SmartTableCell.row_id == row.id, SmartTableCell.column_id == column.id)
+            .first()
+        )
+        if existing is not None and existing.formula:
+            inverse = {"type": "set_formula", "row_id": row.id, "column_id": column.id, "formula": existing.formula}
+        else:
+            inverse = {"type": "set_cell", "row_id": row.id, "column_id": column.id, "value": existing.raw_value if existing else None}
+        # computed_value для формульной ячейки считает FormulaEngine.recalculate_sheet(),
+        # которую apply_batch/undo_last вызывают сразу после применения этой операции
+        # (set_formula входит в _VALUE_AFFECTING_OPS) — здесь только сохраняем текст формулы.
+        self._write_cell(row, column, None, formula=op["formula"])
+        return inverse
 
     def _get_or_create_cell(self, row: SmartTableRow, column: SmartTableColumn) -> SmartTableCell:
         cell = (
@@ -315,10 +367,14 @@ class OperationExecutor:
 
     def _sync_snapshot(self, row: SmartTableRow, column: SmartTableColumn, cell: SmartTableCell) -> None:
         snapshot = dict(row.cells_snapshot or {})
-        if cell.computed_value is None and not cell.formatting:
+        if cell.computed_value is None and not cell.formatting and not cell.formula:
             snapshot.pop(str(column.id), None)
         else:
-            snapshot[str(column.id)] = {"value": cell.computed_value, "formatting": cell.formatting or {}}
+            snapshot[str(column.id)] = {
+                "value": cell.computed_value,
+                "formula": cell.formula,
+                "formatting": cell.formatting or {},
+            }
         row.cells_snapshot = snapshot
 
     def _write_cell(self, row: SmartTableRow, column: SmartTableColumn, raw_value, formula: Optional[str]):

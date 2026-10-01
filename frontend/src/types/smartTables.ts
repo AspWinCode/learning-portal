@@ -1,11 +1,20 @@
 // Типы «Умных таблиц» — зеркало backend/app/schemas/smart_tables.py.
-// Phase 1 (ядро грида) + Phase 2 (форматирование/sort/filter). См. docs/smart-tables-architecture.md.
+// Phase 1 (ядро грида) + Phase 2 (форматирование/sort/filter) + Phase 3 (формулы).
+// См. docs/smart-tables-architecture.md.
 
 export type ColumnType =
   | 'text' | 'number' | 'currency' | 'percentage' | 'date' | 'datetime'
   | 'boolean' | 'select' | 'multi_select' | 'formula' | 'ai';
 
-export type CellValue = string | number | boolean | null;
+export interface FormulaError {
+  error: string; // '#CIRCULAR' | '#DIV/0!' | '#VALUE!' | '#REF!' | '#N/A' | '#NAME?' | '#ERROR!'
+}
+
+export type CellValue = string | number | boolean | FormulaError | null;
+
+export function isFormulaError(v: CellValue): v is FormulaError {
+  return typeof v === 'object' && v !== null && 'error' in v;
+}
 
 export type WorkbookRole = 'owner' | 'editor' | 'viewer';
 
@@ -69,6 +78,7 @@ export interface ColumnOut {
 
 export interface CellSnapshot {
   value: CellValue;
+  formula: string | null; // исходный текст формулы (с '='), если ячейка формульная
   formatting: CellFormatting;
 }
 
@@ -96,6 +106,7 @@ export type SpreadsheetOperation =
   | { type: 'delete_column'; column_id: number }
   | { type: 'resize_column'; column_id: number; width: number }
   | { type: 'set_cell'; row_id: number; column_id: number; value: CellValue }
+  | { type: 'set_formula'; row_id: number; column_id: number; formula: string }
   | { type: 'format_range'; row_ids: number[]; column_ids: number[]; formatting: CellFormatting }
   | { type: 'set_conditional_format'; column_id: number; rules: ConditionalFormatRule[] }
   | { type: 'sort_rows'; column_id: number; direction: 'asc' | 'desc' };

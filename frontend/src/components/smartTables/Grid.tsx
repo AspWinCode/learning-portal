@@ -18,8 +18,9 @@ import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import RuleIcon from '@mui/icons-material/Rule';
 import type {
-  CellFormatting, ColumnOut, ConditionOperator, ConditionalFormatRule, RowOut, TextAlign,
+  CellFormatting, CellSnapshot, CellValue, ColumnOut, ConditionOperator, ConditionalFormatRule, RowOut, TextAlign,
 } from '../../types/smartTables';
+import { isFormulaError } from '../../types/smartTables';
 
 // Ядро грида (Phase 1) + форматирование/сортировка/фильтры (Phase 2):
 // собственная виртуализация без сторонних зависимостей (см.
@@ -41,6 +42,7 @@ interface GridProps {
   columns: ColumnOut[];
   rows: RowOut[];
   onSetCell: (rowId: number, columnId: number, value: string) => void;
+  onSetFormula: (rowId: number, columnId: number, formula: string) => void;
   onInsertRow: (afterRowId: number | null) => void;
   onDeleteRow: (rowId: number) => void;
   onInsertColumn: (afterColumnId: number | null) => void;
@@ -50,14 +52,14 @@ interface GridProps {
   onSortColumn: (columnId: number, direction: 'asc' | 'desc') => void;
 }
 
-function cellStyleOf(value: unknown, cellFormatting: CellFormatting | undefined, rules: ConditionalFormatRule[] | undefined): React.CSSProperties {
+function cellStyleOf(value: CellValue, cellFormatting: CellFormatting | undefined, rules: ConditionalFormatRule[] | undefined): React.CSSProperties {
   const style: React.CSSProperties = {};
   const applyRuleStyle = (r: ConditionalFormatRule) => {
     if (r.bg_color) style.backgroundColor = r.bg_color;
     if (r.text_color) style.color = r.text_color;
     if (r.bold) style.fontWeight = 700;
   };
-  if (rules && value !== null && value !== undefined) {
+  if (rules && value !== null && value !== undefined && !isFormulaError(value)) {
     for (const rule of rules) {
       const matches = (() => {
         switch (rule.operator) {
@@ -71,6 +73,9 @@ function cellStyleOf(value: unknown, cellFormatting: CellFormatting | undefined,
       if (matches) applyRuleStyle(rule);
     }
   }
+  if (isFormulaError(value)) {
+    style.color = '#c62828';
+  }
   if (cellFormatting?.bold) style.fontWeight = 700;
   if (cellFormatting?.italic) style.fontStyle = 'italic';
   if (cellFormatting?.align) style.textAlign = cellFormatting.align;
@@ -79,8 +84,23 @@ function cellStyleOf(value: unknown, cellFormatting: CellFormatting | undefined,
   return style;
 }
 
+// При входе в редактирование показываем текст формулы (если есть), а не
+// вычисленный результат — иначе правка формульной ячейки стирала бы формулу.
+function editSourceOf(snapshot: CellSnapshot | undefined): string {
+  if (snapshot?.formula) return snapshot.formula;
+  const v = snapshot?.value;
+  if (v === null || v === undefined || isFormulaError(v)) return '';
+  return String(v);
+}
+
+function displayOf(value: CellValue): string {
+  if (value === null || value === undefined) return '';
+  if (isFormulaError(value)) return value.error;
+  return String(value);
+}
+
 const Grid: React.FC<GridProps> = ({
-  columns, rows, onSetCell, onInsertRow, onDeleteRow, onInsertColumn, onDeleteColumn,
+  columns, rows, onSetCell, onSetFormula, onInsertRow, onDeleteRow, onInsertColumn, onDeleteColumn,
   onFormatRange, onSetConditionalFormat, onSortColumn,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -151,10 +171,14 @@ const Grid: React.FC<GridProps> = ({
 
   const commitEdit = useCallback(() => {
     if (focus && editingValue !== null) {
-      onSetCell(focus.rowId, focus.columnId, editingValue);
+      if (editingValue.startsWith('=')) {
+        onSetFormula(focus.rowId, focus.columnId, editingValue);
+      } else {
+        onSetCell(focus.rowId, focus.columnId, editingValue);
+      }
     }
     setEditingValue(null);
-  }, [focus, editingValue, onSetCell]);
+  }, [focus, editingValue, onSetCell, onSetFormula]);
 
   const moveActive = useCallback((dRow: number, dCol: number, extend: boolean) => {
     setFocus((prev) => {
@@ -244,7 +268,7 @@ const Grid: React.FC<GridProps> = ({
       case 'Enter':
       case 'F2':
         e.preventDefault();
-        setEditingValue(String(row.cells[String(column.id)]?.value ?? ''));
+        setEditingValue(editSourceOf(row.cells[String(column.id)]));
         break;
       case 'Delete':
       case 'Backspace':
@@ -421,7 +445,7 @@ const Grid: React.FC<GridProps> = ({
                       tabIndex={0}
                       onMouseDown={(e) => onCellMouseDown(row, col, e.shiftKey)}
                       onMouseEnter={() => onCellMouseEnter(row, col)}
-                      onDoubleClick={() => { setAnchor({ rowId: row.id, columnId: col.id }); setFocus({ rowId: row.id, columnId: col.id }); setEditingValue(String(value ?? '')); }}
+                      onDoubleClick={() => { setAnchor({ rowId: row.id, columnId: col.id }); setFocus({ rowId: row.id, columnId: col.id }); setEditingValue(editSourceOf(snapshot)); }}
                       onKeyDown={(e) => onCellKeyDown(e, row, col)}
                       sx={{
                         width: col.width, flexShrink: 0, px: 1, display: 'flex', alignItems: 'center',
@@ -443,7 +467,7 @@ const Grid: React.FC<GridProps> = ({
                         />
                       ) : (
                         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%', textAlign: restStyle.textAlign }}>
-                          {value === null || value === undefined ? '' : String(value)}
+                          {displayOf(value)}
                         </span>
                       )}
                     </Box>

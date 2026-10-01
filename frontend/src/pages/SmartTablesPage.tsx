@@ -182,6 +182,8 @@ const WorkbookView: React.FC<{ workbook: Workbook; onBack: () => void }> = ({ wo
           rows={detail.rows}
           onSetCell={(rowId, columnId, value) =>
             withOps([{ type: 'set_cell', row_id: rowId, column_id: columnId, value: value === '' ? null : value }])}
+          onSetFormula={(rowId, columnId, formula) =>
+            withOps([{ type: 'set_formula', row_id: rowId, column_id: columnId, formula }])}
           onInsertRow={(afterRowId) => withOps([{ type: 'insert_row', after_row_id: afterRowId }])}
           onDeleteRow={(rowId) => withOps([{ type: 'delete_row', row_id: rowId }])}
           onInsertColumn={(afterColumnId) =>

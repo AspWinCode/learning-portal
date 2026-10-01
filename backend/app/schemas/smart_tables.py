@@ -3,8 +3,9 @@
 SpreadsheetOperation — discriminated union, единственный способ изменить
 данные листа (см. app/services/smart_tables/executor.py). Phase 1 покрывает
 базовый набор операций (создание/переименование, строки/колонки, set_cell).
-Phase 2 добавляет format_range/set_conditional_format/sort_rows — формулы
-(Phase 3), import/export (Phase 4) и AI (Phase 5) — следующие фазы
+Phase 2 добавляет format_range/set_conditional_format/sort_rows. Phase 3
+добавляет set_formula (пересчёт — app/services/smart_tables/formula/).
+Import/export (Phase 4) и AI (Phase 5) — следующие фазы
 (docs/smart-tables-architecture.md).
 """
 from datetime import datetime
@@ -18,7 +19,12 @@ ColumnType = Literal[
     "boolean", "select", "multi_select", "formula", "ai",
 ]
 
-CellValue = Union[str, float, bool, None]
+class FormulaErrorOut(BaseModel):
+    """Результат формулы, завершившейся ошибкой (#DIV/0!, #CIRCULAR, #VALUE! и т.п.)."""
+    error: str
+
+
+CellValue = Union[str, float, bool, FormulaErrorOut, None]
 
 ConditionOperator = Literal["less_than", "greater_than", "equals", "contains"]
 
@@ -108,8 +114,11 @@ class ColumnOut(BaseModel):
 
 
 class CellSnapshot(BaseModel):
-    """Значение из cells_snapshot (Row.cells_snapshot[columnId]) — см. раздел C документа."""
+    """Значение из cells_snapshot (Row.cells_snapshot[columnId]) — см. раздел C документа.
+    value — computed_value (для формул: результат вычисления, не текст формулы).
+    formula — исходный текст формулы (с ведущим '='), если ячейка формульная; иначе None."""
     value: CellValue = None
+    formula: Optional[str] = None
     formatting: dict = Field(default_factory=dict)
 
 
@@ -176,6 +185,13 @@ class OpSetCell(BaseModel):
     value: CellValue = None
 
 
+class OpSetFormula(BaseModel):
+    type: Literal["set_formula"] = "set_formula"
+    row_id: int
+    column_id: int
+    formula: str = Field(..., min_length=1, max_length=2000)  # с ведущим '=' или без — парсер сам срежет
+
+
 class OpFormatRange(BaseModel):
     type: Literal["format_range"] = "format_range"
     row_ids: List[int] = Field(..., min_length=1, max_length=5000)
@@ -204,6 +220,7 @@ SpreadsheetOperation = Annotated[
         OpResizeColumn,
         OpResizeRow,
         OpSetCell,
+        OpSetFormula,
         OpFormatRange,
         OpSetConditionalFormat,
         OpSortRows,

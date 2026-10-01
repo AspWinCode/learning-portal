@@ -7,9 +7,12 @@
 аналогично `agile`/`course_studio`.
 
 Статус: раздел A–N — проектный план. Реализованы (код в репозитории):
-**Phase 1 — ядро грида + базовая персистенция** и **Phase 2 — форматирование/sort/filter**
-(format_range, conditional_format, sort_rows, клиентские per-column текстовые фильтры).
-Формулы, import/export, AI, realtime — спроектированы, но не реализованы.
+**Phase 1 — ядро грида + базовая персистенция**, **Phase 2 — форматирование/sort/filter**
+(format_range, conditional_format, sort_rows, клиентские per-column текстовые фильтры) и
+**Phase 3 — формулы** (собственный парсер, dependency graph, recalculation, SUM/AVERAGE/MIN/MAX/
+COUNT/COUNTA/IF/AND/OR/ROUND/CONCAT/SUMIF/COUNTIF/VLOOKUP/XLOOKUP, относительные/абсолютные
+ссылки, межлистовые ссылки на чтение, обнаружение циклических ссылок).
+Import/export, AI, realtime — спроектированы, но не реализованы.
 
 ---
 
@@ -387,7 +390,7 @@ sheet (не на каждое изменение), для "вернуться к
 |---|---|---|---|
 | **1 — ядро грида + персистенция** (реализовано) | Workbook/Sheet/Column/Row/Cell модели, миграция, REST CRUD, базовые операции (`create_workbook/sheet`, `insert/delete row/column`, `set_cell`) через executor с undo-логом, React Grid с виртуализацией, keyboard nav, inline editing, базовый undo/redo | — | Пользователь создаёт workbook, лист, добавляет/удаляет строки и колонки, редактирует ячейки, Ctrl+Z отменяет последнее действие — всё переживает reload страницы |
 | **2 — форматирование/sort/filter** (реализовано) | `format_range` (bold/italic/align/bg/text color, patch-семантика на частичный выбор полей), `set_conditional_format` (правила less_than/greater_than/equals/contains, вычисляются на фронте при рендере), `sort_rows` (asc/desc по колонке, с undo через снимок позиций), выделение диапазона мышью/Shift+стрелками, клиентские per-column текстовые фильтры (не мутируют данные, только вид) | Phase 1 | Можно выделить диапазон, покрасить/выделить жирным, настроить условное форматирование на колонку, отсортировать по колонке, отфильтровать по тексту — всё отменяется через Ctrl+Z/undo и переживает reload |
-| 3 — формулы | Парсер формул, dependency graph, recalculation, SUM/AVERAGE/IF/VLOOKUP и др. | Phase 1 | `=SUM(A1:A10)` пересчитывается при правке A1, циклическая ссылка даёт `#CIRCULAR`, не падение |
+| **3 — формулы** (реализовано) | Парсер (`services/smart_tables/formula/parser.py`), SUM/AVERAGE/MIN/MAX/COUNT/COUNTA/IF/AND/OR/ROUND/CONCAT/SUMIF/COUNTIF/VLOOKUP/XLOOKUP, относительные/абсолютные ссылки (`A1`/`$A$1`), диапазоны, межлистовые ссылки на чтение (`Sheet2!A1`), пересчёт всего листа при любой value-affecting операции через dependency graph (Kahn topological sort), #CIRCULAR/#DIV0!/#VALUE!/#REF!/#N/A/#NAME? | Phase 1 | `=SUM(A1:A10)` пересчитывается при правке A1, циклическая ссылка даёт `#CIRCULAR`, не падение — подтверждено интеграционными тестами и в браузере |
 | 4 — import/export | CSV/XLSX import с автоопределением типов колонок, CSV/XLSX export | Phase 1–2 | Импорт CSV 10k строк создаёт sheet с нужными типами колонок за разумное время |
 | 5 — AI | AI tools API, AICommandBar, AI-column pipeline, preview для деструктивных операций | Phase 1, 3 (для формульных AI-команд) | «Добавь колонку Маржа» создаёт formula-колонку с превью; «удали строки без email» показывает preview перед удалением |
 | 6 — realtime | WebSocket, presence, cell-level optimistic locking | Phase 1 | Два пользователя видят правки друг друга почти мгновенно без потери данных |
@@ -431,27 +434,46 @@ frontend/src/
   stores/smartTablesStore.ts         # zustand: selection, operation queue, undo stack
 ```
 
-## O. Код Phase 1 + Phase 2
+## O. Код Phase 1 + Phase 2 + Phase 3
 
 Реализовано в репозитории:
 
 - [backend/app/models.py](../backend/app/models.py) — модели `SmartTableWorkbook`, `SmartTableMember`,
   `SmartTableSheet`, `SmartTableColumn`, `SmartTableRow`, `SmartTableCell`, `SmartTableOperationLog`.
   `SmartTableCell.formatting` и `SmartTableColumn.config.conditional_formats` — Phase 2.
+  `SmartTableCell.formula`/`computed_value` — источник и результат формулы (Phase 3).
 - [backend/alembic/versions/0210_smart_tables.py](../backend/alembic/versions/0210_smart_tables.py) — миграция.
 - [backend/app/schemas/smart_tables.py](../backend/app/schemas/smart_tables.py) — Pydantic-схемы,
   discriminated union `SpreadsheetOperation` (Phase 1: insert/delete row/column, resize, set_cell;
-  Phase 2: `format_range`, `set_conditional_format`, `sort_rows`). `RowOut.cells` — `{columnId: {value, formatting}}`.
+  Phase 2: `format_range`, `set_conditional_format`, `sort_rows`; Phase 3: `set_formula`).
+  `RowOut.cells` — `{columnId: {value, formula, formatting}}`. `CellValue` допускает объект
+  `{"error": "#КОД"}` — результат формулы, завершившейся ошибкой.
 - [backend/app/services/smart_tables/executor.py](../backend/app/services/smart_tables/executor.py) —
   `OperationExecutor` (validate/apply/invert, запись в operation log). Все обращения к позициям строк/колонок
   идут через свежие SQL-запросы (`_fresh_rows`/`_fresh_columns`), а не через закэшированную ORM-relationship —
   иначе несколько `insert_row`/`insert_column` подряд в одном батче получали одинаковую позицию (найдено и
-  исправлено тестами при разработке Phase 2).
+  исправлено тестами при разработке Phase 2). После любой value-affecting операции (`_VALUE_AFFECTING_OPS`)
+  вызывает `FormulaEngine.recalculate_sheet()`.
+- [backend/app/services/smart_tables/formula/parser.py](../backend/app/services/smart_tables/formula/parser.py) —
+  рекурсивный спуск: числа/строки/bool, `A1`/`$A$1`/`A1:B10`/`Sheet2!A1`, вызовы функций, арифметика,
+  сравнения, `&` (конкатенация).
+- [backend/app/services/smart_tables/formula/functions.py](../backend/app/services/smart_tables/formula/functions.py) —
+  SUM/AVERAGE/MIN/MAX/COUNT/COUNTA/ROUND/CONCAT/SUMIF/COUNTIF/VLOOKUP/XLOOKUP (точный поиск; приближённый
+  поиск VLOOKUP по отсортированной таблице не реализован).
+- [backend/app/services/smart_tables/formula/engine.py](../backend/app/services/smart_tables/formula/engine.py) —
+  `FormulaEngine`: резолвинг A1-нотации в стабильные `(row_id, column_id)` через текущий порядок строк/колонок
+  листа, граф зависимостей между формульными ячейками листа, топологическая сортировка (Kahn), обнаружение
+  циклов (`#CIRCULAR`), IF/AND/OR — ленивые (короткое замыкание), остальные функции — eager. Межлистовые
+  ссылки читают последний посчитанный `computed_value` другого листа (без проактивного проброса пересчёта
+  между листами — ограничение MVP, см. раздел D выше).
 - [backend/app/routers/smart_tables.py](../backend/app/routers/smart_tables.py) — REST API.
-- [frontend/src/types/smartTables.ts](../frontend/src/types/smartTables.ts)
+- [frontend/src/types/smartTables.ts](../frontend/src/types/smartTables.ts) — включая `FormulaError`/`isFormulaError`.
 - [frontend/src/services/api/smartTables.ts](../frontend/src/services/api/smartTables.ts)
 - [frontend/src/pages/SmartTablesPage.tsx](../frontend/src/pages/SmartTablesPage.tsx) +
   [components/smartTables/Grid.tsx](../frontend/src/components/smartTables/Grid.tsx) — грид, тулбар
   форматирования, выделение диапазона, меню сортировки/условного форматирования, строка фильтров.
+  Ввод значения, начинающегося с `=`, отправляет `set_formula`; редактирование формульной ячейки показывает
+  исходный текст формулы, а не вычисленный результат; ошибки формул рендерятся красным текстом (`#DIV/0!` и т.п.).
 
-Формулы, import/export, AI, realtime — не реализованы (Phases 3, 4, 5, 6, план выше).
+Import/export, AI, realtime — не реализованы (Phases 4, 5, 6, план выше). Отдельная FormulaBar (раздел G) не
+реализована — формула редактируется прямо в ячейке, этого достаточно для MVP.

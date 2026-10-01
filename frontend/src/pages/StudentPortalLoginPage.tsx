@@ -10,8 +10,7 @@ import {
 import { studentPortalApi } from '../services/studentPortalApi';
 
 const StudentPortalLoginPage: React.FC = () => {
-  const [login, setLogin] = useState('');
-  const [password, setPassword] = useState('');
+  const [phone, setPhone] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -21,11 +20,13 @@ const StudentPortalLoginPage: React.FC = () => {
     setError('');
     setLoading(true);
     try {
-      const result = await studentPortalApi.login(login, password);
+      const result = await studentPortalApi.loginByPhone(phone);
       studentPortalApi.saveToken(result.access_token);
       navigate('/student-portal', { replace: true });
     } catch (err: any) {
-      const fallback = err.response?.status === 401 ? 'Неверный логин или пароль' : 'Ошибка входа. Проверьте, что сервер доступен.';
+      const fallback = err.response?.status === 429
+        ? 'Слишком много попыток. Подождите минуту'
+        : 'Ошибка входа. Проверьте, что сервер доступен.';
       setError(err.response?.data?.detail || fallback);
     } finally {
       setLoading(false);
@@ -37,31 +38,23 @@ const StudentPortalLoginPage: React.FC = () => {
       <Box sx={{ width: '100%', maxWidth: 380 }}>
         <Typography variant="h5" sx={{ mb: 0.5 }}>Кабинет ученика</Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 3.5 }}>
-          Войдите под логином, который вам выдал тренер
+          Введите номер телефона, который указан в вашей карточке
         </Typography>
 
         {error && <Alert severity="error" sx={{ mb: 2.5 }}>{error}</Alert>}
 
         <Box component="form" onSubmit={handleSubmit}>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <TextField
-              required
-              fullWidth
-              label="Логин"
-              autoFocus
-              value={login}
-              onChange={(e) => setLogin(e.target.value)}
-            />
-            <TextField
-              required
-              fullWidth
-              label="Пароль"
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </Box>
+          <TextField
+            required
+            fullWidth
+            label="Номер телефона"
+            type="tel"
+            placeholder="+7 900 123-45-67"
+            autoComplete="tel"
+            autoFocus
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+          />
 
           <Button type="submit" fullWidth variant="contained" size="large" disabled={loading} sx={{ mt: 3 }}>
             {loading ? 'Входим...' : 'Войти'}

@@ -268,7 +268,8 @@ async def get_current_student(
     if student is None:
         raise credentials_exception
     credential = db.query(StudentCredential).filter(StudentCredential.student_id == student.id).first()
-    if credential is None or not credential.is_active:
+    # Ученик без логина/пароля может входить по телефону; отключённый доступ блокирует в любом случае.
+    if credential is not None and not credential.is_active:
         raise credentials_exception
     return student
 

@@ -11,7 +11,9 @@ from sqlalchemy.orm import Session, selectinload
 
 from app import auth
 from app.database import get_db
+from app.rate_limit import limiter
 from app.routers.action_log import log_action
+from app.utils.phone import normalize_phone
 from app.models import (
     AppSetting,
     CourseCatalogItem,
@@ -25,6 +27,7 @@ from app.models import (
     LessonCancellation,
     Module,
     Student,
+    StudentCard,
     StudentCourseAccess,
     StudentCourseAccessStatus,
     StudentCourseProgress,
@@ -55,6 +58,7 @@ from app.schemas.student_portal import (
     StudentPortalSettings,
     StudentGradeOut,
     StudentLoginRequest,
+    StudentPhoneLoginRequest,
     StudentLoginResponse,
     StudentCourseProgressOut,
     StudentPortalAdminView,
@@ -138,6 +142,53 @@ async def student_login(payload: StudentLoginRequest, db: Session = Depends(get_
     db.commit()
 
     token = auth.create_student_access_token(student.id, credential.login)
+    return StudentLoginResponse(access_token=token, student=StudentProfileOut.model_validate(student))
+
+
+@router.post("/auth/login-phone", response_model=StudentLoginResponse)
+@limiter.limit("10/minute")
+async def student_login_by_phone(request: Request, payload: StudentPhoneLoginRequest, db: Session = Depends(get_db)):
+    """Вход по номеру телефона: телефон должен совпасть с телефоном ученика в его карточке."""
+    from datetime import datetime, timezone
+    from sqlalchemy import func
+
+    denied = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Номер не найден. Проверьте номер или обратитесь к тренеру")
+    normalized = normalize_phone(payload.phone)
+    digits = normalized.lstrip("+")
+    if len(digits) < 10:
+        raise denied
+    tail = digits[-10:]
+
+    student_ids = {
+        sid
+        for (sid,) in db.query(Student.id)
+        .filter(Student.phone.isnot(None), func.regexp_replace(Student.phone, r"\D", "", "g").like(f"%{tail}"))
+        .all()
+    }
+    student_ids |= {
+        sid
+        for (sid,) in db.query(StudentCard.student_id)
+        .filter(
+            StudentCard.student_id.isnot(None),
+            func.regexp_replace(func.coalesce(StudentCard.student_phone, StudentCard.phone_normalized, ""), r"\D", "", "g").like(f"%{tail}"),
+        )
+        .all()
+    }
+    # Неоднозначность (один номер у нескольких учеников) — не угадываем, чтобы не пустить в чужой кабинет.
+    if len(student_ids) != 1:
+        raise denied
+
+    student = db.query(Student).filter(Student.id == student_ids.pop()).first()
+    if not student:
+        raise denied
+    credential = db.query(StudentCredential).filter(StudentCredential.student_id == student.id).first()
+    if credential is not None and not credential.is_active:
+        raise denied
+    if credential is not None:
+        credential.last_login_at = datetime.now(timezone.utc)
+        db.commit()
+
+    token = auth.create_student_access_token(student.id, credential.login if credential else f"phone:{student.id}")
     return StudentLoginResponse(access_token=token, student=StudentProfileOut.model_validate(student))
 
 

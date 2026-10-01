@@ -20,6 +20,10 @@ class StudentLoginRequest(BaseModel):
     password: str
 
 
+class StudentPhoneLoginRequest(BaseModel):
+    phone: str
+
+
 class StudentProfileOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

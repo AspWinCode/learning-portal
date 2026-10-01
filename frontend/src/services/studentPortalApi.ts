@@ -31,6 +31,10 @@ export const studentPortalApi = {
     const response = await studentPortalClient.post('/api/student-portal/auth/login', { login, password });
     return response.data;
   },
+  loginByPhone: async (phone: string): Promise<{ access_token: string; student: StudentPortalProfile }> => {
+    const response = await studentPortalClient.post('/api/student-portal/auth/login-phone', { phone });
+    return response.data;
+  },
   me: async (): Promise<StudentPortalProfile> => {
     const response = await studentPortalClient.get('/api/student-portal/me');
     return response.data;

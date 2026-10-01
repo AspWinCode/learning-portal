@@ -4167,3 +4167,115 @@ class AiGatewayCallLog(Base):
     error = Column(Text, nullable=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
+# ── Умные таблицы (Smart Tables) ──────────────────────────────────────
+# Phase 1: ядро грида + персистенция. См. docs/smart-tables-architecture.md.
+# UI/AI не пишут в cells напрямую — только через OperationExecutor
+# (app/services/smart_tables/executor.py), который ведёт operation log
+# с инвертированными операциями для undo.
+
+class SmartTableWorkbook(Base):
+    __tablename__ = "smart_table_workbooks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    owner = relationship("User", foreign_keys=[owner_id])
+    members = relationship("SmartTableMember", back_populates="workbook", cascade="all, delete-orphan")
+    sheets = relationship(
+        "SmartTableSheet", back_populates="workbook", cascade="all, delete-orphan", order_by="SmartTableSheet.position"
+    )
+
+
+class SmartTableMember(Base):
+    __tablename__ = "smart_table_members"
+
+    workbook_id = Column(Integer, ForeignKey("smart_table_workbooks.id", ondelete="CASCADE"), primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
+    role = Column(String(20), nullable=False, default="viewer")  # owner|editor|viewer
+
+    workbook = relationship("SmartTableWorkbook", back_populates="members")
+    user = relationship("User")
+
+
+class SmartTableSheet(Base):
+    __tablename__ = "smart_table_sheets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workbook_id = Column(Integer, ForeignKey("smart_table_workbooks.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    position = Column(Float, nullable=False)
+    frozen_rows = Column(Integer, nullable=False, default=0)
+    frozen_columns = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    workbook = relationship("SmartTableWorkbook", back_populates="sheets")
+    columns_ = relationship(
+        "SmartTableColumn", back_populates="sheet", cascade="all, delete-orphan", order_by="SmartTableColumn.position"
+    )
+    rows = relationship(
+        "SmartTableRow", back_populates="sheet", cascade="all, delete-orphan", order_by="SmartTableRow.position"
+    )
+
+
+class SmartTableColumn(Base):
+    __tablename__ = "smart_table_columns"
+
+    id = Column(Integer, primary_key=True, index=True)
+    sheet_id = Column(Integer, ForeignKey("smart_table_sheets.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    position = Column(Float, nullable=False)
+    type = Column(String(20), nullable=False, default="text")
+    width = Column(Integer, nullable=False, default=160)
+    config = Column(JSON, nullable=False, default=dict)
+
+    sheet = relationship("SmartTableSheet", back_populates="columns_")
+
+
+class SmartTableRow(Base):
+    __tablename__ = "smart_table_rows"
+
+    id = Column(Integer, primary_key=True, index=True)
+    sheet_id = Column(Integer, ForeignKey("smart_table_sheets.id", ondelete="CASCADE"), nullable=False, index=True)
+    position = Column(Float, nullable=False)
+    height = Column(Integer, nullable=False, default=32)
+    cells_snapshot = Column(JSON, nullable=False, default=dict)  # {columnId: computedValue} — быстрое чтение грида
+
+    sheet = relationship("SmartTableSheet", back_populates="rows")
+    cells = relationship("SmartTableCell", back_populates="row", cascade="all, delete-orphan")
+
+
+class SmartTableCell(Base):
+    __tablename__ = "smart_table_cells"
+    __table_args__ = (UniqueConstraint("row_id", "column_id", name="uq_smart_table_cell_row_column"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    row_id = Column(Integer, ForeignKey("smart_table_rows.id", ondelete="CASCADE"), nullable=False, index=True)
+    column_id = Column(Integer, ForeignKey("smart_table_columns.id", ondelete="CASCADE"), nullable=False, index=True)
+    raw_value = Column(Text, nullable=True)
+    formula = Column(Text, nullable=True)
+    computed_value = Column(JSON, nullable=True)
+    cell_metadata = Column("metadata", JSON, nullable=False, default=dict)
+    formatting = Column(JSON, nullable=False, default=dict)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    row = relationship("SmartTableRow", back_populates="cells")
+    column = relationship("SmartTableColumn")
+
+
+class SmartTableOperationLog(Base):
+    __tablename__ = "smart_table_operation_log"
+
+    id = Column(Integer, primary_key=True, index=True)
+    sheet_id = Column(Integer, ForeignKey("smart_table_sheets.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    operation = Column(JSON, nullable=False)
+    inverse_operation = Column(JSON, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+    sheet = relationship("SmartTableSheet")
+    user = relationship("User")

@@ -115,6 +115,7 @@ const MethodistStudioPage = React.lazy(() => import('./pages/MethodistStudioPage
 const MethodistsPage = React.lazy(() => import('./pages/MethodistsPage'));
 const AgileProjectsPage = React.lazy(() => import('./pages/AgileProjectsPage'));
 const AgileProjectPage = React.lazy(() => import('./pages/AgileProjectPage'));
+const SmartTablesPage = React.lazy(() => import('./pages/SmartTablesPage'));
 const TravelPage = React.lazy(() => import('./pages/TravelPage'));
 const TripDetailPage = React.lazy(() => import('./pages/TripDetailPage'));
 const TravelComparePage = React.lazy(() => import('./pages/TravelComparePage'));
@@ -1037,6 +1038,16 @@ function App() {
                 <PrivateRoute requiredPermission="agile.access">
                   <SectionBoundary>
                     <AgileProjectPage />
+                  </SectionBoundary>
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/smart-tables"
+              element={
+                <PrivateRoute>
+                  <SectionBoundary>
+                    <SmartTablesPage />
                   </SectionBoundary>
                 </PrivateRoute>
               }

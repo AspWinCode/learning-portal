@@ -64,6 +64,7 @@ from app.routers import (
     seo_redirects,
     site_settings,
     settings,
+    smart_tables,
     sms,
     student_accounts,
     student_portal,
@@ -455,6 +456,7 @@ app.include_router(trainer_lessons.router, prefix="/api/v1/trainer-lessons", tag
 app.include_router(student_accounts.router, prefix="/api/v1/student-accounts", tags=["student_accounts"])
 app.include_router(projects.router, prefix="/api/v1/projects", tags=["projects"])
 app.include_router(agile.router, prefix="/api/v1/agile", tags=["agile"])
+app.include_router(smart_tables.router, prefix="/api/v1/smart-tables", tags=["smart_tables"])
 app.include_router(finance.router, prefix="/api/v1/finance", tags=["finance"])
 app.include_router(passwords.router, prefix="/api/v1/passwords", tags=["passwords"])
 app.include_router(admin_tools.router, prefix="/api/v1/admin-tools", tags=["admin_tools"])

@@ -7,7 +7,8 @@ app/services/smart_tables/executor.py и docs/smart-tables-architecture.md.
 """
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi.responses import Response
 from sqlalchemy.orm import Session, joinedload
 
 from app import auth
@@ -37,6 +38,7 @@ from app.schemas.smart_tables import (
     WorkbookUpdate,
 )
 from app.services.smart_tables.executor import OperationError, OperationExecutor
+from app.services.smart_tables.import_export import ImportError_, export_csv, export_xlsx, import_sheet, parse_upload
 
 router = APIRouter()
 
@@ -254,6 +256,64 @@ async def create_sheet(
 
     sheet = _get_sheet_or_404(db, sheet.id)
     return _sheet_detail(sheet)
+
+
+@router.post("/workbooks/{workbook_id}/import", response_model=SheetDetail, status_code=status.HTTP_201_CREATED)
+async def import_file(
+    workbook_id: int,
+    file: UploadFile = File(...),
+    sheet_name: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """Импорт CSV/XLSX — создаёт новый лист в workbook (не трогает существующие),
+    типы колонок определяются автоматически. См. services/smart_tables/import_export.py."""
+    workbook = _get_workbook_or_404(db, workbook_id)
+    _require_role(db, current_user, workbook, min_role="editor")
+
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Файл пустой")
+    try:
+        headers, rows = parse_upload(file.filename or "", data)
+        name = sheet_name or (file.filename.rsplit(".", 1)[0] if file.filename else "Импорт")
+        sheet = import_sheet(db, workbook, name[:255], headers, rows)
+        db.commit()
+    except ImportError_ as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    sheet = _get_sheet_or_404(db, sheet.id)
+    return _sheet_detail(sheet)
+
+
+@router.get("/sheets/{sheet_id}/export")
+async def export_file(
+    sheet_id: int,
+    format: str = Query("csv", pattern="^(csv|xlsx)$"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    sheet = _get_sheet_or_404(db, sheet_id)
+    workbook = _get_workbook_or_404(db, sheet.workbook_id)
+    _require_role(db, current_user, workbook, min_role="viewer")
+
+    columns = sorted(sheet.columns_, key=lambda c: c.position)
+    rows = sorted(sheet.rows, key=lambda r: r.position)
+    filename = f"{sheet.name or 'sheet'}.{format}".replace('"', "")
+
+    if format == "xlsx":
+        content = export_xlsx(sheet, columns, rows)
+        media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    else:
+        content = export_csv(sheet, columns, rows)
+        media_type = "text/csv"
+
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.patch("/sheets/{sheet_id}", response_model=SheetSummary)

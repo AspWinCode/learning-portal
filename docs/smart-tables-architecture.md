@@ -11,8 +11,9 @@
 (format_range, conditional_format, sort_rows, клиентские per-column текстовые фильтры) и
 **Phase 3 — формулы** (собственный парсер, dependency graph, recalculation, SUM/AVERAGE/MIN/MAX/
 COUNT/COUNTA/IF/AND/OR/ROUND/CONCAT/SUMIF/COUNTIF/VLOOKUP/XLOOKUP, относительные/абсолютные
-ссылки, межлистовые ссылки на чтение, обнаружение циклических ссылок).
-Import/export, AI, realtime — спроектированы, но не реализованы.
+ссылки, межлистовые ссылки на чтение, обнаружение циклических ссылок) и
+**Phase 4 — import/export** (CSV/XLSX, автоопределение типов колонок при импорте).
+AI, realtime — спроектированы, но не реализованы.
 
 ---
 
@@ -253,8 +254,8 @@ POST   /api/v1/smart-tables/sheets/{sheet_id}/operations    -- batched Spreadshe
 POST   /api/v1/smart-tables/sheets/{sheet_id}/undo
 POST   /api/v1/smart-tables/sheets/{sheet_id}/redo
 GET    /api/v1/smart-tables/sheets/{sheet_id}/operations    -- лог, пагинация, для истории/аудита
-POST   /api/v1/smart-tables/sheets/{sheet_id}/import         -- CSV/XLSX (Phase 4)
-GET    /api/v1/smart-tables/sheets/{sheet_id}/export         -- CSV/XLSX (Phase 4)
+POST   /api/v1/smart-tables/workbooks/{workbook_id}/import    -- CSV/XLSX, создаёт новый лист (реализовано, Phase 4)
+GET    /api/v1/smart-tables/sheets/{sheet_id}/export           -- CSV/XLSX текущего листа (реализовано, Phase 4)
 POST   /api/v1/smart-tables/sheets/{sheet_id}/ai/actions      -- AI-команда → preview operations (Phase 5)
 POST   /api/v1/smart-tables/sheets/{sheet_id}/ai/actions/apply -- применить ранее показанный preview
 ```
@@ -391,7 +392,7 @@ sheet (не на каждое изменение), для "вернуться к
 | **1 — ядро грида + персистенция** (реализовано) | Workbook/Sheet/Column/Row/Cell модели, миграция, REST CRUD, базовые операции (`create_workbook/sheet`, `insert/delete row/column`, `set_cell`) через executor с undo-логом, React Grid с виртуализацией, keyboard nav, inline editing, базовый undo/redo | — | Пользователь создаёт workbook, лист, добавляет/удаляет строки и колонки, редактирует ячейки, Ctrl+Z отменяет последнее действие — всё переживает reload страницы |
 | **2 — форматирование/sort/filter** (реализовано) | `format_range` (bold/italic/align/bg/text color, patch-семантика на частичный выбор полей), `set_conditional_format` (правила less_than/greater_than/equals/contains, вычисляются на фронте при рендере), `sort_rows` (asc/desc по колонке, с undo через снимок позиций), выделение диапазона мышью/Shift+стрелками, клиентские per-column текстовые фильтры (не мутируют данные, только вид) | Phase 1 | Можно выделить диапазон, покрасить/выделить жирным, настроить условное форматирование на колонку, отсортировать по колонке, отфильтровать по тексту — всё отменяется через Ctrl+Z/undo и переживает reload |
 | **3 — формулы** (реализовано) | Парсер (`services/smart_tables/formula/parser.py`), SUM/AVERAGE/MIN/MAX/COUNT/COUNTA/IF/AND/OR/ROUND/CONCAT/SUMIF/COUNTIF/VLOOKUP/XLOOKUP, относительные/абсолютные ссылки (`A1`/`$A$1`), диапазоны, межлистовые ссылки на чтение (`Sheet2!A1`), пересчёт всего листа при любой value-affecting операции через dependency graph (Kahn topological sort), #CIRCULAR/#DIV0!/#VALUE!/#REF!/#N/A/#NAME? | Phase 1 | `=SUM(A1:A10)` пересчитывается при правке A1, циклическая ссылка даёт `#CIRCULAR`, не падение — подтверждено интеграционными тестами и в браузере |
-| 4 — import/export | CSV/XLSX import с автоопределением типов колонок, CSV/XLSX export | Phase 1–2 | Импорт CSV 10k строк создаёт sheet с нужными типами колонок за разумное время |
+| **4 — import/export** (реализовано) | Импорт CSV/XLSX создаёт **новый лист** в workbook (не трогает существующие данные), типы колонок — автоопределение (boolean/number/date/text) по значениям столбца; экспорт текущего computed_value листа в CSV/XLSX | Phase 1–2 | Импорт CSV создаёт sheet с нужными типами колонок; экспорт скачивает файл с текущими данными — подтверждено в браузере |
 | 5 — AI | AI tools API, AICommandBar, AI-column pipeline, preview для деструктивных операций | Phase 1, 3 (для формульных AI-команд) | «Добавь колонку Маржа» создаёт formula-колонку с превью; «удали строки без email» показывает preview перед удалением |
 | 6 — realtime | WebSocket, presence, cell-level optimistic locking | Phase 1 | Два пользователя видят правки друг друга почти мгновенно без потери данных |
 
@@ -434,7 +435,7 @@ frontend/src/
   stores/smartTablesStore.ts         # zustand: selection, operation queue, undo stack
 ```
 
-## O. Код Phase 1 + Phase 2 + Phase 3
+## O. Код Phase 1 + Phase 2 + Phase 3 + Phase 4
 
 Реализовано в репозитории:
 
@@ -447,7 +448,10 @@ frontend/src/
   discriminated union `SpreadsheetOperation` (Phase 1: insert/delete row/column, resize, set_cell;
   Phase 2: `format_range`, `set_conditional_format`, `sort_rows`; Phase 3: `set_formula`).
   `RowOut.cells` — `{columnId: {value, formula, formatting}}`. `CellValue` допускает объект
-  `{"error": "#КОД"}` — результат формулы, завершившейся ошибкой.
+  `{"error": "#КОД"}` — результат формулы, завершившейся ошибкой. `CellValue = Union[bool, float, str, ...]` —
+  именно в этом порядке: `bool` — подкласс `int` в Python, и если `float` стоит раньше `bool` в Union,
+  Pydantic в smart-режиме приводит `True`/`False` к `1.0`/`0.0` (поймано тестами на импорте boolean-колонки
+  при разработке Phase 4 — баг жил и в Phase 1–3, просто не был замечен).
 - [backend/app/services/smart_tables/executor.py](../backend/app/services/smart_tables/executor.py) —
   `OperationExecutor` (validate/apply/invert, запись в operation log). Все обращения к позициям строк/колонок
   идут через свежие SQL-запросы (`_fresh_rows`/`_fresh_columns`), а не через закэшированную ORM-relationship —
@@ -466,14 +470,22 @@ frontend/src/
   циклов (`#CIRCULAR`), IF/AND/OR — ленивые (короткое замыкание), остальные функции — eager. Межлистовые
   ссылки читают последний посчитанный `computed_value` другого листа (без проактивного проброса пересчёта
   между листами — ограничение MVP, см. раздел D выше).
-- [backend/app/routers/smart_tables.py](../backend/app/routers/smart_tables.py) — REST API.
+- [backend/app/services/smart_tables/import_export.py](../backend/app/services/smart_tables/import_export.py) —
+  парсинг CSV (`csv.Sniffer` для разделителя)/XLSX (`openpyxl`), автоопределение типа колонки по значениям
+  столбца (boolean → number → date → text, первое совпадение по всем непустым значениям), создание нового
+  листа напрямую (в обход OperationExecutor — массовая вставка, не "операция" с осмысленным undo); экспорт
+  текущего `computed_value` каждой ячейки в CSV/XLSX (не формулы — значения).
+- [backend/app/routers/smart_tables.py](../backend/app/routers/smart_tables.py) — REST API, включая
+  `POST /workbooks/{id}/import` (multipart) и `GET /sheets/{id}/export?format=csv|xlsx`.
 - [frontend/src/types/smartTables.ts](../frontend/src/types/smartTables.ts) — включая `FormulaError`/`isFormulaError`.
-- [frontend/src/services/api/smartTables.ts](../frontend/src/services/api/smartTables.ts)
+- [frontend/src/services/api/smartTables.ts](../frontend/src/services/api/smartTables.ts) — `importFile`
+  (FormData), `exportFile` (blob → programmatic `<a download>`).
 - [frontend/src/pages/SmartTablesPage.tsx](../frontend/src/pages/SmartTablesPage.tsx) +
   [components/smartTables/Grid.tsx](../frontend/src/components/smartTables/Grid.tsx) — грид, тулбар
-  форматирования, выделение диапазона, меню сортировки/условного форматирования, строка фильтров.
+  форматирования, выделение диапазона, меню сортировки/условного форматирования, строка фильтров, кнопки
+  «Импорт CSV/XLSX» (скрытый `<input type=file>`) и «Экспорт» (меню CSV/XLSX).
   Ввод значения, начинающегося с `=`, отправляет `set_formula`; редактирование формульной ячейки показывает
   исходный текст формулы, а не вычисленный результат; ошибки формул рендерятся красным текстом (`#DIV/0!` и т.п.).
 
-Import/export, AI, realtime — не реализованы (Phases 4, 5, 6, план выше). Отдельная FormulaBar (раздел G) не
-реализована — формула редактируется прямо в ячейке, этого достаточно для MVP.
+AI, realtime — не реализованы (Phases 5, 6, план выше). Отдельная FormulaBar (раздел G) не реализована —
+формула редактируется прямо в ячейке, этого достаточно для MVP.

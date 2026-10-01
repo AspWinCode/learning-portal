@@ -49,4 +49,28 @@ export const smartTablesApi = {
 
   listOperations: (sheetId: number, limit = 100): Promise<OperationLogEntry[]> =>
     api.get(`${BASE}/sheets/${sheetId}/operations`, { params: { limit } }).then(r => r.data),
+
+  importFile: (workbookId: number, file: File, sheetName?: string): Promise<SheetDetail> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post(`${BASE}/workbooks/${workbookId}/import`, formData, {
+      params: sheetName ? { sheet_name: sheetName } : undefined,
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }).then(r => r.data);
+  },
+
+  exportFile: async (sheetId: number, format: 'csv' | 'xlsx', filename: string): Promise<void> => {
+    const response = await api.get(`${BASE}/sheets/${sheetId}/export`, {
+      params: { format },
+      responseType: 'blob',
+    });
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  },
 };

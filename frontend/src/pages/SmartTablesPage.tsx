@@ -1,12 +1,14 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert, Box, Button, Card, CardActionArea, CardContent, CircularProgress,
-  Dialog, DialogActions, DialogContent, DialogTitle, IconButton, Tab, Tabs,
+  Dialog, DialogActions, DialogContent, DialogTitle, IconButton, Menu, MenuItem, Tab, Tabs,
   TextField, Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import UndoIcon from '@mui/icons-material/Undo';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import UploadFileIcon from '@mui/icons-material/UploadFile';
+import DownloadIcon from '@mui/icons-material/Download';
 import Layout from '../components/Layout';
 import Grid from '../components/smartTables/Grid';
 import { smartTablesApi } from '../services/api/smartTables';
@@ -136,6 +138,38 @@ const WorkbookView: React.FC<{ workbook: Workbook; onBack: () => void }> = ({ wo
     setActiveSheetId(sheet.sheet.id);
   };
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
+  const [exportMenuAnchor, setExportMenuAnchor] = useState<HTMLElement | null>(null);
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setImporting(true);
+    try {
+      const sheet = await smartTablesApi.importFile(workbook.id, file);
+      await loadSheets();
+      setActiveSheetId(sheet.sheet.id);
+      setError('');
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || 'Не удалось импортировать файл');
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const handleExport = async (format: 'csv' | 'xlsx') => {
+    setExportMenuAnchor(null);
+    if (activeSheetId === null) return;
+    const activeSheet = sheets.find((s) => s.id === activeSheetId);
+    try {
+      await smartTablesApi.exportFile(activeSheetId, format, `${activeSheet?.name || 'sheet'}.${format}`);
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || 'Не удалось экспортировать лист');
+    }
+  };
+
   const withOps = useCallback(async (ops: Parameters<typeof smartTablesApi.applyOperations>[1]) => {
     if (activeSheetId === null) return;
     try {
@@ -170,7 +204,26 @@ const WorkbookView: React.FC<{ workbook: Workbook; onBack: () => void }> = ({ wo
       <Tabs value={activeSheetId ?? false} onChange={(_, v) => setActiveSheetId(v)} sx={{ mb: 1 }}>
         {sheets.map((s) => <Tab key={s.id} value={s.id} label={s.name} />)}
       </Tabs>
-      <Button size="small" startIcon={<AddIcon />} onClick={handleAddSheet} sx={{ mb: 2 }}>Добавить лист</Button>
+      <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+        <Button size="small" startIcon={<AddIcon />} onClick={handleAddSheet}>Добавить лист</Button>
+        <Button
+          size="small" startIcon={<UploadFileIcon />} disabled={importing}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          {importing ? 'Импортирую…' : 'Импорт CSV/XLSX'}
+        </Button>
+        <input ref={fileInputRef} type="file" accept=".csv,.xlsx" hidden onChange={handleImportFile} />
+        <Button
+          size="small" startIcon={<DownloadIcon />} disabled={activeSheetId === null}
+          onClick={(e) => setExportMenuAnchor(e.currentTarget)}
+        >
+          Экспорт
+        </Button>
+        <Menu open={!!exportMenuAnchor} anchorEl={exportMenuAnchor} onClose={() => setExportMenuAnchor(null)}>
+          <MenuItem onClick={() => handleExport('csv')}>CSV</MenuItem>
+          <MenuItem onClick={() => handleExport('xlsx')}>XLSX</MenuItem>
+        </Menu>
+      </Box>
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 

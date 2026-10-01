@@ -24,7 +24,11 @@ class FormulaErrorOut(BaseModel):
     error: str
 
 
-CellValue = Union[str, float, bool, FormulaErrorOut, None]
+# bool ДОЛЖЕН идти раньше float/str: bool — подкласс int в Python, и в
+# Pydantic smart-режиме Union[str, float, bool] приводит True/False к 1.0/0.0,
+# если float стоит раньше bool (поймано тестами при разработке Phase 4 на
+# импорте boolean-колонки — '{"value": 1.0}' вместо true).
+CellValue = Union[bool, float, str, FormulaErrorOut, None]
 
 ConditionOperator = Literal["less_than", "greater_than", "equals", "contains"]
 

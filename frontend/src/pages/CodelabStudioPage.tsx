@@ -39,6 +39,13 @@ function findNode(nodes: CodelabLearningItem[], id: number): CodelabLearningItem
   return null;
 }
 
+// Codelab-прокси отдаёт причину ошибки в response.data.detail (например,
+// "Request failed with status code 404" — это generic axios e.message, а не
+// то, что реально ответил Codelab); показываем detail, если он есть.
+function errMsg(e: any): string {
+  return e?.response?.data?.detail || e?.message || 'Неизвестная ошибка';
+}
+
 /** Узел дерева курса — рекурсивный, с меню действий (добавить дочерний
  * узел/материал/задачу, редактировать, архивировать, удалить). Иерархия
  * жёсткая (Модуль → Подмодуль → Тема → Подтема, app/services/tree_rules.py
@@ -188,7 +195,7 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
   // материала (nodeContent), плюс необязательный срок сдачи.
   const [projectDueAt, setProjectDueAt] = useState('');
 
-  const loadCourses = () => api.listCourses().then(setCourses).catch((e) => onToast({ msg: e.message, err: true }));
+  const loadCourses = () => api.listCourses().then(setCourses).catch((e) => onToast({ msg: errMsg(e), err: true }));
 
   useEffect(() => { loadCourses(); }, []);
 
@@ -198,7 +205,7 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
     try {
       setTree(await api.getTree(c.id));
     } catch (e: any) {
-      onToast({ msg: e.message, err: true });
+      onToast({ msg: errMsg(e), err: true });
     } finally {
       setLoading(false);
     }
@@ -215,7 +222,7 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
       await loadCourses();
       selectCourse(course);
     } catch (e: any) {
-      onToast({ msg: e.message, err: true });
+      onToast({ msg: errMsg(e), err: true });
     }
   };
 
@@ -245,7 +252,7 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
           setTaskOutputFormat(task.output_format || '');
           setTaskTests(task.tests.length > 0 ? task.tests : [{ input: '', expected: '', is_hidden: false }]);
         })
-        .catch((e: any) => onToast({ msg: e.message, err: true }))
+        .catch((e: any) => onToast({ msg: errMsg(e), err: true }))
         .finally(() => setTaskLoading(false));
     }
     if (item.type === 'snap_task' || item.type === 'gdevelop_task' || item.type === 'turtle_task') {
@@ -381,7 +388,7 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
       setNodeDialog(null);
       refresh();
     } catch (e: any) {
-      onToast({ msg: e.message, err: true });
+      onToast({ msg: errMsg(e), err: true });
     }
   };
 
@@ -391,7 +398,7 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
       onToast({ msg: item.is_archived ? 'Разархивировано' : 'Архивировано' });
       refresh();
     } catch (e: any) {
-      onToast({ msg: e.message, err: true });
+      onToast({ msg: errMsg(e), err: true });
     }
   };
 
@@ -403,7 +410,7 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
       setDeleteTarget(null);
       refresh();
     } catch (e: any) {
-      onToast({ msg: e.message, err: true });
+      onToast({ msg: errMsg(e), err: true });
     }
   };
 
@@ -422,7 +429,7 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
       if (selected?.id === updated.id) setSelected(updated);
       await loadCourses();
     } catch (e: any) {
-      onToast({ msg: e.message, err: true });
+      onToast({ msg: errMsg(e), err: true });
     }
   };
 
@@ -433,7 +440,7 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
       if (selected?.id === updated.id) setSelected(updated);
       await loadCourses();
     } catch (e: any) {
-      onToast({ msg: e.message, err: true });
+      onToast({ msg: errMsg(e), err: true });
     }
   };
 
@@ -446,7 +453,7 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
       setDeleteCourseTarget(null);
       await loadCourses();
     } catch (e: any) {
-      onToast({ msg: e.message, err: true });
+      onToast({ msg: errMsg(e), err: true });
     }
   };
 
@@ -458,7 +465,7 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
       setSelected(updated);
       await loadCourses();
     } catch (e: any) {
-      onToast({ msg: e.message, err: true });
+      onToast({ msg: errMsg(e), err: true });
     }
   };
 
@@ -470,7 +477,7 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
       setSelected(updated);
       await loadCourses();
     } catch (e: any) {
-      onToast({ msg: e.message, err: true });
+      onToast({ msg: errMsg(e), err: true });
     }
   };
 
@@ -854,7 +861,7 @@ function ProjectReviewDialog({ courseId, itemId, submissionId, onClose, onSaved,
   const [commentDrafts, setCommentDrafts] = useState<Record<number, string>>({});
   const [saving, setSaving] = useState(false);
 
-  const load = () => api.getProjectSubmission(courseId, itemId, submissionId).then(setDetail).catch((e) => onToast({ msg: e.message, err: true }));
+  const load = () => api.getProjectSubmission(courseId, itemId, submissionId).then(setDetail).catch((e) => onToast({ msg: errMsg(e), err: true }));
 
   useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [submissionId]);
 
@@ -866,7 +873,7 @@ function ProjectReviewDialog({ courseId, itemId, submissionId, onClose, onSaved,
       setCommentDrafts((prev) => ({ ...prev, [fileId]: '' }));
       load();
     } catch (e: any) {
-      onToast({ msg: e.message, err: true });
+      onToast({ msg: errMsg(e), err: true });
     }
   };
 
@@ -880,7 +887,7 @@ function ProjectReviewDialog({ courseId, itemId, submissionId, onClose, onSaved,
       onSaved();
       onClose();
     } catch (e: any) {
-      onToast({ msg: e.message, err: true });
+      onToast({ msg: errMsg(e), err: true });
     } finally {
       setSaving(false);
     }
@@ -904,7 +911,7 @@ function ProjectReviewDialog({ courseId, itemId, submissionId, onClose, onSaved,
                 <Paper key={f.id} variant="outlined" sx={{ p: 1.5 }}>
                   <Stack direction="row" justifyContent="space-between" alignItems="center">
                     <Typography variant="body2">{f.original_filename} <Typography component="span" variant="caption" color="text.secondary">({(f.size / 1024).toFixed(1)} КБ)</Typography></Typography>
-                    <Button size="small" onClick={() => api.downloadProjectFile(courseId, itemId, submissionId, f.id).catch((e: any) => onToast({ msg: e.message, err: true }))}>
+                    <Button size="small" onClick={() => api.downloadProjectFile(courseId, itemId, submissionId, f.id).catch((e: any) => onToast({ msg: errMsg(e), err: true }))}>
                       Скачать
                     </Button>
                   </Stack>
@@ -981,7 +988,7 @@ function ProjectsPanel({ courseId, onToast }: { courseId: number; onToast: (t: T
   const [reviewingId, setReviewingId] = useState<number | null>(null);
 
   useEffect(() => {
-    api.getTree(courseId).then((t) => setItems(collectProjectItems(t))).catch((e) => onToast({ msg: e.message, err: true }));
+    api.getTree(courseId).then((t) => setItems(collectProjectItems(t))).catch((e) => onToast({ msg: errMsg(e), err: true }));
     setItemId('');
     setRows([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -992,7 +999,7 @@ function ProjectsPanel({ courseId, onToast }: { courseId: number; onToast: (t: T
     try {
       setRows(await api.listProjectSubmissions(courseId, id));
     } catch (e: any) {
-      onToast({ msg: e.message, err: true });
+      onToast({ msg: errMsg(e), err: true });
     } finally {
       setLoading(false);
     }
@@ -1003,7 +1010,7 @@ function ProjectsPanel({ courseId, onToast }: { courseId: number; onToast: (t: T
       await api.remindProjectSubmission(courseId, itemId as number, submissionId);
       onToast({ msg: 'Напоминание отправлено' });
     } catch (e: any) {
-      onToast({ msg: e.message, err: true });
+      onToast({ msg: errMsg(e), err: true });
     }
   };
 
@@ -1089,7 +1096,7 @@ function SubmissionsTab({ onToast }: { onToast: (t: Toast) => void }) {
   useEffect(() => {
     api.listCourses()
       .then((cs) => setCourses(cs.filter((c) => c.status === 'published')))
-      .catch((e) => onToast({ msg: e.message, err: true }));
+      .catch((e) => onToast({ msg: errMsg(e), err: true }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1099,7 +1106,7 @@ function SubmissionsTab({ onToast }: { onToast: (t: Toast) => void }) {
     try {
       setSubmissions(await api.listSubmissions(id));
     } catch (e: any) {
-      onToast({ msg: e.message, err: true });
+      onToast({ msg: errMsg(e), err: true });
     } finally {
       setLoading(false);
     }
@@ -1120,7 +1127,7 @@ function SubmissionsTab({ onToast }: { onToast: (t: Toast) => void }) {
       onToast({ msg: `Поставлено в очередь: ${res.requeued}` });
       loadSubmissions(courseId);
     } catch (e: any) {
-      onToast({ msg: e.message, err: true });
+      onToast({ msg: errMsg(e), err: true });
     }
   };
 
@@ -1132,7 +1139,7 @@ function SubmissionsTab({ onToast }: { onToast: (t: Toast) => void }) {
       setGrading(null);
       if (courseId) loadSubmissions(courseId);
     } catch (e: any) {
-      onToast({ msg: e.message, err: true });
+      onToast({ msg: errMsg(e), err: true });
     }
   };
 
@@ -1251,7 +1258,7 @@ function AnalyticsTab({ onToast }: { onToast: (t: Toast) => void }) {
   useEffect(() => {
     api.listCourses()
       .then((cs) => setCourses(cs.filter((c) => c.status === 'published')))
-      .catch((e) => onToast({ msg: e.message, err: true }));
+      .catch((e) => onToast({ msg: errMsg(e), err: true }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1261,7 +1268,7 @@ function AnalyticsTab({ onToast }: { onToast: (t: Toast) => void }) {
     try {
       setData(await api.getAnalytics(id));
     } catch (e: any) {
-      onToast({ msg: e.message, err: true });
+      onToast({ msg: errMsg(e), err: true });
     } finally {
       setLoading(false);
     }
@@ -1356,7 +1363,7 @@ function StatusTab({ onToast }: { onToast: (t: Toast) => void }) {
     setLoading(true);
     api.getSystemStatus()
       .then(setStatus)
-      .catch((e) => onToast({ msg: e.message, err: true }))
+      .catch((e) => onToast({ msg: errMsg(e), err: true }))
       .finally(() => setLoading(false));
   };
 
@@ -1420,7 +1427,7 @@ function UsersPanel({ onToast }: { onToast: (t: Toast) => void }) {
     setLoading(true);
     api.listUsers(q || undefined)
       .then(setUsers)
-      .catch((e) => onToast({ msg: e.message, err: true }))
+      .catch((e) => onToast({ msg: errMsg(e), err: true }))
       .finally(() => setLoading(false));
   };
 
@@ -1432,20 +1439,20 @@ function UsersPanel({ onToast }: { onToast: (t: Toast) => void }) {
         setUsers((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
         onToast({ msg: updated.is_blocked ? 'Аккаунт заблокирован' : 'Аккаунт разблокирован' });
       })
-      .catch((e) => onToast({ msg: e.message, err: true }));
+      .catch((e) => onToast({ msg: errMsg(e), err: true }));
   };
 
   const terminateSessions = (u: CodelabUser) => {
     api.terminateUserSessions(u.id)
       .then(() => onToast({ msg: 'Активные сессии завершены' }))
-      .catch((e) => onToast({ msg: e.message, err: true }));
+      .catch((e) => onToast({ msg: errMsg(e), err: true }));
   };
 
   const openHistory = (u: CodelabUser) => {
     setHistoryFor(u);
     api.getUserLoginHistory(u.id)
       .then(setHistory)
-      .catch((e) => onToast({ msg: e.message, err: true }));
+      .catch((e) => onToast({ msg: errMsg(e), err: true }));
   };
 
   return (

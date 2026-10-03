@@ -10,6 +10,8 @@
 """
 from __future__ import annotations
 
+from html.parser import HTMLParser
+
 import base64
 import io
 import os
@@ -40,16 +42,39 @@ def _extract_pdf(data: bytes) -> str:
         return ""
 
 
-def _strip_html(html: str) -> str:
-    try:
-        from bs4 import BeautifulSoup
+class _HtmlTextExtractor(HTMLParser):
+    """Текст из HTML без содержимого <script>/<style>. Только стандартная библиотека:
+    раньше зависели от bs4, которого нет в зависимостях, и при его отсутствии
+    возвращался сырой HTML вместе со скриптами."""
 
-        soup = BeautifulSoup(html, "html.parser")
-        for tag in soup(["script", "style"]):
-            tag.decompose()
-        return soup.get_text("\n").strip()
-    except Exception:  # noqa: BLE001
-        return html
+    _SKIP_TAGS = frozenset({"script", "style"})
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self._skip_depth = 0
+        self._parts: list[str] = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag in self._SKIP_TAGS:
+            self._skip_depth += 1
+
+    def handle_endtag(self, tag):
+        if tag in self._SKIP_TAGS and self._skip_depth:
+            self._skip_depth -= 1
+
+    def handle_data(self, data):
+        if not self._skip_depth:
+            self._parts.append(data)
+
+    def text(self) -> str:
+        return "\n".join(self._parts).strip()
+
+
+def _strip_html(html: str) -> str:
+    parser = _HtmlTextExtractor()
+    parser.feed(html)
+    parser.close()
+    return parser.text()
 
 
 def _extract_epub(data: bytes) -> str:

@@ -86,6 +86,7 @@ const TrainerLessonsPage: React.FC = () => {
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [cancelSlot, setCancelSlot] = useState<TrainerLessonSlot | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
   const [addStudentToLessonId, setAddStudentToLessonId] = useState('');
   const [allStudents, setAllStudents] = useState<Array<{ id: number; full_name: string }>>([]);
   const [addingToLesson, setAddingToLesson] = useState(false);
@@ -378,6 +379,7 @@ const TrainerLessonsPage: React.FC = () => {
   const openCancelDialog = (e: React.MouseEvent, slot: TrainerLessonSlot) => {
     e.stopPropagation();
     setCancelSlot(slot);
+    setCancelError(null);
     setCancelDialogOpen(true);
   };
 
@@ -386,6 +388,7 @@ const TrainerLessonsPage: React.FC = () => {
     const slotStart = (cancelSlot.start_time || '').toString().slice(0, 5);
     const slotEnd = (cancelSlot.end_time || '').toString().slice(0, 5);
     setCancelling(true);
+    setCancelError(null);
     try {
       await trainerLessonsApi.cancelLesson({
         group_id: cancelSlot.group_id,
@@ -397,7 +400,7 @@ const TrainerLessonsPage: React.FC = () => {
       setCancelSlot(null);
       loadSlots();
     } catch (err: any) {
-      setError(extractApiError(err, 'Не удалось отменить занятие'));
+      setCancelError(extractApiError(err, 'Не удалось отменить занятие'));
     } finally {
       setCancelling(false);
     }
@@ -941,6 +944,7 @@ const TrainerLessonsPage: React.FC = () => {
               Отменить занятие «{cancelSlot.group_name}» на {format(new Date((cancelSlot.lesson_date || viewDate) + 'T12:00:00'), 'd.MM.yyyy')} ({(cancelSlot.start_time || '').toString().slice(0, 5)} – {(cancelSlot.end_time || '').toString().slice(0, 5)})? Слот исчезнет из расписания.
             </Typography>
           )}
+          {cancelError && <Alert severity="error" sx={{ mt: 1.5 }}>{cancelError}</Alert>}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setCancelDialogOpen(false)} disabled={cancelling}>Нет</Button>

@@ -1573,6 +1573,22 @@ async def cancel_lesson(
     group = db.query(Group).filter(Group.id == payload.group_id).first()
     if not group:
         raise HTTPException(status_code=404, detail="Group not found")
+    attendances_to_delete = db.query(LessonAttendance).filter(
+        LessonAttendance.group_id == payload.group_id,
+        LessonAttendance.lesson_date == payload.lesson_date,
+        LessonAttendance.lesson_start_time == start_t,
+        LessonAttendance.lesson_end_time == end_t,
+    ).all()
+    att_ids = [a.id for a in attendances_to_delete]
+    # Проводки по уже отмеченной посещаемости (списание с абонемента) не удаляем молча:
+    # сторно баланса и финансовых операций — решение человека, поэтому отказ до любых изменений.
+    if att_ids and db.query(StudentAccountTransaction.id).filter(
+        StudentAccountTransaction.lesson_attendance_id.in_(att_ids),
+    ).first():
+        raise HTTPException(
+            status_code=409,
+            detail="По этому занятию уже есть списания с абонемента учеников. Отмена невозможна, сначала верните списания вручную.",
+        )
     existing = db.query(LessonCancellation).filter(
         LessonCancellation.group_id == payload.group_id,
         LessonCancellation.lesson_date == payload.lesson_date,
@@ -1586,12 +1602,6 @@ async def cancel_lesson(
             start_time=start_t,
             end_time=end_t,
         ))
-    attendances_to_delete = db.query(LessonAttendance).filter(
-        LessonAttendance.group_id == payload.group_id,
-        LessonAttendance.lesson_date == payload.lesson_date,
-        LessonAttendance.lesson_start_time == start_t,
-        LessonAttendance.lesson_end_time == end_t,
-    ).all()
     cancelled_student_ids = [a.student_id for a in attendances_to_delete if getattr(a, "student_id", None)]
     if not cancelled_student_ids:
         cancel_students_in_group = db.query(GroupStudent).filter(
@@ -1612,7 +1622,6 @@ async def cancel_lesson(
             if getattr(gs, "student_id", None)
             and not _is_student_excluded_from_slot(gs, cancel_schedule_id, cancel_restricted_map)
         ]
-    att_ids = [a.id for a in attendances_to_delete]
     db.query(AbsenceFollowUp).filter(AbsenceFollowUp.lesson_attendance_id.in_(att_ids)).delete(synchronize_session=False)
     for a in attendances_to_delete:
         db.delete(a)

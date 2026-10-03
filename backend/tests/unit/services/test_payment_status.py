@@ -28,6 +28,8 @@ def _make_card(student_id, next_payment_date, archived=False):
     card.next_payment_date = next_payment_date
     card.archived = archived
     card.learning_period_start = None
+    # Сервис пропускает грантовиков; у MagicMock атрибут был бы truthy, поэтому задаём явно.
+    card.on_grant = False
     return card
 
 
@@ -36,6 +38,7 @@ def _make_student(student_id, status=StudentStatus.ACTIVE, full_name="Student"):
     student.id = student_id
     student.status = status
     student.full_name = full_name
+    student.on_grant = False
     return student
 
 
@@ -244,7 +247,7 @@ def test_get_payment_status_summary_no_cards():
 
     summary = get_payment_status_summary(db, today=date(2025, 3, 1))
 
-    assert summary == {"overdue_3_count": 0, "overdue_10_count": 0}
+    assert summary == {"overdue_3_count": 0, "overdue_10_count": 0, "negative_balance_count": 0}
 
 
 @patch("app.services.payment_status._has_payments", return_value=True)
@@ -259,4 +262,4 @@ def test_get_payment_status_summary_archived_students_excluded(mock_pay):
 
     summary = get_payment_status_summary(db, today=today)
 
-    assert summary == {"overdue_3_count": 0, "overdue_10_count": 0}
+    assert summary == {"overdue_3_count": 0, "overdue_10_count": 0, "negative_balance_count": 0}

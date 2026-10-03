@@ -80,7 +80,7 @@ def test_finance_create_article_returns_article(client: TestClient, monkeypatch)
 
     app.dependency_overrides[finance_router.get_db] = lambda: fake_db
     app.dependency_overrides[auth.get_current_active_user] = lambda: fake_user
-    monkeypatch.setattr(finance_router.auth, "has_permission", lambda user, permission: permission == "finance.access")
+    monkeypatch.setattr(finance_router.auth, "has_permission", lambda user, permission: permission in ("finance.access", "finance.manage"))
 
     response = client.post(
         "/api/finance/articles",
@@ -94,9 +94,9 @@ def test_finance_create_article_returns_article(client: TestClient, monkeypatch)
 
     assert response.status_code == 200
     assert fake_db.committed is True
-    assert len(fake_db.added) == 1
-    article = fake_db.added[0]
-    assert isinstance(article, FinanceArticle)
+    # Вместе со статьёй пишется запись журнала действий (log_action).
+    articles = [obj for obj in fake_db.added if isinstance(obj, FinanceArticle)]
+    assert len(articles) == 1
 
     data = response.json()
     assert data["id"] == 1
@@ -113,7 +113,7 @@ def test_finance_create_article_rejects_invalid_direction(client: TestClient, mo
 
     app.dependency_overrides[finance_router.get_db] = lambda: fake_db
     app.dependency_overrides[auth.get_current_active_user] = lambda: fake_user
-    monkeypatch.setattr(finance_router.auth, "has_permission", lambda user, permission: permission == "finance.access")
+    monkeypatch.setattr(finance_router.auth, "has_permission", lambda user, permission: permission in ("finance.access", "finance.manage"))
 
     response = client.post(
         "/api/finance/articles",
@@ -264,6 +264,8 @@ def test_sales_tax_status_returns_template_flags(client: TestClient, monkeypatch
 def test_sales_tax_generate_pdf_uses_fallback_builder(client: TestClient, monkeypatch) -> None:
     fake_user = SimpleNamespace(id=1, role="owner")
     app.dependency_overrides[sales_tax_router.require_sales_admin_owner] = lambda: fake_user
+    # Эндпоинт пишет журнал действий; без подмены БД запись уходит в реальную базу с несуществующим user_id.
+    app.dependency_overrides[finance_router.get_db] = lambda: FakeFinanceDB()
 
     calls = {"fallback": False}
     monkeypatch.setattr(sales_tax_router, "REPORTLAB_AVAILABLE", True)

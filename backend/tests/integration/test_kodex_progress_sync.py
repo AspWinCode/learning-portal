@@ -31,6 +31,13 @@ SECRET = os.getenv("SSO_KODEX_SHARED_SECRET", "test-secret-for-ci")
 
 
 class TestProgressSyncSignature:
+    @pytest.fixture(autouse=True)
+    def _shared_secret(self, monkeypatch):
+        # Секрет читается из окружения при импорте модуля; в тестах задаём тот же, которым подписываем.
+        from app.routers import student_portal
+
+        monkeypatch.setattr(student_portal, "SSO_KODEX_SHARED_SECRET", SECRET)
+
     def test_no_signature_returns_401(self, client):
         body = _body()
         r = client.post(

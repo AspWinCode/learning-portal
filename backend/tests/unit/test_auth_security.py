@@ -1,10 +1,10 @@
-import importlib
 import os
+import subprocess
+import sys
 from datetime import timedelta
 from types import SimpleNamespace
 
 import pytest
-import dotenv
 from jose import jwt
 
 import app.auth as auth
@@ -24,12 +24,21 @@ class FakeRedis:
         return 1 if entry["ttl"] > 0 else 0
 
 
-@pytest.fixture(autouse=True)
-def restore_auth_module(monkeypatch):
-    original_secret = os.environ.get("SECRET_KEY")
-    yield
-    monkeypatch.setenv("SECRET_KEY", original_secret or "x" * 32)
-    importlib.reload(auth)
+def _import_auth_in_subprocess(env_overrides=None, drop=()):
+    """Импорт app.auth в отдельном процессе: перезагрузка модуля в тестах подменяла
+    функции, на которые уже ссылаются роутеры, и ломала авторизацию в других тестах."""
+    env = os.environ.copy()
+    env.update(env_overrides or {})
+    for key in drop:
+        env.pop(key, None)
+    backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    return subprocess.run(
+        [sys.executable, "-c", "import app.auth as a; print(a.SECRET_KEY)"],
+        cwd=backend_dir,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
 
 
 def test_validate_password_strength_rejects_short():
@@ -131,23 +140,22 @@ async def test_get_current_user_rejects_token_without_jti():
     assert exc.value.status_code == 401
 
 
-def test_import_without_secret_key_fails(monkeypatch):
-    monkeypatch.setattr(dotenv, "load_dotenv", lambda *args, **kwargs: False)
-    monkeypatch.delenv("SECRET_KEY", raising=False)
-    with pytest.raises(KeyError):
-        importlib.reload(auth)
+def test_import_without_secret_key_fails():
+    result = _import_auth_in_subprocess(drop=("SECRET_KEY",))
+    assert result.returncode != 0
+    assert "KeyError" in result.stderr
 
 
-def test_import_with_short_secret_key_fails(monkeypatch):
-    monkeypatch.setenv("SECRET_KEY", "short")
-    with pytest.raises(RuntimeError, match="SECRET_KEY must be at least 32 characters"):
-        importlib.reload(auth)
+def test_import_with_short_secret_key_fails():
+    result = _import_auth_in_subprocess({"SECRET_KEY": "short"})
+    assert result.returncode != 0
+    assert "SECRET_KEY must be at least 32 characters" in result.stderr
 
 
-def test_import_with_valid_secret_key_succeeds(monkeypatch):
-    monkeypatch.setenv("SECRET_KEY", "a" * 32)
-    module = importlib.reload(auth)
-    assert module.SECRET_KEY == "a" * 32
+def test_import_with_valid_secret_key_succeeds():
+    result = _import_auth_in_subprocess({"SECRET_KEY": "a" * 32})
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "a" * 32
 
 
 def test_assert_not_guest_raises_403_for_guest():

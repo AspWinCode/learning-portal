@@ -31,6 +31,9 @@ from app.models import (
     GroupStudent,
     LessonAttendance,
     Student,
+    StudentAccount,
+    StudentAccountTransaction,
+    StudentAccountTransactionKind,
     User,
     UserRole,
 )
@@ -238,4 +241,53 @@ def test_cancel_without_absence_creates_no_funnel_rows(client, db_session, seed)
     _cancel(client, seed)
 
     assert _funnel_rows(db_session, seed) == []
+    assert _slot_attendances(db_session, seed) == []
+
+
+def _remove_student(client, seed):
+    resp = client.post(
+        f"{API}/remove-student-from-lesson",
+        json={
+            "group_id": seed["group"].id,
+            "lesson_date": LESSON_DATE.isoformat(),
+            "student_id": seed["student"].id,
+            "start_time": START,
+            "end_time": END,
+        },
+    )
+    assert resp.status_code == 200, resp.text
+
+
+def test_remove_student_keeps_absence_follow_up_detached(client, db_session, seed):
+    absence_id = _absent_and_assign(client, db_session, seed)
+
+    _remove_student(client, seed)
+
+    rows = _funnel_rows(db_session, seed)
+    assert [r.id for r in rows] == [absence_id]
+    assert rows[0].lesson_attendance_id is None
+    assert rows[0].stage == "assigned"
+
+
+def test_cancel_refunds_lesson_deduction_and_detaches_transaction(client, db_session, seed):
+    _mark_absent(client, seed)
+    att = _slot_attendances(db_session, seed)[0]
+    account = StudentAccount(student_id=seed["student"].id, name="Основной", balance=-1000.0)
+    db_session.add(account)
+    db_session.flush()
+    tx = StudentAccountTransaction(
+        account_id=account.id,
+        amount=-1000.0,
+        kind=StudentAccountTransactionKind.LESSON_DEDUCTION,
+        lesson_attendance_id=att.id,
+    )
+    db_session.add(tx)
+    db_session.commit()
+
+    _cancel(client, seed)
+
+    db_session.refresh(account)
+    db_session.refresh(tx)
+    assert account.balance == 0.0
+    assert tx.lesson_attendance_id is None
     assert _slot_attendances(db_session, seed) == []

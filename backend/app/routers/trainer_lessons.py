@@ -628,6 +628,27 @@ def _close_absence_for_group_makeup(
     )
 
 
+def _release_attendance(db: Session, att: LessonAttendance) -> None:
+    """Подготовить посещаемость к удалению: вернуть списание за урок и отвязать связанные записи.
+
+    - Списания за урок (отрицательные) возвращаются на баланс ученика — урока не было,
+      и транзакции больше не ссылаются на удаляемую строку (иначе FK не даст удалить).
+    - Воронка пропусков (AbsenceFollowUp) не удаляется: запись отвязывается и сохраняет стадию."""
+    txs = db.query(StudentAccountTransaction).filter(
+        StudentAccountTransaction.lesson_attendance_id == att.id,
+    ).all()
+    for tx in txs:
+        amount = float(tx.amount or 0.0)
+        if amount < 0:
+            account = db.query(StudentAccount).filter(StudentAccount.id == tx.account_id).first()
+            if account:
+                account.balance -= amount  # amount отрицательный — возвращаем на баланс
+        tx.lesson_attendance_id = None
+    db.query(AbsenceFollowUp).filter(AbsenceFollowUp.lesson_attendance_id == att.id).update(
+        {AbsenceFollowUp.lesson_attendance_id: None}, synchronize_session=False
+    )
+
+
 def _reattach_orphan_absence(db: Session, att: LessonAttendance) -> Optional[AbsenceFollowUp]:
     """Привязать к новой посещаемости пропуск, отвязанный при отмене слота.
 
@@ -1286,19 +1307,7 @@ async def remove_student_from_lesson(
     if not attendances:
         raise HTTPException(status_code=404, detail="Student not found on this lesson")
     for att in attendances:
-        txs = db.query(StudentAccountTransaction).filter(
-            StudentAccountTransaction.lesson_attendance_id == att.id,
-        ).all()
-        for tx in txs:
-            amount = float(tx.amount or 0.0)
-            if amount < 0:
-                account = db.query(StudentAccount).filter(StudentAccount.id == tx.account_id).first()
-                if account:
-                    account.balance -= amount  # amount отрицательный — возвращаем на баланс
-            tx.lesson_attendance_id = None
-        db.query(AbsenceFollowUp).filter(AbsenceFollowUp.lesson_attendance_id == att.id).delete(
-            synchronize_session=False
-        )
+        _release_attendance(db, att)
         db.delete(att)
     db.commit()
     log_action(
@@ -1636,14 +1645,8 @@ async def cancel_lesson(
             if getattr(gs, "student_id", None)
             and not _is_student_excluded_from_slot(gs, cancel_schedule_id, cancel_restricted_map)
         ]
-    att_ids = [a.id for a in attendances_to_delete]
-    # Воронка пропусков не удаляется: запись отвязывается от удаляемой посещаемости
-    # и сохраняет стадию, чтобы пропуск не пропал из sales при отмене слота.
-    if att_ids:
-        db.query(AbsenceFollowUp).filter(AbsenceFollowUp.lesson_attendance_id.in_(att_ids)).update(
-            {AbsenceFollowUp.lesson_attendance_id: None}, synchronize_session=False
-        )
     for a in attendances_to_delete:
+        _release_attendance(db, a)
         db.delete(a)
     _enqueue_lesson_change_notifications(
         db,

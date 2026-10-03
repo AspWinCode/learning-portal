@@ -72,7 +72,7 @@ def _parse_or_400(data: bytes) -> ParsedProgram:
 def _preview_topic(t) -> PreviewTopic:
     return PreviewTopic(
         title=t.title,
-        lessons=[PreviewLesson(title=l.title, theory_md=l.theory_md, homework_md=l.homework_md) for l in t.lessons],
+        lessons=[PreviewLesson(title=lesson.title, theory_md=lesson.theory_md, homework_md=lesson.homework_md) for lesson in t.lessons],
     )
 
 
@@ -363,7 +363,7 @@ def delete_lesson(
     )
     db.delete(lesson)
     db.flush()
-    for i, s in enumerate(l for l in siblings if l.id != lesson_id):
+    for i, s in enumerate(lesson for lesson in siblings if lesson.id != lesson_id):
         s.sort_order = i
     db.commit()
     log_action(db, current_user.id, "delete", "course_lesson", lesson_id, {"course_id": course_id, "title": lesson_title})
@@ -384,7 +384,7 @@ def move_lesson(
         .order_by(CourseLesson.sort_order)
         .all()
     )
-    idx = next((i for i, l in enumerate(lessons) if l.id == lesson_id), None)
+    idx = next((i for i, lesson in enumerate(lessons) if lesson.id == lesson_id), None)
     if idx is None:
         raise HTTPException(status_code=404, detail="Урок не найден")
 
@@ -394,7 +394,7 @@ def move_lesson(
 
     lessons[idx].sort_order, lessons[swap].sort_order = lessons[swap].sort_order, lessons[idx].sort_order
     db.commit()
-    for l in lessons:
-        db.refresh(l)
+    for lesson in lessons:
+        db.refresh(lesson)
     log_action(db, current_user.id, "move", "course_lesson", lesson_id, {"course_id": course_id, "direction": direction})
-    return sorted(lessons, key=lambda l: l.sort_order)
+    return sorted(lessons, key=lambda lesson: lesson.sort_order)

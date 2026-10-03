@@ -411,7 +411,6 @@ async def import_students_from_excel(
     from openpyxl import load_workbook
     from app.models import GroupStudent
     from app.services.parent_invite import create_parent_with_invite
-    from app.utils.phone import normalize_phone
 
     filename = (file.filename or "").lower()
     if not filename.endswith(".xlsx"):

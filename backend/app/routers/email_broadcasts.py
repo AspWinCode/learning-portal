@@ -19,16 +19,15 @@ from app.schemas.email_broadcasts import (
     EmailBroadcastRecipientResponse,
     EmailBroadcastResponse,
     EmailBroadcastUpdate,
-    RetryFailedRequest,
     SendBroadcastRequest,
     TestSendRequest,
 )
-
-_STORAGE_ROOT = Path(os.getenv("DISK_STORAGE_ROOT", "/app/storage/disk")).resolve()
-_MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024  # 25 MB per file
 from app.services.email_broadcast_service import create_recipients, record_click, record_open
 from app.services.email_sender import is_email_configured, send_email_html
 from app.utils.datetime import utcnow
+
+_STORAGE_ROOT = Path(os.getenv("DISK_STORAGE_ROOT", "/app/storage/disk")).resolve()
+_MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024  # 25 MB per file
 
 router = APIRouter()
 

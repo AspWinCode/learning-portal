@@ -75,7 +75,6 @@ async def get_calculations_trainers(
     if not trainers:
         return []
 
-    trainer_ids = {t.id for t in trainers}
     breakdowns = _compute_trainer_breakdowns(db, trainers, period_start, period_end)
 
     bonuses = {

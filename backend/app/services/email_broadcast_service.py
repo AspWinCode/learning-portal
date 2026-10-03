@@ -9,7 +9,6 @@ from typing import List
 
 from sqlalchemy.orm import Session
 
-import os
 from app.models import (
     B2BSchool,
     B2BSchoolInteraction,
@@ -20,11 +19,11 @@ from app.models import (
     EmailBroadcastRecipient,
     SchoolCampaign,
 )
-
-_BROADCAST_STORAGE_ROOT = os.getenv("DISK_STORAGE_ROOT", "/app/storage/disk")
 from app.routers.action_log import log_action
 from app.services.email_sender import is_email_configured, send_email_html
 from app.utils.datetime import utcnow
+
+_BROADCAST_STORAGE_ROOT = os.getenv("DISK_STORAGE_ROOT", "/app/storage/disk")
 
 logger = logging.getLogger(__name__)
 

@@ -105,10 +105,11 @@ const WorkbookList: React.FC<{ onOpen: (w: Workbook) => void }> = ({ onOpen }) =
 
 const WorkbookView: React.FC<{ workbook: Workbook; onBack: () => void }> = ({ workbook, onBack }) => {
   const [sheets, setSheets] = useState<{ id: number; name: string }[]>([]);
+  const [sheetsLoaded, setSheetsLoaded] = useState(false);
   const [activeSheetId, setActiveSheetId] = useState<number | null>(null);
   const [detail, setDetail] = useState<SheetDetail | null>(null);
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   const { presence, connected } = useSmartTableRealtime(activeSheetId, {
     onSheetUpdate: (sheet) => setDetail(sheet),
@@ -118,6 +119,7 @@ const WorkbookView: React.FC<{ workbook: Workbook; onBack: () => void }> = ({ wo
     const list = await smartTablesApi.listSheets(workbook.id);
     setSheets(list.map((s) => ({ id: s.id, name: s.name })));
     if (list.length && activeSheetId === null) setActiveSheetId(list[0].id);
+    setSheetsLoaded(true);
   }, [workbook.id, activeSheetId]);
 
   useEffect(() => { loadSheets(); }, [loadSheets]);
@@ -246,7 +248,13 @@ const WorkbookView: React.FC<{ workbook: Workbook; onBack: () => void }> = ({ wo
 
       {activeSheetId !== null && <AICommandBar sheetId={activeSheetId} onSheetUpdated={setDetail} />}
 
-      {loading || !detail ? (
+      {!sheetsLoaded ? (
+        <CircularProgress />
+      ) : sheets.length === 0 ? (
+        <Typography color="text.secondary">
+          В этой таблице пока нет ни одного листа. Нажмите «Добавить лист» выше, чтобы начать.
+        </Typography>
+      ) : loading || !detail ? (
         <CircularProgress />
       ) : (
         <Grid

@@ -86,6 +86,9 @@ const TrainerLessonsPage: React.FC = () => {
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [cancelSlot, setCancelSlot] = useState<TrainerLessonSlot | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
+  const [restoreSlot, setRestoreSlot] = useState<TrainerLessonSlot | null>(null);
+  const [restoring, setRestoring] = useState(false);
   const [addStudentToLessonId, setAddStudentToLessonId] = useState('');
   const [allStudents, setAllStudents] = useState<Array<{ id: number; full_name: string }>>([]);
   const [addingToLesson, setAddingToLesson] = useState(false);
@@ -403,6 +406,34 @@ const TrainerLessonsPage: React.FC = () => {
     }
   };
 
+  const openRestoreDialog = (e: React.MouseEvent, slot: TrainerLessonSlot) => {
+    e.stopPropagation();
+    setRestoreSlot(slot);
+    setRestoreDialogOpen(true);
+  };
+
+  const handleRestoreLesson = async () => {
+    if (!restoreSlot) return;
+    const slotStart = (restoreSlot.start_time || '').toString().slice(0, 5);
+    const slotEnd = (restoreSlot.end_time || '').toString().slice(0, 5);
+    setRestoring(true);
+    try {
+      await trainerLessonsApi.restoreLesson({
+        group_id: restoreSlot.group_id,
+        lesson_date: restoreSlot.lesson_date || viewDate,
+        start_time: slotStart,
+        end_time: slotEnd,
+      });
+      setRestoreDialogOpen(false);
+      setRestoreSlot(null);
+      loadSlots();
+    } catch (err: any) {
+      setError(extractApiError(err, 'Не удалось восстановить занятие'));
+    } finally {
+      setRestoring(false);
+    }
+  };
+
   const openPopup = (slot: TrainerLessonSlot) => {
     setSelectedSlot(slot);
     setAddStudentToLessonId('');
@@ -423,10 +454,6 @@ const TrainerLessonsPage: React.FC = () => {
     setAbsenceReasonDraft(reasonDraft);
     setAbsenceCommentDraft(commentDraft);
     setPopupOpen(true);
-  };
-
-  const handleCancelledSlotClick = (slot: TrainerLessonSlot) => {
-    openPopup(slot);
   };
 
   useEffect(() => {
@@ -652,6 +679,8 @@ const TrainerLessonsPage: React.FC = () => {
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
             {slots.map((slot) => {
               const isCancelled = !!slot.is_cancelled;
+              // Перенесённый урок (moved_to_date) и чистая отмена различаются: восстанавливать можно только чистую отмену.
+              const isMovedAway = isCancelled && !!slot.moved_to_date;
               const startLabel = (slot.start_time || '').slice(0, 5);
               const endLabel = (slot.end_time || '').slice(0, 5);
               return (
@@ -659,16 +688,14 @@ const TrainerLessonsPage: React.FC = () => {
                   key={`${slot.group_id}-${slot.start_time}-${isCancelled ? 'cancelled' : 'active'}`}
                   variant="outlined"
                   sx={{
-                    cursor: 'pointer',
-                    '&:hover': { bgcolor: 'action.hover' },
+                    cursor: isCancelled ? 'default' : 'pointer',
+                    '&:hover': { bgcolor: isCancelled ? undefined : 'action.hover' },
                     borderLeft: '4px solid',
                     borderLeftColor: isCancelled ? 'grey.400' : 'primary.main',
                     opacity: isCancelled ? 0.7 : 1,
                   }}
                   onClick={() => {
-                    if (isCancelled) {
-                      handleCancelledSlotClick(slot);
-                    } else {
+                    if (!isCancelled) {
                       openPopup(slot);
                     }
                   }}
@@ -692,7 +719,7 @@ const TrainerLessonsPage: React.FC = () => {
                     </Typography>
                     {isCancelled ? (
                       <Typography variant="body2" color="error.main" sx={{ mt: 0.5 }}>
-                        {slot.moved_to_date
+                        {isMovedAway
                           ? `Перенесено на ${format(
                               new Date(slot.moved_to_date + 'T12:00:00'),
                               'd.MM.yyyy'
@@ -700,8 +727,8 @@ const TrainerLessonsPage: React.FC = () => {
                               slot.moved_to_start_time != null
                                 ? ` ${(slot.moved_to_start_time as string).toString().slice(0, 5)}`
                                 : ''
-                            } – нажмите, чтобы перейти`
-                          : 'Занятие отменено / перенесено'}
+                            }`
+                          : 'Занятие отменено'}
                       </Typography>
                     ) : (
                       <>
@@ -736,6 +763,17 @@ const TrainerLessonsPage: React.FC = () => {
                           onClick={(e) => openCancelDialog(e, slot)}
                         >
                           Отменить занятие
+                        </Button>
+                      </Stack>
+                    )}
+                    {isCancelled && !isMovedAway && canMoveLessons && (
+                      <Stack direction="row" spacing={1} sx={{ mt: 1 }} flexWrap="wrap">
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={(e) => openRestoreDialog(e, slot)}
+                        >
+                          Восстановить занятие
                         </Button>
                       </Stack>
                     )}
@@ -946,6 +984,23 @@ const TrainerLessonsPage: React.FC = () => {
           <Button onClick={() => setCancelDialogOpen(false)} disabled={cancelling}>Нет</Button>
           <Button variant="contained" color="error" onClick={handleCancelLesson} disabled={cancelling}>
             {cancelling ? 'Отмена...' : 'Да, отменить'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={restoreDialogOpen} onClose={() => !restoring && setRestoreDialogOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Восстановить занятие</DialogTitle>
+        <DialogContent>
+          {restoreSlot && (
+            <Typography>
+              Вернуть занятие «{restoreSlot.group_name}» на {format(new Date((restoreSlot.lesson_date || viewDate) + 'T12:00:00'), 'd.MM.yyyy')} ({(restoreSlot.start_time || '').toString().slice(0, 5)} – {(restoreSlot.end_time || '').toString().slice(0, 5)}) в расписание? Посещаемость и списания при этом не создаются.
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRestoreDialogOpen(false)} disabled={restoring}>Нет</Button>
+          <Button variant="contained" onClick={handleRestoreLesson} disabled={restoring}>
+            {restoring ? 'Восстановление...' : 'Да, восстановить'}
           </Button>
         </DialogActions>
       </Dialog>

@@ -46,6 +46,7 @@ from app.schemas.groups import (
     LessonAttendanceSave,
     MoveLessonPayload,
     CancelLessonPayload,
+    RestoreLessonPayload,
     CreateLessonSlotPayload,
     AddStudentToLessonPayload,
     RemoveStudentFromLessonPayload,
@@ -1629,6 +1630,184 @@ async def cancel_lesson(
     log_action(
         db, current_user.id, "cancel", "lesson", None,
         {"group_id": payload.group_id, "lesson_date": payload.lesson_date},
+    )
+    return {"ok": True}
+
+
+def _ensure_restored_slot_fits_monthly_limit(
+    db: Session,
+    group: Group,
+    cancellation: LessonCancellation,
+    lesson_date: date,
+    start_t: time,
+    end_t: time,
+) -> None:
+    """Проверка перед восстановлением регулярного слота: после снятия отмены слот должен
+    попасть в первые LESSONS_PER_MONTH занятий месяца, и ни одно уже проведённое занятие
+    не должно выпасть за лимит (иначе в месяце окажется больше 8 видимых/засчитанных занятий)."""
+    year, month = lesson_date.year, lesson_date.month
+    month_start = date(year, month, 1)
+    month_end = date(year, month, calendar.monthrange(year, month)[1])
+    month_cancellations = db.query(LessonCancellation).filter(
+        LessonCancellation.group_id == group.id,
+        LessonCancellation.lesson_date >= month_start,
+        LessonCancellation.lesson_date <= month_end,
+    ).all()
+    remaining_cancellations = [c for c in month_cancellations if c.id != cancellation.id]
+    is_individual = (getattr(group, "lesson_format", None) or "group").strip().lower() == "individual"
+    allowed, _ = _first_n_slots_per_group_in_month(
+        db,
+        [group.id],
+        year,
+        month,
+        remaining_cancellations,
+        individual_group_ids={group.id} if is_individual else set(),
+        group_start_dates={group.id: group.start_date} if group.start_date else {},
+    )
+    if (group.id, lesson_date, start_t, end_t) not in allowed:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Лимит {LESSONS_PER_MONTH} занятий в месяце уже занят: после восстановления это занятие не попадёт в расписание",
+        )
+    month_attendances = db.query(LessonAttendance).filter(
+        LessonAttendance.group_id == group.id,
+        LessonAttendance.lesson_date >= month_start,
+        LessonAttendance.lesson_date <= month_end,
+        LessonAttendance.lesson_start_time.isnot(None),
+        LessonAttendance.lesson_end_time.isnot(None),
+    ).all()
+    displaced_dates = set()
+    for att in month_attendances:
+        key = (group.id, att.lesson_date, att.lesson_start_time, att.lesson_end_time)
+        if key in allowed:
+            continue
+        is_scheduled = db.query(GroupSchedule).filter(
+            GroupSchedule.group_id == group.id,
+            GroupSchedule.day_of_week == att.lesson_date.weekday(),
+            GroupSchedule.start_time == att.lesson_start_time,
+            GroupSchedule.end_time == att.lesson_end_time,
+        ).first() is not None
+        if is_scheduled:
+            displaced_dates.add(att.lesson_date)
+    if displaced_dates:
+        dates_label = ", ".join(sorted(d.strftime("%d.%m") for d in displaced_dates))
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Восстановление вытеснит уже проведённое занятие за лимит {LESSONS_PER_MONTH} в месяце "
+                f"({dates_label}). Восстанавливать нельзя, пока лимит не освободится"
+            ),
+        )
+
+
+def _restore_custom_slot_attendance(
+    db: Session,
+    group: Group,
+    lesson_date: date,
+    start_t: time,
+    end_t: time,
+) -> None:
+    """Дополнительный слот (create-slot) не описан в GroupSchedule, поэтому генератор расписания
+    его не вернёт — создаём запись посещаемости так же, как create_lesson_slot. Без дублей."""
+    slot_exists = db.query(LessonAttendance).filter(
+        LessonAttendance.group_id == group.id,
+        LessonAttendance.lesson_date == lesson_date,
+        LessonAttendance.lesson_start_time == start_t,
+        LessonAttendance.lesson_end_time == end_t,
+    ).first()
+    if slot_exists:
+        return
+    # Ограничение БД: одна запись на (группа, дата, ученик) — второго урока в тот же день быть не может.
+    existing_for_day = db.query(LessonAttendance).filter(
+        LessonAttendance.group_id == group.id,
+        LessonAttendance.lesson_date == lesson_date,
+    ).first()
+    if existing_for_day:
+        raise HTTPException(
+            status_code=409,
+            detail="На эту дату у группы уже есть урок; восстановить второй слот в тот же день нельзя",
+        )
+    first_student = db.query(GroupStudent).filter(
+        GroupStudent.group_id == group.id,
+        GroupStudent.left_at.is_(None),
+    ).first()
+    if not first_student or not first_student.student_id:
+        raise HTTPException(status_code=400, detail="Group has no students to attach lesson to")
+    slot_trainer_override = (
+        db.query(LessonTrainerOverride)
+        .filter(
+            LessonTrainerOverride.group_id == group.id,
+            LessonTrainerOverride.lesson_date == lesson_date,
+            LessonTrainerOverride.start_time == start_t,
+            LessonTrainerOverride.end_time == end_t,
+        )
+        .first()
+    )
+    effective_trainer_id = slot_trainer_override.trainer_id if slot_trainer_override else group.trainer_id
+    db.add(LessonAttendance(
+        group_id=group.id,
+        lesson_date=lesson_date,
+        student_id=first_student.student_id,
+        attended=True,
+        late=False,
+        lesson_start_time=start_t,
+        lesson_end_time=end_t,
+        trainer_id=effective_trainer_id,
+    ))
+
+
+@router.post("/restore")
+async def restore_lesson(
+    payload: RestoreLessonPayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """Восстановить занятие, отменённое через /cancel. Перенесённое занятие (moved_to_date) так не восстанавливается.
+
+    Регулярный слот: удаляется только LessonCancellation — генератор расписания (get_lessons_for_date)
+    сам вернёт слот с учётом GroupStudentSchedule, training_start_date, членства и LessonTrainerOverride.
+    Посещаемость и списания не создаются: списание происходит только при сохранении посещаемости.
+    """
+    _ensure_lessons_schedule_manage(current_user)
+    try:
+        start_t = datetime.strptime(payload.start_time.strip(), "%H:%M").time()
+        end_t = datetime.strptime(payload.end_time.strip(), "%H:%M").time()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid time format; use HH:MM")
+    group = db.query(Group).filter(Group.id == payload.group_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    cancellation = db.query(LessonCancellation).filter(
+        LessonCancellation.group_id == payload.group_id,
+        LessonCancellation.lesson_date == payload.lesson_date,
+        LessonCancellation.start_time == start_t,
+        LessonCancellation.end_time == end_t,
+    ).first()
+    if not cancellation:
+        raise HTTPException(status_code=404, detail="Отмена этого занятия не найдена (возможно, оно уже восстановлено)")
+    if cancellation.moved_to_date is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Занятие перенесено на {cancellation.moved_to_date.strftime('%d.%m.%Y')}: "
+                "восстановление обычной отмены для перенесённого занятия недоступно"
+            ),
+        )
+    schedule = db.query(GroupSchedule).filter(
+        GroupSchedule.group_id == payload.group_id,
+        GroupSchedule.day_of_week == payload.lesson_date.weekday(),
+        GroupSchedule.start_time == start_t,
+        GroupSchedule.end_time == end_t,
+    ).first()
+    if schedule is None:
+        _restore_custom_slot_attendance(db, group, payload.lesson_date, start_t, end_t)
+    else:
+        _ensure_restored_slot_fits_monthly_limit(db, group, cancellation, payload.lesson_date, start_t, end_t)
+    db.delete(cancellation)
+    db.commit()
+    log_action(
+        db, current_user.id, "restore", "lesson", None,
+        {"group_id": payload.group_id, "lesson_date": payload.lesson_date, "custom_slot": schedule is None},
     )
     return {"ok": True}
 

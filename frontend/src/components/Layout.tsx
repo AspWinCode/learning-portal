@@ -70,6 +70,7 @@ import {
   DesktopWindows,
   FlightTakeoff,
   ErrorOutline,
+  TableChart,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { salesApi, settingsApi } from '../services/api';
@@ -95,7 +96,7 @@ const NAV_GROUPS: Array<{ id: string; label: string; paths: Set<string> }> = [
   { id: 'education', label: '🎓 Обучение', paths: new Set(['/trainer-cockpit', '/students', '/groups', '/lessons', '/programs', '/grades', '/characteristics', '/trainer-grades', '/trainers', '/methodists']) },
   { id: 'ops', label: '📋 Учебные операции', paths: new Set(['/operations/absences', '/operations/program-makeup', '/operations/instructions', '/operations/manual-lessons', '/projects']) },
   { id: 'finance', label: '💰 Финансы', paths: new Set(['/finance/overview', '/abonements', '/finance/payments', '/calculations', '/finance/tax-deduction', '/travel']) },
-  { id: 'workspace', label: '✅ Задачи и проекты', paths: new Set(['/tasks', '/owner-workspace/projects', '/owner-workspace/links', '/disk', '/passwords', '/transcription', '/notes', '/agile']) },
+  { id: 'workspace', label: '✅ Задачи и проекты', paths: new Set(['/tasks', '/owner-workspace/projects', '/owner-workspace/links', '/disk', '/passwords', '/transcription', '/notes', '/agile', '/smart-tables']) },
   { id: 'b2b', label: '🤝 Контрагенты и B2B', paths: new Set(['/owner-workspace/counterparties', '/b2b-schools']) },
   { id: 'system', label: '⚙️ Администрирование', paths: new Set(['/admin/settings', '/settings/communications', '/roles', '/reports']) },
 ];
@@ -503,6 +504,7 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
       items.push({ text: 'Таск трекер', icon: <Assignment />, path: '/owner-workspace/projects' });
       items.push({ text: 'Полезные ссылки', icon: <Link />, path: '/owner-workspace/links' });
       items.push({ text: 'Диск', icon: <Folder />, path: '/disk' });
+      items.push({ text: 'Умные таблицы', icon: <TableChart />, path: '/smart-tables' });
       if (role === 'owner') items.push({ text: 'Транскрибация', icon: <Mic />, path: '/transcription' });
       if (canAccessAcademyAi) items.push({ text: 'ИИ-консультант', icon: <AutoAwesome />, path: '/academy-ai' });
       if (canAccessPasswords) items.push({ text: 'Пароли', icon: <Lock />, path: '/passwords' });

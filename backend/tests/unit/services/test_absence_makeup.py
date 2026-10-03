@@ -30,8 +30,9 @@ def test_assign_makeup_group_not_found():
         assign_makeup_for_absence(db, 1, makeup_group_id=999, makeup_lesson_date=date(2025, 2, 1))
 
 
+@patch("app.services.absence_makeup._place_student_on_makeup_lesson")
 @patch("app.services.absence_link_tasks.create_link_task_on_assign")
-def test_assign_makeup_success(mock_create_link):
+def test_assign_makeup_success(mock_create_link, mock_place):
     """Успех: absence обновлён, commit и refresh вызваны."""
     db = MagicMock()
     mock_absence = MagicMock()
@@ -39,6 +40,7 @@ def test_assign_makeup_success(mock_create_link):
     mock_absence.student_id = 10
     mock_group = MagicMock()
     mock_group.id = 2
+    # Размещение ученика на отработку проверяется отдельно, здесь только запросы absence и group.
     db.query.return_value.filter.return_value.first.side_effect = [mock_absence, mock_group]
 
     result = assign_makeup_for_absence(

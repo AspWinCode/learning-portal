@@ -915,6 +915,22 @@ async def save_attendance(
         start_t = time(0, 0)
     if end_t is None:
         end_t = time(0, 0)
+
+    # Отменённый слот (обычная отмена, без переноса) не должен принимать посещаемость:
+    # иначе списание пройдёт, а слот в расписании не виден. Перенос (moved_to_date) не блокируем.
+    cancelled_slot = db.query(LessonCancellation).filter(
+        LessonCancellation.group_id == payload.group_id,
+        LessonCancellation.lesson_date == payload.lesson_date,
+        LessonCancellation.start_time == start_t,
+        LessonCancellation.end_time == end_t,
+        LessonCancellation.moved_to_date.is_(None),
+    ).first()
+    if cancelled_slot:
+        raise HTTPException(
+            status_code=409,
+            detail="Занятие отменено: отметить посещаемость нельзя. Сначала восстановите занятие.",
+        )
+
     new_absence_notifications: List[AbsenceFollowUp] = []
 
     # Фактический тренер для этого слота на момент сохранения посещаемости.

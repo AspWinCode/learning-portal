@@ -8,7 +8,7 @@
 в конце (без фикстуры транзакции — соответствует остальным тестам пакета).
 """
 import uuid
-from datetime import date, time
+from datetime import date
 
 import pytest
 

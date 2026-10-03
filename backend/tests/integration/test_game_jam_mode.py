@@ -12,13 +12,10 @@
 8. Список школ джема возвращает stage из внутреннего канбана
 """
 import pytest
-import sqlalchemy as sa
 from fastapi.testclient import TestClient
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
 
 from app import auth
-from app.database import Base, get_db
+from app.database import get_db
 from app.main import app
 from app.models import B2BSchool, User
 
@@ -28,20 +25,8 @@ from app.models import B2BSchool, User
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def db_session():
-    engine = sa.create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine, autoflush=False, autocommit=False)
-    session = Session()
-    try:
-        yield session
-    finally:
-        session.close()
-        engine.dispose()
+def db_session(pg_db_session):
+    yield pg_db_session
 
 
 @pytest.fixture

@@ -11,32 +11,17 @@
 
 Использует in-memory SQLite и реальную логику роутера (не моки).
 """
-import sqlalchemy as sa
 from fastapi.testclient import TestClient
-from sqlalchemy.pool import StaticPool
-from sqlalchemy.orm import sessionmaker
 import pytest
 
 from app import auth
-from app.database import Base, get_db
+from app.database import get_db
 from app.main import app
 
 
 @pytest.fixture
-def db_session():
-    engine = sa.create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    Base.metadata.create_all(engine)
-    TestingSession = sessionmaker(bind=engine, autoflush=False, autocommit=False)
-    session = TestingSession()
-    try:
-        yield session
-    finally:
-        session.close()
-        engine.dispose()
+def db_session(pg_db_session):
+    yield pg_db_session
 
 
 @pytest.fixture

@@ -43,3 +43,28 @@ def auth_headers(client):
     data = response.json()
     token = data.get("access_token")
     return {"Authorization": f"Bearer {token}"} if token else {}
+
+
+@pytest.fixture
+def pg_db_session():
+    """SQLAlchemy-сессия к реальной PostgreSQL (DATABASE_URL) внутри откатываемой транзакции.
+
+    Модели используют ARRAY/JSONB, которые SQLite не поддерживает, поэтому in-memory SQLite
+    для интеграционных тестов не подходит. Commit'ы тестов уходят в SAVEPOINT, а в конце
+    внешняя транзакция откатывается — данные в БД не остаются."""
+    if not _is_db_configured():
+        pytest.skip("Integration tests require a configured DATABASE_URL")
+    import sqlalchemy as sa
+    from sqlalchemy.orm import Session
+
+    engine = sa.create_engine(os.environ["DATABASE_URL"])
+    connection = engine.connect()
+    outer = connection.begin()
+    session = Session(bind=connection, join_transaction_mode="create_savepoint")
+    try:
+        yield session
+    finally:
+        session.close()
+        outer.rollback()
+        connection.close()
+        engine.dispose()

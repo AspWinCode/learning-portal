@@ -39,7 +39,8 @@ def test_create_student_account_success():
     db = MagicMock()
     mock_student = MagicMock()
     mock_student.id = 1
-    db.query.return_value.filter.return_value.first.return_value = mock_student
+    # 1-й запрос — ученик, 2-й — проверка на уже существующий счёт (его нет).
+    db.query.return_value.filter.return_value.first.side_effect = [mock_student, None]
 
     result = create_student_account(db, 1, "Основной")
 
@@ -70,7 +71,10 @@ def test_ensure_default_student_account_creates_missing_account():
     student_query = MagicMock()
     account_query.filter.return_value.order_by.return_value.first.return_value = None
     student_query.filter.return_value.first.return_value = MagicMock(spec=Student)
-    db.query.side_effect = [account_query, student_query]
+    # Порядок запросов: поиск счёта по умолчанию, ученик, проверка дубля при создании.
+    existing_query = MagicMock()
+    existing_query.filter.return_value.first.return_value = None
+    db.query.side_effect = [account_query, student_query, existing_query]
 
     result = ensure_default_student_account(db, 1)
 

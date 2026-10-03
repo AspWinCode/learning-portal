@@ -22,6 +22,7 @@ def _query_mock(result):
 @pytest.mark.asyncio
 async def test_delete_bank_finance_transaction_marks_bank_transaction_ignored(monkeypatch):
     monkeypatch.setattr(finance, "_require_finance_access", lambda user: None)
+    monkeypatch.setattr(finance, "_require_finance_manage", lambda user: None)
 
     tx = MagicMock(spec=FinanceTransaction)
     tx.id = 10
@@ -56,6 +57,7 @@ async def test_apply_finance_transaction_to_student_syncs_bank_transaction(monke
     попробует зачислить ту же операцию повторно другому ученику."""
     monkeypatch.setattr(finance, "_require_finance_access", lambda user: None)
     monkeypatch.setattr(finance, "_student_name_map", lambda db, ids: {})
+    monkeypatch.setattr(finance, "_require_finance_manage", lambda user: None)
 
     tx = MagicMock(spec=FinanceTransaction)
     tx.id = 10
@@ -84,11 +86,11 @@ async def test_apply_finance_transaction_to_student_syncs_bank_transaction(monke
 
     student_account = MagicMock()
     student_account.id = 77
-    payment_result = AddPaymentResult(account=student_account)
+    payment_result = AddPaymentResult(account=student_account, transaction=MagicMock(id=99))
 
     monkeypatch.setattr(
         "app.services.student_account_payment.add_payment_to_student_account",
-        lambda db, student_id, amount, note, pay_date: payment_result,
+        lambda db, student_id, amount, note, pay_date, **kwargs: payment_result,
     )
 
     db = MagicMock()

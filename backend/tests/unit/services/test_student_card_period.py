@@ -106,6 +106,8 @@ def test_set_card_from_training_start_default_30_days():
     card = _make_card()
     db.query.return_value.filter.return_value.first.return_value = card
     start_date = date(2025, 3, 1)
+    # Первый урок ученика: запрос min(lesson_date) пустой.
+    db.query.return_value.filter.return_value.scalar.return_value = None
 
     set_card_payment_dates_from_training_start(db, student_id=1, start_date=start_date)
 
@@ -119,6 +121,8 @@ def test_set_card_from_training_start_with_abonement():
     card = _make_card(abonement_id=2, lessons_count=12)
     db.query.return_value.filter.return_value.first.return_value = card
     start_date = date(2025, 3, 1)
+    # Первый урок ученика: запрос min(lesson_date) пустой.
+    db.query.return_value.filter.return_value.scalar.return_value = None
 
     set_card_payment_dates_from_training_start(db, student_id=1, start_date=start_date)
 
@@ -131,6 +135,8 @@ def test_set_card_from_training_start_min_1_day():
     card = _make_card(abonement_id=3, lessons_count=1)
     db.query.return_value.filter.return_value.first.return_value = card
     start_date = date(2025, 3, 1)
+    # Первый урок ученика: запрос min(lesson_date) пустой.
+    db.query.return_value.filter.return_value.scalar.return_value = None
 
     set_card_payment_dates_from_training_start(db, student_id=1, start_date=start_date)
 

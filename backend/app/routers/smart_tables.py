@@ -7,7 +7,7 @@ app/services/smart_tables/executor.py и docs/smart-tables-architecture.md.
 """
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy.orm import Session, joinedload
 
@@ -22,14 +22,15 @@ from app.models import (
     User,
     UserRole,
 )
+from app.rate_limit import limiter
 from app.schemas.smart_tables import (
-    ColumnOut,
+    AiCommandRequest,
+    AiCommandResponse,
     MemberAdd,
     MemberResponse,
     OperationBatch,
     OperationLogEntry,
     OperationResult,
-    RowOut,
     SheetCreate,
     SheetDetail,
     SheetSummary,
@@ -37,8 +38,10 @@ from app.schemas.smart_tables import (
     WorkbookResponse,
     WorkbookUpdate,
 )
+from app.services.smart_tables.ai.service import AiCommandError, run_ai_command
 from app.services.smart_tables.executor import OperationError, OperationExecutor
 from app.services.smart_tables.import_export import ImportError_, export_csv, export_xlsx, import_sheet, parse_upload
+from app.services.smart_tables.serializers import sheet_detail
 
 router = APIRouter()
 
@@ -87,23 +90,7 @@ def _get_sheet_or_404(db: Session, sheet_id: int) -> SmartTableSheet:
 
 # ── serialization ───────────────────────────────────────────────
 
-def _sheet_detail(sheet: SmartTableSheet) -> SheetDetail:
-    columns = sorted(sheet.columns_, key=lambda c: c.position)
-    rows = sorted(sheet.rows, key=lambda r: r.position)
-    return SheetDetail(
-        sheet=SheetSummary.model_validate(sheet),
-        columns=[ColumnOut.model_validate(c) for c in columns],
-        rows=[
-            RowOut(
-                id=r.id,
-                sheet_id=r.sheet_id,
-                position=r.position,
-                height=r.height,
-                cells=r.cells_snapshot or {},
-            )
-            for r in rows
-        ],
-    )
+_sheet_detail = sheet_detail  # алиас: раньше была локальная функция, теперь в serializers.py
 
 
 # ── workbooks ───────────────────────────────────────────────────
@@ -428,3 +415,32 @@ async def list_operations(
         .all()
     )
     return [OperationLogEntry.model_validate(e) for e in entries]
+
+
+# ── AI (Phase 5) ────────────────────────────────────────────────
+
+@router.post("/sheets/{sheet_id}/ai/command", response_model=AiCommandResponse)
+@limiter.limit("15/minute")
+async def ai_command(
+    request: Request,
+    sheet_id: int,
+    body: AiCommandRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """Естественно-языковая команда над листом. "Безопасные" действия (добавить
+    колонку, подсветить, отсортировать, условное форматирование) применяются
+    сразу; удаление строк — только превью (см. services/smart_tables/ai/service.py),
+    применяет его обычный POST /sheets/{id}/operations."""
+    sheet = _get_sheet_or_404(db, sheet_id)
+    workbook = _get_workbook_or_404(db, sheet.workbook_id)
+    _require_role(db, current_user, workbook, min_role="editor")
+
+    try:
+        return await run_ai_command(db, sheet, current_user, body.prompt)
+    except AiCommandError as exc:
+        db.rollback()
+        raise HTTPException(status_code=502, detail=str(exc))
+    except OperationError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc))

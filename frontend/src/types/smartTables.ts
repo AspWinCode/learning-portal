@@ -51,7 +51,8 @@ export interface CellFormatting {
   number_format?: string | null;
 }
 
-export type ConditionOperator = 'less_than' | 'greater_than' | 'equals' | 'contains';
+export type ConditionOperator =
+  | 'less_than' | 'greater_than' | 'equals' | 'contains' | 'is_empty' | 'is_not_empty';
 
 export interface ConditionalFormatRule {
   operator: ConditionOperator;
@@ -121,4 +122,28 @@ export interface OperationLogEntry {
   user_id: number;
   operation: Record<string, unknown>;
   created_at: string;
+}
+
+// ── AI (Phase 5) ────────────────────────────────────────────────
+// AI не имеет отдельного write-пути: "безопасные" действия executor применяет
+// сразу на сервере (видно в applied[]); деструктивные — только превью (pending),
+// применяет их тот же applyOperations(), что и обычный ввод пользователя.
+
+export interface AiAppliedSummary {
+  action: string;
+  description: string;
+}
+
+export interface AiPendingAction {
+  description: string;
+  ops: SpreadsheetOperation[];
+  affected_rows: number;
+}
+
+export interface AiCommandResponse {
+  mode: 'answer' | 'actions';
+  answer?: string | null;
+  applied: AiAppliedSummary[];
+  pending?: AiPendingAction | null;
+  sheet: SheetDetail;
 }

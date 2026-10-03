@@ -30,7 +30,7 @@ class FormulaErrorOut(BaseModel):
 # импорте boolean-колонки — '{"value": 1.0}' вместо true).
 CellValue = Union[bool, float, str, FormulaErrorOut, None]
 
-ConditionOperator = Literal["less_than", "greater_than", "equals", "contains"]
+ConditionOperator = Literal["less_than", "greater_than", "equals", "contains", "is_empty", "is_not_empty"]
 
 TextAlign = Literal["left", "center", "right"]
 
@@ -50,7 +50,7 @@ class CellFormatting(BaseModel):
 
 class ConditionalFormatRule(BaseModel):
     operator: ConditionOperator
-    value: Union[str, float]
+    value: Union[str, float] = ""  # не нужно для is_empty/is_not_empty
     bg_color: Optional[str] = None
     text_color: Optional[str] = None
     bold: Optional[bool] = None
@@ -249,3 +249,85 @@ class OperationLogEntry(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# ── AI (Phase 5) ───────────────────────────────────────────────
+# AI не имеет отдельного write-пути: "безопасные" действия (добавить
+# колонку, подсветить строки, отсортировать) executor применяет сразу
+# тем же OperationExecutor, что и обычный ввод пользователя — так же
+# логируется и так же отменяется через undo. Деструктивное действие
+# (delete_rows_where) НЕ применяется сервером — только резолвится в
+# конкретные SpreadsheetOperation и возвращается клиенту для preview;
+# применяет его тот же POST /sheets/{id}/operations, что и обычные
+# правки (см. app/services/smart_tables/ai/service.py).
+
+class AiCommandRequest(BaseModel):
+    prompt: str = Field(..., min_length=1, max_length=2000)
+
+
+class AiAddColumn(BaseModel):
+    action: Literal["add_column"] = "add_column"
+    name: str
+    column_type: ColumnType = "text"
+    # формула для КАЖДОЙ строки, где {row} — номер строки (1-based), буквы
+    # колонок — A1-нотация текущего листа, напр. "=(D{row}-E{row})/D{row}"
+    formula_template: Optional[str] = None
+
+
+class AiHighlightRowsWhere(BaseModel):
+    action: Literal["highlight_rows_where"] = "highlight_rows_where"
+    column_id: int
+    operator: ConditionOperator
+    value: Union[str, float] = ""
+    bg_color: str = "#ffeeee"
+
+
+class AiDeleteRowsWhere(BaseModel):
+    action: Literal["delete_rows_where"] = "delete_rows_where"
+    column_id: int
+    operator: ConditionOperator
+    value: Union[str, float] = ""
+
+
+class AiSetConditionalFormat(BaseModel):
+    action: Literal["set_conditional_format"] = "set_conditional_format"
+    column_id: int
+    rules: List[ConditionalFormatRule] = Field(default_factory=list, max_length=20)
+
+
+class AiSortRows(BaseModel):
+    action: Literal["sort_rows"] = "sort_rows"
+    column_id: int
+    direction: Literal["asc", "desc"] = "asc"
+
+
+AiAction = Annotated[
+    Union[AiAddColumn, AiHighlightRowsWhere, AiDeleteRowsWhere, AiSetConditionalFormat, AiSortRows],
+    Field(discriminator="action"),
+]
+
+
+class AiResponseModel(BaseModel):
+    """Ответ LLM, провалидированный в JSON-режиме (app/services/ai_gateway.py)."""
+    mode: Literal["answer", "actions"]
+    answer: Optional[str] = None
+    actions: List[AiAction] = Field(default_factory=list)
+
+
+class AiAppliedSummary(BaseModel):
+    action: str
+    description: str
+
+
+class AiPendingAction(BaseModel):
+    description: str
+    ops: List[SpreadsheetOperation]
+    affected_rows: int
+
+
+class AiCommandResponse(BaseModel):
+    mode: Literal["answer", "actions"]
+    answer: Optional[str] = None
+    applied: List[AiAppliedSummary] = Field(default_factory=list)
+    pending: Optional[AiPendingAction] = None
+    sheet: SheetDetail

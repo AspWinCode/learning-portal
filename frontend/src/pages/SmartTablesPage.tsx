@@ -11,6 +11,7 @@ import UploadFileIcon from '@mui/icons-material/UploadFile';
 import DownloadIcon from '@mui/icons-material/Download';
 import Layout from '../components/Layout';
 import Grid from '../components/smartTables/Grid';
+import AICommandBar from '../components/smartTables/AICommandBar';
 import { smartTablesApi } from '../services/api/smartTables';
 import type { SheetDetail, Workbook } from '../types/smartTables';
 
@@ -226,6 +227,8 @@ const WorkbookView: React.FC<{ workbook: Workbook; onBack: () => void }> = ({ wo
       </Box>
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+
+      {activeSheetId !== null && <AICommandBar sheetId={activeSheetId} onSheetUpdated={setDetail} />}
 
       {loading || !detail ? (
         <CircularProgress />

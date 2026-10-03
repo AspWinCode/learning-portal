@@ -281,3 +281,13 @@ def col_letters_to_index(letters: str) -> int:
     for ch in letters.upper():
         n = n * 26 + (ord(ch) - ord("A") + 1)
     return n - 1
+
+
+def index_to_col_letters(index: int) -> str:
+    """Обратное к col_letters_to_index: 0 -> 'A', 25 -> 'Z', 26 -> 'AA', ..."""
+    n = index + 1
+    letters = ""
+    while n > 0:
+        n, rem = divmod(n - 1, 26)
+        letters = chr(ord("A") + rem) + letters
+    return letters

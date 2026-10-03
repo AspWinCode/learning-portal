@@ -12,8 +12,9 @@
 **Phase 3 — формулы** (собственный парсер, dependency graph, recalculation, SUM/AVERAGE/MIN/MAX/
 COUNT/COUNTA/IF/AND/OR/ROUND/CONCAT/SUMIF/COUNTIF/VLOOKUP/XLOOKUP, относительные/абсолютные
 ссылки, межлистовые ссылки на чтение, обнаружение циклических ссылок) и
-**Phase 4 — import/export** (CSV/XLSX, автоопределение типов колонок при импорте).
-AI, realtime — спроектированы, но не реализованы.
+**Phase 4 — import/export** (CSV/XLSX, автоопределение типов колонок при импорте) и
+**Phase 5 — AI-слой** (естественно-языковые команды через существующий `app/services/ai_gateway.py`,
+без отдельного write-пути у AI — см. раздел H ниже). Realtime — спроектирован, но не реализован.
 
 ---
 
@@ -289,45 +290,63 @@ SmartTablesPage
   но источник истины — серверный `operation_log`; при расхождении (конфликт от другого пользователя)
   клиентский стек инвалидируется.
 
-## H. AI Architecture (Phase 5, спроектировано)
+## H. AI Architecture (реализовано, Phase 5)
 
-AI-слой — отдельный модуль (`services/smart_tables/ai/`), не имеющий прямого доступа к БД. Он:
+Отличие от первоначального плана: в репозитории уже была общая AI-инфраструктура
+(`app/services/ai_gateway.py` — failover-цепочка провайдеров tunnel/ranvik/claude, используется
+`academy_ai` и другими модулями) без нативного LLM tool-calling (только текст + `json_mode`). Вместо
+придумывания отдельного tool-calling слоя AI-команды Smart Tables **переиспользуют этот гейтвей**:
+модель получает system-промпт с JSON-контрактом (см. `AiResponseModel`/`AiAction` в
+`schemas/smart_tables.py`) и обязана вернуть один JSON-объект; Pydantic validates его так же строго,
+как настоящий tool-calling schema, просто на стороне ответа, а не вызова.
 
-1. строит **минимальный контекст**: `get_sheet_schema` (имена/типы колонок) + до N образцовых строк
-   (не весь workbook) — см. ниже;
-2. вызывает LLM с tool-calling, где каждый инструмент — Pydantic-модель с строгой JSON Schema;
-3. получает список `SpreadsheetOperation` (не свободный текст, не SQL);
-4. прогоняет их через **тот же** `OperationExecutor.validate()` + `preview()`, что и ручной ввод;
-5. для деструктивных операций (`delete_row`, `clear_range` на >10 ячеек) возвращает `preview`
-   (`{ affected_count, sample_before, sample_after }`) и требует явного `apply`.
+AI-слой (`app/services/smart_tables/ai/`) не имеет доступа к DB session напрямую из промпта и не может
+вызвать ничего, кроме заранее перечисленных действий:
 
-```python
-# Пример Pydantic tool-схемы (зеркало Zod-примера из ТЗ)
-class SetFormulaTool(BaseModel):
-    """Записать формулу в ячейку или диапазон."""
-    range: str = Field(..., description="A1-диапазон, напр. 'F2' или 'F2:F100'")
-    formula: str = Field(..., description="Формула в стиле Excel, напр. '=(D2-E2)/D2'")
+1. `context_builder.py` строит **минимальный контекст**: полная схема колонок (`id`, `letter` в
+   A1-нотации, `name`, `type`) + до 50 первых строк листа (упрощённая эвристика вместо
+   top-50+random-50 из исходного плана — для MVP с модеста-размера листами достаточно; пагинация
+   контекста для по-настоящему больших листов — TODO);
+2. `service.py` вызывает `ai_gateway.complete_text(feature="smart_tables_ai", json_mode=True, ...)`
+   с этим контекстом и командой пользователя;
+3. ответ валидируется в `AiResponseModel` (`mode: "answer" | "actions"`, discriminated union `AiAction`
+   по полю `action`) — невалидный JSON или неизвестное действие даёт ошибку, а не тихий сбой;
+4. **"безопасные" действия** (`add_column`, `highlight_rows_where`, `set_conditional_format`,
+   `sort_rows`) применяются сразу тем же `OperationExecutor`, что и ручной ввод — то же
+   validate/permissions/undo/audit-log;
+5. **деструктивное** действие (`delete_rows_where`) НЕ применяется сервером: резолвится в конкретный
+   список `SpreadsheetOperation` (через совпадение строк по условию) и возвращается клиенту как
+   `pending` — применяет его тот же `POST /sheets/{id}/operations`, что и обычная правка. AI физически
+   не имеет отдельного write-пути (раздел L).
 
-class ConditionalFormatTool(BaseModel):
-    range: str
-    operator: Literal["less_than", "greater_than", "equals", "contains"]
-    value: str | float
-    style: CellFormatting
-```
+Действия (`AiAction`, `schemas/smart_tables.py`) — уже реализованное подмножество исходного списка
+tools, ориентированное на примеры из ТЗ, которые реально решаемы без текстовых функций (SPLIT/TRIM и
+т.п. формульный движок Phase 3 не поддерживает — см. ограничения ниже):
 
-Инструменты AI (каждый — тонкая обёртка над операцией из раздела E, с собственной input schema,
-валидацией и undo "бесплатно" через OperationExecutor): `read_range`, `get_sheet_schema`, `get_columns`,
-`set_cell`, `set_range`, `insert_row`, `insert_column`, `delete_row`, `delete_column`, `set_formula`,
-`sort_range`, `filter_range`, `format_range`, `conditional_format`, `create_sheet`, `rename_sheet`.
-AI не имеет инструмента для произвольного SQL/HTTP — технически невозможно вызвать ничего, кроме этого
-списка (раздел L).
+- `add_column` — вставляет колонку, опционально с `formula_template` (Excel-формула с буквами колонок
+  и литеральным `{row}` вместо номера строки; подставляется и резолвится для каждой существующей
+  строки через тот же формульный движок, что и ручной ввод формул);
+- `highlight_rows_where` / `delete_rows_where` — условие (`less_than|greater_than|equals|contains|
+  is_empty|is_not_empty`) по значению колонки, резолвится в конкретные `row_id`;
+- `set_conditional_format`, `sort_rows` — прямой проброс в существующие Phase 2 операции.
 
-**Минимальный контекст для AI** — эвристика: `get_sheet_schema()` всегда полностью (колонки дёшевы по
-объёму), плюс для данных — top-50 строк + случайная выборка 50 строк (для оценки разнообразия значений),
-а не весь sheet. Если команда явно ссылается на диапазон (`"посчитай для F2:F100"`), догружается именно он.
-Это держит промпт в разумных пределах даже для 10k строк.
+`read_range`/`get_sheet_schema`/`get_columns`/`filter_range`/`create_sheet`/`rename_sheet` из
+исходного списка инструментов не реализованы как отдельные AI-действия: schema уже есть в каждом
+запросе (`get_sheet_schema`/`get_columns` не нужны отдельным вызовом), `filter_range` — чисто
+клиентская операция (раздел B Phase 2), не мутирует данные, создание/переименование листа AI-командами
+пока не поддержано (не было явного примера в ТЗ, который бы этого требовал).
 
-## I. AI Column (Phase 5, спроектировано)
+**Известное ограничение MVP**: `read_range` в смысле "прочитать только часть листа" не реализован —
+контекст всегда берёт первые 50 строк целиком. Для вопросов вида «сделай сводку по продажам» (режим
+`answer`, не мутирует данные) этого достаточно; для точечных вычислений по диапазону вне первых 50 строк
+модель их не увидит — задокументированное ограничение, не тихий баг.
+
+## I. AI Column (спроектировано, НЕ реализовано)
+
+В отличие от раздела H (естественно-языковые команды через AICommandBar), отдельный тип колонки `ai`
+с построчной генерацией значений в этой итерации Phase 5 не реализован — остаётся спроектированным
+планом ниже. Column type `"ai"` уже существует в `ColumnType` (задел на будущее), но пайплайна
+батчинга/кэширования/regenerate под него нет.
 
 Колонка типа `ai` хранит в `config`: `{ instruction: string, sourceColumnIds: string[], model: string }`.
 Пайплайн генерации — фоновая задача (тот же паттерн, что `services/academy_ai` в этом репо использует для
@@ -393,7 +412,7 @@ sheet (не на каждое изменение), для "вернуться к
 | **2 — форматирование/sort/filter** (реализовано) | `format_range` (bold/italic/align/bg/text color, patch-семантика на частичный выбор полей), `set_conditional_format` (правила less_than/greater_than/equals/contains, вычисляются на фронте при рендере), `sort_rows` (asc/desc по колонке, с undo через снимок позиций), выделение диапазона мышью/Shift+стрелками, клиентские per-column текстовые фильтры (не мутируют данные, только вид) | Phase 1 | Можно выделить диапазон, покрасить/выделить жирным, настроить условное форматирование на колонку, отсортировать по колонке, отфильтровать по тексту — всё отменяется через Ctrl+Z/undo и переживает reload |
 | **3 — формулы** (реализовано) | Парсер (`services/smart_tables/formula/parser.py`), SUM/AVERAGE/MIN/MAX/COUNT/COUNTA/IF/AND/OR/ROUND/CONCAT/SUMIF/COUNTIF/VLOOKUP/XLOOKUP, относительные/абсолютные ссылки (`A1`/`$A$1`), диапазоны, межлистовые ссылки на чтение (`Sheet2!A1`), пересчёт всего листа при любой value-affecting операции через dependency graph (Kahn topological sort), #CIRCULAR/#DIV0!/#VALUE!/#REF!/#N/A/#NAME? | Phase 1 | `=SUM(A1:A10)` пересчитывается при правке A1, циклическая ссылка даёт `#CIRCULAR`, не падение — подтверждено интеграционными тестами и в браузере |
 | **4 — import/export** (реализовано) | Импорт CSV/XLSX создаёт **новый лист** в workbook (не трогает существующие данные), типы колонок — автоопределение (boolean/number/date/text) по значениям столбца; экспорт текущего computed_value листа в CSV/XLSX | Phase 1–2 | Импорт CSV создаёт sheet с нужными типами колонок; экспорт скачивает файл с текущими данными — подтверждено в браузере |
-| 5 — AI | AI tools API, AICommandBar, AI-column pipeline, preview для деструктивных операций | Phase 1, 3 (для формульных AI-команд) | «Добавь колонку Маржа» создаёт formula-колонку с превью; «удали строки без email» показывает preview перед удалением |
+| **5 — AI** (реализовано частично) | AI-команды через `ai_gateway` (add_column+formula, highlight/delete rows_where, conditional_format, sort), AICommandBar, preview для delete_rows_where. AI-column pipeline — не реализован (см. раздел I) | Phase 1, 3 (формульные add_column) | «Добавь колонку Маржа и посчитай» применяется сразу с формулой на каждую строку; «удали строки без email» показывает preview (N строк) перед применением — подтверждено тестами с заглушкой LLM и в браузере |
 | 6 — realtime | WebSocket, presence, cell-level optimistic locking | Phase 1 | Два пользователя видят правки друг друга почти мгновенно без потери данных |
 
 ## N. Project Structure
@@ -435,7 +454,7 @@ frontend/src/
   stores/smartTablesStore.ts         # zustand: selection, operation queue, undo stack
 ```
 
-## O. Код Phase 1 + Phase 2 + Phase 3 + Phase 4
+## O. Код Phase 1 + Phase 2 + Phase 3 + Phase 4 + Phase 5
 
 Реализовано в репозитории:
 
@@ -475,17 +494,31 @@ frontend/src/
   столбца (boolean → number → date → text, первое совпадение по всем непустым значениям), создание нового
   листа напрямую (в обход OperationExecutor — массовая вставка, не "операция" с осмысленным undo); экспорт
   текущего `computed_value` каждой ячейки в CSV/XLSX (не формулы — значения).
+- [backend/app/services/smart_tables/serializers.py](../backend/app/services/smart_tables/serializers.py) —
+  `sheet_detail()` вынесена из роутера в общий модуль, чтобы `ai/service.py` не импортировал
+  `routers/*` (нарушение слоёв/риск циклического импорта).
+- [backend/app/services/smart_tables/ai/context_builder.py](../backend/app/services/smart_tables/ai/context_builder.py) —
+  схема колонок (id/буква/имя/тип) + первые 50 строк листа, в маркированном `<sheet_data>` блоке.
+- [backend/app/services/smart_tables/ai/service.py](../backend/app/services/smart_tables/ai/service.py) —
+  `run_ai_command()`: system-промпт с JSON-контрактом и явной инструкцией не исполнять команды из данных
+  ячеек, вызов `app/services/ai_gateway.complete_text(json_mode=True)`, валидация ответа в
+  `AiResponseModel`, резолвинг действий (`add_column`/`highlight_rows_where`/`delete_rows_where`/
+  `set_conditional_format`/`sort_rows`) в конкретные `SpreadsheetOperation` через `OperationExecutor`.
 - [backend/app/routers/smart_tables.py](../backend/app/routers/smart_tables.py) — REST API, включая
-  `POST /workbooks/{id}/import` (multipart) и `GET /sheets/{id}/export?format=csv|xlsx`.
-- [frontend/src/types/smartTables.ts](../frontend/src/types/smartTables.ts) — включая `FormulaError`/`isFormulaError`.
+  `POST /workbooks/{id}/import` (multipart), `GET /sheets/{id}/export?format=csv|xlsx` и
+  `POST /sheets/{id}/ai/command` (`@limiter.limit("15/minute")`, роль editor+).
+- [frontend/src/types/smartTables.ts](../frontend/src/types/smartTables.ts) — включая `FormulaError`/
+  `isFormulaError`, `AiCommandResponse`/`AiPendingAction`.
 - [frontend/src/services/api/smartTables.ts](../frontend/src/services/api/smartTables.ts) — `importFile`
-  (FormData), `exportFile` (blob → programmatic `<a download>`).
+  (FormData), `exportFile` (blob → programmatic `<a download>`), `aiCommand`.
 - [frontend/src/pages/SmartTablesPage.tsx](../frontend/src/pages/SmartTablesPage.tsx) +
-  [components/smartTables/Grid.tsx](../frontend/src/components/smartTables/Grid.tsx) — грид, тулбар
-  форматирования, выделение диапазона, меню сортировки/условного форматирования, строка фильтров, кнопки
-  «Импорт CSV/XLSX» (скрытый `<input type=file>`) и «Экспорт» (меню CSV/XLSX).
+  [components/smartTables/Grid.tsx](../frontend/src/components/smartTables/Grid.tsx) +
+  [components/smartTables/AICommandBar.tsx](../frontend/src/components/smartTables/AICommandBar.tsx) —
+  грид, тулбар форматирования, выделение диапазона, меню сортировки/условного форматирования, строка
+  фильтров, кнопки импорта/экспорта, строка AI-команд (текстовое поле + диалог подтверждения для
+  деструктивных действий, применяет через тот же `applyOperations`, что и ручной ввод).
   Ввод значения, начинающегося с `=`, отправляет `set_formula`; редактирование формульной ячейки показывает
   исходный текст формулы, а не вычисленный результат; ошибки формул рендерятся красным текстом (`#DIV/0!` и т.п.).
 
-AI, realtime — не реализованы (Phases 5, 6, план выше). Отдельная FormulaBar (раздел G) не реализована —
-формула редактируется прямо в ячейке, этого достаточно для MVP.
+Realtime — не реализован (Phase 6, план выше). Отдельная FormulaBar (раздел G) и AI-column pipeline
+(раздел I) не реализованы — задокументированные ограничения MVP, не упущения.

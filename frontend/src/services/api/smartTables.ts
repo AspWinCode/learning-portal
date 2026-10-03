@@ -1,5 +1,6 @@
 import { api } from './client';
 import type {
+  AiCommandResponse,
   OperationResult,
   OperationLogEntry,
   SheetDetail,
@@ -73,4 +74,7 @@ export const smartTablesApi = {
     link.remove();
     window.URL.revokeObjectURL(url);
   },
+
+  aiCommand: (sheetId: number, prompt: string): Promise<AiCommandResponse> =>
+    api.post(`${BASE}/sheets/${sheetId}/ai/command`, { prompt }).then(r => r.data),
 };

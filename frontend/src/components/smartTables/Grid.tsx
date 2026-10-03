@@ -59,9 +59,16 @@ function cellStyleOf(value: CellValue, cellFormatting: CellFormatting | undefine
     if (r.text_color) style.color = r.text_color;
     if (r.bold) style.fontWeight = 700;
   };
-  if (rules && value !== null && value !== undefined && !isFormulaError(value)) {
+  if (rules && !isFormulaError(value)) {
+    const isEmpty = value === null || value === undefined || value === '';
     for (const rule of rules) {
       const matches = (() => {
+        switch (rule.operator) {
+          case 'is_empty': return isEmpty;
+          case 'is_not_empty': return !isEmpty;
+          default: break;
+        }
+        if (isEmpty) return false;
         switch (rule.operator) {
           case 'less_than': return Number(value) < Number(rule.value);
           case 'greater_than': return Number(value) > Number(rule.value);
@@ -546,6 +553,8 @@ const Grid: React.FC<GridProps> = ({
                 <MenuItem value="greater_than">больше чем</MenuItem>
                 <MenuItem value="equals">равно</MenuItem>
                 <MenuItem value="contains">содержит</MenuItem>
+                <MenuItem value="is_empty">пусто</MenuItem>
+                <MenuItem value="is_not_empty">не пусто</MenuItem>
               </Select>
               <TextField
                 size="small" value={rule.value}

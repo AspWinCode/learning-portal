@@ -85,13 +85,26 @@ def seed(db_session):
     return {"admin": admin, "group": group, "student": student}
 
 
+def _current_user_dependency():
+    """Зависимость текущего пользователя, которую реально использует роутер.
+
+    Берём её из маршрута, а не из модуля app.auth: другие тесты (test_auth_security)
+    перезагружают этот модуль, и ссылка на auth.get_current_active_user устаревает."""
+    for route in app.routes:
+        if getattr(route, "path", None) == f"{API}/cancel":
+            for dep in route.dependant.dependencies:
+                if dep.call.__name__ == "get_current_active_user":
+                    return dep.call
+    raise RuntimeError("cancel route has no get_current_active_user dependency")
+
+
 @pytest.fixture
 def client(db_session, seed):
     def _get_db():
         yield db_session
 
     app.dependency_overrides[get_db] = _get_db
-    app.dependency_overrides[auth.get_current_active_user] = lambda: seed["admin"]
+    app.dependency_overrides[_current_user_dependency()] = lambda: seed["admin"]
     yield TestClient(app)
     app.dependency_overrides = {}
 

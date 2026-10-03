@@ -628,6 +628,28 @@ def _close_absence_for_group_makeup(
     )
 
 
+def _reattach_orphan_absence(db: Session, att: LessonAttendance) -> Optional[AbsenceFollowUp]:
+    """Привязать к новой посещаемости пропуск, отвязанный при отмене слота.
+
+    Отмена слота отвязывает AbsenceFollowUp (lesson_attendance_id = NULL), а не удаляет его.
+    Если слот восстановили и на ту же дату снова отмечен пропуск — возвращаем ту же запись
+    воронки, чтобы не плодить дубликаты и не терять стадию (assigned / made_up / ...)."""
+    orphan = (
+        db.query(AbsenceFollowUp)
+        .filter(
+            AbsenceFollowUp.lesson_attendance_id.is_(None),
+            AbsenceFollowUp.student_id == att.student_id,
+            AbsenceFollowUp.group_id == att.group_id,
+            AbsenceFollowUp.lesson_date == att.lesson_date,
+        )
+        .order_by(AbsenceFollowUp.id.desc())
+        .first()
+    )
+    if orphan:
+        orphan.lesson_attendance_id = att.id
+    return orphan
+
+
 def _process_attendance_deduction(
     db: Session,
     att: LessonAttendance,
@@ -837,6 +859,8 @@ def _process_attendance_deduction(
         absence = db.query(AbsenceFollowUp).filter(
             AbsenceFollowUp.lesson_attendance_id == att.id,
         ).first()
+        if not absence:
+            absence = _reattach_orphan_absence(db, att)
         if not absence:
             absence = AbsenceFollowUp(
                 lesson_attendance_id=att.id,
@@ -1613,7 +1637,12 @@ async def cancel_lesson(
             and not _is_student_excluded_from_slot(gs, cancel_schedule_id, cancel_restricted_map)
         ]
     att_ids = [a.id for a in attendances_to_delete]
-    db.query(AbsenceFollowUp).filter(AbsenceFollowUp.lesson_attendance_id.in_(att_ids)).delete(synchronize_session=False)
+    # Воронка пропусков не удаляется: запись отвязывается от удаляемой посещаемости
+    # и сохраняет стадию, чтобы пропуск не пропал из sales при отмене слота.
+    if att_ids:
+        db.query(AbsenceFollowUp).filter(AbsenceFollowUp.lesson_attendance_id.in_(att_ids)).update(
+            {AbsenceFollowUp.lesson_attendance_id: None}, synchronize_session=False
+        )
     for a in attendances_to_delete:
         db.delete(a)
     _enqueue_lesson_change_notifications(

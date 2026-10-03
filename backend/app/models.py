@@ -1833,7 +1833,15 @@ class AbsenceFollowUp(Base):
     __tablename__ = "absence_follow_ups"
 
     id = Column(Integer, primary_key=True, index=True)
-    lesson_attendance_id = Column(Integer, ForeignKey("lesson_attendance.id"), nullable=False, unique=True, index=True)
+    # NULL — посещаемость удалена отменой слота; запись воронки сохраняется и
+    # при восстановлении слота снова привязывается (см. _reattach_orphan_absence).
+    lesson_attendance_id = Column(
+        Integer,
+        ForeignKey("lesson_attendance.id", ondelete="SET NULL"),
+        nullable=True,
+        unique=True,
+        index=True,
+    )
     student_id = Column(Integer, ForeignKey("students.id"), nullable=False, index=True)
     group_id = Column(Integer, ForeignKey("groups.id"), nullable=False, index=True)
     lesson_date = Column(Date, nullable=False, index=True)

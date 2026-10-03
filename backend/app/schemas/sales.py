@@ -17,7 +17,7 @@ from app.schemas.owner_dashboard import LeadAIInsightResponse
 
 class AbsenceFollowUpResponse(BaseModel):
     id: int
-    lesson_attendance_id: int
+    lesson_attendance_id: Optional[int] = None
     student_id: int
     group_id: int
     lesson_date: date

@@ -229,8 +229,14 @@ class CommunicationService:
             user_id=created_by,
             action_type="queue_communication",
             entity_type="communication_queue",
-            entity_id=item.id,
-            details={"channel": normalized_channel, "recipient_type": recipient_type, "recipient_id": recipient_id},
+            # communication_queue.id — UUID-строка, а action_logs.entity_id — Integer, поэтому id кладём в details.
+            entity_id=None,
+            details={
+                "queue_id": item.id,
+                "channel": normalized_channel,
+                "recipient_type": recipient_type,
+                "recipient_id": recipient_id,
+            },
         )
         return item
 

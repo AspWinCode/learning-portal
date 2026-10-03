@@ -15,7 +15,9 @@ export default defineConfig(({ mode }) => {
       host: '0.0.0.0',
       port: 3000,
       proxy: {
-        '/api': env.VITE_DEV_API_PROXY || env.REACT_APP_DEV_API_PROXY || 'http://localhost:8000',
+        // ws: true — иначе Vite не проксирует WebSocket upgrade для
+        // /api/v1/smart-tables/sheets/{id}/ws (Phase 6, realtime)
+        '/api': { target: env.VITE_DEV_API_PROXY || env.REACT_APP_DEV_API_PROXY || 'http://localhost:8000', ws: true },
       },
       warmup: {
         clientFiles: ['./src/index.tsx', './src/theme.ts', './src/App.tsx'],
@@ -36,7 +38,7 @@ export default defineConfig(({ mode }) => {
     preview: {
       port: 4173,
       proxy: {
-        '/api': env.VITE_DEV_API_PROXY || env.REACT_APP_DEV_API_PROXY || 'http://localhost:8000',
+        '/api': { target: env.VITE_DEV_API_PROXY || env.REACT_APP_DEV_API_PROXY || 'http://localhost:8000', ws: true },
       },
     },
     build: {

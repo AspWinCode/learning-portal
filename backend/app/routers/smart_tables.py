@@ -7,12 +7,15 @@ app/services/smart_tables/executor.py и docs/smart-tables-architecture.md.
 """
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
+from fastapi import (
+    APIRouter, Depends, File, HTTPException, Query, Request, UploadFile,
+    WebSocket, WebSocketDisconnect, status,
+)
 from fastapi.responses import Response
 from sqlalchemy.orm import Session, joinedload
 
 from app import auth
-from app.database import get_db
+from app.database import get_db, SessionLocal
 from app.models import (
     SmartTableColumn,
     SmartTableMember,
@@ -41,6 +44,7 @@ from app.schemas.smart_tables import (
 from app.services.smart_tables.ai.service import AiCommandError, run_ai_command
 from app.services.smart_tables.executor import OperationError, OperationExecutor
 from app.services.smart_tables.import_export import ImportError_, export_csv, export_xlsx, import_sheet, parse_upload
+from app.services.smart_tables.realtime import manager as ws_manager
 from app.services.smart_tables.serializers import sheet_detail
 
 router = APIRouter()
@@ -366,7 +370,12 @@ async def apply_operations(
         raise HTTPException(status_code=400, detail=str(exc))
 
     sheet = _get_sheet_or_404(db, sheet_id)
-    return OperationResult(sheet=_sheet_detail(sheet), applied=applied)
+    result = OperationResult(sheet=_sheet_detail(sheet), applied=applied)
+    await ws_manager.broadcast(sheet_id, {
+        "type": "operation_applied", "actor_id": current_user.id,
+        "sheet": result.sheet.model_dump(mode="json"),
+    })
+    return result
 
 
 @router.post("/sheets/{sheet_id}/undo", response_model=OperationResult)
@@ -391,7 +400,12 @@ async def undo(
         raise HTTPException(status_code=409, detail="Нечего отменять")
 
     sheet = _get_sheet_or_404(db, sheet_id)
-    return OperationResult(sheet=_sheet_detail(sheet), applied=1)
+    result = OperationResult(sheet=_sheet_detail(sheet), applied=1)
+    await ws_manager.broadcast(sheet_id, {
+        "type": "operation_applied", "actor_id": current_user.id,
+        "sheet": result.sheet.model_dump(mode="json"),
+    })
+    return result
 
 
 @router.get("/sheets/{sheet_id}/operations", response_model=List[OperationLogEntry])
@@ -437,10 +451,64 @@ async def ai_command(
     _require_role(db, current_user, workbook, min_role="editor")
 
     try:
-        return await run_ai_command(db, sheet, current_user, body.prompt)
+        response = await run_ai_command(db, sheet, current_user, body.prompt)
     except AiCommandError as exc:
         db.rollback()
         raise HTTPException(status_code=502, detail=str(exc))
     except OperationError as exc:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc))
+
+    if response.applied:
+        await ws_manager.broadcast(sheet_id, {
+            "type": "operation_applied", "actor_id": current_user.id,
+            "sheet": response.sheet.model_dump(mode="json"),
+        })
+    return response
+
+
+# ── realtime (Phase 6) ──────────────────────────────────────────
+# Браузерный WebSocket API не умеет слать кастомные заголовки на handshake,
+# поэтому токен передаётся query-параметром, а не через обычный
+# Depends(auth.get_current_active_user) (Authorization header). Ошибки
+# закрывают сокет понятным кодом вместо того, чтобы ронять ASGI-обработчик
+# HTTPException'ом, который websocket-протокол не умеет показать клиенту.
+
+@router.websocket("/sheets/{sheet_id}/ws")
+async def sheet_ws(websocket: WebSocket, sheet_id: int, token: str = Query(...)):
+    db = SessionLocal()
+    try:
+        try:
+            payload = auth.decode_access_token(token)
+            email = payload.get("sub")
+            jti = str(payload.get("jti") or "").strip()
+            if not email or not jti or auth.is_token_blacklisted(jti):
+                raise ValueError("invalid token")
+            user = auth.get_user_by_email(db, email=email)
+            if user is None:
+                raise ValueError("user not found")
+        except Exception:
+            await websocket.close(code=4401)
+            return
+
+        sheet = db.query(SmartTableSheet).filter(SmartTableSheet.id == sheet_id).first()
+        if sheet is None:
+            await websocket.close(code=4404)
+            return
+        workbook = db.get(SmartTableWorkbook, sheet.workbook_id)
+        if workbook is None or _effective_role(user, db, workbook) is None:
+            await websocket.close(code=4403)
+            return
+
+        await ws_manager.connect(sheet_id, websocket, user)
+        try:
+            while True:
+                # клиент ничего не обязан слать — просто держим соединение
+                # открытым и ждём отключения; входящие сообщения игнорируются
+                await websocket.receive_text()
+        except WebSocketDisconnect:
+            pass
+        finally:
+            await ws_manager.disconnect(sheet_id, websocket)
+    finally:
+        db.close()

@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Alert, Box, Button, Card, CardActionArea, CardContent, CircularProgress,
+  Alert, Avatar, AvatarGroup, Box, Button, Card, CardActionArea, CardContent, CircularProgress,
   Dialog, DialogActions, DialogContent, DialogTitle, IconButton, Menu, MenuItem, Tab, Tabs,
-  TextField, Typography,
+  TextField, Tooltip, Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import UndoIcon from '@mui/icons-material/Undo';
@@ -13,6 +13,7 @@ import Layout from '../components/Layout';
 import Grid from '../components/smartTables/Grid';
 import AICommandBar from '../components/smartTables/AICommandBar';
 import { smartTablesApi } from '../services/api/smartTables';
+import { useSmartTableRealtime } from '../hooks/useSmartTableRealtime';
 import type { SheetDetail, Workbook } from '../types/smartTables';
 
 // Phase 1 страница: список workbooks -> открыть workbook (листы + грид).
@@ -109,6 +110,10 @@ const WorkbookView: React.FC<{ workbook: Workbook; onBack: () => void }> = ({ wo
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
 
+  const { presence, connected } = useSmartTableRealtime(activeSheetId, {
+    onSheetUpdate: (sheet) => setDetail(sheet),
+  });
+
   const loadSheets = useCallback(async () => {
     const list = await smartTablesApi.listSheets(workbook.id);
     setSheets(list.map((s) => ({ id: s.id, name: s.name })));
@@ -199,6 +204,17 @@ const WorkbookView: React.FC<{ workbook: Workbook; onBack: () => void }> = ({ wo
         <IconButton onClick={onBack}><ArrowBackIcon /></IconButton>
         <Typography variant="h5">{workbook.name}</Typography>
         <Box sx={{ flex: 1 }} />
+        {presence.length > 0 && (
+          <Tooltip title={connected ? presence.map((u) => u.name).join(', ') : 'Соединение восстанавливается…'}>
+            <AvatarGroup max={5} sx={{ mr: 1, '& .MuiAvatar-root': { width: 28, height: 28, fontSize: 13 } }}>
+              {presence.map((u) => (
+                <Avatar key={u.id} sx={{ bgcolor: connected ? 'primary.main' : 'grey.400' }}>
+                  {u.name.slice(0, 1).toUpperCase()}
+                </Avatar>
+              ))}
+            </AvatarGroup>
+          </Tooltip>
+        )}
         <Button startIcon={<UndoIcon />} onClick={handleUndo}>Отменить</Button>
       </Box>
 

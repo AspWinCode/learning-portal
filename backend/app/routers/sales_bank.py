@@ -2,17 +2,19 @@ import hashlib
 import json
 import logging
 import os
-from datetime import date
-from typing import Any, Dict, List, Optional
+from datetime import date, timedelta
+from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from jose import jwt
+from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import db_transaction, get_db
 from app.dependencies import require_sales_admin_owner, require_sales_manage_bank
 from app.models import (
     BankTransaction,
+    BankTransactionAlias,
     BankTransactionStatus,
     FinanceTransaction,
     PhonePaymentBinding,
@@ -33,6 +35,16 @@ from app.schemas.finance import (
     BankTransactionResponse,
     PhonePaymentBindingCreate,
     TochkaImportRequest,
+)
+from app.services.bank_identity import (
+    SOURCE_TOCHKA_STATEMENT,
+    SOURCE_TOCHKA_WEBHOOK,
+    STRATEGY_AMBIGUOUS,
+    STRATEGY_EXACT,
+    IncomingBankOperation,
+    is_generic_counterparty,
+    normalize_bank_operation_date,
+    pick_semantic_match,
 )
 from app.services.bank_operation import apply_bank_operation_to_student as bank_operation_apply
 from app.services.finance_ledger import ensure_finance_transaction_for_bank_transaction
@@ -147,8 +159,7 @@ def _webhook_side_phone(side: Any) -> str:
 
 
 def _is_generic_tochka_counterparty(name: Optional[str]) -> bool:
-    normalized = _normalize_name((name or "").replace('"', ""))
-    return "\u0431\u0430\u043d\u043a \u0442\u043e\u0447\u043a\u0430" in normalized or "bank tochka" in normalized
+    return is_generic_counterparty(name)
 
 
 def _stable_tochka_fallback_operation_id(account_id: str, transaction: Dict[str, Any]) -> str:
@@ -167,119 +178,147 @@ def _stable_tochka_fallback_operation_id(account_id: str, transaction: Dict[str,
     return "tochka-fallback-" + hashlib.sha256(seed.encode("utf-8")).hexdigest()
 
 
-def _find_semantic_tochka_candidate(
-    db: Session,
-    account_id: str,
-    amount: float,
-    tx_date: str,
-    payer_name: str,
+def _incoming_operation(
+    transaction: Dict[str, Any],
+    source: str,
+    external_id: str,
     payer_phone: str,
-    *,
-    is_expense: bool,
-) -> Optional[BankTransaction]:
-    if not (is_expense or _is_generic_tochka_counterparty(payer_name)):
-        return None
-    candidates = (
-        db.query(BankTransaction)
-        .filter(
-            BankTransaction.tochka_account_id == account_id,
-            BankTransaction.amount == amount,
-            BankTransaction.payment_date == tx_date,
-            BankTransaction.payer_phone == (payer_phone or None),
-            BankTransaction.payer_name == (payer_name[:512] if payer_name else None),
-            BankTransaction.status != BankTransactionStatus.IGNORED.value,
-        )
-        .order_by(BankTransaction.id.asc())
+) -> IncomingBankOperation:
+    direction = str(transaction.get("direction") or "income").strip().lower()
+    return IncomingBankOperation(
+        source=source,
+        external_id=external_id,
+        canonical_date=normalize_bank_operation_date(transaction.get("date")),
+        amount=abs(float(transaction.get("amount") or 0)),
+        is_expense=direction == "expense",
+        payer_name=(transaction.get("payer_name") or "").strip(),
+        payer_phone=payer_phone or "",
+        purpose=(transaction.get("description") or "").strip(),
+    )
+
+
+def _alias_sources_by_bank_transaction(db: Session, bank_transaction_ids: List[int]) -> Dict[int, set]:
+    sources: Dict[int, set] = {}
+    if not bank_transaction_ids:
+        return sources
+    aliases = (
+        db.query(BankTransactionAlias)
+        .filter(BankTransactionAlias.bank_transaction_id.in_(bank_transaction_ids))
         .all()
     )
-    return candidates[0] if candidates else None
+    for alias in aliases:
+        sources.setdefault(alias.bank_transaction_id, set()).add(alias.source)
+    return sources
 
 
-def _find_single_tochka_candidate(
+def _find_existing_bank_transaction(
     db: Session,
-    account_id: str,
-    amount: float,
-    tx_date: str,
-    *,
-    require_missing_phone: bool = False,
-    require_enriched: bool = False,
-) -> Optional[BankTransaction]:
+    account_id: Optional[str],
+    incoming: IncomingBankOperation,
+) -> Tuple[Optional[BankTransaction], str]:
+    """Двухуровневый поиск существующей банковской операции.
+
+    1. Точный внешний ID: алиас или operation_id.
+    2. Семантически: один кандидат с той же каноничной датой, суммой, направлением и
+       совместимыми банковскими полями. Два и больше кандидатов — не склеиваем.
+    Возвращает (bank_transaction | None, strategy).
+    """
+    alias = (
+        db.query(BankTransactionAlias)
+        .filter(BankTransactionAlias.external_id == incoming.external_id)
+        .first()
+    )
+    if alias is not None:
+        bank_transaction = db.query(BankTransaction).filter(BankTransaction.id == alias.bank_transaction_id).first()
+        if bank_transaction is not None:
+            return bank_transaction, STRATEGY_EXACT
+    exact = db.query(BankTransaction).filter(BankTransaction.operation_id == incoming.external_id).first()
+    if exact is not None:
+        return exact, STRATEGY_EXACT
+
+    if not incoming.amount or not incoming.canonical_date:
+        return None, ""
+    try:
+        day = date.fromisoformat(incoming.canonical_date)
+    except ValueError:
+        # Нераспознанная дата не должна валить весь импорт: операцию создадим как есть
+        return None, ""
+
+    # Дата в БД могла храниться в исходном виде («2026-09-30T10:15:22+03:00»), поэтому ищем
+    # по префиксу в соседних днях и сравниваем каноничную дату уже в Python.
+    prefixes = [(day + timedelta(days=delta)).isoformat() for delta in (-1, 0, 1)]
     query = db.query(BankTransaction).filter(
-        BankTransaction.tochka_account_id == account_id,
-        BankTransaction.amount == amount,
-        BankTransaction.payment_date == tx_date,
+        BankTransaction.amount == incoming.amount,
         BankTransaction.status != BankTransactionStatus.IGNORED.value,
+        or_(*[BankTransaction.payment_date.like(f"{prefix}%") for prefix in prefixes]),
     )
-    if require_missing_phone:
-        query = query.filter(BankTransaction.payer_phone.is_(None))
-    if require_enriched:
-        query = query.filter(BankTransaction.payer_phone.isnot(None))
-    candidates = [
-        item
-        for item in query.all()
-        if not require_missing_phone or _is_generic_tochka_counterparty(item.payer_name)
-    ]
-    return candidates[0] if len(candidates) == 1 else None
-
-
-def _find_tochka_income_candidate_by_real_name(
-    db: Session,
-    account_id: str,
-    amount: float,
-    tx_date: str,
-    payer_name: str,
-) -> Optional[BankTransaction]:
-    """Ищет существующую запись без телефона с тем же именем (реальным) ИЛИ с именем-заглушкой
-    «ООО Банк Точка» (созданной вебхуком до импорта выписки).
-    Нужен для дедупликации: вебхук создаёт запись с generic-именем, выписка — с реальным.
-    """
-    if not payer_name or _is_generic_tochka_counterparty(payer_name):
-        return None
-    candidates = (
-        db.query(BankTransaction)
-        .filter(
-            BankTransaction.tochka_account_id == account_id,
-            BankTransaction.amount == amount,
-            BankTransaction.payment_date == tx_date,
-            BankTransaction.payer_phone.is_(None),
-            BankTransaction.status != BankTransactionStatus.IGNORED.value,
+    if account_id:
+        query = query.filter(
+            or_(BankTransaction.tochka_account_id == account_id, BankTransaction.tochka_account_id.is_(None))
         )
-        .order_by(BankTransaction.id.asc())
-        .all()
+    candidates = query.order_by(BankTransaction.id.asc()).all()
+    if not candidates:
+        return None, ""
+
+    sources = _alias_sources_by_bank_transaction(db, [c.id for c in candidates])
+    picked, strategy = pick_semantic_match(
+        candidates,
+        incoming,
+        lambda c: sources.get(c.id, set()),
     )
-    matched = [
-        c for c in candidates
-        if _is_generic_tochka_counterparty(c.payer_name)
-        or (c.payer_name and c.payer_name.strip()[:512] == payer_name[:512])
-    ]
-    return matched[0] if len(matched) == 1 else None
+    if picked is None:
+        if strategy == STRATEGY_AMBIGUOUS:
+            logger.warning(
+                "Bank operation: %d candidates match %s/%s, not merging",
+                len(candidates),
+                incoming.source,
+                incoming.canonical_date,
+            )
+        return None, ""
+    return picked, strategy or ""
 
 
-def _find_tochka_real_income_candidate_for_generic(
-    db: Session,
-    account_id: str,
-    amount: float,
-    tx_date: str,
-) -> Optional[BankTransaction]:
-    """Обратный случай к _find_tochka_income_candidate_by_real_name: вебхук/выписка
-    пришли с именем-заглушкой «ООО Банк Точка», но запись с реальным именем плательщика
-    уже была создана раньше другим источником (выписка/более ранний вебхук).
-    Ищем её, чтобы не плодить дубль.
-    """
-    candidates = (
-        db.query(BankTransaction)
+def _record_alias(db: Session, bank_transaction: BankTransaction, incoming: IncomingBankOperation) -> None:
+    exists = (
+        db.query(BankTransactionAlias)
         .filter(
-            BankTransaction.tochka_account_id == account_id,
-            BankTransaction.amount == amount,
-            BankTransaction.payment_date == tx_date,
-            BankTransaction.payer_phone.is_(None),
-            BankTransaction.status != BankTransactionStatus.IGNORED.value,
+            BankTransactionAlias.source == incoming.source,
+            BankTransactionAlias.external_id == incoming.external_id,
         )
-        .order_by(BankTransaction.id.asc())
-        .all()
+        .first()
     )
-    matched = [c for c in candidates if not _is_generic_tochka_counterparty(c.payer_name)]
-    return matched[0] if len(matched) == 1 else None
+    if exists is None:
+        db.add(
+            BankTransactionAlias(
+                bank_transaction_id=bank_transaction.id,
+                source=incoming.source,
+                external_id=incoming.external_id,
+            )
+        )
+
+
+def _log_merge(bank_transaction: BankTransaction, incoming: IncomingBankOperation, strategy: str) -> None:
+    logger.info(
+        "tochka transaction merged: existing_bank_transaction_id=%s incoming_operation_id=%s "
+        "existing_operation_id=%s matching_strategy=%s source=%s",
+        bank_transaction.id,
+        incoming.external_id,
+        bank_transaction.operation_id,
+        strategy,
+        incoming.source,
+    )
+
+
+def _resolve_bank_transaction(
+    db: Session,
+    account_id: Optional[str],
+    incoming: IncomingBankOperation,
+) -> Tuple[Optional[BankTransaction], str]:
+    """Находит существующую операцию или возвращает (None, '') — тогда создаём новую."""
+    bank_transaction, strategy = _find_existing_bank_transaction(db, account_id, incoming)
+    if bank_transaction is not None and strategy != STRATEGY_EXACT:
+        _log_merge(bank_transaction, incoming, strategy)
+    return bank_transaction, strategy
 
 
 def _should_keep_existing_payer_name(existing_name: Optional[str], incoming_name: Optional[str]) -> bool:
@@ -331,7 +370,9 @@ def _transaction_from_tochka_webhook(payload: Dict[str, Any]) -> Dict[str, Any]:
         amount = 0.0
 
     return {
-        "date": str(_webhook_get(payload, "date", "Date", "paymentDate", "PaymentDate") or date.today().isoformat()),
+        "date": normalize_bank_operation_date(
+            _webhook_get(payload, "date", "Date", "paymentDate", "PaymentDate") or date.today().isoformat()
+        ),
         "amount": amount,
         "direction": direction,
         "payer_name": payer_name,
@@ -349,10 +390,11 @@ def _upsert_tochka_bank_transaction(
     db: Session,
     account_id: str,
     transaction: Dict[str, Any],
+    source: str = SOURCE_TOCHKA_WEBHOOK,
 ) -> BankTransaction:
     payer_name = (transaction.get("payer_name") or "").strip()
     amount = abs(float(transaction.get("amount") or 0))
-    tx_date = transaction.get("date") or ""
+    tx_date = normalize_bank_operation_date(transaction.get("date"))
     payer_phone = normalize_phone(transaction.get("payer_phone_raw") or "")
     direction = str(transaction.get("direction") or "income").strip().lower()
     is_expense = direction == "expense"
@@ -360,37 +402,8 @@ def _upsert_tochka_bank_transaction(
     if not operation_id:
         operation_id = _stable_tochka_fallback_operation_id(account_id, transaction)
 
-    bank_transaction = (
-        db.query(BankTransaction)
-        .filter(BankTransaction.operation_id == operation_id)
-        .first()
-    )
-    if bank_transaction is None:
-        bank_transaction = _find_semantic_tochka_candidate(
-            db,
-            account_id,
-            amount,
-            tx_date,
-            payer_name,
-            payer_phone,
-            is_expense=is_expense,
-        )
-    if bank_transaction is None and not is_expense and (payer_phone or payer_name):
-        bank_transaction = _find_single_tochka_candidate(
-            db,
-            account_id,
-            amount,
-            tx_date,
-            require_missing_phone=True,
-        )
-    if bank_transaction is None and not is_expense:
-        bank_transaction = _find_tochka_income_candidate_by_real_name(
-            db, account_id, amount, tx_date, payer_name
-        )
-    if bank_transaction is None and not is_expense and _is_generic_tochka_counterparty(payer_name):
-        bank_transaction = _find_tochka_real_income_candidate_for_generic(
-            db, account_id, amount, tx_date
-        )
+    incoming = _incoming_operation(transaction, source, operation_id, payer_phone or "")
+    bank_transaction, _strategy = _resolve_bank_transaction(db, account_id, incoming)
     if bank_transaction is None:
         bank_transaction = BankTransaction(
             operation_id=operation_id,
@@ -399,6 +412,7 @@ def _upsert_tochka_bank_transaction(
             payer_phone=(payer_phone or None) if not is_expense else None,
             payer_name=payer_name[:512] if payer_name else None,
             payment_date=tx_date,
+            purpose=incoming.purpose[:512] or None,
             status=BankTransactionStatus.EXPENSE.value if is_expense else BankTransactionStatus.NEW.value,
         )
         db.add(bank_transaction)
@@ -412,11 +426,14 @@ def _upsert_tochka_bank_transaction(
         if payer_name and not _should_keep_existing_payer_name(bank_transaction.payer_name, payer_name):
             bank_transaction.payer_name = payer_name[:512]
         bank_transaction.payment_date = tx_date or bank_transaction.payment_date
+        if incoming.purpose and not bank_transaction.purpose:
+            bank_transaction.purpose = incoming.purpose[:512]
         if is_expense and bank_transaction.status != BankTransactionStatus.APPLIED.value:
             bank_transaction.status = BankTransactionStatus.EXPENSE.value
             bank_transaction.student_id = None
             bank_transaction.student_account_id = None
 
+    _record_alias(db, bank_transaction, incoming)
     _sync_ft(db, bank_transaction, (transaction.get("description") or "").strip())
     return bank_transaction
 
@@ -461,47 +478,10 @@ def do_tochka_import_and_apply(
                 operation_id = (transaction.get("operation_id") or "").strip()
                 if not operation_id:
                     operation_id = _stable_tochka_fallback_operation_id(account_id, transaction)
+                tx_date = normalize_bank_operation_date(tx_date)
+                incoming = _incoming_operation(transaction, SOURCE_TOCHKA_STATEMENT, operation_id, payer_phone or "")
 
-                bank_transaction = (
-                    db.query(BankTransaction)
-                    .filter(BankTransaction.operation_id == operation_id)
-                    .first()
-                )
-                if bank_transaction is None:
-                    bank_transaction = _find_semantic_tochka_candidate(
-                        db,
-                        account_id,
-                        amount,
-                        tx_date,
-                        payer_name,
-                        payer_phone,
-                        is_expense=is_expense,
-                    )
-                if (
-                    bank_transaction is None
-                    and not is_expense
-                    and not payer_phone
-                    and _is_generic_tochka_counterparty(payer_name)
-                ):
-                    bank_transaction = _find_single_tochka_candidate(
-                        db,
-                        account_id,
-                        amount,
-                        tx_date,
-                        require_enriched=True,
-                    )
-                # Выписка содержит реальное имя плательщика, но вебхук ранее создал запись
-                # с именем-заглушкой «ООО Банк Точка» и другим operation_id — ищем её.
-                if bank_transaction is None and not is_expense:
-                    bank_transaction = _find_tochka_income_candidate_by_real_name(
-                        db, account_id, amount, tx_date, payer_name
-                    )
-                # Обратный случай: выписка/вебхук вернули заглушку «ООО Банк Точка», а запись
-                # с реальным именем плательщика уже была создана раньше другим источником.
-                if bank_transaction is None and not is_expense and _is_generic_tochka_counterparty(payer_name):
-                    bank_transaction = _find_tochka_real_income_candidate_for_generic(
-                        db, account_id, amount, tx_date
-                    )
+                bank_transaction, _strategy = _resolve_bank_transaction(db, account_id, incoming)
                 if bank_transaction is not None and bank_transaction.status == BankTransactionStatus.IGNORED.value:
                     continue
                 if bank_transaction is None:
@@ -512,6 +492,7 @@ def do_tochka_import_and_apply(
                         payer_phone=(payer_phone or None) if not is_expense else None,
                         payer_name=payer_name[:512] if payer_name else None,
                         payment_date=tx_date,
+                        purpose=incoming.purpose[:512] or None,
                         status=BankTransactionStatus.EXPENSE.value if is_expense else BankTransactionStatus.NEW.value,
                     )
                     db.add(bank_transaction)
@@ -525,6 +506,8 @@ def do_tochka_import_and_apply(
                     if payer_name and not _should_keep_existing_payer_name(bank_transaction.payer_name, payer_name):
                         bank_transaction.payer_name = payer_name[:512]
                     bank_transaction.payment_date = tx_date or bank_transaction.payment_date
+                    if incoming.purpose and not bank_transaction.purpose:
+                        bank_transaction.purpose = incoming.purpose[:512]
                     if not is_expense:
                         payer_phone = normalize_phone(bank_transaction.payer_phone or "") or payer_phone
                         payer_name = (bank_transaction.payer_name or payer_name or "").strip()
@@ -538,6 +521,7 @@ def do_tochka_import_and_apply(
                     bank_transaction.student_id = None
                     bank_transaction.student_account_id = None
 
+                _record_alias(db, bank_transaction, incoming)
                 _sync_ft(db, bank_transaction, (transaction.get("description") or "").strip())
                 if bank_transaction.status == BankTransactionStatus.EXPENSE.value:
                     continue

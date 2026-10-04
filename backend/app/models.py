@@ -991,11 +991,31 @@ class BankTransaction(Base):
     amount = Column(Float, nullable=False)  # приход > 0, расход < 0
     payer_phone = Column(String(32), nullable=True, index=True)
     payer_name = Column(String(512), nullable=True)  # для расхода — контрагент/назначение
-    payment_date = Column(String(32), nullable=True)
+    payment_date = Column(String(32), nullable=True)  # каноническая дата YYYY-MM-DD (см. bank_identity)
+    purpose = Column(String(512), nullable=True)  # назначение платежа: нужно для различения расходов
     status = Column(String(32), nullable=False, default=BankTransactionStatus.NEW.value, index=True)
     expense_category = Column(String(64), nullable=True, index=True)  # комиссия, типография, аренда и т.д.
     student_id = Column(Integer, ForeignKey("students.id"), nullable=True, index=True)
     student_account_id = Column(Integer, ForeignKey("student_accounts.id"), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class BankTransactionAlias(Base):
+    """Внешний ID банковской операции (paymentId вебхука, transactionId выписки и т.д.).
+
+    Одна реальная операция может прийти из разных источников с разными ID; все они
+    указывают на одну BankTransaction. Source нужен для правила «один источник —
+    одна операция» (см. app/services/bank_identity.py).
+    """
+
+    __tablename__ = "bank_transaction_aliases"
+    __table_args__ = (UniqueConstraint("source", "external_id", name="uq_bank_transaction_aliases_source_external"),)
+    id = Column(Integer, primary_key=True, index=True)
+    bank_transaction_id = Column(
+        Integer, ForeignKey("bank_transactions.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    source = Column(String(32), nullable=False)
+    external_id = Column(String(256), nullable=False, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 

@@ -19,6 +19,8 @@ import urllib.parse
 from typing import Optional, List, Dict, Any, Tuple
 from datetime import date, timedelta
 
+from app.services.bank_identity import normalize_bank_operation_date
+
 import certifi
 
 logger = logging.getLogger(__name__)
@@ -405,9 +407,8 @@ def extract_incoming_transactions(statement: Dict[str, Any]) -> List[Dict[str, A
             tx.get("bookingDate") or tx.get("documentProcessDate") or tx.get("BookingDateTime")
             or tx.get("date") or tx.get("valueDate") or tx.get("chargeDate") or ""
         )
-        # Оставить только дату (YYYY-MM-DD), убрать время если есть
-        if tx_date and "T" in str(tx_date):
-            tx_date = str(tx_date).split("T")[0]
+        # Каноническая дата YYYY-MM-DD: та же функция, что у вебхука и импорта XLSX
+        tx_date = normalize_bank_operation_date(tx_date)
 
         operation_id = (
             tx.get("transactionId") or tx.get("TransactionId")

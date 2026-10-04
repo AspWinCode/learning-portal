@@ -2,6 +2,7 @@ from typing import Dict, List, Optional, Set
 
 import csv
 import hashlib
+import logging
 from datetime import date, datetime, timedelta, timezone
 from io import StringIO, BytesIO
 
@@ -95,13 +96,15 @@ from app.schemas.finance import (
 )
 from app.services.finance_metric_engine import compute_metric_formula
 from app.services.finance_templates import get_template
-from app.services.finance_ledger import apply_recognition_rules
+from app.services.finance_ledger import apply_recognition_rules, find_cross_source_ledger_duplicate
 from app.services.student_account_finance import create_student_account as finance_create_student_account
 from app.services.bank_operation import apply_bank_operation_to_student as bank_operation_apply
 from app.services.payment_status import get_payment_status_summary
 from app.dependencies import require_finance_access as dep_require_finance_access
 from app.dependencies import require_finance_manage as dep_require_finance_manage
 from app.student_display import get_student_display_name
+
+logger = logging.getLogger(__name__)
 from app.routers.action_log import log_action
 
 
@@ -2615,6 +2618,26 @@ async def import_finance_transactions(
                 .first()
             )
         if existing:
+            skipped += 1
+            return
+
+        # Та же банковская операция уже могла прийти по API Точки или выпиской/XLSX,
+        # но с другим ID и другим источником: не создаём вторую строку журнала.
+        cross_source_dup = find_cross_source_ledger_duplicate(
+            db,
+            payment_date=occurred_at.date().isoformat(),
+            amount=amount_val,
+            is_expense=direction == "expense",
+            counterparty=counterparty,
+            purpose=description,
+            bank_source=bank_source,
+        )
+        if cross_source_dup is not None:
+            logger.info(
+                "ledger import: row matches existing transaction id=%s source=%s, skipped",
+                cross_source_dup.id,
+                cross_source_dup.bank_source,
+            )
             skipped += 1
             return
 

@@ -43,7 +43,7 @@ const LegoStudentsPage: React.FC = () => {
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
       <Paper variant="outlined" sx={{ p: 2, mb: 3 }} component="form" onSubmit={onCreate}>
         <Typography variant="subtitle1" fontWeight={600} gutterBottom>Новый ребёнок</Typography>
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} sx={{ flexWrap: 'wrap' }}>
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }} sx={{ flexWrap: 'wrap' }}>
           <TextField size="small" label="ФИО ребёнка *" value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} required />
           <TextField size="small" label="Родитель" value={form.parent_name} onChange={(e) => setForm({ ...form, parent_name: e.target.value })} />
           <TextField size="small" label="Телефон" value={form.parent_phone} onChange={(e) => setForm({ ...form, parent_phone: e.target.value })} />

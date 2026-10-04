@@ -178,7 +178,7 @@ const LegoEventsPage: React.FC = () => {
       {canManage && (
         <Paper variant="outlined" sx={{ p: 2, mb: 3 }} component="form" onSubmit={onCreate}>
           <Typography variant="subtitle1" fontWeight={600} gutterBottom>Новый мастер-класс</Typography>
-          <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} sx={{ flexWrap: 'wrap' }}>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }} sx={{ flexWrap: 'wrap' }}>
             <TextField size="small" select SelectProps={{ native: true }} label="Филиал" value={branchId} onChange={(e) => setBranchId(e.target.value)} required>
               {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
             </TextField>

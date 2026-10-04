@@ -65,7 +65,7 @@ const LegoPaymentsPage: React.FC = () => {
 
       <Paper variant="outlined" sx={{ p: 2, mb: 3 }} component="form" onSubmit={onPay}>
         <Typography variant="subtitle1" fontWeight={600} gutterBottom>Зарегистрировать оплату</Typography>
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} sx={{ flexWrap: 'wrap' }}>
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }} sx={{ flexWrap: 'wrap' }}>
           <TextField size="small" select SelectProps={{ native: true }} label="Ребёнок" value={studentId} onChange={(e) => setStudentId(e.target.value)} required sx={{ minWidth: 240 }}>
             <option value="">Выберите ребёнка</option>
             {students.map((s) => <option key={s.id} value={s.id}>{s.full_name}</option>)}

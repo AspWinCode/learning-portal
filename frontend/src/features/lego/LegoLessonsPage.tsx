@@ -51,7 +51,7 @@ const LegoLessonsPage: React.FC = () => {
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
       <Paper variant="outlined" sx={{ p: 2, mb: 3 }} component="form" onSubmit={onCreate}>
         <Typography variant="subtitle1" fontWeight={600} gutterBottom>Новое занятие</Typography>
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }}>
           <TextField size="small" select SelectProps={{ native: true }} label="Группа" value={groupId} onChange={(e) => setGroupId(e.target.value)} required>
             <option value="">Выберите группу</option>
             {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}

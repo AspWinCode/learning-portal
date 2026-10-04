@@ -195,7 +195,7 @@ const LegoGroupsPage: React.FC = () => {
       {canManage && (
         <Paper variant="outlined" sx={{ p: 2, mb: 2 }} component="form" onSubmit={onCreateBranch}>
           <Typography variant="subtitle1" fontWeight={600} gutterBottom>Новый филиал</Typography>
-          <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }}>
             <TextField size="small" label="Код (латиница) *" value={branchCode} onChange={(e) => setBranchCode(e.target.value)} required />
             <TextField size="small" label="Название *" value={branchName} onChange={(e) => setBranchName(e.target.value)} required />
             <Button type="submit" variant="outlined">Создать филиал</Button>
@@ -206,7 +206,7 @@ const LegoGroupsPage: React.FC = () => {
       {canManage && (
         <Paper variant="outlined" sx={{ p: 2, mb: 3 }} component="form" onSubmit={onCreate}>
           <Typography variant="subtitle1" fontWeight={600} gutterBottom>Новая группа</Typography>
-          <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} sx={{ flexWrap: 'wrap' }}>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }} sx={{ flexWrap: 'wrap' }}>
             <TextField size="small" label="Название *" value={name} onChange={(e) => setName(e.target.value)} required />
             <TextField size="small" select SelectProps={{ native: true }} label="Филиал" value={branchId} onChange={(e) => setBranchId(e.target.value)}>
               {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}

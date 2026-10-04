@@ -346,3 +346,25 @@ def test_debts_summary_counts_active_children(owner, cleanup) -> None:
     data = client.get("/api/v1/lego/debts?filter=unpaid").json()
     assert any(row["student_id"] == kid for row in data["rows"])
     assert data["summary"]["unpaid"] >= 1
+
+
+def test_group_detail_lists_members_and_trainer_picker_works(owner, trainer, cleanup) -> None:
+    client = _as(owner)
+    group_id = _group(client, "состав", trainer.id)
+    kid = _student(client, "в-составе")
+    _join(client, group_id, kid)
+    detail = client.get(f"/api/v1/lego/groups/{group_id}").json()
+    assert [m["student_id"] for m in detail["members"]] == [kid]
+    assert detail["trainer_id"] == trainer.id
+
+    trainers = client.get("/api/v1/lego/trainers").json()
+    assert any(t["id"] == trainer.id for t in trainers)
+
+    r = client.post(f"/api/v1/lego/groups/{group_id}/members/{kid}/leave")
+    assert r.status_code == 200
+    assert client.get(f"/api/v1/lego/groups/{group_id}").json()["members"] == []
+
+
+def test_trainer_picker_requires_lego_manage(trainer, cleanup) -> None:
+    client = _as(trainer, extra_permissions=["lego.access", "lego.attendance"])
+    assert client.get("/api/v1/lego/trainers").status_code == 403

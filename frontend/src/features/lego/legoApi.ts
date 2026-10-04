@@ -203,3 +203,14 @@ export const formatDate = (value: string | null | undefined): string => {
   const [y, m, d] = value.split('-');
   return `${d}.${m}.${y}`;
 };
+
+export interface LegoGroupDetail extends LegoGroup {
+  members: { student_id: number; full_name: string; joined_at: string }[];
+}
+
+export const getGroup = (id: number): Promise<LegoGroupDetail> => api.get(`${BASE}/groups/${id}`).then((r) => r.data);
+
+export const updateGroup = (id: number, payload: { name?: string; trainer_id?: number | null; weekday?: number | null; start_time?: string | null; end_time?: string | null }): Promise<LegoGroup> =>
+  api.patch(`${BASE}/groups/${id}`, payload).then((r) => r.data);
+
+export const listTrainers = (): Promise<{ id: number; full_name: string }[]> => api.get(`${BASE}/trainers`).then((r) => r.data);

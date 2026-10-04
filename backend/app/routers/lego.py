@@ -29,6 +29,7 @@ from app.models import (
     LegoPayment,
     LegoStudent,
     User,
+    UserRole,
 )
 from app.routers.action_log import log_action
 from app.services import lego_service
@@ -610,6 +611,48 @@ def list_groups(
     if group_ids is not None:
         query = query.filter(LegoGroup.id.in_(group_ids or [-1]))
     return [_group_out(db, g) for g in query.order_by(LegoGroup.name).all()]
+
+
+@router.get("/trainers")
+def list_trainers(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> List[dict]:
+    """Тренеры для выбора ответственного в LEGO-группе. Нужен lego.manage, а не users.access."""
+    _require(current_user, "lego.manage")
+    rows = (
+        db.query(User)
+        .filter(User.role == UserRole.TRAINER, User.is_active.is_(True))
+        .order_by(User.full_name)
+        .all()
+    )
+    return [{"id": u.id, "full_name": u.full_name} for u in rows]
+
+
+@router.get("/groups/{group_id}")
+def get_group(
+    group_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> dict:
+    _require(current_user, "lego.access")
+    group = _get_group(db, group_id)
+    if not lego_service.can_see_group(current_user, group):
+        raise HTTPException(status_code=404, detail="LEGO-группа не найдена")
+    members = (
+        db.query(LegoStudent, LegoGroupStudent)
+        .join(LegoGroupStudent, LegoGroupStudent.lego_student_id == LegoStudent.id)
+        .filter(LegoGroupStudent.lego_group_id == group.id, LegoGroupStudent.left_at.is_(None))
+        .order_by(LegoStudent.full_name)
+        .all()
+    )
+    return {
+        **_group_out(db, group),
+        "members": [
+            {"student_id": s.id, "full_name": s.full_name, "joined_at": m.joined_at.isoformat()}
+            for s, m in members
+        ],
+    }
 
 
 @router.post("/groups", status_code=201)

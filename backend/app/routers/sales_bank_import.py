@@ -1,8 +1,7 @@
-import hashlib
 import re
 from datetime import date, datetime, timedelta
 from io import BytesIO
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from openpyxl import load_workbook
@@ -12,10 +11,45 @@ from app import auth
 from app.database import get_db
 from app.models import BankTransaction, BankTransactionStatus, User
 from app.routers.action_log import log_action
+from app.routers.sales_bank import _find_existing_bank_transaction, _incoming_operation, _record_alias
+from app.services.bank_identity import SOURCE_XLSX, IncomingBankOperation, stable_fingerprint_operation_id
 from app.services.finance_ledger import ensure_finance_transaction_for_bank_transaction
 from app.utils.phone import normalize_phone
 
 router = APIRouter()
+
+
+def _resolve_xlsx_operation(
+    db: Session,
+    occurrences: Dict[tuple, int],
+    *,
+    date_str: str,
+    amount: float,
+    payer_name: str,
+    payer_phone: str,
+    purpose: str,
+) -> Tuple[IncomingBankOperation, Optional[BankTransaction]]:
+    """Стабильный ID строки XLSX и поиск уже известной операции.
+
+    ID строится из содержимого строки, без номера строки в файле: перестановка и добавление
+    строк не меняют ID остальных. Полностью одинаковые строки различаются порядковым номером
+    вхождения (#0, #1, ...), поэтому две реальные одинаковые операции остаются двумя.
+    """
+    parts = ("xlsx", date_str, f"{amount:.2f}", payer_name, payer_phone, purpose)
+    occurrence = occurrences.get(parts, 0)
+    occurrences[parts] = occurrence + 1
+    external_id = stable_fingerprint_operation_id("xlsx-", parts, occurrence)
+    transaction = {
+        "date": date_str,
+        "amount": amount,
+        "direction": "expense" if amount < 0 else "income",
+        "payer_name": payer_name,
+        "description": purpose,
+    }
+    incoming = _incoming_operation(transaction, SOURCE_XLSX, external_id, payer_phone)
+    # Канал XLSX не привязан к счёту: операция может уже прийти через API Точки.
+    existing, _strategy = _find_existing_bank_transaction(db, None, incoming)
+    return incoming, existing
 
 
 def _require_sales_manage_bank(user: User) -> None:
@@ -58,6 +92,7 @@ def _import_bank_transactions_vertical(rows: list, db: Session) -> dict:
     imported = 0
     skipped = 0
     last_date_str = None
+    occurrences: Dict[tuple, int] = {}
     for index, line in enumerate(lines):
         if not line:
             continue
@@ -105,14 +140,22 @@ def _import_bank_transactions_vertical(rows: list, db: Session) -> dict:
                     payer_name = rest[:512]
         if amount_val > 0 and not payer_name:
             payer_name = counterparty or "Из выписки (без ФИО)"
-        operation_id_source = f"vertical_xlsx|{date_str}|{amount_val}|{payer_name}|{payer_phone or ''}|{index}"
-        operation_id = hashlib.sha256(operation_id_source.encode("utf-8")).hexdigest()
-        if db.query(BankTransaction.id).filter(BankTransaction.operation_id == operation_id).first():
+        incoming, existing = _resolve_xlsx_operation(
+            db,
+            occurrences,
+            date_str=date_str,
+            amount=amount_val,
+            payer_name=payer_name,
+            payer_phone=payer_phone,
+            purpose=None,
+        )
+        if existing is not None:
+            _record_alias(db, existing, incoming)
             skipped += 1
             continue
         status = BankTransactionStatus.EXPENSE.value if amount_val < 0 else BankTransactionStatus.NEW.value
         bank_transaction = BankTransaction(
-            operation_id=operation_id,
+            operation_id=incoming.external_id,
             tochka_account_id=None,
             amount=amount_val,
             payer_phone=payer_phone,
@@ -122,6 +165,8 @@ def _import_bank_transactions_vertical(rows: list, db: Session) -> dict:
             expense_category=None,
         )
         db.add(bank_transaction)
+        db.flush()
+        _record_alias(db, bank_transaction, incoming)
         ensure_finance_transaction_for_bank_transaction(db, bank_transaction, bank_source="import_xlsx")
         imported += 1
     db.commit()
@@ -290,6 +335,7 @@ async def import_bank_transactions_from_excel(
 
     imported = 0
     skipped = 0
+    occurrences: Dict[tuple, int] = {}
     for row_index, row in enumerate(rows[1:], start=2):
         row = list(row) if row else []
         date_str = _parse_date_any(col(row, ["дата", "date"]))
@@ -328,25 +374,34 @@ async def import_bank_transactions_from_excel(
                 continue
 
         payer_phone = (normalize_phone(payer_phone_raw or "") or None) if not is_expense else None
-        operation_id_source = f"manual_xlsx|{date_str}|{amount}|{payer_name}|{payer_phone}|{row_index}"
-        operation_id = hashlib.sha256(operation_id_source.encode("utf-8")).hexdigest()
-
-        exists = db.query(BankTransaction.id).filter(BankTransaction.operation_id == operation_id).first()
-        if exists:
+        incoming, existing = _resolve_xlsx_operation(
+            db,
+            occurrences,
+            date_str=date_str,
+            amount=amount,
+            payer_name=payer_name or "",
+            payer_phone=payer_phone or "",
+            purpose=purpose or "",
+        )
+        if existing is not None:
+            _record_alias(db, existing, incoming)
             skipped += 1
             continue
 
         bank_transaction = BankTransaction(
-            operation_id=operation_id,
+            operation_id=incoming.external_id,
             tochka_account_id=None,
             amount=amount,
             payer_phone=(payer_phone or None) if not is_expense else None,
             payer_name=(payer_name or "")[:512] or None,
             payment_date=date_str,
+            purpose=(purpose or "")[:512] or None,
             status=BankTransactionStatus.EXPENSE.value if is_expense else BankTransactionStatus.NEW.value,
             expense_category=None,
         )
         db.add(bank_transaction)
+        db.flush()
+        _record_alias(db, bank_transaction, incoming)
         imported += 1
 
     db.commit()

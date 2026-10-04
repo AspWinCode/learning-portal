@@ -3,7 +3,14 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from app.models import BankTransaction, BankTransactionStatus, FinanceTransaction, PhonePaymentBinding, StudentCard
+from app.models import (
+    BankTransaction,
+    BankTransactionAlias,
+    BankTransactionStatus,
+    FinanceTransaction,
+    PhonePaymentBinding,
+    StudentCard,
+)
 from app.routers.sales_bank import (
     _transaction_from_tochka_webhook,
     _upsert_tochka_bank_transaction,
@@ -22,6 +29,29 @@ def _query_mock(result):
     return query
 
 
+def _bank_query_side_effect(bank_transaction, bank_queries):
+    """Ответы на запросы BankTransaction по порядку; BankTransactionAlias — пусто."""
+    queue = list(bank_queries)
+
+    def side_effect(model):
+        if model is StudentCard:
+            return _query_mock([])
+        if model is PhonePaymentBinding:
+            return _query_mock([])
+        if model is BankTransactionAlias:
+            return _query_mock(None)
+        if model is BankTransaction:
+            result = queue.pop(0) if queue else None
+            return _query_mock(result)
+        raise AssertionError(model)
+
+    return side_effect
+
+
+def _added_bank_transactions(db):
+    return [call.args[0] for call in db.add.call_args_list if isinstance(call.args[0], BankTransaction)]
+
+
 def test_tochka_import_skips_existing_applied_transaction(monkeypatch):
     bank_transaction = MagicMock()
     bank_transaction.operation_id = "op-1"
@@ -34,6 +64,7 @@ def test_tochka_import_skips_existing_applied_transaction(monkeypatch):
         StudentCard: _query_mock([]),
         PhonePaymentBinding: _query_mock([]),
         BankTransaction: _query_mock(bank_transaction),
+        BankTransactionAlias: _query_mock(None),
     }[model]
 
     ensure_finance = MagicMock()
@@ -68,7 +99,7 @@ def test_tochka_import_skips_existing_applied_transaction(monkeypatch):
     assert bank_transaction.payer_name == "Ivanov"
     assert bank_transaction.payer_phone == "+79990000000"
     ensure_finance.assert_called_once_with(db, bank_transaction, bank_source="tochka")
-    db.add.assert_not_called()
+    assert _added_bank_transactions(db) == []
 
 
 def test_tochka_import_marks_debit_transaction_as_expense(monkeypatch):
@@ -77,6 +108,7 @@ def test_tochka_import_marks_debit_transaction_as_expense(monkeypatch):
         StudentCard: _query_mock([]),
         PhonePaymentBinding: _query_mock([]),
         BankTransaction: _query_mock(None),
+        BankTransactionAlias: _query_mock(None),
     }[model]
 
     ensure_finance = MagicMock()
@@ -106,7 +138,7 @@ def test_tochka_import_marks_debit_transaction_as_expense(monkeypatch):
         date(2026, 6, 13),
     )
 
-    created_transaction = db.add.call_args.args[0]
+    created_transaction = _added_bank_transactions(db)[0]
     assert created_transaction.status == BankTransactionStatus.EXPENSE.value
     assert created_transaction.amount == 42
     assert created_transaction.payer_phone is None
@@ -176,7 +208,7 @@ def test_tochka_webhook_enriches_existing_statement_transaction(monkeypatch):
     bank_transaction.amount = 4200
 
     db = MagicMock()
-    db.query.side_effect = [_query_mock(None), _query_mock([bank_transaction])]
+    db.query.side_effect = _bank_query_side_effect(bank_transaction, bank_queries=[None, [bank_transaction]])
     ensure_finance = MagicMock()
     monkeypatch.setattr("app.routers.sales_bank.ensure_finance_transaction_for_bank_transaction", ensure_finance)
 
@@ -197,7 +229,7 @@ def test_tochka_webhook_enriches_existing_statement_transaction(monkeypatch):
     assert bank_transaction.operation_id == "statement-op"
     assert bank_transaction.payer_phone == "+79526244352"
     assert bank_transaction.payer_name == "Елена Ивановна И."
-    db.add.assert_not_called()
+    assert _added_bank_transactions(db) == []
     ensure_finance.assert_called_once_with(db, bank_transaction, bank_source="tochka")
 
 
@@ -215,6 +247,8 @@ def test_tochka_import_reuses_enriched_webhook_transaction(monkeypatch):
             return _query_mock([])
         if model is PhonePaymentBinding:
             return _query_mock([])
+        if model is BankTransactionAlias:
+            return _query_mock(None)
         if model is BankTransaction:
             query_side_effect.bank_queries += 1
             return _query_mock(None) if query_side_effect.bank_queries == 1 else _query_mock([bank_transaction])
@@ -263,7 +297,7 @@ def test_tochka_import_reuses_enriched_webhook_transaction(monkeypatch):
     assert bank_transaction.operation_id == "sbp-op"
     assert bank_transaction.payer_phone == "+79526244352"
     assert bank_transaction.payer_name == "Елена Ивановна И."
-    db.add.assert_not_called()
+    assert _added_bank_transactions(db) == []
     assert ensure_finance.call_count == 2
     ensure_finance.assert_called_with(db, bank_transaction, bank_source="tochka")
 
@@ -281,7 +315,7 @@ def test_tochka_webhook_generic_name_reuses_existing_real_name_transaction(monke
     bank_transaction.amount = 1500
 
     db = MagicMock()
-    db.query.side_effect = [_query_mock(None), _query_mock([]), _query_mock([]), _query_mock([bank_transaction])]
+    db.query.side_effect = _bank_query_side_effect(bank_transaction, bank_queries=[None, [bank_transaction]])
     ensure_finance = MagicMock()
     monkeypatch.setattr("app.routers.sales_bank.ensure_finance_transaction_for_bank_transaction", ensure_finance)
 
@@ -300,7 +334,7 @@ def test_tochka_webhook_generic_name_reuses_existing_real_name_transaction(monke
 
     assert result is bank_transaction
     assert bank_transaction.payer_name == "Надежда Сергеевна Д."
-    db.add.assert_not_called()
+    assert _added_bank_transactions(db) == []
     ensure_finance.assert_called_once_with(db, bank_transaction, bank_source="tochka")
 
 
@@ -314,6 +348,7 @@ def test_tochka_import_skips_ignored_transaction(monkeypatch):
         StudentCard: _query_mock([]),
         PhonePaymentBinding: _query_mock([]),
         BankTransaction: _query_mock(bank_transaction),
+        BankTransactionAlias: _query_mock(None),
     }[model]
 
     ensure_finance = MagicMock()
@@ -347,7 +382,7 @@ def test_tochka_import_skips_ignored_transaction(monkeypatch):
     assert result.no_match == []
     assert result.ambiguous == []
     ensure_finance.assert_not_called()
-    db.add.assert_not_called()
+    assert _added_bank_transactions(db) == []
 
 
 @pytest.mark.asyncio

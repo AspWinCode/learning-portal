@@ -4,7 +4,7 @@ import hashlib
 import re
 from typing import Optional
 
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -46,6 +46,82 @@ def _make_dedup_hash(bank_source: str, payment_date: Optional[str], amount: floa
 
 def _make_operation_dedup_hash(bank_source: str, operation_id: str) -> str:
     return hashlib.sha1(f"{bank_source}|operation|{operation_id}".encode("utf-8")).hexdigest()
+
+
+_BANK_LEDGER_SOURCES = ("tochka", "import_xlsx", "import_xlsx_v2", "import_csv")
+
+
+def find_cross_source_ledger_duplicate(
+    db: Session,
+    *,
+    payment_date: str,
+    amount: float,
+    is_expense: bool,
+    counterparty: Optional[str],
+    purpose: Optional[str],
+    bank_source: str,
+) -> Optional[FinanceTransaction]:
+    """Ищет уже существующую банковскую запись журнала из ДРУГОГО канала, которая является
+    той же операцией: Точка по API, импорт выписки, CSV/XLSX.
+
+    Тот же источник не считается дублем: две строки одного файла с одинаковыми полями
+    остаются двумя операциями. Неоднозначность (2+ кандидата) — не склеиваем.
+    """
+    from datetime import date as _date
+    from types import SimpleNamespace
+
+    from app.services.bank_identity import IncomingBankOperation, pick_semantic_match
+
+    if not payment_date or not amount:
+        return None
+    try:
+        day = _date.fromisoformat(payment_date[:10])
+    except ValueError:
+        return None
+
+    rows = (
+        db.query(FinanceTransaction)
+        .filter(
+            func.date(FinanceTransaction.occurred_at) == day.isoformat(),
+            func.abs(FinanceTransaction.amount) == abs(float(amount)),
+            FinanceTransaction.bank_source.in_(_BANK_LEDGER_SOURCES),
+        )
+        .order_by(FinanceTransaction.id.asc())
+        .all()
+    )
+    if not rows:
+        return None
+
+    adapters = {
+        row.id: SimpleNamespace(
+            id=row.id,
+            payment_date=day.isoformat(),
+            amount=row.amount,
+            is_expense=row.direction == FinanceTransactionDirection.EXPENSE,
+            payer_name=row.counterparty_name or "",
+            payer_phone=row.counterparty_phone or "",
+            purpose=row.description_raw or "",
+            bank_source=row.bank_source,
+        )
+        for row in rows
+    }
+    incoming = IncomingBankOperation(
+        source=bank_source,
+        external_id="",
+        canonical_date=day.isoformat(),
+        amount=abs(float(amount)),
+        is_expense=is_expense,
+        payer_name=(counterparty or "").strip(),
+        purpose=(purpose or "").strip(),
+    )
+    picked, _strategy = pick_semantic_match(
+        list(adapters.values()),
+        incoming,
+        lambda c: {c.bank_source},
+    )
+    if picked is None:
+        return None
+    return next(row for row in rows if row.id == picked.id)
 
 
 def apply_recognition_rules(db: Session, tx: FinanceTransaction) -> None:

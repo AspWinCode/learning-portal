@@ -19,6 +19,10 @@ from app.database import get_db
 from app.models import (
     LEGO_LESSON_CANCELLED,
     LEGO_LESSON_PLANNED,
+    FinanceTarget,
+    LegoBranch,
+    LegoEvent,
+    LegoEventRegistration,
     LEGO_PERIOD_MONTHLY,
     LEGO_STUDENT_ACTIVE,
     LEGO_STUDENT_ARCHIVED,
@@ -85,6 +89,7 @@ class LegoPaymentIn(BaseModel):
 class LegoGroupIn(BaseModel):
     name: str = Field(..., min_length=1, max_length=128)
     trainer_id: Optional[int] = None
+    branch_id: Optional[int] = None
     location: Optional[str] = "Ленинец"
     weekday: Optional[int] = Field(None, ge=0, le=6)
     start_time: Optional[time] = None
@@ -94,6 +99,7 @@ class LegoGroupIn(BaseModel):
 class LegoGroupPatch(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=128)
     trainer_id: Optional[int] = None
+    branch_id: Optional[int] = None
     location: Optional[str] = None
     weekday: Optional[int] = Field(None, ge=0, le=6)
     start_time: Optional[time] = None
@@ -111,6 +117,35 @@ class LegoLessonIn(BaseModel):
     start_time: Optional[time] = None
     end_time: Optional[time] = None
     comment: Optional[str] = None
+
+
+class LegoBranchIn(BaseModel):
+    code: str = Field(..., min_length=2, max_length=64, pattern=r"^[a-z0-9_]+$")
+    name: str = Field(..., min_length=1, max_length=256)
+
+
+class LegoEventIn(BaseModel):
+    branch_id: int
+    title: str = Field(..., min_length=1, max_length=256)
+    event_date: date
+    start_time: Optional[time] = None
+    end_time: Optional[time] = None
+    price: Optional[Decimal] = Field(None, ge=0)
+    capacity: Optional[int] = Field(None, ge=1)
+    comment: Optional[str] = None
+
+
+class LegoRegistrationIn(BaseModel):
+    # Либо существующий участник, либо новый (создаётся без месячного тарифа).
+    student_id: Optional[int] = None
+    full_name: Optional[str] = Field(None, min_length=1, max_length=256)
+    parent_phone: Optional[str] = None
+
+
+class LegoEventPaymentIn(BaseModel):
+    amount: Optional[Decimal] = Field(None, gt=0)  # по умолчанию цена мастер-класса
+    payment_date: Optional[date] = None
+    idempotency_key: Optional[str] = Field(None, max_length=128)
 
 
 class LegoAttendanceRecord(BaseModel):
@@ -592,6 +627,8 @@ def _group_out(db: Session, group: LegoGroup) -> dict:
         "trainer_id": group.trainer_id,
         "trainer_name": group.trainer.full_name if group.trainer else None,
         "location": group.location,
+        "branch_id": group.branch_id,
+        "branch_name": group.branch.name if group.branch else None,
         "weekday": group.weekday,
         "start_time": group.start_time.isoformat() if group.start_time else None,
         "end_time": group.end_time.isoformat() if group.end_time else None,
@@ -666,6 +703,7 @@ def create_group(
         name=payload.name.strip(),
         trainer_id=payload.trainer_id,
         location=payload.location or "Ленинец",
+        branch_id=payload.branch_id or lego_service.default_branch(db).id,
         weekday=payload.weekday,
         start_time=payload.start_time,
         end_time=payload.end_time,
@@ -895,6 +933,246 @@ def cancel_lesson(
     db.commit()
     log_action(db, current_user.id, "lego_lesson_cancel", "lego_lesson", lesson.id, None)
     return {"id": lesson.id, "status": lesson.status}
+
+
+# ── Филиалы ──────────────────────────────────────────────────────────────────
+
+def _branch_out(branch: LegoBranch) -> dict:
+    return {
+        "id": branch.id,
+        "code": branch.code,
+        "name": branch.name,
+        "finance_target_id": branch.finance_target_id,
+        "is_active": bool(branch.is_active),
+    }
+
+
+@router.get("/branches")
+def list_branches(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> List[dict]:
+    _require(current_user, "lego.access")
+    lego_service.default_branch(db)
+    db.commit()
+    return [_branch_out(b) for b in db.query(LegoBranch).order_by(LegoBranch.name).all()]
+
+
+@router.post("/branches", status_code=201)
+def create_branch(
+    payload: LegoBranchIn,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> dict:
+    _require(current_user, "lego.manage")
+    if db.query(LegoBranch).filter(LegoBranch.code == payload.code).first():
+        raise HTTPException(status_code=409, detail="Филиал с таким кодом уже есть")
+    # Target создаётся по коду филиала: доходы филиала видны отдельно в finance.
+    target = db.query(FinanceTarget).filter(FinanceTarget.code == payload.code).first()
+    if target is None:
+        target = FinanceTarget(code=payload.code, name=f"LEGO — {payload.name.strip()}", is_active=True)
+        db.add(target)
+        db.flush()
+    branch = LegoBranch(code=payload.code, name=payload.name.strip(), finance_target_id=target.id, is_active=True)
+    db.add(branch)
+    db.commit()
+    db.refresh(branch)
+    log_action(db, current_user.id, "lego_branch_create", "lego_branch", branch.id, {"code": branch.code})
+    return _branch_out(branch)
+
+
+# ── Мастер-классы ────────────────────────────────────────────────────────────
+
+def _event_out(db: Session, event: LegoEvent) -> dict:
+    return {
+        "id": event.id,
+        "branch_id": event.branch_id,
+        "branch_name": event.branch.name if event.branch else None,
+        "title": event.title,
+        "event_date": event.event_date.isoformat(),
+        "start_time": event.start_time.isoformat() if event.start_time else None,
+        "end_time": event.end_time.isoformat() if event.end_time else None,
+        "price": _money(event.price),
+        "capacity": event.capacity,
+        "status": event.status,
+        "comment": event.comment,
+        "registered": lego_service.event_registered_count(db, event),
+    }
+
+
+@router.get("/events")
+def list_events(
+    date_from: Optional[date] = Query(None),
+    date_to: Optional[date] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> List[dict]:
+    _require(current_user, "lego.access")
+    query = db.query(LegoEvent)
+    if date_from is not None:
+        query = query.filter(LegoEvent.event_date >= date_from)
+    if date_to is not None:
+        query = query.filter(LegoEvent.event_date <= date_to)
+    events = query.order_by(LegoEvent.event_date, LegoEvent.start_time, LegoEvent.id).limit(500).all()
+    return [_event_out(db, e) for e in events]
+
+
+@router.post("/events", status_code=201)
+def create_event(
+    payload: LegoEventIn,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> dict:
+    _require(current_user, "lego.manage")
+    branch = db.query(LegoBranch).filter(LegoBranch.id == payload.branch_id).first()
+    if branch is None:
+        raise HTTPException(status_code=404, detail="Филиал не найден")
+    event = LegoEvent(
+        branch_id=branch.id,
+        title=payload.title.strip(),
+        event_date=payload.event_date,
+        start_time=payload.start_time,
+        end_time=payload.end_time,
+        price=payload.price,
+        capacity=payload.capacity,
+        status=LEGO_LESSON_PLANNED,
+        comment=payload.comment,
+        created_by=current_user.id,
+    )
+    db.add(event)
+    db.commit()
+    db.refresh(event)
+    log_action(db, current_user.id, "lego_event_create", "lego_event", event.id, {"title": event.title, "event_date": payload.event_date.isoformat()})
+    return _event_out(db, event)
+
+
+@router.get("/events/{event_id}")
+def get_event(
+    event_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> dict:
+    _require(current_user, "lego.access")
+    event = db.query(LegoEvent).filter(LegoEvent.id == event_id).first()
+    if event is None:
+        raise HTTPException(status_code=404, detail="Мастер-класс не найден")
+    regs = (
+        db.query(LegoEventRegistration, LegoStudent)
+        .join(LegoStudent, LegoStudent.id == LegoEventRegistration.student_id)
+        .filter(LegoEventRegistration.event_id == event.id)
+        .order_by(LegoStudent.full_name)
+        .all()
+    )
+    return {
+        **_event_out(db, event),
+        "participants": [
+            {
+                "student_id": s.id,
+                "full_name": s.full_name,
+                "parent_phone": s.parent_phone,
+                "attended": r.attended,
+                "paid": r.paid,
+                "payment_id": r.payment_id,
+            }
+            for r, s in regs
+        ],
+    }
+
+
+@router.post("/events/{event_id}/registrations", status_code=201)
+def register_participant(
+    event_id: int,
+    payload: LegoRegistrationIn,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> dict:
+    _require(current_user, "lego.attendance")
+    event = db.query(LegoEvent).filter(LegoEvent.id == event_id).first()
+    if event is None:
+        raise HTTPException(status_code=404, detail="Мастер-класс не найден")
+    if payload.student_id is not None:
+        student = _get_student(db, payload.student_id)
+    elif payload.full_name:
+        # Разовый участник: карточка без месячного тарифа, в долги не попадает.
+        student = LegoStudent(
+            full_name=payload.full_name.strip(),
+            parent_phone=payload.parent_phone,
+            start_date=date.today(),
+            status=LEGO_STUDENT_ACTIVE,
+            payment_period=LEGO_PERIOD_MONTHLY,
+            payment_active=False,
+        )
+        db.add(student)
+        db.commit()
+        db.refresh(student)
+    else:
+        raise HTTPException(status_code=400, detail="Укажите участника или ФИО нового")
+    try:
+        registration = lego_service.register_for_event(db, event, student)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    log_action(db, current_user.id, "lego_event_register", "lego_event", event.id, {"student_id": student.id})
+    return {"event_id": event.id, "student_id": student.id, "registration_id": registration.id}
+
+
+@router.post("/events/{event_id}/registrations/{student_id}/attendance")
+def mark_event_attendance(
+    event_id: int,
+    student_id: int,
+    attended: bool = Query(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+) -> dict:
+    _require(current_user, "lego.attendance")
+    registration = (
+        db.query(LegoEventRegistration)
+        .filter(LegoEventRegistration.event_id == event_id, LegoEventRegistration.student_id == student_id)
+        .first()
+    )
+    if registration is None:
+        raise HTTPException(status_code=404, detail="Запись не найдена")
+    registration.attended = attended
+    db.commit()
+    log_action(db, current_user.id, "lego_event_attendance", "lego_event", event_id, {"student_id": student_id, "attended": attended})
+    return {"event_id": event_id, "student_id": student_id, "attended": attended}
+
+
+@router.post("/events/{event_id}/registrations/{student_id}/payment")
+def pay_for_event(
+    event_id: int,
+    student_id: int,
+    payload: LegoEventPaymentIn,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    _require(current_user, "lego.payments_manage")
+    event = db.query(LegoEvent).filter(LegoEvent.id == event_id).first()
+    registration = (
+        db.query(LegoEventRegistration)
+        .filter(LegoEventRegistration.event_id == event_id, LegoEventRegistration.student_id == student_id)
+        .first()
+    )
+    if event is None or registration is None:
+        raise HTTPException(status_code=404, detail="Запись не найдена")
+    amount = payload.amount or event.price
+    if amount is None:
+        raise HTTPException(status_code=400, detail="Укажите сумму: у мастер-класса не задана цена")
+    if registration.paid and not payload.idempotency_key:
+        raise HTTPException(status_code=409, detail="Участник уже оплатил этот мастер-класс")
+    try:
+        payment, created = lego_service.register_event_payment(
+            db,
+            registration,
+            amount=amount,
+            payment_date=payload.payment_date or date.today(),
+            created_by=current_user.id,
+            idempotency_key=payload.idempotency_key,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    if created:
+        log_action(db, current_user.id, "lego_event_payment", "lego_payment", payment.id, {"event_id": event_id, "student_id": student_id, "amount": float(amount)})
+    return {"payment_id": payment.id, "amount": _money(payment.amount), "created": created, "finance_transaction_id": payment.finance_transaction_id}
 
 
 # ── Долги и сводка ───────────────────────────────────────────────────────────

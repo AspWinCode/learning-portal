@@ -15,6 +15,7 @@ import pytest
 from app.models import (  # noqa: E402  (импорт после проверки окружения ниже)
     FinanceTarget,
     FinanceTransaction,
+    LegoEvent,
     LegoGroup,
     LegoGroupStudent,
     LegoLesson,
@@ -56,6 +57,19 @@ def cleanup(db):
     student_ids = [s.id for s in db.query(LegoStudent).filter(LegoStudent.full_name.like(f"{TAG}%")).all()]
     group_ids = [g.id for g in db.query(LegoGroup).filter(LegoGroup.name.like(f"{TAG}%")).all()]
     user_ids = [u.id for u in db.query(User).filter(User.email.like("test-lego-%")).all()]
+    event_ids = [e.id for e in db.query(LegoEvent).filter(LegoEvent.title.like(f"{TAG}%")).all()]
+    # Регистрации ссылаются на платежи, поэтому удаляем их первыми.
+    if event_ids or student_ids:
+        from app.models import LegoEventRegistration
+
+        reg_q = db.query(LegoEventRegistration)
+        if event_ids:
+            reg_q.filter(LegoEventRegistration.event_id.in_(event_ids)).delete(synchronize_session=False)
+        if student_ids:
+            reg_q.filter(LegoEventRegistration.student_id.in_(student_ids)).delete(synchronize_session=False)
+    if event_ids:
+        db.query(LegoPayment).filter(LegoPayment.event_id.in_(event_ids)).delete(synchronize_session=False)
+        db.query(LegoEvent).filter(LegoEvent.id.in_(event_ids)).delete(synchronize_session=False)
     if student_ids:
         db.query(LegoPayment).filter(LegoPayment.student_id.in_(student_ids)).delete(synchronize_session=False)
     tx_ids = [t.id for t in db.query(FinanceTransaction.id).filter(FinanceTransaction.description_raw.like(f"LEGO: {TAG}%")).all()]
@@ -77,6 +91,11 @@ def cleanup(db):
 
         db.query(ActionLog).filter(ActionLog.user_id.in_(user_ids)).delete(synchronize_session=False)
         db.query(User).filter(User.id.in_(user_ids)).delete(synchronize_session=False)
+    # Тестовые филиалы и их targets (код начинается с testlego).
+    from app.models import LegoBranch
+
+    db.query(LegoBranch).filter(LegoBranch.code.like("testlego%")).delete(synchronize_session=False)
+    db.query(FinanceTarget).filter(FinanceTarget.code.like("testlego%")).delete(synchronize_session=False)
     db.commit()
 
 
@@ -368,3 +387,108 @@ def test_group_detail_lists_members_and_trainer_picker_works(owner, trainer, cle
 def test_trainer_picker_requires_lego_manage(trainer, cleanup) -> None:
     client = _as(trainer, extra_permissions=["lego.access", "lego.attendance"])
     assert client.get("/api/v1/lego/trainers").status_code == 403
+
+
+# ── Филиалы и мастер-классы ──────────────────────────────────────────────────
+
+def _default_branch_id(client) -> int:
+    branches = client.get("/api/v1/lego/branches").json()
+    return next(b["id"] for b in branches if b["code"] == "leninets")
+
+
+def test_group_default_branch_and_monthly_payment_books_to_branch_target(db, owner, cleanup) -> None:
+    client = _as(owner)
+    group = client.post("/api/v1/lego/groups", json={"name": f"{TAG} филиал-по-умолчанию"}).json()
+    assert group["branch_id"] == _default_branch_id(client)
+    kid = _student(client, "филиал-оплата")
+    _join(client, group["id"], kid)
+    r = client.post(f"/api/v1/lego/students/{kid}/payments", json={"amount": 3000, "idempotency_key": f"{TAG}-{uuid.uuid4().hex}"}).json()
+    tx = db.query(FinanceTransaction).filter(FinanceTransaction.id == r["finance_transaction_id"]).one()
+    assert db.query(FinanceTarget).filter(FinanceTarget.id == tx.target_id).one().code == "leninets"
+
+
+def test_new_branch_gets_own_target_and_income_goes_there(db, owner, cleanup) -> None:
+    client = _as(owner)
+    code = f"testlego{uuid.uuid4().hex[:8]}"
+    r = client.post("/api/v1/lego/branches", json={"code": code, "name": "Тестовый филиал"})
+    assert r.status_code == 201, r.text
+    branch_id = r.json()["id"]
+    assert client.post("/api/v1/lego/branches", json={"code": code, "name": "дубль"}).status_code == 409
+
+    group = client.post("/api/v1/lego/groups", json={"name": f"{TAG} второй-филиал", "branch_id": branch_id}).json()
+    kid = _student(client, "второй-филиал-ребёнок")
+    _join(client, group["id"], kid)
+    pay = client.post(f"/api/v1/lego/students/{kid}/payments", json={"amount": 2000, "idempotency_key": f"{TAG}-{uuid.uuid4().hex}"}).json()
+    tx = db.query(FinanceTransaction).filter(FinanceTransaction.id == pay["finance_transaction_id"]).one()
+    assert db.query(FinanceTarget).filter(FinanceTarget.id == tx.target_id).one().code == code
+
+
+def test_event_capacity_limits_registrations(owner, cleanup) -> None:
+    client = _as(owner)
+    branch_id = _default_branch_id(client)
+    event = client.post(
+        "/api/v1/lego/events",
+        json={"branch_id": branch_id, "title": f"{TAG} вместимость", "event_date": date.today().isoformat(), "price": 1500, "capacity": 1},
+    ).json()
+    first = _student(client, "мк-первый")
+    second = _student(client, "мк-второй")
+    assert client.post(f"/api/v1/lego/events/{event['id']}/registrations", json={"student_id": first}).status_code == 201
+    r = client.post(f"/api/v1/lego/events/{event['id']}/registrations", json={"student_id": second})
+    assert r.status_code == 409 and r.json()["detail"] == "Мест нет"
+    assert client.post(f"/api/v1/lego/events/{event['id']}/registrations", json={"student_id": first}).status_code == 409
+
+
+def test_one_off_participant_is_not_in_debts_and_event_payment_keeps_monthly_plan(db, owner, cleanup) -> None:
+    client = _as(owner)
+    branch_id = _default_branch_id(client)
+    event = client.post(
+        "/api/v1/lego/events",
+        json={"branch_id": branch_id, "title": f"{TAG} разовый", "event_date": date.today().isoformat(), "price": 1500},
+    ).json()
+    reg = client.post(f"/api/v1/lego/events/{event['id']}/registrations", json={"full_name": f"{TAG} разовый-участник", "parent_phone": "+70000000000"})
+    assert reg.status_code == 201, reg.text
+    participant = reg.json()["student_id"]
+
+    debts = client.get("/api/v1/lego/debts?filter=all").json()["rows"]
+    assert all(row["student_id"] != participant for row in debts)
+
+    pay = client.post(f"/api/v1/lego/events/{event['id']}/registrations/{participant}/payment", json={"idempotency_key": f"{TAG}-{uuid.uuid4().hex}"})
+    assert pay.status_code == 200, pay.text
+    body = pay.json()
+    assert body["created"] is True and body["amount"] == 1500.0
+    # Повтор с другим ключом не должен создать второй доход за ту же запись.
+    again = client.post(f"/api/v1/lego/events/{event['id']}/registrations/{participant}/payment", json={"idempotency_key": f"{TAG}-{uuid.uuid4().hex}"})
+    assert again.status_code == 409
+
+    detail = client.get(f"/api/v1/lego/events/{event['id']}").json()
+    row = next(p for p in detail["participants"] if p["student_id"] == participant)
+    assert row["paid"] is True
+
+    from app.models import LegoStudent as _S
+
+    student = db.query(_S).filter(_S.id == participant).one()
+    assert student.paid_until is None and student.next_payment_date is None
+
+    tx = db.query(FinanceTransaction).filter(FinanceTransaction.id == body["finance_transaction_id"]).one()
+    assert db.query(FinanceTarget).filter(FinanceTarget.id == tx.target_id).one().code == "leninets"
+
+
+def test_event_attendance_is_recorded(owner, cleanup) -> None:
+    client = _as(owner)
+    event = client.post(
+        "/api/v1/lego/events",
+        json={"branch_id": _default_branch_id(client), "title": f"{TAG} посещение", "event_date": date.today().isoformat()},
+    ).json()
+    kid = _student(client, "мк-посещение")
+    client.post(f"/api/v1/lego/events/{event['id']}/registrations", json={"student_id": kid})
+    r = client.post(f"/api/v1/lego/events/{event['id']}/registrations/{kid}/attendance?attended=true")
+    assert r.status_code == 200
+    detail = client.get(f"/api/v1/lego/events/{event['id']}").json()
+    assert next(p for p in detail["participants"] if p["student_id"] == kid)["attended"] is True
+
+
+def test_trainer_cannot_create_branch_or_event(trainer, owner, cleanup) -> None:
+    client = _as(trainer, extra_permissions=["lego.access", "lego.attendance"])
+    assert client.post("/api/v1/lego/branches", json={"code": "testlego" + uuid.uuid4().hex[:6], "name": "x"}).status_code == 403
+    assert client.post("/api/v1/lego/events", json={"branch_id": 1, "title": f"{TAG} x", "event_date": date.today().isoformat()}).status_code == 403
+

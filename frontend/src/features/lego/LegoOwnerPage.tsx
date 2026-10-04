@@ -6,6 +6,7 @@ import LegoGroupsPage from './LegoGroupsPage';
 import LegoLessonsPage from './LegoLessonsPage';
 import LegoDebtsPage from './LegoDebtsPage';
 import LegoPaymentsPage from './LegoPaymentsPage';
+import LegoEventsPage from './LegoEventsPage';
 
 // Единая страница LEGO для владельца: все разделы на одном экране.
 // Разделы — те же страницы, встроенные через LegoEmbeddedContext (без Layout и вкладок).
@@ -16,6 +17,7 @@ const LegoOwnerPage: React.FC = () => (
       <LegoGroupsPage />
       <LegoStudentsPage />
       <LegoLessonsPage />
+      <LegoEventsPage />
       <LegoDebtsPage />
       <LegoPaymentsPage />
     </LegoEmbeddedContext.Provider>

@@ -33,6 +33,9 @@ import {
   listStudents,
   listTrainers,
   LegoStudent,
+  listBranches,
+  LegoBranch,
+  createBranch,
   updateGroup,
 } from './legoApi';
 import { useAuth } from '../../contexts/AuthContext';
@@ -55,6 +58,8 @@ const LegoGroupsPage: React.FC = () => {
 
   const [groups, setGroups] = useState<LegoGroup[]>([]);
   const [trainers, setTrainers] = useState<{ id: number; full_name: string }[]>([]);
+  const [branches, setBranches] = useState<LegoBranch[]>([]);
+  const [branchId, setBranchId] = useState('');
   const [students, setStudents] = useState<LegoStudent[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -65,6 +70,10 @@ const LegoGroupsPage: React.FC = () => {
   const [weekday, setWeekday] = useState('');
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
+
+  // Новый филиал
+  const [branchCode, setBranchCode] = useState('');
+  const [branchName, setBranchName] = useState('');
 
   // Диалог группы
   const [detail, setDetail] = useState<LegoGroupDetail | null>(null);
@@ -86,10 +95,27 @@ const LegoGroupsPage: React.FC = () => {
     loadGroups();
     if (canManage) {
       listTrainers().then(setTrainers).catch(() => undefined);
+      listBranches().then((b) => { setBranches(b); if (b.length) setBranchId(String(b[0].id)); }).catch(() => undefined);
       listStudents({ status: 'active' }).then(setStudents).catch(() => undefined);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canManage]);
+
+  const onCreateBranch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    try {
+      const b = await createBranch({ code: branchCode.trim().toLowerCase(), name: branchName.trim() });
+      setBranches((prev) => [...prev, b]);
+      setBranchId(String(b.id));
+      setBranchCode('');
+      setBranchName('');
+      setMessage(`Филиал «${b.name}» создан, для него заведён отдельный finance target`);
+    } catch (e: unknown) {
+      const status = (e as { response?: { status?: number } })?.response?.status;
+      setError(status === 409 ? 'Филиал с таким кодом уже есть' : 'Не удалось создать филиал. Код: латиница, цифры и _');
+    }
+  };
 
   const onCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -98,6 +124,7 @@ const LegoGroupsPage: React.FC = () => {
       await createGroup({
         name: name.trim(),
         trainer_id: trainerId ? Number(trainerId) : null,
+        branch_id: branchId ? Number(branchId) : null,
         weekday: weekday === '' ? null : Number(weekday),
         start_time: startTime || null,
         end_time: endTime || null,
@@ -166,10 +193,24 @@ const LegoGroupsPage: React.FC = () => {
       {message && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setMessage(null)}>{message}</Alert>}
 
       {canManage && (
+        <Paper variant="outlined" sx={{ p: 2, mb: 2 }} component="form" onSubmit={onCreateBranch}>
+          <Typography variant="subtitle1" fontWeight={600} gutterBottom>Новый филиал</Typography>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
+            <TextField size="small" label="Код (латиница) *" value={branchCode} onChange={(e) => setBranchCode(e.target.value)} required />
+            <TextField size="small" label="Название *" value={branchName} onChange={(e) => setBranchName(e.target.value)} required />
+            <Button type="submit" variant="outlined">Создать филиал</Button>
+          </Stack>
+        </Paper>
+      )}
+
+      {canManage && (
         <Paper variant="outlined" sx={{ p: 2, mb: 3 }} component="form" onSubmit={onCreate}>
           <Typography variant="subtitle1" fontWeight={600} gutterBottom>Новая группа</Typography>
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} sx={{ flexWrap: 'wrap' }}>
             <TextField size="small" label="Название *" value={name} onChange={(e) => setName(e.target.value)} required />
+            <TextField size="small" select SelectProps={{ native: true }} label="Филиал" value={branchId} onChange={(e) => setBranchId(e.target.value)}>
+              {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </TextField>
             <TextField size="small" select SelectProps={{ native: true }} label="Тренер" value={trainerId} onChange={(e) => setTrainerId(e.target.value)} sx={{ minWidth: 200 }}>
               <option value="">Не назначен</option>
               {trainers.map((t) => <option key={t.id} value={t.id}>{t.full_name}</option>)}
@@ -190,6 +231,7 @@ const LegoGroupsPage: React.FC = () => {
           <TableHead>
             <TableRow>
               <TableCell>Группа</TableCell>
+              <TableCell>Филиал</TableCell>
               <TableCell>Тренер</TableCell>
               <TableCell>Расписание</TableCell>
               <TableCell align="right">Детей</TableCell>
@@ -199,13 +241,14 @@ const LegoGroupsPage: React.FC = () => {
             {groups.map((g) => (
               <TableRow key={g.id} hover onClick={() => loadDetail(g.id)} sx={{ cursor: 'pointer' }}>
                 <TableCell>{g.name}</TableCell>
+                <TableCell>{g.branch_name ?? '—'}</TableCell>
                 <TableCell>{g.trainer_name ?? <Typography component="span" color="text.secondary">не назначен</Typography>}</TableCell>
                 <TableCell>{scheduleText(g)}</TableCell>
                 <TableCell align="right">{g.students_count}</TableCell>
               </TableRow>
             ))}
             {groups.length === 0 && (
-              <TableRow><TableCell colSpan={4}><Typography color="text.secondary">Назначенных групп нет</Typography></TableCell></TableRow>
+              <TableRow><TableCell colSpan={5}><Typography color="text.secondary">Назначенных групп нет</Typography></TableCell></TableRow>
             )}
           </TableBody>
         </Table>

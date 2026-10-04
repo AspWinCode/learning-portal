@@ -18,8 +18,12 @@ from app.models import (
     FinanceTransactionStatus,
     LEGO_LESSON_CANCELLED,
     LEGO_LESSON_COMPLETED,
+    LEGO_LESSON_PLANNED,
     LEGO_TARGET_CODE,
     LegoAttendance,
+    LegoBranch,
+    LegoEvent,
+    LegoEventRegistration,
     LegoGroup,
     LegoGroupStudent,
     LegoLesson,
@@ -111,7 +115,7 @@ def register_payment(
             .one()
         )
         period_start, period_end = compute_monthly_period(payment_date, locked.paid_until)
-        target = get_or_create_leninets_target(db)
+        target = branch_target_for_student(db, locked)
 
         tx = FinanceTransaction(
             occurred_at=datetime.combine(payment_date, time(12, 0), tzinfo=timezone.utc),
@@ -146,6 +150,124 @@ def register_payment(
         return payment, True
     except IntegrityError:
         # Гонка по idempotency_key: другой запрос уже провёл платёж.
+        db.rollback()
+        if idempotency_key:
+            existing = db.query(LegoPayment).filter(LegoPayment.idempotency_key == idempotency_key).first()
+            if existing is not None:
+                return existing, False
+        raise
+
+
+# ── Филиалы ──────────────────────────────────────────────────────────────────
+
+def default_branch(db: Session) -> LegoBranch:
+    """Филиал по умолчанию — «Ленинец» (код leninets). Миграция 0213 создаёт его."""
+    branch = db.query(LegoBranch).filter(LegoBranch.code == LEGO_TARGET_CODE).first()
+    if branch is None:
+        target = get_or_create_leninets_target(db)
+        branch = LegoBranch(code=LEGO_TARGET_CODE, name="Ленинец", finance_target_id=target.id, is_active=True)
+        db.add(branch)
+        db.flush()
+    return branch
+
+
+def branch_target_for_student(db: Session, student: LegoStudent) -> FinanceTarget:
+    """Target финансов для оплаты ребёнка: филиал его текущей группы, иначе «Ленинец»."""
+    group = (
+        db.query(LegoGroup)
+        .join(LegoGroupStudent, LegoGroupStudent.lego_group_id == LegoGroup.id)
+        .filter(LegoGroupStudent.lego_student_id == student.id, LegoGroupStudent.left_at.is_(None))
+        .order_by(LegoGroupStudent.joined_at.desc())
+        .first()
+    )
+    branch = None
+    if group is not None and group.branch_id is not None:
+        branch = db.query(LegoBranch).filter(LegoBranch.id == group.branch_id).first()
+    if branch is None:
+        branch = default_branch(db)
+    return db.query(FinanceTarget).filter(FinanceTarget.id == branch.finance_target_id).one()
+
+
+# ── Мастер-классы ────────────────────────────────────────────────────────────
+
+def event_registered_count(db: Session, event: LegoEvent) -> int:
+    return db.query(LegoEventRegistration).filter(LegoEventRegistration.event_id == event.id).count()
+
+
+def register_for_event(db: Session, event: LegoEvent, student: LegoStudent) -> LegoEventRegistration:
+    """Запись на мастер-класс с проверкой вместимости. Бросает ValueError при переполнении или дубле."""
+    if event.status != LEGO_LESSON_PLANNED:
+        raise ValueError("Мастер-класс отменён или уже прошёл")
+    existing = (
+        db.query(LegoEventRegistration)
+        .filter(LegoEventRegistration.event_id == event.id, LegoEventRegistration.student_id == student.id)
+        .first()
+    )
+    if existing is not None:
+        raise ValueError("Участник уже записан на этот мастер-класс")
+    if event.capacity is not None and event_registered_count(db, event) >= event.capacity:
+        raise ValueError("Мест нет")
+    registration = LegoEventRegistration(event_id=event.id, student_id=student.id)
+    db.add(registration)
+    db.commit()
+    db.refresh(registration)
+    return registration
+
+
+def register_event_payment(
+    db: Session,
+    registration: LegoEventRegistration,
+    *,
+    amount: Decimal,
+    payment_date: date,
+    created_by: int,
+    idempotency_key: Optional[str] = None,
+) -> Tuple[LegoPayment, bool]:
+    """
+    Разовая оплата мастер-класса. Период и paid_until месячного тарифа не трогаются.
+    Проводка уходит в target филиала мастер-класса. Идемпотентность — как у месячной оплаты.
+    """
+    if idempotency_key:
+        existing = db.query(LegoPayment).filter(LegoPayment.idempotency_key == idempotency_key).first()
+        if existing is not None:
+            return existing, False
+
+    # Одна запись на мастер-класс — одна оплата: защита от двойного дохода при повторе с новым ключом.
+    if registration.paid:
+        raise ValueError("Участник уже оплатил этот мастер-класс")
+
+    try:
+        event = db.query(LegoEvent).filter(LegoEvent.id == registration.event_id).one()
+        student = db.query(LegoStudent).filter(LegoStudent.id == registration.student_id).one()
+        branch = db.query(LegoBranch).filter(LegoBranch.id == event.branch_id).one()
+        tx = FinanceTransaction(
+            occurred_at=datetime.combine(payment_date, time(12, 0), tzinfo=timezone.utc),
+            amount=float(amount),
+            direction=FinanceTransactionDirection.INCOME,
+            target_id=branch.finance_target_id,
+            status=FinanceTransactionStatus.CLASSIFIED,
+            counterparty_name=(student.parent_name or student.full_name)[:512],
+            counterparty_phone=student.parent_phone,
+            description_raw=f"LEGO мастер-класс: {event.title}, {student.full_name}, {event.event_date:%d.%m.%Y}",
+        )
+        db.add(tx)
+        db.flush()
+        payment = LegoPayment(
+            student_id=student.id,
+            event_id=event.id,
+            amount=amount,
+            payment_date=payment_date,
+            finance_transaction_id=tx.id,
+            idempotency_key=idempotency_key,
+            created_by=created_by,
+        )
+        db.add(payment)
+        db.flush()
+        registration.paid = True
+        registration.payment_id = payment.id
+        db.commit()
+        return payment, True
+    except IntegrityError:
         db.rollback()
         if idempotency_key:
             existing = db.query(LegoPayment).filter(LegoPayment.idempotency_key == idempotency_key).first()

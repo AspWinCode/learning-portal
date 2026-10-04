@@ -33,6 +33,8 @@ export interface LegoDashboard {
 export interface LegoGroup {
   id: number;
   name: string;
+  branch_id: number | null;
+  branch_name: string | null;
   trainer_id: number | null;
   trainer_name: string | null;
   location: string;
@@ -141,7 +143,7 @@ export const registerPayment = (
 
 export const listGroups = (): Promise<LegoGroup[]> => api.get(`${BASE}/groups`).then((r) => r.data);
 
-export const createGroup = (payload: { name: string; trainer_id?: number | null; weekday?: number | null; start_time?: string | null; end_time?: string | null }): Promise<LegoGroup> =>
+export const createGroup = (payload: { name: string; trainer_id?: number | null; branch_id?: number | null; weekday?: number | null; start_time?: string | null; end_time?: string | null }): Promise<LegoGroup> =>
   api.post(`${BASE}/groups`, payload).then((r) => r.data);
 
 export const addGroupMember = (groupId: number, studentId: number): Promise<unknown> =>
@@ -214,3 +216,75 @@ export const updateGroup = (id: number, payload: { name?: string; trainer_id?: n
   api.patch(`${BASE}/groups/${id}`, payload).then((r) => r.data);
 
 export const listTrainers = (): Promise<{ id: number; full_name: string }[]> => api.get(`${BASE}/trainers`).then((r) => r.data);
+
+// ─── Филиалы и мастер-классы ────────────────────────────────────────────────
+
+export interface LegoBranch {
+  id: number;
+  code: string;
+  name: string;
+  finance_target_id: number;
+  is_active: boolean;
+}
+
+export interface LegoEventItem {
+  id: number;
+  branch_id: number;
+  branch_name: string | null;
+  title: string;
+  event_date: string;
+  start_time: string | null;
+  end_time: string | null;
+  price: number | null;
+  capacity: number | null;
+  status: 'planned' | 'completed' | 'cancelled';
+  comment: string | null;
+  registered: number;
+}
+
+export interface LegoEventDetail extends LegoEventItem {
+  participants: {
+    student_id: number;
+    full_name: string;
+    parent_phone: string | null;
+    attended: boolean;
+    paid: boolean;
+    payment_id: number | null;
+  }[];
+}
+
+export const listBranches = (): Promise<LegoBranch[]> => api.get(`${BASE}/branches`).then((r) => r.data);
+
+export const createBranch = (payload: { code: string; name: string }): Promise<LegoBranch> =>
+  api.post(`${BASE}/branches`, payload).then((r) => r.data);
+
+export const listEvents = (params?: { date_from?: string; date_to?: string }): Promise<LegoEventItem[]> =>
+  api.get(`${BASE}/events`, { params }).then((r) => r.data);
+
+export const createEvent = (payload: {
+  branch_id: number;
+  title: string;
+  event_date: string;
+  start_time?: string | null;
+  end_time?: string | null;
+  price?: number | null;
+  capacity?: number | null;
+  comment?: string | null;
+}): Promise<LegoEventItem> => api.post(`${BASE}/events`, payload).then((r) => r.data);
+
+export const getEvent = (id: number): Promise<LegoEventDetail> => api.get(`${BASE}/events/${id}`).then((r) => r.data);
+
+export const registerParticipant = (
+  eventId: number,
+  payload: { student_id?: number; full_name?: string; parent_phone?: string },
+): Promise<unknown> => api.post(`${BASE}/events/${eventId}/registrations`, payload).then((r) => r.data);
+
+export const markEventAttendance = (eventId: number, studentId: number, attended: boolean): Promise<unknown> =>
+  api.post(`${BASE}/events/${eventId}/registrations/${studentId}/attendance`, null, { params: { attended } }).then((r) => r.data);
+
+export const payForEvent = (
+  eventId: number,
+  studentId: number,
+  payload: { amount?: number; payment_date?: string; idempotency_key?: string },
+): Promise<{ payment_id: number; amount: number; created: boolean }> =>
+  api.post(`${BASE}/events/${eventId}/registrations/${studentId}/payment`, payload).then((r) => r.data);

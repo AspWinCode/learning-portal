@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { createContext, useContext } from 'react';
 import { Link as RouterLink, useLocation } from 'react-router-dom';
 import { Box, Tab, Tabs, Typography } from '@mui/material';
 import Layout from '../../components/Layout';
@@ -11,13 +11,34 @@ interface TabDef {
   visible: boolean;
 }
 
+// Когда страница встроена в общую LEGO-страницу владельца, оболочка не рисует Layout и вкладки.
+export const LegoEmbeddedContext = createContext(false);
+
+interface LegoShellProps {
+  title: string;
+  children: React.ReactNode;
+  tabs?: boolean;
+}
+
 // Вкладки только для UX. Права проверяются на бэкенде (lego.* в /api/v1/lego).
-export const LegoShell: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => {
+export const LegoShell: React.FC<LegoShellProps> = ({ title, children, tabs = true }) => {
+  const embedded = useContext(LegoEmbeddedContext);
   const { user } = useAuth();
   const location = useLocation();
   const canMoney = hasPermission(user, 'lego.payments_manage');
 
-  const tabs: TabDef[] = [
+  if (embedded) {
+    return (
+      <Box component="section" sx={{ mb: 4 }}>
+        <Typography variant="h6" gutterBottom>
+          {title}
+        </Typography>
+        {children}
+      </Box>
+    );
+  }
+
+  const tabDefs: TabDef[] = [
     { label: 'Сегодня', path: '/lego', visible: true },
     { label: 'Дети', path: '/lego/students', visible: true },
     { label: 'Группы', path: '/lego/groups', visible: true },
@@ -28,7 +49,7 @@ export const LegoShell: React.FC<{ title: string; children: React.ReactNode }> =
 
   const activeIndex = Math.max(
     0,
-    tabs.findIndex((t) => (t.path === '/lego' ? location.pathname === '/lego' : location.pathname.startsWith(t.path))),
+    tabDefs.findIndex((t) => (t.path === '/lego' ? location.pathname === '/lego' : location.pathname.startsWith(t.path))),
   );
 
   return (
@@ -40,11 +61,13 @@ export const LegoShell: React.FC<{ title: string; children: React.ReactNode }> =
         <Typography variant="h5" gutterBottom>
           {title}
         </Typography>
-        <Tabs value={activeIndex} variant="scrollable" scrollButtons="auto" sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}>
-          {tabs.map((t) => (
-            <Tab key={t.path} label={t.label} component={RouterLink} to={t.path} />
-          ))}
-        </Tabs>
+        {tabs && (
+          <Tabs value={activeIndex} variant="scrollable" scrollButtons="auto" sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}>
+            {tabDefs.map((t) => (
+              <Tab key={t.path} label={t.label} component={RouterLink} to={t.path} />
+            ))}
+          </Tabs>
+        )}
         {children}
       </Box>
     </Layout>

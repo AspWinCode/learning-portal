@@ -45,7 +45,7 @@ const OwnerFunnelsPage = React.lazy(() => import('./pages/OwnerFunnelsPage'));
 const OwnerUsefulLinksPage = React.lazy(() => import('./pages/OwnerUsefulLinksPage'));
 const TranscriptionPage = React.lazy(() => import('./pages/TranscriptionPage'));
 const AcademyAiPage = React.lazy(() => import('./pages/AcademyAiPage'));
-const LegoTodayPage = React.lazy(() => import('./features/lego/LegoTodayPage'));
+const LegoHome = React.lazy(() => import('./features/lego/LegoHome'));
 const LegoStudentsPage = React.lazy(() => import('./features/lego/LegoStudentsPage'));
 const LegoStudentCardPage = React.lazy(() => import('./features/lego/LegoStudentCardPage'));
 const LegoGroupsPage = React.lazy(() => import('./features/lego/LegoGroupsPage'));
@@ -827,7 +827,7 @@ function App() {
               path="/lego"
               element={
                 <PrivateRoute requiredPermission="lego.access">
-                  <LegoTodayPage />
+                  <LegoHome />
                 </PrivateRoute>
               }
             />

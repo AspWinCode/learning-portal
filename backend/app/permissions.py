@@ -687,6 +687,36 @@ PERMISSION_CATALOG: List[Dict[str, str]] = [
         "description": "Настройки интеграции: модели AI Tunnel, ключи, параметры генерации.",
     },
     {
+        "key": "lego.access",
+        "module": "lego",
+        "label": "LEGO — Ленинец: доступ к модулю",
+        "description": "Вход в LEGO-модуль; видны только назначенные тренеру LEGO-группы. Тренер без этого права LEGO не видит.",
+    },
+    {
+        "key": "lego.manage",
+        "module": "lego",
+        "label": "LEGO — Ленинец: полное управление",
+        "description": "Все LEGO-группы и занятия, создание групп и состава. Включает все остальные lego.* права.",
+    },
+    {
+        "key": "lego.students_manage",
+        "module": "lego",
+        "label": "LEGO — Ленинец: дети",
+        "description": "Создание и редактирование карточек LEGO-детей.",
+    },
+    {
+        "key": "lego.attendance",
+        "module": "lego",
+        "label": "LEGO — Ленинец: занятия и посещаемость",
+        "description": "Создание занятий своих групп, отметки «пришёл / не пришёл».",
+    },
+    {
+        "key": "lego.payments_manage",
+        "module": "lego",
+        "label": "LEGO — Ленинец: оплаты",
+        "description": "Регистрация оплат, платёжные планы, финансовая сводка LEGO (суммы, выручка).",
+    },
+    {
         "key": "media.upload",
         "module": "media",
         "label": "Загрузка медиафайлов",

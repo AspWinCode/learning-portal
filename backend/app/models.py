@@ -4333,3 +4333,132 @@ class SmartTableOperationLog(Base):
 
     sheet = relationship("SmartTableSheet")
     user = relationship("User")
+
+
+# ── LEGO — Ленинец (изолированный bounded context) ───────────────────────────
+# Не связан с Student / Group / Program / LessonAttendance Академии.
+# Общие сущности: User (тренер), finance_targets / finance_transactions, audit (action_log).
+# Статусы хранятся строками (без нативных enum), чтобы не плодить DDL-типы.
+
+LEGO_STUDENT_ACTIVE = "active"
+LEGO_STUDENT_ARCHIVED = "archived"
+LEGO_LESSON_PLANNED = "planned"
+LEGO_LESSON_COMPLETED = "completed"
+LEGO_LESSON_CANCELLED = "cancelled"
+LEGO_PERIOD_MONTHLY = "monthly"
+LEGO_TARGET_CODE = "leninets"
+
+
+class LegoStudent(Base):
+    """Ребёнок LEGO-направления. Не является Student Академии."""
+
+    __tablename__ = "lego_students"
+
+    id = Column(Integer, primary_key=True, index=True)
+    full_name = Column(String(256), nullable=False, index=True)
+    birth_date = Column(Date, nullable=True)
+    parent_name = Column(String(256), nullable=True)
+    parent_phone = Column(String(32), nullable=True, index=True)
+    secondary_phone = Column(String(32), nullable=True)
+    comment = Column(Text, nullable=True)
+    start_date = Column(Date, nullable=False)
+    status = Column(String(16), nullable=False, default=LEGO_STUDENT_ACTIVE, index=True)
+
+    # Платёжный план (monthly на первом этапе).
+    payment_amount = Column(Numeric(12, 2), nullable=True)
+    payment_period = Column(String(16), nullable=False, default=LEGO_PERIOD_MONTHLY)
+    payment_active = Column(Boolean, nullable=False, default=True, index=True)
+    paid_until = Column(Date, nullable=True)
+    next_payment_date = Column(Date, nullable=True, index=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class LegoGroup(Base):
+    __tablename__ = "lego_groups"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(128), nullable=False)
+    trainer_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    location = Column(String(128), nullable=False, default="Ленинец")
+    weekday = Column(Integer, nullable=True)  # 0 = понедельник
+    start_time = Column(Time, nullable=True)
+    end_time = Column(Time, nullable=True)
+    status = Column(String(16), nullable=False, default=LEGO_STUDENT_ACTIVE, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    trainer = relationship("User", foreign_keys=[trainer_id])
+
+
+class LegoGroupStudent(Base):
+    __tablename__ = "lego_group_students"
+
+    id = Column(Integer, primary_key=True, index=True)
+    lego_group_id = Column(Integer, ForeignKey("lego_groups.id", ondelete="CASCADE"), nullable=False, index=True)
+    lego_student_id = Column(Integer, ForeignKey("lego_students.id", ondelete="CASCADE"), nullable=False, index=True)
+    joined_at = Column(Date, nullable=False)
+    left_at = Column(Date, nullable=True)
+
+    group = relationship("LegoGroup")
+    student = relationship("LegoStudent")
+
+
+class LegoLesson(Base):
+    """Конкретное занятие. Существует независимо от количества детей и посещаемости."""
+
+    __tablename__ = "lego_lessons"
+
+    id = Column(Integer, primary_key=True, index=True)
+    group_id = Column(Integer, ForeignKey("lego_groups.id", ondelete="CASCADE"), nullable=False, index=True)
+    lesson_date = Column(Date, nullable=False, index=True)
+    start_time = Column(Time, nullable=True)
+    end_time = Column(Time, nullable=True)
+    trainer_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    status = Column(String(16), nullable=False, default=LEGO_LESSON_PLANNED, index=True)
+    comment = Column(Text, nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    group = relationship("LegoGroup")
+    trainer = relationship("User", foreign_keys=[trainer_id])
+
+
+class LegoAttendance(Base):
+    __tablename__ = "lego_attendance"
+    __table_args__ = (
+        UniqueConstraint("lesson_id", "student_id", name="uq_lego_attendance_lesson_student"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    lesson_id = Column(Integer, ForeignKey("lego_lessons.id", ondelete="CASCADE"), nullable=False, index=True)
+    student_id = Column(Integer, ForeignKey("lego_students.id", ondelete="CASCADE"), nullable=False, index=True)
+    attended = Column(Boolean, nullable=False, default=False)
+    comment = Column(Text, nullable=True)
+    marked_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    marked_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    lesson = relationship("LegoLesson")
+    student = relationship("LegoStudent")
+
+
+class LegoPayment(Base):
+    __tablename__ = "lego_payments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("lego_students.id", ondelete="CASCADE"), nullable=False, index=True)
+    amount = Column(Numeric(12, 2), nullable=False)
+    payment_date = Column(Date, nullable=False, index=True)
+    period_start = Column(Date, nullable=True)
+    period_end = Column(Date, nullable=True)
+    paid_until = Column(Date, nullable=True)
+    finance_transaction_id = Column(Integer, ForeignKey("finance_transactions.id"), nullable=True, unique=True)
+    # Защита от двойного проведения при повторной отправке одного и того же запроса.
+    idempotency_key = Column(String(128), nullable=True, unique=True)
+    comment = Column(Text, nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    student = relationship("LegoStudent")
+    finance_transaction = relationship("FinanceTransaction")

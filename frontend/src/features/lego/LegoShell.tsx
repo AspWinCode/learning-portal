@@ -43,6 +43,7 @@ export const LegoShell: React.FC<LegoShellProps> = ({ title, children, tabs = tr
     { label: 'Дети', path: '/lego/students', visible: true },
     { label: 'Группы', path: '/lego/groups', visible: true },
     { label: 'Занятия', path: '/lego/lessons', visible: true },
+    { label: 'Мастер-классы', path: '/lego/events', visible: true },
     { label: 'Долги', path: '/lego/debts', visible: true },
     { label: 'Оплаты', path: '/lego/payments', visible: canMoney },
   ].filter((t) => t.visible);

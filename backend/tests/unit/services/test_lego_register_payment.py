@@ -53,9 +53,10 @@ def test_repeated_request_with_same_key_returns_existing_and_books_nothing() -> 
     db.commit.assert_not_called()
 
 
-def test_new_payment_creates_leninets_income_and_lego_payment() -> None:
+def test_new_payment_creates_leninets_income_and_lego_payment(monkeypatch) -> None:
     target = FinanceTarget(code="leninets", name="LEGO — Ленинец", is_active=True)
     target.id = 9
+    monkeypatch.setattr(lego_service, "branch_target_for_student", lambda db, st: target)
     student = _student()
     db, added = _session_with(existing_payment=None, target=target, student=student)
 
@@ -86,9 +87,10 @@ def test_new_payment_creates_leninets_income_and_lego_payment() -> None:
     db.commit.assert_called_once()
 
 
-def test_payment_does_not_touch_academy_models() -> None:
+def test_payment_does_not_touch_academy_models(monkeypatch) -> None:
     target = FinanceTarget(code="leninets", name="LEGO — Ленинец", is_active=True)
     target.id = 9
+    monkeypatch.setattr(lego_service, "branch_target_for_student", lambda db, st: target)
     db, added = _session_with(target=target, student=_student())
 
     lego_service.register_payment(

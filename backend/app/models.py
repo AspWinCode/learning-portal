@@ -4381,7 +4381,8 @@ class LegoGroup(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(128), nullable=False)
     trainer_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
-    location = Column(String(128), nullable=False, default="Ленинец")
+    location = Column(String(128), nullable=False, default="Ленинец")  # устарело: см. branch_id
+    branch_id = Column(Integer, ForeignKey("lego_branches.id"), nullable=True, index=True)
     weekday = Column(Integer, nullable=True)  # 0 = понедельник
     start_time = Column(Time, nullable=True)
     end_time = Column(Time, nullable=True)
@@ -4390,6 +4391,7 @@ class LegoGroup(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     trainer = relationship("User", foreign_keys=[trainer_id])
+    branch = relationship("LegoBranch")
 
 
 class LegoGroupStudent(Base):
@@ -4448,6 +4450,7 @@ class LegoPayment(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     student_id = Column(Integer, ForeignKey("lego_students.id", ondelete="CASCADE"), nullable=False, index=True)
+    event_id = Column(Integer, ForeignKey("lego_events.id"), nullable=True, index=True)  # разовая оплата мастер-класса
     amount = Column(Numeric(12, 2), nullable=False)
     payment_date = Column(Date, nullable=False, index=True)
     period_start = Column(Date, nullable=True)
@@ -4462,3 +4465,58 @@ class LegoPayment(Base):
 
     student = relationship("LegoStudent")
     finance_transaction = relationship("FinanceTransaction")
+
+
+class LegoBranch(Base):
+    """Филиал LEGO. Каждый филиал пишет доходы в свой finance target."""
+
+    __tablename__ = "lego_branches"
+
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String(64), nullable=False, unique=True, index=True)
+    name = Column(String(256), nullable=False)
+    finance_target_id = Column(Integer, ForeignKey("finance_targets.id"), nullable=False)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    finance_target = relationship("FinanceTarget")
+
+
+class LegoEvent(Base):
+    """Разовый мастер-класс: дата, цена, вместимость. Не группа и не курс."""
+
+    __tablename__ = "lego_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    branch_id = Column(Integer, ForeignKey("lego_branches.id"), nullable=False, index=True)
+    title = Column(String(256), nullable=False)
+    event_date = Column(Date, nullable=False, index=True)
+    start_time = Column(Time, nullable=True)
+    end_time = Column(Time, nullable=True)
+    price = Column(Numeric(12, 2), nullable=True)
+    capacity = Column(Integer, nullable=True)
+    status = Column(String(16), nullable=False, default=LEGO_LESSON_PLANNED, index=True)
+    comment = Column(Text, nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    branch = relationship("LegoBranch")
+
+
+class LegoEventRegistration(Base):
+    __tablename__ = "lego_event_registrations"
+    __table_args__ = (
+        UniqueConstraint("event_id", "student_id", name="uq_lego_event_registration"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    event_id = Column(Integer, ForeignKey("lego_events.id", ondelete="CASCADE"), nullable=False, index=True)
+    student_id = Column(Integer, ForeignKey("lego_students.id", ondelete="CASCADE"), nullable=False, index=True)
+    attended = Column(Boolean, nullable=False, default=False)
+    paid = Column(Boolean, nullable=False, default=False)
+    payment_id = Column(Integer, ForeignKey("lego_payments.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    event = relationship("LegoEvent")
+    student = relationship("LegoStudent")
+

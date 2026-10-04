@@ -30,6 +30,8 @@ from app.models import (
     LessonCancellation,
     LessonTrainerOverride,
     LessonSlotExtraPolicy,
+    GroupLessonSlot,
+    LessonRosterExclusion,
     UserRole,
     Student,
     Abonement,
@@ -46,6 +48,7 @@ from app.schemas.groups import (
     LessonAttendanceSave,
     MoveLessonPayload,
     CancelLessonPayload,
+    RestoreLessonPayload,
     CreateLessonSlotPayload,
     AddStudentToLessonPayload,
     RemoveStudentFromLessonPayload,
@@ -113,22 +116,30 @@ def _enqueue_lesson_change_notifications(
         student = db.query(Student).filter(Student.id == student_id).first()
         if not student:
             continue
-        CommunicationService.send(
-            db,
-            channel="email",
-            recipient_type="student",
-            recipient_id=student.id,
-            event_key=event_key,
-            created_by=current_user.id,
-            context={
-                "student_name": get_student_display_name(db, student),
-                "group_name": group.name,
-                "lesson_date": lesson_date.isoformat(),
-                "lesson_time": lesson_time_value.strftime("%H:%M") if lesson_time_value else "",
-                "trainer_name": trainer.full_name if trainer else "",
-            },
-            dedupe_key=f"{event_key}:{student.id}:{group.id}:{lesson_date.isoformat()}:{lesson_time_value.isoformat() if lesson_time_value else ''}",
-        )
+        # Уведомление не должно откатывать отмену/перенос: сбой (например, нет шаблона) только логируем.
+        try:
+            with db.begin_nested():
+                CommunicationService.send(
+                    db,
+                    channel="email",
+                    recipient_type="student",
+                    recipient_id=student.id,
+                    event_key=event_key,
+                    created_by=current_user.id,
+                    context={
+                        "student_name": get_student_display_name(db, student),
+                        "group_name": group.name,
+                        "lesson_date": lesson_date.isoformat(),
+                        "lesson_time": lesson_time_value.strftime("%H:%M") if lesson_time_value else "",
+                        "trainer_name": trainer.full_name if trainer else "",
+                    },
+                    dedupe_key=f"{event_key}:{student.id}:{group.id}:{lesson_date.isoformat()}:{lesson_time_value.isoformat() if lesson_time_value else ''}",
+                )
+        except Exception:
+            logger.exception(
+                "Failed to enqueue lesson change notification event=%s student_id=%s group_id=%s",
+                event_key, student.id, group.id,
+            )
 
 LESSONS_PER_MONTH = 8
 
@@ -183,6 +194,33 @@ def _slot_key(att: LessonAttendance) -> Tuple[date, time, time]:
     st = getattr(att, "lesson_start_time", None) or time(0, 0)
     et = getattr(att, "lesson_end_time", None) or time(0, 0)
     return (att.lesson_date, st, et)
+
+
+def _find_slot_attendance(
+    db: Session,
+    group_id: int,
+    lesson_date: date,
+    student_id: int,
+    start_t: Optional[time],
+    end_t: Optional[time],
+) -> Optional[LessonAttendance]:
+    """Посещаемость ученика в конкретном слоте дня. Legacy-строка без времени берётся только
+    если точной записи нет (старые данные до появления времени слота)."""
+    base = db.query(LessonAttendance).filter(
+        LessonAttendance.group_id == group_id,
+        LessonAttendance.lesson_date == lesson_date,
+        LessonAttendance.student_id == student_id,
+    )
+    att = base.filter(
+        LessonAttendance.lesson_start_time == start_t,
+        LessonAttendance.lesson_end_time == end_t,
+    ).first()
+    if att is None:
+        att = base.filter(
+            LessonAttendance.lesson_start_time.is_(None),
+            LessonAttendance.lesson_end_time.is_(None),
+        ).first()
+    return att
 
 
 def _restricted_schedule_ids_map(db: Session, group_student_ids: List[int]) -> dict:
@@ -293,6 +331,19 @@ async def get_lessons_for_date(
     override_trainers = {u.id: u for u in db.query(User).filter(User.id.in_(override_trainer_ids)).all()} if override_trainer_ids else {}
     # Кэш тренеров, взятых из LessonAttendance.trainer_id, чтобы не делать лишние запросы.
     attendance_trainers: dict[int, User] = {}
+    # Разовые слоты (создание вручную) — самостоятельные уроки, не зависят от посещаемости и лимита 8.
+    roster_exclusions: dict[tuple, set] = {}
+    for rx in db.query(LessonRosterExclusion).filter(
+        LessonRosterExclusion.group_id.in_(group_ids),
+        LessonRosterExclusion.lesson_date == lesson_date,
+    ).all():
+        roster_exclusions.setdefault((rx.group_id, rx.start_time, rx.end_time), set()).add(rx.student_id)
+    manual_slots_by_group: dict[int, list] = {}
+    for ms in db.query(GroupLessonSlot).filter(
+        GroupLessonSlot.group_id.in_(group_ids),
+        GroupLessonSlot.lesson_date == lesson_date,
+    ).all():
+        manual_slots_by_group.setdefault(ms.group_id, []).append(ms)
 
     result: List[TrainerLessonSlotResponse] = []
     group_by_id = {g.id: g for g in groups_for_day}
@@ -323,11 +374,11 @@ async def get_lessons_for_date(
         freeze_badges = {f.student_id: f"Заморожен с {f.freeze_start.strftime('%d.%m')} по {f.freeze_end.strftime('%d.%m')}" for f in freezes}
         program_name = group.programs[0].name if group.programs else None
 
-        def build_slot(slot_start: time, slot_end: time, atts: list, schedule_id: Optional[int] = None) -> None:
-            # Slots with existing attendance records (moved/manual lessons) always show,
+        def build_slot(slot_start: time, slot_end: time, atts: list, schedule_id: Optional[int] = None, is_manual: bool = False) -> None:
+            # Slots with existing attendance records (moved lessons) and manual one-off slots always show,
             # even if the date is outside the regular schedule. Quota filter only applies
             # to schedule-generated future slots with no attendance yet.
-            if not atts and (group.id, lesson_date, slot_start, slot_end) not in first_8_allowed:
+            if not atts and not is_manual and (group.id, lesson_date, slot_start, slot_end) not in first_8_allowed:
                 return
             # 1) Если в LessonAttendance уже зафиксирован тренер — используем его (исторические данные).
             att_trainer_ids = {
@@ -372,14 +423,14 @@ async def get_lessons_for_date(
             }
             slot_student_ids = {att.student_id for att in atts}
             students_data = []
-            # Если по слоту уже есть записи посещаемости — показываем только этих учеников
-            # (удалённые через «Удалить из урока» не отображаются). Если записей ещё нет — показываем всех по группе.
-            only_with_attendance = len(slot_student_ids) > 0
+            # Состав = активные ученики группы минус удалённые из этого урока (LessonRosterExclusion).
+            # Посещаемость задаёт только отметки, а не состав: иначе один добавленный ученик скрывал бы остальных.
+            excluded_ids = roster_exclusions.get((group.id, slot_start, slot_end), set())
             for gs in students_in_group:
                 student = gs.student
                 if not student:
                     continue
-                if only_with_attendance and student.id not in slot_student_ids:
+                if student.id in excluded_ids:
                     continue
                 if student.id not in slot_student_ids and _is_student_excluded_from_slot(gs, schedule_id, restricted_map):
                     continue
@@ -441,10 +492,23 @@ async def get_lessons_for_date(
             ]
             build_slot(sched.start_time, sched.end_time, matching, schedule_id=sched.id)
 
+        manual_slots = manual_slots_by_group.get(group.id, [])
+        manual_times = {(ms.start_time, ms.end_time) for ms in manual_slots}
+        for ms in manual_slots:
+            st, et = ms.start_time, ms.end_time
+            # Точный дубль регулярного слота не показываем второй карточкой (создание его уже запрещает).
+            if (st, et) in sched_times or (group.id, lesson_date, st, et) in cancelled_set:
+                continue
+            matching = [
+                att for att in attendances
+                if att.lesson_start_time == st and att.lesson_end_time == et
+            ]
+            build_slot(st, et, matching, is_manual=True)
+
         custom_times = set()
         for att in attendances:
             st, et = getattr(att, "lesson_start_time", None), getattr(att, "lesson_end_time", None)
-            if st is not None and et is not None and (st, et) not in sched_times:
+            if st is not None and et is not None and (st, et) not in sched_times and (st, et) not in manual_times:
                 custom_times.add((st, et))
         for (st, et) in sorted(custom_times):
             if (group.id, lesson_date, st, et) in cancelled_set:
@@ -931,11 +995,7 @@ async def save_attendance(
     effective_trainer_id = slot_trainer_override.trainer_id if slot_trainer_override else group.trainer_id
 
     for item in payload.attendances:
-        att = db.query(LessonAttendance).filter(
-            LessonAttendance.group_id == payload.group_id,
-            LessonAttendance.lesson_date == payload.lesson_date,
-            LessonAttendance.student_id == item.student_id,
-        ).first()
+        att = _find_slot_attendance(db, payload.group_id, payload.lesson_date, item.student_id, start_t, end_t)
         previous_attended = att.attended if att else None
         late = getattr(item, "late", False) or False
         reason = getattr(item, "absence_reason", None) or None
@@ -977,9 +1037,12 @@ async def save_attendance(
             )
     db.commit()
 
+    # Только записи этого слота: во второй урок того же дня списание первого не должно попадать.
     attendances_saved = db.query(LessonAttendance).filter(
         LessonAttendance.group_id == payload.group_id,
         LessonAttendance.lesson_date == payload.lesson_date,
+        LessonAttendance.lesson_start_time == start_t,
+        LessonAttendance.lesson_end_time == end_t,
     ).all()
     is_individual = (getattr(group, "lesson_format", None) or "group").strip().lower() == "individual"
     default_hours = (getattr(group, "duration_minutes", None) or 60) / 60.0
@@ -1180,14 +1243,6 @@ async def add_student_to_lesson(
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
 
-    existing = db.query(LessonAttendance).filter(
-        LessonAttendance.group_id == payload.group_id,
-        LessonAttendance.lesson_date == payload.lesson_date,
-        LessonAttendance.student_id == payload.student_id,
-    ).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Student already on this lesson")
-
     lesson_start_time = None
     lesson_end_time = None
     if payload.start_time or payload.end_time:
@@ -1200,6 +1255,10 @@ async def add_student_to_lesson(
             raise HTTPException(status_code=400, detail="Invalid time format; use HH:MM")
 
     # Фактический тренер для этого слота (учитываем подмены).
+    # Проверка «уже на уроке» — по этому слоту: во второй урок того же дня ученика можно добавить.
+    if _find_slot_attendance(db, payload.group_id, payload.lesson_date, payload.student_id, lesson_start_time, lesson_end_time):
+        raise HTTPException(status_code=400, detail="Student already on this lesson")
+
     slot_trainer_override = None
     if lesson_start_time is not None and lesson_end_time is not None:
         slot_trainer_override = (
@@ -1214,6 +1273,15 @@ async def add_student_to_lesson(
         )
     effective_trainer_id = slot_trainer_override.trainer_id if slot_trainer_override else group.trainer_id
 
+    if lesson_start_time is not None and lesson_end_time is not None:
+        # Явное добавление возвращает ученика в состав этого урока.
+        db.query(LessonRosterExclusion).filter(
+            LessonRosterExclusion.group_id == payload.group_id,
+            LessonRosterExclusion.lesson_date == payload.lesson_date,
+            LessonRosterExclusion.start_time == lesson_start_time,
+            LessonRosterExclusion.end_time == lesson_end_time,
+            LessonRosterExclusion.student_id == payload.student_id,
+        ).delete(synchronize_session=False)
     db.add(LessonAttendance(
         group_id=payload.group_id,
         lesson_date=payload.lesson_date,
@@ -1243,23 +1311,27 @@ async def remove_student_from_lesson(
     group = db.query(Group).filter(Group.id == payload.group_id).first()
     if not group:
         raise HTTPException(status_code=404, detail="Group not found")
-    q = db.query(LessonAttendance).filter(
+    if not (payload.start_time and payload.end_time):
+        raise HTTPException(status_code=400, detail="Укажите время урока")
+    try:
+        start_t = datetime.strptime(payload.start_time.strip(), "%H:%M").time()
+        end_t = datetime.strptime(payload.end_time.strip(), "%H:%M").time()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid time format; use HH:MM")
+    attendances = db.query(LessonAttendance).filter(
         LessonAttendance.group_id == payload.group_id,
         LessonAttendance.lesson_date == payload.lesson_date,
         LessonAttendance.student_id == payload.student_id,
-    )
-    if payload.start_time and payload.end_time:
-        try:
-            start_t = datetime.strptime(payload.start_time.strip(), "%H:%M").time()
-            end_t = datetime.strptime(payload.end_time.strip(), "%H:%M").time()
-            q = q.filter(
-                LessonAttendance.lesson_start_time == start_t,
-                LessonAttendance.lesson_end_time == end_t,
-            )
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid time format; use HH:MM")
-    attendances = q.all()
-    if not attendances:
+        LessonAttendance.lesson_start_time == start_t,
+        LessonAttendance.lesson_end_time == end_t,
+    ).all()
+    # Ученик без записи посещаемости всё равно может быть в составе группы: удаляем его через исключение.
+    is_group_member = db.query(GroupStudent).filter(
+        GroupStudent.group_id == payload.group_id,
+        GroupStudent.student_id == payload.student_id,
+        GroupStudent.left_at.is_(None),
+    ).first() is not None
+    if not attendances and not is_group_member:
         raise HTTPException(status_code=404, detail="Student not found on this lesson")
     for att in attendances:
         txs = db.query(StudentAccountTransaction).filter(
@@ -1276,6 +1348,21 @@ async def remove_student_from_lesson(
             synchronize_session=False
         )
         db.delete(att)
+    already_excluded = db.query(LessonRosterExclusion).filter(
+        LessonRosterExclusion.group_id == payload.group_id,
+        LessonRosterExclusion.lesson_date == payload.lesson_date,
+        LessonRosterExclusion.start_time == start_t,
+        LessonRosterExclusion.end_time == end_t,
+        LessonRosterExclusion.student_id == payload.student_id,
+    ).first()
+    if not already_excluded:
+        db.add(LessonRosterExclusion(
+            group_id=payload.group_id,
+            lesson_date=payload.lesson_date,
+            start_time=start_t,
+            end_time=end_t,
+            student_id=payload.student_id,
+        ))
     db.commit()
     log_action(
         db, current_user.id, "remove_student", "lesson_attendance", None,
@@ -1314,63 +1401,34 @@ async def create_lesson_slot(
     if start_t >= end_t:
         raise HTTPException(status_code=400, detail="start_time must be before end_time")
 
-    existing_slot = db.query(LessonAttendance).filter(
-        LessonAttendance.group_id == payload.group_id,
-        LessonAttendance.lesson_date == payload.lesson_date,
-        LessonAttendance.lesson_start_time == start_t,
-        LessonAttendance.lesson_end_time == end_t,
-    ).first()
-    if existing_slot:
-        return {"ok": True}
+    # Разовый слот — самостоятельная запись расписания. Посещаемость не создаём:
+    # она появляется при сохранении отметок, а состав берётся из активных учеников группы.
+    # Точный дубль (группа, дата, время) запрещаем; другое время в тот же день допустимо.
+    if db.query(GroupLessonSlot).filter(
+        GroupLessonSlot.group_id == payload.group_id,
+        GroupLessonSlot.lesson_date == payload.lesson_date,
+        GroupLessonSlot.start_time == start_t,
+        GroupLessonSlot.end_time == end_t,
+    ).first():
+        raise HTTPException(status_code=400, detail="Урок с таким временем на эту дату уже есть")
+    if db.query(GroupSchedule).filter(
+        GroupSchedule.group_id == payload.group_id,
+        GroupSchedule.day_of_week == payload.lesson_date.weekday(),
+        GroupSchedule.start_time == start_t,
+        GroupSchedule.end_time == end_t,
+    ).first():
+        raise HTTPException(status_code=400, detail="Такой урок уже есть в расписании группы на эту дату")
 
-    # Ограничение в БД: для пары (group_id, lesson_date, student_id) может быть только одна запись.
-    # Поэтому сейчас нельзя создать второй слот на ту же дату для той же группы через LessonAttendance.
-    # Если по этой дате уже есть урок, возвращаем понятную ошибку вместо IntegrityError.
-    existing_for_day = db.query(LessonAttendance).filter(
-        LessonAttendance.group_id == payload.group_id,
-        LessonAttendance.lesson_date == payload.lesson_date,
-    ).first()
-    if existing_for_day:
-        raise HTTPException(
-            status_code=400,
-            detail="На эту дату у группы уже есть урок; второй слот в тот же день сейчас не поддерживается",
-        )
-
-    first_student = db.query(GroupStudent).filter(
-        GroupStudent.group_id == payload.group_id,
-        GroupStudent.left_at.is_(None),
-    ).first()
-    if not first_student or not first_student.student_id:
-        raise HTTPException(status_code=400, detail="Group has no students to attach lesson to")
-
-    # Фактический тренер для создаваемого слота (учитываем возможные подмены, если они будут заданы позже).
-    slot_trainer_override = (
-        db.query(LessonTrainerOverride)
-        .filter(
-            LessonTrainerOverride.group_id == payload.group_id,
-            LessonTrainerOverride.lesson_date == payload.lesson_date,
-            LessonTrainerOverride.start_time == start_t,
-            LessonTrainerOverride.end_time == end_t,
-        )
-        .first()
-    )
-    effective_trainer_id = slot_trainer_override.trainer_id if slot_trainer_override else group.trainer_id
-
-    db.add(
-        LessonAttendance(
-            group_id=payload.group_id,
-            lesson_date=payload.lesson_date,
-            student_id=first_student.student_id,
-            attended=True,
-            late=False,
-            lesson_start_time=start_t,
-            lesson_end_time=end_t,
-            trainer_id=effective_trainer_id,
-        )
-    )
+    db.add(GroupLessonSlot(
+        group_id=payload.group_id,
+        lesson_date=payload.lesson_date,
+        start_time=start_t,
+        end_time=end_t,
+        created_by_id=current_user.id,
+    ))
     db.commit()
     log_action(
-        db, current_user.id, "create_slot", "lesson_attendance", None,
+        db, current_user.id, "create_slot", "group_lesson_slot", None,
         {"group_id": payload.group_id, "lesson_date": payload.lesson_date, "start_time": payload.start_time, "end_time": payload.end_time},
     )
     return {"ok": True}
@@ -1389,19 +1447,10 @@ async def move_lesson(
     group = db.query(Group).filter(Group.id == payload.group_id).first()
     if not group:
         raise HTTPException(status_code=404, detail="Group not found")
-    attendances = db.query(LessonAttendance).filter(
+    day_attendances = db.query(LessonAttendance).filter(
         LessonAttendance.group_id == payload.group_id,
         LessonAttendance.lesson_date == payload.from_date,
     ).all()
-    existing = db.query(LessonAttendance).filter(
-        LessonAttendance.group_id == payload.group_id,
-        LessonAttendance.lesson_date == payload.to_date,
-    ).first()
-    if existing:
-        raise HTTPException(
-            status_code=400,
-            detail="Group already has a lesson on to_date; cannot move",
-        )
     to_start: Optional[time] = None
     to_end: Optional[time] = None
     if payload.to_start_time or payload.to_end_time:
@@ -1418,31 +1467,79 @@ async def move_lesson(
         GroupSchedule.group_id == payload.group_id,
         GroupSchedule.day_of_week == from_weekday,
     ).order_by(GroupSchedule.start_time).all()
+    # Все слоты группы на дату переноса (регулярные, с посещаемостью и разовые).
+    from_slot_keys = (
+        {(a.lesson_start_time, a.lesson_end_time) for a in day_attendances
+         if a.lesson_start_time is not None and a.lesson_end_time is not None}
+        | {(s.start_time, s.end_time) for s in from_scheds}
+        | {(ms.start_time, ms.end_time) for ms in db.query(GroupLessonSlot).filter(
+            GroupLessonSlot.group_id == payload.group_id,
+            GroupLessonSlot.lesson_date == payload.from_date,
+        ).all()}
+    )
     if payload.from_start_time and payload.from_end_time:
         try:
             from_start = datetime.strptime(payload.from_start_time.strip(), "%H:%M").time()
             from_end = datetime.strptime(payload.from_end_time.strip(), "%H:%M").time()
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid from_start_time/from_end_time; use HH:MM")
-    elif attendances:
-        att0 = attendances[0]
-        ast, aet = getattr(att0, "lesson_start_time", None), getattr(att0, "lesson_end_time", None)
-        if ast is not None and aet is not None:
-            from_start, from_end = ast, aet
-        elif from_scheds:
-            from_start, from_end = from_scheds[0].start_time, from_scheds[0].end_time
-        else:
-            raise HTTPException(status_code=400, detail="Provide from_start_time and from_end_time")
-    elif from_scheds:
-        from_start, from_end = from_scheds[0].start_time, from_scheds[0].end_time
-    else:
+    elif len(from_slot_keys) == 1:
+        from_start, from_end = next(iter(from_slot_keys))
+    elif not from_slot_keys:
         raise HTTPException(status_code=400, detail="Provide from_start_time and from_end_time")
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="В этот день несколько уроков; укажите время переносимого занятия (from_start_time / from_end_time)",
+        )
 
     # Если время на новую дату не задано — переносим в то же время.
     if to_start is None:
         to_start = from_start
     if to_end is None:
         to_end = from_end
+
+    # Переносим только выбранный слот. Legacy-строки без времени учитываем, только если урок в этот день один.
+    single_slot_day = len(from_slot_keys) <= 1
+    attendances = [
+        a for a in day_attendances
+        if (a.lesson_start_time == from_start and a.lesson_end_time == from_end)
+        or (single_slot_day and a.lesson_start_time is None and a.lesson_end_time is None)
+    ]
+
+    # Конфликт только с тем же временем на дату переноса: другой урок того же дня не мешает.
+    target_taken = db.query(LessonAttendance).filter(
+        LessonAttendance.group_id == payload.group_id,
+        LessonAttendance.lesson_date == payload.to_date,
+        LessonAttendance.lesson_start_time == to_start,
+        LessonAttendance.lesson_end_time == to_end,
+    ).first() or db.query(GroupLessonSlot).filter(
+        GroupLessonSlot.group_id == payload.group_id,
+        GroupLessonSlot.lesson_date == payload.to_date,
+        GroupLessonSlot.start_time == to_start,
+        GroupLessonSlot.end_time == to_end,
+    ).first()
+    if target_taken:
+        raise HTTPException(
+            status_code=400,
+            detail="У группы уже есть урок на эту дату и время; перенос невозможен",
+        )
+
+    # Перенос на время, которого нет в расписании, оформляем как разовый слот: он должен жить и после переноса.
+    target_is_regular = db.query(GroupSchedule).filter(
+        GroupSchedule.group_id == payload.group_id,
+        GroupSchedule.day_of_week == payload.to_date.weekday(),
+        GroupSchedule.start_time == to_start,
+        GroupSchedule.end_time == to_end,
+    ).first() is not None
+    if not target_is_regular:
+        db.add(GroupLessonSlot(
+            group_id=payload.group_id,
+            lesson_date=payload.to_date,
+            start_time=to_start,
+            end_time=to_end,
+            created_by_id=current_user.id,
+        ))
 
     existing_cancel = db.query(LessonCancellation).filter(
         LessonCancellation.group_id == payload.group_id,
@@ -1629,6 +1726,136 @@ async def cancel_lesson(
     log_action(
         db, current_user.id, "cancel", "lesson", None,
         {"group_id": payload.group_id, "lesson_date": payload.lesson_date},
+    )
+    return {"ok": True}
+
+
+def _ensure_restored_slot_fits_monthly_limit(
+    db: Session,
+    group: Group,
+    cancellation: LessonCancellation,
+    lesson_date: date,
+    start_t: time,
+    end_t: time,
+) -> None:
+    """Проверка перед восстановлением регулярного слота: после снятия отмены слот должен
+    попасть в первые LESSONS_PER_MONTH занятий месяца, и ни одно уже проведённое занятие
+    не должно выпасть за лимит (иначе в месяце окажется больше 8 видимых/засчитанных занятий)."""
+    year, month = lesson_date.year, lesson_date.month
+    month_start = date(year, month, 1)
+    month_end = date(year, month, calendar.monthrange(year, month)[1])
+    month_cancellations = db.query(LessonCancellation).filter(
+        LessonCancellation.group_id == group.id,
+        LessonCancellation.lesson_date >= month_start,
+        LessonCancellation.lesson_date <= month_end,
+    ).all()
+    remaining_cancellations = [c for c in month_cancellations if c.id != cancellation.id]
+    is_individual = (getattr(group, "lesson_format", None) or "group").strip().lower() == "individual"
+    allowed, _ = _first_n_slots_per_group_in_month(
+        db,
+        [group.id],
+        year,
+        month,
+        remaining_cancellations,
+        individual_group_ids={group.id} if is_individual else set(),
+        group_start_dates={group.id: group.start_date} if group.start_date else {},
+    )
+    if (group.id, lesson_date, start_t, end_t) not in allowed:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Лимит {LESSONS_PER_MONTH} занятий в месяце уже занят: после восстановления это занятие не попадёт в расписание",
+        )
+    month_attendances = db.query(LessonAttendance).filter(
+        LessonAttendance.group_id == group.id,
+        LessonAttendance.lesson_date >= month_start,
+        LessonAttendance.lesson_date <= month_end,
+        LessonAttendance.lesson_start_time.isnot(None),
+        LessonAttendance.lesson_end_time.isnot(None),
+    ).all()
+    displaced_dates = set()
+    for att in month_attendances:
+        key = (group.id, att.lesson_date, att.lesson_start_time, att.lesson_end_time)
+        if key in allowed:
+            continue
+        is_scheduled = db.query(GroupSchedule).filter(
+            GroupSchedule.group_id == group.id,
+            GroupSchedule.day_of_week == att.lesson_date.weekday(),
+            GroupSchedule.start_time == att.lesson_start_time,
+            GroupSchedule.end_time == att.lesson_end_time,
+        ).first() is not None
+        if is_scheduled:
+            displaced_dates.add(att.lesson_date)
+    if displaced_dates:
+        dates_label = ", ".join(sorted(d.strftime("%d.%m") for d in displaced_dates))
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Восстановление вытеснит уже проведённое занятие за лимит {LESSONS_PER_MONTH} в месяце "
+                f"({dates_label}). Восстанавливать нельзя, пока лимит не освободится"
+            ),
+        )
+
+
+@router.post("/restore")
+async def restore_lesson(
+    payload: RestoreLessonPayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """Восстановить занятие, отменённое через /cancel. Перенесённое занятие (moved_to_date) так не восстанавливается.
+
+    Регулярный слот: удаляется только LessonCancellation — генератор расписания (get_lessons_for_date)
+    сам вернёт слот с учётом GroupStudentSchedule, training_start_date, членства и LessonTrainerOverride.
+    Посещаемость и списания не создаются: списание происходит только при сохранении посещаемости.
+    """
+    _ensure_lessons_schedule_manage(current_user)
+    try:
+        start_t = datetime.strptime(payload.start_time.strip(), "%H:%M").time()
+        end_t = datetime.strptime(payload.end_time.strip(), "%H:%M").time()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid time format; use HH:MM")
+    group = db.query(Group).filter(Group.id == payload.group_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    cancellation = db.query(LessonCancellation).filter(
+        LessonCancellation.group_id == payload.group_id,
+        LessonCancellation.lesson_date == payload.lesson_date,
+        LessonCancellation.start_time == start_t,
+        LessonCancellation.end_time == end_t,
+    ).first()
+    if not cancellation:
+        raise HTTPException(status_code=404, detail="Отмена этого занятия не найдена (возможно, оно уже восстановлено)")
+    if cancellation.moved_to_date is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Занятие перенесено на {cancellation.moved_to_date.strftime('%d.%m.%Y')}: "
+                "восстановление обычной отмены для перенесённого занятия недоступно"
+            ),
+        )
+    schedule = db.query(GroupSchedule).filter(
+        GroupSchedule.group_id == payload.group_id,
+        GroupSchedule.day_of_week == payload.lesson_date.weekday(),
+        GroupSchedule.start_time == start_t,
+        GroupSchedule.end_time == end_t,
+    ).first()
+    if schedule is None:
+        # Разовый слот хранится в group_lesson_slots и при отмене не удаляется: восстановление = снятие отмены.
+        # Посещаемость не создаём — она появится при сохранении отметок.
+        if not db.query(GroupLessonSlot).filter(
+            GroupLessonSlot.group_id == group.id,
+            GroupLessonSlot.lesson_date == payload.lesson_date,
+            GroupLessonSlot.start_time == start_t,
+            GroupLessonSlot.end_time == end_t,
+        ).first():
+            raise HTTPException(status_code=404, detail="Разовый урок не найден; восстанавливать нечего")
+    else:
+        _ensure_restored_slot_fits_monthly_limit(db, group, cancellation, payload.lesson_date, start_t, end_t)
+    db.delete(cancellation)
+    db.commit()
+    log_action(
+        db, current_user.id, "restore", "lesson", None,
+        {"group_id": payload.group_id, "lesson_date": payload.lesson_date, "custom_slot": schedule is None},
     )
     return {"ok": True}
 

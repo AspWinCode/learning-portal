@@ -45,6 +45,14 @@ const OwnerFunnelsPage = React.lazy(() => import('./pages/OwnerFunnelsPage'));
 const OwnerUsefulLinksPage = React.lazy(() => import('./pages/OwnerUsefulLinksPage'));
 const TranscriptionPage = React.lazy(() => import('./pages/TranscriptionPage'));
 const AcademyAiPage = React.lazy(() => import('./pages/AcademyAiPage'));
+const LegoHome = React.lazy(() => import('./features/lego/LegoHome'));
+const LegoStudentsPage = React.lazy(() => import('./features/lego/LegoStudentsPage'));
+const LegoStudentCardPage = React.lazy(() => import('./features/lego/LegoStudentCardPage'));
+const LegoGroupsPage = React.lazy(() => import('./features/lego/LegoGroupsPage'));
+const LegoLessonsPage = React.lazy(() => import('./features/lego/LegoLessonsPage'));
+const LegoLessonPage = React.lazy(() => import('./features/lego/LegoLessonPage'));
+const LegoPaymentsPage = React.lazy(() => import('./features/lego/LegoPaymentsPage'));
+const LegoDebtsPage = React.lazy(() => import('./features/lego/LegoDebtsPage'));
 const ParentDashboardPage = React.lazy(() => import('./pages/ParentDashboardPage'));
 const TrainerCockpitPage = React.lazy(() => import('./pages/TrainerCockpitPage'));
 const TrainerGradesPage = React.lazy(() => import('./pages/TrainerGradesPage'));
@@ -812,6 +820,70 @@ function App() {
               element={
                 <PrivateRoute allowedRoles={['owner']} requiredPermission="transcription.access">
                   <TranscriptionPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/lego"
+              element={
+                <PrivateRoute requiredPermission="lego.access">
+                  <LegoHome />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/lego/students"
+              element={
+                <PrivateRoute requiredPermission="lego.access">
+                  <LegoStudentsPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/lego/students/:id"
+              element={
+                <PrivateRoute requiredPermission="lego.access">
+                  <LegoStudentCardPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/lego/groups"
+              element={
+                <PrivateRoute requiredPermission="lego.access">
+                  <LegoGroupsPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/lego/lessons"
+              element={
+                <PrivateRoute requiredPermission="lego.access">
+                  <LegoLessonsPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/lego/lessons/:lessonId"
+              element={
+                <PrivateRoute requiredPermission="lego.access">
+                  <LegoLessonPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/lego/debts"
+              element={
+                <PrivateRoute requiredPermission="lego.access">
+                  <LegoDebtsPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/lego/payments"
+              element={
+                <PrivateRoute requiredPermission="lego.access">
+                  <LegoPaymentsPage />
                 </PrivateRoute>
               }
             />

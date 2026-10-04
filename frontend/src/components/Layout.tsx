@@ -411,6 +411,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const canAccessNotes = notesEnabledRoles.includes(role ?? '') || role === 'owner' || role === 'admin';
   const canAccessAgile = hasPermission(user, 'agile.access');
   const canAccessAcademyAi = hasPermission(user, 'academy_ai.access');
+  const canAccessLego = hasPermission(user, 'lego.access');
 
   const effectiveMenuItems = (() => {
     if (role === 'developer')
@@ -510,6 +511,8 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
       if (canAccessPasswords) items.push({ text: 'Пароли', icon: <Lock />, path: '/passwords' });
       if (canAccessNotes) items.push({ text: 'Заметки', icon: <EditNoteIcon />, path: '/notes' });
     }
+    // LEGO — изолированный модуль: пункт только при lego.access (backend всё равно проверяет права).
+    if (canAccessLego) items.push({ text: 'LEGO — Ленинец', icon: <Group />, path: '/lego' });
     if (canAccessSettings) items.push({ text: 'Настройки', icon: <Settings />, path: '/admin/settings' });
     if (canAccessCommunications) items.push({ text: 'Communication Hub', icon: <Notifications />, path: '/settings/communications' });
     if (canAccessRoles) items.push({ text: 'Роли и доступы', icon: <People />, path: '/roles' });

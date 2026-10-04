@@ -127,6 +127,13 @@ class CancelLessonPayload(BaseModel):
     end_time: str
 
 
+class RestoreLessonPayload(BaseModel):
+    group_id: int
+    lesson_date: date
+    start_time: str
+    end_time: str
+
+
 class LessonSlotExtraPolicyPayload(BaseModel):
     lesson_date: date
     start_time: str

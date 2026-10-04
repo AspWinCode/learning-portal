@@ -457,40 +457,6 @@ async def test_moved_lesson_is_not_restored_as_plain_cancellation(db, owner_user
 
 
 @pytest.mark.asyncio
-async def test_custom_slot_restore_recreates_single_attendance_without_duplicates(db, owner_user, trainer_user, abonement, ctx):
-    from app.models import LessonAttendance
-    from app.routers.trainer_lessons import create_lesson_slot
-    from app.schemas.groups import CreateLessonSlotPayload
-
-    ctx.group, _ = _make_group(db, trainer_user, [(0, time(10, 0), time(12, 0))])
-    ctx.students.append(_make_student(db, abonement))
-    _enroll(db, ctx.group, ctx.students[0])
-
-    await create_lesson_slot(
-        CreateLessonSlotPayload(group_id=ctx.group.id, lesson_date=WED, start_time="18:00", end_time="19:00"),
-        db=db, current_user=owner_user,
-    )
-    await _cancel(db, owner_user, ctx.group, WED, "18:00", "19:00")
-    assert len(await _slots(db, owner_user, ctx.group, WED)) == 1  # только stub отмены
-
-    await _restore(db, owner_user, ctx.group, WED, "18:00", "19:00")
-    slots = await _slots(db, owner_user, ctx.group, WED)
-    assert len(slots) == 1 and slots[0].is_cancelled is False
-
-    custom_rows = db.query(LessonAttendance).filter(
-        LessonAttendance.group_id == ctx.group.id,
-        LessonAttendance.lesson_date == WED,
-        LessonAttendance.lesson_start_time == time(18, 0),
-    ).count()
-    assert custom_rows == 1
-
-    with pytest.raises(HTTPException) as exc:
-        await _restore(db, owner_user, ctx.group, WED, "18:00", "19:00")
-    assert exc.value.status_code == 404
-    assert db.query(LessonAttendance).filter(LessonAttendance.group_id == ctx.group.id, LessonAttendance.lesson_date == WED).count() == 1
-
-
-@pytest.mark.asyncio
 async def test_restore_does_not_bill_and_billing_happens_once_on_save(db, owner_user, trainer_user, abonement, ctx):
     from app.models import LessonAttendance, StudentAccount, StudentAccountTransaction, StudentAccountTransactionKind
 

@@ -1542,6 +1542,7 @@ class Group(Base):
     lesson_cancellations = relationship("LessonCancellation", back_populates="group", cascade="all, delete-orphan")
     lesson_trainer_overrides = relationship("LessonTrainerOverride", back_populates="group", cascade="all, delete-orphan")
     lesson_slot_extra_policies = relationship("LessonSlotExtraPolicy", back_populates="group", cascade="all, delete-orphan")
+    group_lesson_slots = relationship("GroupLessonSlot", back_populates="group", cascade="all, delete-orphan")
     programs = relationship("Program", secondary="group_programs", viewonly=True)
 
 
@@ -1651,7 +1652,14 @@ class ProjectCard(Base):
 class LessonAttendance(Base):
     """╨Я╨╛╤Б╨╡╤Й╨░╨╡╨╝╨╛╤Б╤В╤М╨║╤В╨╛╨▒╤Л╨╗╨╜╨░╨╖╨░╨╜╤П╤В╨╕╨╕╨│╤А╤Г╨┐╨┐╨░╨┤╨░╤В╨░"""
     __tablename__ = "lesson_attendance"
-    __table_args__ = (UniqueConstraint("group_id", "lesson_date", "student_id", name="uq_lesson_attendance_group_date_student"),)
+    # Одна запись на ученика в конкретном слоте: два урока группы в один день допустимы, если у них разное время.
+    __table_args__ = (
+        UniqueConstraint(
+            "group_id", "lesson_date", "student_id", "lesson_start_time", "lesson_end_time",
+            name="uq_lesson_attendance_group_date_student_slot",
+            postgresql_nulls_not_distinct=True,
+        ),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     group_id = Column(Integer, ForeignKey("groups.id"), nullable=False, index=True)
@@ -1734,6 +1742,52 @@ class LessonSlotExtraPolicy(Base):
     extra_rate_per_unit = Column(Float, nullable=True)  # если NULL — из группы или price/8
 
     group = relationship("Group", back_populates="lesson_slot_extra_policies")
+
+
+class GroupLessonSlot(Base):
+    """Разовый урок группы на конкретную дату и время (вне GroupSchedule).
+
+    Сам по себе не создаёт посещаемость: состав учеников — активные ученики группы,
+    LessonAttendance появляется только при сохранении посещаемости по слоту.
+    Отмена/перенос/подмена тренера хранятся как для регулярных слотов (LessonCancellation,
+    LessonTrainerOverride), поэтому отдельного статуса здесь нет.
+    """
+    __tablename__ = "group_lesson_slots"
+    __table_args__ = (
+        UniqueConstraint("group_id", "lesson_date", "start_time", "end_time", name="uq_group_lesson_slot"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    group_id = Column(Integer, ForeignKey("groups.id", ondelete="CASCADE"), nullable=False, index=True)
+    lesson_date = Column(Date, nullable=False, index=True)
+    start_time = Column(Time, nullable=False)
+    end_time = Column(Time, nullable=False)
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    group = relationship("Group", back_populates="group_lesson_slots")
+
+
+class LessonRosterExclusion(Base):
+    """Ученик, удалённый из конкретного урока (группа, дата, время).
+
+    Состав слота = активные ученики группы минус эти исключения. Без записи здесь удалённый
+    ученик снова появился бы в составе, потому что состав больше не выводится из посещаемости."""
+    __tablename__ = "lesson_roster_exclusions"
+    __table_args__ = (
+        UniqueConstraint(
+            "group_id", "lesson_date", "start_time", "end_time", "student_id",
+            name="uq_lesson_roster_exclusion",
+        ),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    group_id = Column(Integer, ForeignKey("groups.id", ondelete="CASCADE"), nullable=False, index=True)
+    lesson_date = Column(Date, nullable=False, index=True)
+    start_time = Column(Time, nullable=False)
+    end_time = Column(Time, nullable=False)
+    student_id = Column(Integer, ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
 class TrainerPeriodBonus(Base):

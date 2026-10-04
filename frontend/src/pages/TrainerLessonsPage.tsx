@@ -321,7 +321,13 @@ const TrainerLessonsPage: React.FC = () => {
         end_time: createEndTime,
       });
       setCreateDialogOpen(false);
-      await loadSlots();
+      // loadSlots грузит viewDate, а урок создан на createDate: переключаем страницу на выбранную дату.
+      // Смена viewDate сама перезагрузит слоты через эффект по loadSlots.
+      if (createDate === viewDate) {
+        await loadSlots();
+      } else {
+        setViewDate(createDate);
+      }
     } catch (err: any) {
       setCreateError(extractApiError(err, 'Не удалось создать урок'));
     } finally {

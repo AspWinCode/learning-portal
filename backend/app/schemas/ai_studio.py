@@ -1,8 +1,8 @@
 """Pydantic-схемы AI Studio (app/routers/ai_studio.py).
 
 Phase 1: workspaces, knowledge, templates, generate, content + transform.
-Content-plan и event-pack — Phase 2 (не входят в эти схемы)."""
-from datetime import datetime
+Phase 2: content-plan, event-pack, мультиканальные варианты."""
+from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
@@ -131,6 +131,7 @@ class ContentOut(BaseModel):
     tags: Optional[List[str]]
     channel: Optional[str]
     scheduled_date: Optional[datetime]
+    group_key: Optional[str]
     created_at: Optional[datetime]
     updated_at: Optional[datetime]
 
@@ -170,3 +171,78 @@ TRANSFORM_ACTION_CHOICES = (
     "remove_ad_tone",
     "three_variants",
 )
+
+
+class VariantRequest(BaseModel):
+    channel: str = Field(..., min_length=1, max_length=32)
+
+
+# ─── Content plan (Phase 2) ─────────────────────────────────────────────────
+
+class ContentPlanCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=256)
+    date_from: Optional[date] = None
+    date_to: Optional[date] = None
+
+
+class ContentPlanItemOut(BaseModel):
+    id: int
+    plan_id: int
+    publish_date: Optional[date]
+    channel: Optional[str]
+    content_type: Optional[str]
+    title: str
+    brief: Optional[str]
+    generated_content_id: Optional[int]
+    status: str
+
+    model_config = _ORM
+
+
+class ContentPlanOut(BaseModel):
+    id: int
+    workspace_id: int
+    name: str
+    date_from: Optional[date]
+    date_to: Optional[date]
+    created_by_id: Optional[int]
+    created_at: Optional[datetime]
+    items: List[ContentPlanItemOut] = Field(default_factory=list)
+
+    model_config = _ORM
+
+
+class ContentPlanItemCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=256)
+    publish_date: Optional[date] = None
+    channel: Optional[str] = None
+    content_type: Optional[str] = None
+    brief: Optional[str] = None
+
+
+class ContentPlanItemUpdate(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, max_length=256)
+    publish_date: Optional[date] = None
+    channel: Optional[str] = None
+    content_type: Optional[str] = None
+    brief: Optional[str] = None
+    status: Optional[str] = None  # idea/draft/ready/published/skipped
+    generated_content_id: Optional[int] = None
+
+
+class ContentPlanGenerateRequest(BaseModel):
+    count: int = Field(10, ge=1, le=60)
+    channels: List[str] = Field(default_factory=list)
+    goals: Optional[str] = None
+    important_events: Optional[str] = None
+
+
+# ─── Event pack (Phase 2) ───────────────────────────────────────────────────
+
+class EventPackRequest(BaseModel):
+    event_data: Dict[str, Any] = Field(default_factory=dict)
+
+
+class EventPackResult(BaseModel):
+    group_key: str
+    items: List[ContentOut]

@@ -149,6 +149,8 @@ const NewContentTab: React.FC<{ workspaceCode: string; canGenerate: boolean; onG
 
 // ─── Черновики: история генераций + быстрые AI-действия ──────────────────
 
+const VARIANT_CHANNELS = ['vk', 'telegram', 'site', 'email', 'short'];
+
 const DraftsTab: React.FC<{ workspaceCode: string; canGenerate: boolean; canManage: boolean; reloadKey: number }> = ({
   workspaceCode,
   canGenerate,
@@ -158,6 +160,7 @@ const DraftsTab: React.FC<{ workspaceCode: string; canGenerate: boolean; canMana
   const [items, setItems] = useState<aiStudio.GeneratedContent[] | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [variantChannel, setVariantChannel] = useState<Record<number, string>>({});
 
   const reload = () => aiStudio.listContent(workspaceCode).then((r) => setItems(r.items)).catch(() => setItems([]));
 
@@ -179,6 +182,21 @@ const DraftsTab: React.FC<{ workspaceCode: string; canGenerate: boolean; canMana
     }
   };
 
+  const runVariant = async (id: number) => {
+    const channel = variantChannel[id];
+    if (!channel) return;
+    setBusyId(id);
+    setError(null);
+    try {
+      await aiStudio.createContentVariant(id, channel);
+      await reload();
+    } catch (e) {
+      setError(extractApiError(e, 'Ошибка'));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const setStatus = async (id: number, status: 'approved' | 'archived') => {
     await aiStudio.updateContent(id, { status });
     await reload();
@@ -192,8 +210,11 @@ const DraftsTab: React.FC<{ workspaceCode: string; canGenerate: boolean; canMana
       {error && <Alert severity="error">{error}</Alert>}
       {items.map((item) => (
         <Paper key={item.id} variant="outlined" sx={{ p: 2 }}>
-          <Stack direction="row" justifyContent="space-between" alignItems="flex-start" flexWrap="wrap">
-            <Typography variant="subtitle1">{item.title || `#${item.id}`}</Typography>
+          <Stack direction="row" justifyContent="space-between" alignItems="flex-start" flexWrap="wrap" gap={1}>
+            <Stack direction="row" spacing={1} alignItems="center">
+              <Typography variant="subtitle1">{item.title || `#${item.id}`}</Typography>
+              {item.channel && <Chip size="small" variant="outlined" label={item.channel} />}
+            </Stack>
             <Chip
               size="small"
               label={item.status}
@@ -216,6 +237,28 @@ const DraftsTab: React.FC<{ workspaceCode: string; canGenerate: boolean; canMana
                   onClick={() => runTransform(item.id, action)}
                 />
               ))}
+            </Stack>
+          )}
+          {canGenerate && (
+            <Stack direction="row" spacing={1} sx={{ mt: 1 }} alignItems="center">
+              <FormControl size="small" sx={{ minWidth: 140 }}>
+                <InputLabel id={`variant-channel-${item.id}`}>Версия для канала</InputLabel>
+                <Select
+                  labelId={`variant-channel-${item.id}`}
+                  label="Версия для канала"
+                  value={variantChannel[item.id] || ''}
+                  onChange={(e) => setVariantChannel((v) => ({ ...v, [item.id]: e.target.value }))}
+                >
+                  {VARIANT_CHANNELS.map((ch) => (
+                    <MenuItem key={ch} value={ch}>
+                      {ch}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <Button size="small" disabled={!variantChannel[item.id] || busyId === item.id} onClick={() => runVariant(item.id)}>
+                Сделать версию
+              </Button>
             </Stack>
           )}
           {canManage && (
@@ -368,6 +411,270 @@ const SettingsTab: React.FC<{ workspaceCode: string; canManage: boolean }> = ({ 
   );
 };
 
+// ─── Пакет по событию («Создать материалы по событию», п.12 ТЗ) ───────────
+
+const EVENT_PACK_FIELDS: { key: string; label: string; multiline?: boolean }[] = [
+  { key: 'event_name', label: 'Название события' },
+  { key: 'date', label: 'Дата' },
+  { key: 'location', label: 'Место' },
+  { key: 'participants_count', label: 'Количество участников' },
+  { key: 'results', label: 'Результаты', multiline: true },
+  { key: 'winners', label: 'Победители' },
+  { key: 'key_facts', label: 'Важные факты', multiline: true },
+  { key: 'partners', label: 'Партнёры' },
+  { key: 'links_photo_description', label: 'Ссылки / описание фото', multiline: true },
+];
+
+const EventPackTab: React.FC<{ workspaceCode: string; canGenerate: boolean; onGenerated: () => void }> = ({
+  workspaceCode,
+  canGenerate,
+  onGenerated,
+}) => {
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<aiStudio.EventPackResult | null>(null);
+
+  const submit = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const pack = await aiStudio.createEventPack(workspaceCode, values);
+      setResult(pack);
+      onGenerated();
+    } catch (e) {
+      setError(extractApiError(e, 'Ошибка'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Stack spacing={2} sx={{ maxWidth: 640 }}>
+      <Typography variant="body2" color="text.secondary">
+        Один запуск создаёт сразу пакет материалов (VK, Telegram, короткий пост, новость на сайт, благодарность
+        партнёрам, текст для родителей, подпись к фото, промпт для обложки) — все факты берутся только из того, что
+        вы укажете ниже.
+      </Typography>
+      {EVENT_PACK_FIELDS.map((f) => (
+        <TextField
+          key={f.key}
+          size="small"
+          label={f.label}
+          value={values[f.key] || ''}
+          onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
+          multiline={f.multiline}
+          minRows={f.multiline ? 2 : 1}
+        />
+      ))}
+      {error && <Alert severity="error">{error}</Alert>}
+      <Button variant="contained" onClick={submit} disabled={loading || !canGenerate || !values.event_name}>
+        {loading ? 'Генерация…' : 'Создать пакет материалов'}
+      </Button>
+      {result && (
+        <Stack spacing={1}>
+          <Alert severity="success">Создано материалов: {result.items.length}</Alert>
+          {result.items.map((item) => (
+            <Paper key={item.id} variant="outlined" sx={{ p: 2 }}>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Typography variant="subtitle2">{item.title}</Typography>
+                {item.channel && <Chip size="small" variant="outlined" label={item.channel} />}
+              </Stack>
+              <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', mt: 0.5 }}>
+                {item.output_text}
+              </Typography>
+            </Paper>
+          ))}
+        </Stack>
+      )}
+    </Stack>
+  );
+};
+
+// ─── Контент-план (п.11 ТЗ) ────────────────────────────────────────────────
+
+const PLAN_ITEM_STATUS_COLOR: Record<aiStudio.ContentPlanItemStatus, 'default' | 'warning' | 'info' | 'success'> = {
+  idea: 'default',
+  draft: 'warning',
+  ready: 'info',
+  published: 'success',
+  skipped: 'default',
+};
+
+const ContentPlanTab: React.FC<{ workspaceCode: string; canGenerate: boolean; canManage: boolean }> = ({
+  workspaceCode,
+  canGenerate,
+  canManage,
+}) => {
+  const [plans, setPlans] = useState<aiStudio.ContentPlan[] | null>(null);
+  const [activePlan, setActivePlan] = useState<aiStudio.ContentPlan | null>(null);
+  const [newPlanName, setNewPlanName] = useState('');
+  const [genCount, setGenCount] = useState(10);
+  const [genChannels, setGenChannels] = useState('vk,telegram');
+  const [genGoals, setGenGoals] = useState('');
+  const [genEvents, setGenEvents] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const reloadPlans = () => aiStudio.listContentPlans(workspaceCode).then(setPlans).catch(() => setPlans([]));
+
+  useEffect(() => {
+    reloadPlans();
+    setActivePlan(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceCode]);
+
+  const openPlan = (plan: aiStudio.ContentPlan) => {
+    aiStudio.getContentPlan(workspaceCode, plan.id).then(setActivePlan).catch(() => undefined);
+  };
+
+  const createPlan = async () => {
+    if (!newPlanName.trim()) return;
+    try {
+      const plan = await aiStudio.createContentPlan(workspaceCode, { name: newPlanName.trim() });
+      setNewPlanName('');
+      await reloadPlans();
+      openPlan(plan);
+    } catch (e) {
+      setError(extractApiError(e, 'Ошибка'));
+    }
+  };
+
+  const generateItems = async () => {
+    if (!activePlan) return;
+    setLoading(true);
+    setError(null);
+    try {
+      await aiStudio.generateContentPlanItems(workspaceCode, activePlan.id, {
+        count: genCount,
+        channels: genChannels.split(',').map((c) => c.trim()).filter(Boolean),
+        goals: genGoals || undefined,
+        important_events: genEvents || undefined,
+      });
+      const refreshed = await aiStudio.getContentPlan(workspaceCode, activePlan.id);
+      setActivePlan(refreshed);
+    } catch (e) {
+      setError(extractApiError(e, 'Ошибка'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const setItemStatus = async (itemId: number, status: aiStudio.ContentPlanItemStatus) => {
+    if (!activePlan) return;
+    await aiStudio.updateContentPlanItem(itemId, { status });
+    const refreshed = await aiStudio.getContentPlan(workspaceCode, activePlan.id);
+    setActivePlan(refreshed);
+  };
+
+  const removeItem = async (itemId: number) => {
+    if (!activePlan) return;
+    await aiStudio.deleteContentPlanItem(itemId);
+    const refreshed = await aiStudio.getContentPlan(workspaceCode, activePlan.id);
+    setActivePlan(refreshed);
+  };
+
+  if (activePlan) {
+    return (
+      <Stack spacing={2}>
+        <Stack direction="row" alignItems="center" justifyContent="space-between">
+          <Typography variant="h6">{activePlan.name}</Typography>
+          <Button size="small" onClick={() => setActivePlan(null)}>
+            ← к списку планов
+          </Button>
+        </Stack>
+        {canGenerate && (
+          <Paper variant="outlined" sx={{ p: 2 }}>
+            <Stack spacing={1} sx={{ maxWidth: 480 }}>
+              <Typography variant="subtitle2">Заполнить план с помощью AI</Typography>
+              <TextField
+                size="small"
+                type="number"
+                label="Количество публикаций"
+                value={genCount}
+                onChange={(e) => setGenCount(Number(e.target.value) || 1)}
+              />
+              <TextField size="small" label="Каналы (через запятую)" value={genChannels} onChange={(e) => setGenChannels(e.target.value)} />
+              <TextField size="small" label="Цели" value={genGoals} onChange={(e) => setGenGoals(e.target.value)} />
+              <TextField size="small" label="Важные события в периоде" value={genEvents} onChange={(e) => setGenEvents(e.target.value)} />
+              {error && <Alert severity="error">{error}</Alert>}
+              <Button variant="contained" onClick={generateItems} disabled={loading}>
+                {loading ? 'Генерация…' : 'Сгенерировать пункты плана'}
+              </Button>
+            </Stack>
+          </Paper>
+        )}
+        {activePlan.items.length === 0 && <Alert severity="info">В плане пока нет пунктов.</Alert>}
+        {activePlan.items.map((item) => (
+          <Paper key={item.id} variant="outlined" sx={{ p: 2 }}>
+            <Stack direction="row" justifyContent="space-between" alignItems="flex-start" flexWrap="wrap" gap={1}>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Typography variant="subtitle2">{item.title}</Typography>
+                {item.channel && <Chip size="small" variant="outlined" label={item.channel} />}
+                {item.publish_date && <Chip size="small" variant="outlined" label={item.publish_date} />}
+              </Stack>
+              <Chip size="small" label={item.status} color={PLAN_ITEM_STATUS_COLOR[item.status]} />
+            </Stack>
+            {item.brief && (
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                {item.brief}
+              </Typography>
+            )}
+            {canManage && (
+              <Stack direction="row" spacing={1} sx={{ mt: 1 }} flexWrap="wrap" useFlexGap>
+                {(['idea', 'draft', 'ready', 'published', 'skipped'] as aiStudio.ContentPlanItemStatus[]).map((s) => (
+                  <Chip
+                    key={s}
+                    size="small"
+                    variant={item.status === s ? 'filled' : 'outlined'}
+                    clickable
+                    label={s}
+                    onClick={() => setItemStatus(item.id, s)}
+                  />
+                ))}
+                <Button size="small" color="error" onClick={() => removeItem(item.id)}>
+                  Удалить
+                </Button>
+              </Stack>
+            )}
+          </Paper>
+        ))}
+      </Stack>
+    );
+  }
+
+  return (
+    <Stack spacing={2}>
+      {canGenerate && (
+        <Paper variant="outlined" sx={{ p: 2 }}>
+          <Stack direction="row" spacing={1}>
+            <TextField size="small" label="Название плана" value={newPlanName} onChange={(e) => setNewPlanName(e.target.value)} fullWidth />
+            <Button variant="contained" onClick={createPlan} disabled={!newPlanName.trim()}>
+              Создать план
+            </Button>
+          </Stack>
+        </Paper>
+      )}
+      {!plans && <CircularProgress size={24} />}
+      {plans && plans.length === 0 && <Alert severity="info">Пока нет контент-планов.</Alert>}
+      <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
+        {plans?.map((plan) => (
+          <Card key={plan.id} sx={{ width: 240 }}>
+            <CardActionArea onClick={() => openPlan(plan)}>
+              <CardContent>
+                <Typography variant="subtitle1">{plan.name}</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {plan.date_from || '—'} — {plan.date_to || '—'} · {plan.items.length} пункт(ов)
+                </Typography>
+              </CardContent>
+            </CardActionArea>
+          </Card>
+        ))}
+      </Stack>
+    </Stack>
+  );
+};
+
 const AiStudioWorkspaceView: React.FC<Props> = ({ workspaceCode }) => {
   const { user } = useAuth();
   const [tab, setTab] = useState(0);
@@ -400,6 +707,16 @@ const AiStudioWorkspaceView: React.FC<Props> = ({ workspaceCode }) => {
             reloadKey={reloadKey}
           />
         ),
+      },
+      {
+        label: 'Пакет по событию',
+        node: (
+          <EventPackTab workspaceCode={workspaceCode} canGenerate={canGenerate} onGenerated={() => setReloadKey((k) => k + 1)} />
+        ),
+      },
+      {
+        label: 'Контент-план',
+        node: <ContentPlanTab workspaceCode={workspaceCode} canGenerate={canGenerate} canManage={canManageContent} />,
       },
       { label: 'База знаний', node: <KnowledgeTab workspaceCode={workspaceCode} canManage={canManageKnowledge} /> },
       { label: 'Настройки направления', node: <SettingsTab workspaceCode={workspaceCode} canManage={canManageWorkspace} /> },

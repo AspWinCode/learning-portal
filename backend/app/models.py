@@ -4360,8 +4360,53 @@ class AiGeneratedContent(Base):
     tags = Column(JSON, nullable=True)
     channel = Column(String(32), nullable=True)  # vk/telegram/site/email/short/universal
     scheduled_date = Column(DateTime(timezone=True), nullable=True)
+    group_key = Column(String(64), nullable=True, index=True)  # объединяет мультиканальные версии и пакеты по событию
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class AiContentPlanItemStatus(str, enum.Enum):
+    IDEA = "idea"
+    DRAFT = "draft"
+    READY = "ready"
+    PUBLISHED = "published"
+    SKIPPED = "skipped"
+
+
+class AiContentPlan(Base):
+    """Контент-план направления на период. Сам план — просто контейнер;
+    факты/темы живут в AiContentPlanItem, каждый из которых может (но не
+    обязан) быть доращён до реального AiGeneratedContent."""
+
+    __tablename__ = "ai_content_plans"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("ai_workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(256), nullable=False)
+    date_from = Column(Date, nullable=True)
+    date_to = Column(Date, nullable=True)
+    created_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    items = relationship(
+        "AiContentPlanItem", back_populates="plan", cascade="all, delete-orphan", order_by="AiContentPlanItem.publish_date"
+    )
+
+
+class AiContentPlanItem(Base):
+    __tablename__ = "ai_content_plan_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    plan_id = Column(Integer, ForeignKey("ai_content_plans.id", ondelete="CASCADE"), nullable=False, index=True)
+    publish_date = Column(Date, nullable=True, index=True)
+    channel = Column(String(32), nullable=True)
+    content_type = Column(String(64), nullable=True)  # произвольная метка цели/формата (не обязательно template.code)
+    title = Column(String(256), nullable=False)
+    brief = Column(Text, nullable=True)
+    generated_content_id = Column(Integer, ForeignKey("ai_generated_content.id", ondelete="SET NULL"), nullable=True)
+    status = Column(String(16), nullable=False, default=AiContentPlanItemStatus.IDEA.value, index=True)
+
+    plan = relationship("AiContentPlan", back_populates="items")
 
 
 # ── Умные таблицы (Smart Tables) ──────────────────────────────────────

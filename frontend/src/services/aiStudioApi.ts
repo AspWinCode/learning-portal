@@ -93,6 +93,7 @@ export interface GeneratedContent {
   tags: string[] | null;
   channel: string | null;
   scheduled_date: string | null;
+  group_key: string | null;
   created_at: string | null;
   updated_at: string | null;
 }
@@ -191,3 +192,86 @@ export const transformContent = (
   action: TransformAction,
   channel?: string
 ): Promise<GeneratedContent> => api.post(`${BASE}/content/${id}/transform`, { action, channel }).then((r) => r.data);
+
+export const createContentVariant = (id: number, channel: string): Promise<GeneratedContent> =>
+  api.post(`${BASE}/content/${id}/variant`, { channel }).then((r) => r.data);
+
+export const listRelatedContent = (id: number): Promise<GeneratedContent[]> =>
+  api.get(`${BASE}/content/${id}/related`).then((r) => r.data);
+
+// ─── Event pack (п.12 ТЗ: «Создать материалы по событию») ──────────────────
+
+export interface EventPackResult {
+  group_key: string;
+  items: GeneratedContent[];
+}
+
+export const createEventPack = (code: string, eventData: Record<string, unknown>): Promise<EventPackResult> =>
+  api.post(`${BASE}/workspaces/${code}/event-pack`, { event_data: eventData }).then((r) => r.data);
+
+// ─── Content plan (п.11 ТЗ) ─────────────────────────────────────────────────
+
+export type ContentPlanItemStatus = 'idea' | 'draft' | 'ready' | 'published' | 'skipped';
+
+export interface ContentPlanItem {
+  id: number;
+  plan_id: number;
+  publish_date: string | null;
+  channel: string | null;
+  content_type: string | null;
+  title: string;
+  brief: string | null;
+  generated_content_id: number | null;
+  status: ContentPlanItemStatus;
+}
+
+export interface ContentPlan {
+  id: number;
+  workspace_id: number;
+  name: string;
+  date_from: string | null;
+  date_to: string | null;
+  created_by_id: number | null;
+  created_at: string | null;
+  items: ContentPlanItem[];
+}
+
+export const listContentPlans = (code: string): Promise<ContentPlan[]> =>
+  api.get(`${BASE}/workspaces/${code}/content-plans`).then((r) => r.data);
+
+export const createContentPlan = (
+  code: string,
+  payload: { name: string; date_from?: string; date_to?: string }
+): Promise<ContentPlan> => api.post(`${BASE}/workspaces/${code}/content-plans`, payload).then((r) => r.data);
+
+export const getContentPlan = (code: string, planId: number): Promise<ContentPlan> =>
+  api.get(`${BASE}/workspaces/${code}/content-plans/${planId}`).then((r) => r.data);
+
+export const addContentPlanItem = (
+  code: string,
+  planId: number,
+  payload: { title: string; publish_date?: string; channel?: string; content_type?: string; brief?: string }
+): Promise<ContentPlanItem> => api.post(`${BASE}/workspaces/${code}/content-plans/${planId}/items`, payload).then((r) => r.data);
+
+export const generateContentPlanItems = (
+  code: string,
+  planId: number,
+  payload: { count: number; channels: string[]; goals?: string; important_events?: string }
+): Promise<ContentPlanItem[]> =>
+  api.post(`${BASE}/workspaces/${code}/content-plans/${planId}/generate-items`, payload).then((r) => r.data);
+
+export const updateContentPlanItem = (
+  itemId: number,
+  payload: Partial<{
+    title: string;
+    publish_date: string;
+    channel: string;
+    content_type: string;
+    brief: string;
+    status: ContentPlanItemStatus;
+    generated_content_id: number;
+  }>
+): Promise<ContentPlanItem> => api.patch(`${BASE}/content-plan-items/${itemId}`, payload).then((r) => r.data);
+
+export const deleteContentPlanItem = (itemId: number): Promise<void> =>
+  api.delete(`${BASE}/content-plan-items/${itemId}`);

@@ -1,8 +1,8 @@
 """AI Studio — многонаправленная ИИ-платформа над общим ai_gateway.
 
 Phase 1: workspaces (список/бренд-профиль), knowledge base, content templates,
-generate, content list/update, transform (быстрые AI-действия). Контент-план
-и «пакет по событию» — Phase 2.
+generate, content list/update, transform (быстрые AI-действия).
+Phase 2: content-plan, event-pack, мультиканальные варианты (variant).
 
 Academy AI (/api/v1/academy-ai) не трогаем — у него свой контур, свои модели,
 свои права (academy_ai.*). Здесь только генерика для новых направлений.
@@ -14,13 +14,21 @@ from sqlalchemy.orm import Session
 
 from app import auth
 from app.database import get_db
-from app.models import AiGeneratedContent, AiKnowledgeItem, AiWorkspace, User
+from app.models import AiContentPlan, AiContentPlanItem, AiGeneratedContent, AiKnowledgeItem, AiWorkspace, User
 from app.routers.action_log import log_action
 from app.schemas.ai_studio import (
     BrandContextFieldOut,
     ContentList,
     ContentOut,
+    ContentPlanCreate,
+    ContentPlanGenerateRequest,
+    ContentPlanItemCreate,
+    ContentPlanItemOut,
+    ContentPlanItemUpdate,
+    ContentPlanOut,
     ContentUpdate,
+    EventPackRequest,
+    EventPackResult,
     GenerateRequest,
     KnowledgeItemCreate,
     KnowledgeItemList,
@@ -28,11 +36,13 @@ from app.schemas.ai_studio import (
     KnowledgeItemUpdate,
     TemplateOut,
     TransformRequest,
+    VariantRequest,
     WorkspaceListItem,
     WorkspaceOut,
     WorkspaceUpdate,
 )
 from app.services.ai_studio import access as access_svc
+from app.services.ai_studio import content_plan as content_plan_svc
 from app.services.ai_studio import generation
 from app.services.ai_studio import knowledge as knowledge_svc
 from app.services.ai_studio import templates as templates_svc
@@ -269,3 +279,179 @@ async def transform_content(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     log_action(db, current_user.id, "create", "ai_generated_content", content.id, {"source": content_id, "action": payload.action})
     return content
+
+
+@router.post("/content/{content_id}/variant", response_model=ContentOut)
+async def create_content_variant(
+    content_id: int,
+    payload: VariantRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("ai_studio.generate")),
+):
+    source = _get_content_or_404(db, content_id)
+    workspace = db.query(AiWorkspace).filter(AiWorkspace.id == source.workspace_id).first()
+    access_svc.ensure_workspace_access(db, current_user, workspace)
+    content = await generation.create_variant(db, current_user, workspace=workspace, source=source, channel=payload.channel)
+    log_action(db, current_user.id, "create", "ai_generated_content", content.id, {"source": content_id, "variant_channel": payload.channel})
+    return content
+
+
+@router.get("/content/{content_id}/related", response_model=List[ContentOut])
+def list_related_content(
+    content_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("ai_studio.access")),
+):
+    """Остальные материалы той же «семьи» (мультиканальные версии / пакет по
+    событию) — все строки с тем же group_key, кроме самой запрошенной."""
+    source = _get_content_or_404(db, content_id)
+    workspace = db.query(AiWorkspace).filter(AiWorkspace.id == source.workspace_id).first()
+    access_svc.ensure_workspace_access(db, current_user, workspace)
+    if not source.group_key:
+        return []
+    return (
+        db.query(AiGeneratedContent)
+        .filter(AiGeneratedContent.group_key == source.group_key, AiGeneratedContent.id != source.id)
+        .order_by(AiGeneratedContent.created_at)
+        .all()
+    )
+
+
+# ─── Event pack ("Создать материалы по событию", п.12 ТЗ) ─────────────────
+
+@router.post("/workspaces/{code}/event-pack", response_model=EventPackResult)
+async def create_event_pack(
+    code: str,
+    payload: EventPackRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("ai_studio.generate")),
+):
+    workspace = _get_accessible_workspace(db, code, current_user)
+    items = await generation.event_pack(db, current_user, workspace=workspace, event_data=payload.event_data)
+    log_action(db, current_user.id, "create", "ai_event_pack", None, {"workspace": code, "count": len(items)})
+    return EventPackResult(group_key=items[0].group_key, items=items)
+
+
+# ─── Content plan ("Контент-план", п.11 ТЗ) ────────────────────────────────
+
+def _get_plan_or_404(db: Session, workspace: AiWorkspace, plan_id: int) -> AiContentPlan:
+    plan = content_plan_svc.get_plan(db, workspace, plan_id)
+    if plan is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Контент-план не найден")
+    return plan
+
+
+def _get_plan_item_or_404(db: Session, plan: AiContentPlan, item_id: int) -> AiContentPlanItem:
+    item = (
+        db.query(AiContentPlanItem)
+        .filter(AiContentPlanItem.id == item_id, AiContentPlanItem.plan_id == plan.id)
+        .first()
+    )
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Пункт плана не найден")
+    return item
+
+
+@router.get("/workspaces/{code}/content-plans", response_model=List[ContentPlanOut])
+def list_content_plans(
+    code: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("ai_studio.access")),
+):
+    workspace = _get_accessible_workspace(db, code, current_user)
+    return content_plan_svc.list_plans(db, workspace)
+
+
+@router.post("/workspaces/{code}/content-plans", response_model=ContentPlanOut, status_code=status.HTTP_201_CREATED)
+def create_content_plan(
+    code: str,
+    payload: ContentPlanCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("ai_studio.generate")),
+):
+    workspace = _get_accessible_workspace(db, code, current_user)
+    plan = content_plan_svc.create_plan(
+        db, workspace, current_user, name=payload.name, date_from=payload.date_from, date_to=payload.date_to
+    )
+    log_action(db, current_user.id, "create", "ai_content_plan", plan.id, {"workspace": code})
+    return plan
+
+
+@router.get("/workspaces/{code}/content-plans/{plan_id}", response_model=ContentPlanOut)
+def get_content_plan(
+    code: str,
+    plan_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("ai_studio.access")),
+):
+    workspace = _get_accessible_workspace(db, code, current_user)
+    return _get_plan_or_404(db, workspace, plan_id)
+
+
+@router.post("/workspaces/{code}/content-plans/{plan_id}/items", response_model=ContentPlanItemOut, status_code=status.HTTP_201_CREATED)
+def add_content_plan_item(
+    code: str,
+    plan_id: int,
+    payload: ContentPlanItemCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("ai_studio.generate")),
+):
+    workspace = _get_accessible_workspace(db, code, current_user)
+    plan = _get_plan_or_404(db, workspace, plan_id)
+    return content_plan_svc.add_item(db, plan, payload.model_dump())
+
+
+@router.post("/workspaces/{code}/content-plans/{plan_id}/generate-items", response_model=List[ContentPlanItemOut])
+async def generate_content_plan_items(
+    code: str,
+    plan_id: int,
+    payload: ContentPlanGenerateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("ai_studio.generate")),
+):
+    workspace = _get_accessible_workspace(db, code, current_user)
+    plan = _get_plan_or_404(db, workspace, plan_id)
+    try:
+        items = await content_plan_svc.generate_items(
+            db, current_user, workspace=workspace, plan=plan,
+            count=payload.count, channels=payload.channels, goals=payload.goals, important_events=payload.important_events,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    log_action(db, current_user.id, "create", "ai_content_plan_items", plan.id, {"workspace": code, "count": len(items)})
+    return items
+
+
+@router.patch("/content-plan-items/{item_id}", response_model=ContentPlanItemOut)
+def update_content_plan_item(
+    item_id: int,
+    payload: ContentPlanItemUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("ai_studio.manage_content")),
+):
+    item = db.query(AiContentPlanItem).filter(AiContentPlanItem.id == item_id).first()
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Пункт плана не найден")
+    plan = db.query(AiContentPlan).filter(AiContentPlan.id == item.plan_id).first()
+    workspace = db.query(AiWorkspace).filter(AiWorkspace.id == plan.workspace_id).first()
+    access_svc.ensure_workspace_access(db, current_user, workspace)
+    try:
+        updated = content_plan_svc.update_item(db, item, payload.model_dump(exclude_unset=True))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    return updated
+
+
+@router.delete("/content-plan-items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_content_plan_item(
+    item_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("ai_studio.manage_content")),
+):
+    item = db.query(AiContentPlanItem).filter(AiContentPlanItem.id == item_id).first()
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Пункт плана не найден")
+    plan = db.query(AiContentPlan).filter(AiContentPlan.id == item.plan_id).first()
+    workspace = db.query(AiWorkspace).filter(AiWorkspace.id == plan.workspace_id).first()
+    access_svc.ensure_workspace_access(db, current_user, workspace)
+    content_plan_svc.delete_item(db, item)

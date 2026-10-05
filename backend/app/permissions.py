@@ -687,6 +687,42 @@ PERMISSION_CATALOG: List[Dict[str, str]] = [
         "description": "Настройки интеграции: модели AI Tunnel, ключи, параметры генерации.",
     },
     {
+        "key": "ai_studio.access",
+        "module": "ai_studio",
+        "label": "AI Studio: доступ",
+        "description": "Вход в AI Studio (многонаправленная ИИ-платформа: КодАрена и другие направления, кроме Академии — у неё свои academy_ai.* права).",
+    },
+    {
+        "key": "ai_studio.generate",
+        "module": "ai_studio",
+        "label": "AI Studio: генерация контента",
+        "description": "Генерация материалов по шаблонам направления и быстрые AI-действия над черновиками.",
+    },
+    {
+        "key": "ai_studio.manage_workspace",
+        "module": "ai_studio",
+        "label": "AI Studio: управление направлением",
+        "description": "Редактирование бренд-профиля направления (tone of voice, аудитория, запрещённые формулировки и т.п.).",
+    },
+    {
+        "key": "ai_studio.manage_knowledge",
+        "module": "ai_studio",
+        "label": "AI Studio: управление базой знаний",
+        "description": "Добавление и редактирование knowledge items направления.",
+    },
+    {
+        "key": "ai_studio.manage_templates",
+        "module": "ai_studio",
+        "label": "AI Studio: управление шаблонами",
+        "description": "Создание и редактирование сценариев генерации (content templates) направления.",
+    },
+    {
+        "key": "ai_studio.manage_content",
+        "module": "ai_studio",
+        "label": "AI Studio: управление черновиками",
+        "description": "Изменение статуса, тегов и избранного у сгенерированного контента.",
+    },
+    {
         "key": "lego.access",
         "module": "lego",
         "label": "LEGO — Ленинец: доступ к модулю",

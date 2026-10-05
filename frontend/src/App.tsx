@@ -899,7 +899,15 @@ function App() {
             <Route
               path="/academy-ai"
               element={
-                <PrivateRoute requiredPermission="academy_ai.access">
+                <PrivateRoute anyOfPermissions={['academy_ai.access', 'ai_studio.access']}>
+                  <AcademyAiPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/ai-studio"
+              element={
+                <PrivateRoute anyOfPermissions={['academy_ai.access', 'ai_studio.access']}>
                   <AcademyAiPage />
                 </PrivateRoute>
               }

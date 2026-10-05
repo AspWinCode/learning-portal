@@ -4243,6 +4243,127 @@ class AiGatewayCallLog(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
 
+# ── AI Studio (многонаправленная платформа над ai_gateway) ────────────────
+# Academy AI (academy_kb_*, academy_dialogs, academy_content_drafts, ...) не
+# трогаем и не мигрируем — у него свой контур выше. AI Studio — generic слой
+# для новых направлений (КодАрена и далее); workspace "academy" заведён здесь
+# только как запись-витрина для общего селектора направлений во фронтенде.
+
+class AiWorkspace(Base):
+    """Направление AI Studio (Академия/КодАрена/...). Задаёт контекст для
+    промпта (brand_context, system_prompt, tone_of_voice), а не провайдера —
+    ai_gateway остаётся общим для всех направлений."""
+
+    __tablename__ = "ai_workspaces"
+
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String(64), nullable=False, unique=True, index=True)  # academy/kodarena/lego/...
+    name = Column(String(256), nullable=False)
+    description = Column(Text, nullable=True)
+    system_prompt = Column(Text, nullable=True)
+    tone_of_voice = Column(Text, nullable=True)
+    audience_description = Column(Text, nullable=True)
+    brand_context = Column(JSON, nullable=True)  # структурированный бренд-профиль (см. BRAND_CONTEXT_FIELDS)
+    default_language = Column(String(16), nullable=False, default="ru")
+    is_active = Column(Boolean, nullable=False, default=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    knowledge_items = relationship("AiKnowledgeItem", back_populates="workspace", cascade="all, delete-orphan")
+    templates = relationship("AiContentTemplate", back_populates="workspace", cascade="all, delete-orphan")
+
+
+class AiWorkspaceAccess(Base):
+    """Доступ к конкретному направлению: по пользователю или по роли. Если для
+    направления вообще нет строк — оно открыто любому с ai_studio.access
+    (не блокируем доступ до того, как owner явно настроит ограничения)."""
+
+    __tablename__ = "ai_workspace_access"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("ai_workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    role = Column(String(32), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class AiKnowledgeItem(Base):
+    """База знаний направления. Изоляция между направлениями обязательна —
+    КодАрена никогда не видит knowledge items Академии и наоборот."""
+
+    __tablename__ = "ai_knowledge_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("ai_workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    title = Column(String(256), nullable=False)
+    content = Column(Text, nullable=False)
+    source_type = Column(String(32), nullable=False, default="manual")  # manual/document/website/post/event/faq/instruction
+    source_url = Column(String(1024), nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True, index=True)
+    created_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    workspace = relationship("AiWorkspace", back_populates="knowledge_items")
+
+
+class AiContentTemplate(Base):
+    """Сценарий генерации (пост/анонс/рассылка/...). input_schema_json описывает
+    поля формы на фронтенде — так owner может позже добавить шаблон без
+    правки backend-кода."""
+
+    __tablename__ = "ai_content_templates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("ai_workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    code = Column(String(64), nullable=False, index=True)  # social_post/event_announcement/email/...
+    name = Column(String(256), nullable=False)
+    description = Column(Text, nullable=True)
+    prompt_template = Column(Text, nullable=False)
+    input_schema_json = Column(JSON, nullable=True)
+    output_format = Column(String(16), nullable=False, default="json")  # json/text
+    sort_order = Column(Integer, nullable=False, default=0)
+    is_active = Column(Boolean, nullable=False, default=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    workspace = relationship("AiWorkspace", back_populates="templates")
+
+    __table_args__ = (UniqueConstraint("workspace_id", "code", name="uq_ai_content_templates_workspace_code"),)
+
+
+class AiGeneratedContentStatus(str, enum.Enum):
+    DRAFT = "draft"
+    APPROVED = "approved"
+    ARCHIVED = "archived"
+
+
+class AiGeneratedContent(Base):
+    """Результат генерации. AI никогда не публикует сама — только черновик на
+    проверку человеком (тот же паттерн, что у AcademyContentDraft)."""
+
+    __tablename__ = "ai_generated_content"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("ai_workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    template_id = Column(Integer, ForeignKey("ai_content_templates.id", ondelete="SET NULL"), nullable=True, index=True)
+    parent_content_id = Column(Integer, ForeignKey("ai_generated_content.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    title = Column(String(256), nullable=True)
+    input_json = Column(JSON, nullable=True)
+    prompt_text = Column(Text, nullable=True)
+    output_text = Column(Text, nullable=True)
+    provider = Column(String(64), nullable=True)
+    model = Column(String(128), nullable=True)
+    status = Column(String(16), nullable=False, default=AiGeneratedContentStatus.DRAFT.value, index=True)
+    is_favorite = Column(Boolean, nullable=False, default=False)
+    tags = Column(JSON, nullable=True)
+    channel = Column(String(32), nullable=True)  # vk/telegram/site/email/short/universal
+    scheduled_date = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
 # ── Умные таблицы (Smart Tables) ──────────────────────────────────────
 # Phase 1: ядро грида + персистенция. См. docs/smart-tables-architecture.md.
 # UI/AI не пишут в cells напрямую — только через OperationExecutor

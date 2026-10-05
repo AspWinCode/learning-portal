@@ -22,6 +22,7 @@ from app.rate_limit import limiter
 from app.routers import (
     abonements,
     academy_ai,
+    ai_studio,
     admin_dashboard,
     admin_tools,
     agile,
@@ -473,6 +474,7 @@ app.include_router(technolab.router, prefix="/api/v1/technolab", tags=["technola
 app.include_router(pixelforge.router, prefix="/api/v1/pixelforge", tags=["pixelforge"])
 app.include_router(codelab.router, prefix="/api/v1/codelab", tags=["codelab"])
 app.include_router(academy_ai.router, prefix="/api/v1/academy-ai", tags=["academy-ai"])
+app.include_router(ai_studio.router, prefix="/api/v1/ai-studio", tags=["ai-studio"])
 app.include_router(methodist_studio.router, prefix="/api/v1/methodist-studio", tags=["methodist-studio"])
 app.include_router(course_studio.router, prefix="/api/v1/course-studio", tags=["course-studio"])
 app.include_router(seo_pages.router, prefix="/api/v1/seo/pages", tags=["seo"])

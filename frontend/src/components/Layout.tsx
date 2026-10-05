@@ -411,6 +411,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const canAccessNotes = notesEnabledRoles.includes(role ?? '') || role === 'owner' || role === 'admin';
   const canAccessAgile = hasPermission(user, 'agile.access');
   const canAccessAcademyAi = hasPermission(user, 'academy_ai.access');
+  const canAccessAiStudio = hasPermission(user, 'ai_studio.access');
   const canAccessLego = hasPermission(user, 'lego.access');
 
   const effectiveMenuItems = (() => {
@@ -507,10 +508,13 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
       items.push({ text: 'Диск', icon: <Folder />, path: '/disk' });
       items.push({ text: 'Умные таблицы', icon: <TableChart />, path: '/smart-tables' });
       if (role === 'owner') items.push({ text: 'Транскрибация', icon: <Mic />, path: '/transcription' });
-      if (canAccessAcademyAi) items.push({ text: 'ИИ-консультант', icon: <AutoAwesome />, path: '/academy-ai' });
       if (canAccessPasswords) items.push({ text: 'Пароли', icon: <Lock />, path: '/passwords' });
       if (canAccessNotes) items.push({ text: 'Заметки', icon: <EditNoteIcon />, path: '/notes' });
     }
+    // AI Studio: единая точка входа для Академии (academy_ai.access) и прочих
+    // направлений (ai_studio.access, напр. КодАрена) — пункт меню один, доступ
+    // к конкретным направлениям проверяется внутри страницы и на backend.
+    if (canAccessAcademyAi || canAccessAiStudio) items.push({ text: 'AI Studio', icon: <AutoAwesome />, path: '/academy-ai' });
     // LEGO — изолированный модуль: пункт только при lego.access (backend всё равно проверяет права).
     if (canAccessLego) items.push({ text: 'LEGO — Ленинец', icon: <Group />, path: '/lego' });
     if (canAccessSettings) items.push({ text: 'Настройки', icon: <Settings />, path: '/admin/settings' });

@@ -6,9 +6,12 @@ import {
   Chip,
   CircularProgress,
   Divider,
+  FormControl,
   IconButton,
+  InputLabel,
   MenuItem,
   Paper,
+  Select,
   Stack,
   Tab,
   Tabs,
@@ -26,6 +29,8 @@ import Layout from '../components/Layout';
 import { extractApiError } from '../utils/extractApiError';
 import { markdownToHtml } from '../utils/markdownHtml';
 import * as academyAi from '../services/academyAiApi';
+import * as aiStudio from '../services/aiStudioApi';
+import AiStudioWorkspaceView from './AiStudioWorkspaceView';
 
 const CONSULT_DIALOG_STORAGE_KEY = 'academy_ai_consult_dialog_id';
 
@@ -1219,7 +1224,7 @@ const TABS = [
   { label: 'Подсказки', component: <InsightsTab /> },
 ];
 
-const AcademyAiPage: React.FC = () => {
+const AcademyWorkspaceContent: React.FC = () => {
   const [tab, setTab] = useState(0);
   const [status, setStatus] = useState<academyAi.AcademyModuleStatus | null>(null);
 
@@ -1228,42 +1233,86 @@ const AcademyAiPage: React.FC = () => {
   }, []);
 
   return (
+    <>
+      {status && !status.enabled && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          Модуль выключен на бэкенде (ACADEMY_AI_ENABLED=0). Консультации и генерация недоступны, база знаний работает.
+        </Alert>
+      )}
+      {status && status.enabled && !status.ai_gateway_configured && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          AI Tunnel не настроен — ответы консультанта и генерация работают в ограниченном режиме.
+        </Alert>
+      )}
+      {status && (
+        <Stack direction="row" spacing={1} sx={{ mb: 2 }} flexWrap="wrap">
+          <Chip size="small" label={`Записей БЗ: ${status.kb_entries}`} />
+          <Chip size="small" label={`Источников: ${status.expertise_sources}`} />
+          <Chip size="small" label={`Поиск: ${status.search_backend}`} />
+          <Chip size="small" label={`Черновиков: ${status.pending_drafts}`} />
+          <Chip size="small" color={status.open_insights ? 'warning' : 'default'} label={`Подсказок: ${status.open_insights}`} />
+        </Stack>
+      )}
+      <Paper variant="outlined">
+        <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons="auto">
+          {TABS.map((t) => (
+            <Tab key={t.label} label={t.label} />
+          ))}
+        </Tabs>
+        <Divider />
+        <Box sx={{ p: 2 }}>{TABS[tab].component}</Box>
+      </Paper>
+    </>
+  );
+};
+
+const AiStudioPage: React.FC = () => {
+  const [workspaces, setWorkspaces] = useState<aiStudio.WorkspaceListItem[] | null>(null);
+  const [workspaceCode, setWorkspaceCode] = useState<string>('academy');
+
+  useEffect(() => {
+    aiStudio
+      .listWorkspaces()
+      .then((items) => {
+        setWorkspaces(items);
+        if (!items.some((w) => w.code === 'academy') && items.length) {
+          setWorkspaceCode(items[0].code);
+        }
+      })
+      .catch(() => setWorkspaces([{ id: 0, code: 'academy', name: 'Академия', description: null, is_active: true }]));
+  }, []);
+
+  return (
     <Layout>
       <Box sx={{ p: 3, maxWidth: 1100, mx: 'auto' }}>
-        <Typography variant="h5" gutterBottom>
-          ИИ-консультант академии
-        </Typography>
-        {status && !status.enabled && (
-          <Alert severity="warning" sx={{ mb: 2 }}>
-            Модуль выключен на бэкенде (ACADEMY_AI_ENABLED=0). Консультации и генерация недоступны, база знаний работает.
-          </Alert>
+        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }} flexWrap="wrap" gap={1}>
+          <Typography variant="h5">AI Studio</Typography>
+          {workspaces && workspaces.length > 1 && (
+            <FormControl size="small" sx={{ minWidth: 220 }}>
+              <InputLabel id="ai-studio-workspace-label">Направление</InputLabel>
+              <Select
+                labelId="ai-studio-workspace-label"
+                label="Направление"
+                value={workspaceCode}
+                onChange={(e) => setWorkspaceCode(e.target.value)}
+              >
+                {workspaces.map((w) => (
+                  <MenuItem key={w.code} value={w.code}>
+                    {w.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
+        </Stack>
+        {workspaceCode === 'academy' ? (
+          <AcademyWorkspaceContent />
+        ) : (
+          <AiStudioWorkspaceView workspaceCode={workspaceCode} />
         )}
-        {status && status.enabled && !status.ai_gateway_configured && (
-          <Alert severity="info" sx={{ mb: 2 }}>
-            AI Tunnel не настроен — ответы консультанта и генерация работают в ограниченном режиме.
-          </Alert>
-        )}
-        {status && (
-          <Stack direction="row" spacing={1} sx={{ mb: 2 }} flexWrap="wrap">
-            <Chip size="small" label={`Записей БЗ: ${status.kb_entries}`} />
-            <Chip size="small" label={`Источников: ${status.expertise_sources}`} />
-            <Chip size="small" label={`Поиск: ${status.search_backend}`} />
-            <Chip size="small" label={`Черновиков: ${status.pending_drafts}`} />
-            <Chip size="small" color={status.open_insights ? 'warning' : 'default'} label={`Подсказок: ${status.open_insights}`} />
-          </Stack>
-        )}
-        <Paper variant="outlined">
-          <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons="auto">
-            {TABS.map((t) => (
-              <Tab key={t.label} label={t.label} />
-            ))}
-          </Tabs>
-          <Divider />
-          <Box sx={{ p: 2 }}>{TABS[tab].component}</Box>
-        </Paper>
       </Box>
     </Layout>
   );
 };
 
-export default AcademyAiPage;
+export default AiStudioPage;

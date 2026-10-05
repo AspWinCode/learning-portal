@@ -106,6 +106,24 @@ def _has_payment_since(db: Session, student_id: int, since: "date | None") -> bo
     return query.first() is not None
 
 
+def _is_period_paid(db: Session, student_id: int, since: "date | None") -> bool:
+    """Оплачен ли текущий период.
+
+    Кроме оплаты датой с начала периода учитываем деньги на счёте: оплата, внесённая
+    ДО начала периода (вперёд, например за 2 дня), в _has_payment_since не попадает,
+    но уже лежит на балансе и покрывает уроки. Пока суммарный баланс >= 0 и оплата
+    вообще была — долга нет; долг возникает, когда деньги закончились (баланс < 0).
+    """
+    if _has_payment_since(db, student_id, since):
+        return True
+    balance = (
+        db.query(func.coalesce(func.sum(StudentAccount.balance), 0))
+        .filter(StudentAccount.student_id == student_id)
+        .scalar()
+    )
+    return float(balance or 0) >= 0 and _has_payment_since(db, student_id, None)
+
+
 def check_lesson_payment_threshold(db: Session, student_id: int) -> None:
     """Проверить нужна ли оплата после отметки посещаемости (вызывается только для
     учеников, реально присутствовавших на уроке — см. вызов в trainer_lessons.py).
@@ -128,12 +146,15 @@ def check_lesson_payment_threshold(db: Session, student_id: int) -> None:
     if lessons < 1:
         return
 
-    has_payment = _has_payment_since(db, student_id, card.learning_period_start)
+    has_payment = _is_period_paid(db, student_id, card.learning_period_start)
 
     if not has_payment:
         # Урок без оплаты → сразу в долги
         if not card.next_payment_date:
             card.next_payment_date = date.today()
+    elif lessons < threshold:
+        # Период оплачен и ещё не закончился — висящий долг (напр. от оплаты вперёд) снимаем
+        card.next_payment_date = None
     elif lessons >= threshold:
         # Период закончился (8 уроков) → новый период.
         # Начинаем со следующего дня: сам завершающий урок ещё относится к старому
@@ -161,7 +182,7 @@ def sync_next_payment_date(db: Session, card: "StudentCard") -> None:
         return
     threshold = _lesson_threshold_for_card(card)
     lessons = count_lessons_since_period_start(db, card.student_id, card.learning_period_start)
-    has_payment = _has_payment_since(db, card.student_id, card.learning_period_start)
+    has_payment = _is_period_paid(db, card.student_id, card.learning_period_start)
     if lessons < 1:
         card.next_payment_date = None
     elif has_payment and lessons < threshold:

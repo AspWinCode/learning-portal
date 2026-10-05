@@ -141,7 +141,7 @@ async def generate_items(
     if not ai_gateway.is_configured("text"):
         raise ValueError("AI Tunnel не настроен — контент-план нельзя сгенерировать автоматически")
 
-    knowledge_hits = knowledge_svc.search(db, workspace, f"{goals or ''} {important_events or ''}".strip())
+    knowledge_hits = await knowledge_svc.search(db, workspace, f"{goals or ''} {important_events or ''}".strip())
     system_prompt = prompt_builder.build_system_prompt(workspace, None, knowledge_hits)
     system_prompt += (
         "\n\nВерни ТОЛЬКО JSON без markdown: "

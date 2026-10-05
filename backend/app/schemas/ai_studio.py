@@ -246,3 +246,65 @@ class EventPackRequest(BaseModel):
 class EventPackResult(BaseModel):
     group_key: str
     items: List[ContentOut]
+
+
+# ─── Assets / image generation (Phase 3, п.27) ─────────────────────────────
+
+class RenderImageRequest(BaseModel):
+    prompt: Optional[str] = None
+
+
+class AssetOut(BaseModel):
+    id: int
+    content_id: int
+    asset_type: str
+    prompt: Optional[str]
+    provider: Optional[str]
+    model: Optional[str]
+    url: Optional[str]
+    storage_key: Optional[str]
+    created_at: Optional[datetime]
+
+    model_config = _ORM
+
+
+# ─── Publishing (Phase 3) ───────────────────────────────────────────────────
+
+class PublishRequest(BaseModel):
+    channel: str = Field(..., min_length=1, max_length=32)
+
+
+class PublishLogOut(BaseModel):
+    id: int
+    content_id: int
+    workspace_id: int
+    channel: str
+    status: str
+    external_id: Optional[str]
+    external_url: Optional[str]
+    error: Optional[str]
+    created_at: Optional[datetime]
+
+    model_config = _ORM
+
+
+class ChannelStatusOut(BaseModel):
+    channel: str
+    configured: bool
+
+
+# ─── Analytics (Phase 3, п.28) ──────────────────────────────────────────────
+
+class WorkspaceAnalyticsOut(BaseModel):
+    ai_calls_total: int
+    ai_calls_error: int
+    ai_tokens_total: int
+    ai_cost_usd_total: float
+    content_by_status: Dict[str, int]
+    knowledge_items_active: int
+
+
+class ReindexResult(BaseModel):
+    indexed: int
+    backend: str
+    reason: Optional[str] = None

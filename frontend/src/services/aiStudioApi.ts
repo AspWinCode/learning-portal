@@ -275,3 +275,68 @@ export const updateContentPlanItem = (
 
 export const deleteContentPlanItem = (itemId: number): Promise<void> =>
   api.delete(`${BASE}/content-plan-items/${itemId}`);
+
+// ─── Assets / image generation (п.27 ТЗ) ────────────────────────────────────
+
+export interface GeneratedAsset {
+  id: number;
+  content_id: number;
+  asset_type: string;
+  prompt: string | null;
+  provider: string | null;
+  model: string | null;
+  url: string | null;
+  storage_key: string | null;
+  created_at: string | null;
+}
+
+export const renderContentImage = (contentId: number, prompt?: string): Promise<GeneratedAsset> =>
+  api.post(`${BASE}/content/${contentId}/render-image`, { prompt }).then((r) => r.data);
+
+export const listContentAssets = (contentId: number): Promise<GeneratedAsset[]> =>
+  api.get(`${BASE}/content/${contentId}/assets`).then((r) => r.data);
+
+// ─── Publishing (п.34 — только по явному клику человека) ───────────────────
+
+export interface ChannelStatus {
+  channel: string;
+  configured: boolean;
+}
+
+export interface PublishLog {
+  id: number;
+  content_id: number;
+  workspace_id: number;
+  channel: string;
+  status: 'success' | 'error';
+  external_id: string | null;
+  external_url: string | null;
+  error: string | null;
+  created_at: string | null;
+}
+
+export const listPublishChannels = (code: string): Promise<ChannelStatus[]> =>
+  api.get(`${BASE}/workspaces/${code}/publish-channels`).then((r) => r.data);
+
+export const publishContent = (contentId: number, channel: string): Promise<PublishLog> =>
+  api.post(`${BASE}/content/${contentId}/publish`, { channel }).then((r) => r.data);
+
+export const listContentPublishLogs = (contentId: number): Promise<PublishLog[]> =>
+  api.get(`${BASE}/content/${contentId}/publish-logs`).then((r) => r.data);
+
+// ─── Analytics (п.28 ТЗ) ─────────────────────────────────────────────────────
+
+export interface WorkspaceAnalytics {
+  ai_calls_total: number;
+  ai_calls_error: number;
+  ai_tokens_total: number;
+  ai_cost_usd_total: number;
+  content_by_status: Record<string, number>;
+  knowledge_items_active: number;
+}
+
+export const getWorkspaceAnalytics = (code: string): Promise<WorkspaceAnalytics> =>
+  api.get(`${BASE}/workspaces/${code}/analytics`).then((r) => r.data);
+
+export const reindexKnowledge = (code: string): Promise<{ indexed: number; backend: string; reason?: string }> =>
+  api.post(`${BASE}/workspaces/${code}/knowledge/reindex`).then((r) => r.data);

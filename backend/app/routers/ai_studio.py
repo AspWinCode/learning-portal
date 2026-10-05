@@ -3,6 +3,9 @@
 Phase 1: workspaces (список/бренд-профиль), knowledge base, content templates,
 generate, content list/update, transform (быстрые AI-действия).
 Phase 2: content-plan, event-pack, мультиканальные варианты (variant).
+Phase 3: семантический поиск по базе знаний, генерация визуалов, публикация
+в соцсети (только по явному клику человека — см. services/publishing.py),
+простая аналитика по направлению.
 
 Academy AI (/api/v1/academy-ai) не трогаем — у него свой контур, свои модели,
 свои права (academy_ai.*). Здесь только генерика для новых направлений.
@@ -14,10 +17,19 @@ from sqlalchemy.orm import Session
 
 from app import auth
 from app.database import get_db
-from app.models import AiContentPlan, AiContentPlanItem, AiGeneratedContent, AiKnowledgeItem, AiWorkspace, User
+from app.models import (
+    AiContentPlan,
+    AiContentPlanItem,
+    AiGeneratedContent,
+    AiKnowledgeItem,
+    AiWorkspace,
+    User,
+)
 from app.routers.action_log import log_action
 from app.schemas.ai_studio import (
+    AssetOut,
     BrandContextFieldOut,
+    ChannelStatusOut,
     ContentList,
     ContentOut,
     ContentPlanCreate,
@@ -34,17 +46,25 @@ from app.schemas.ai_studio import (
     KnowledgeItemList,
     KnowledgeItemOut,
     KnowledgeItemUpdate,
+    PublishLogOut,
+    PublishRequest,
+    ReindexResult,
+    RenderImageRequest,
     TemplateOut,
     TransformRequest,
     VariantRequest,
+    WorkspaceAnalyticsOut,
     WorkspaceListItem,
     WorkspaceOut,
     WorkspaceUpdate,
 )
 from app.services.ai_studio import access as access_svc
+from app.services.ai_studio import analytics as analytics_svc
+from app.services.ai_studio import assets as assets_svc
 from app.services.ai_studio import content_plan as content_plan_svc
 from app.services.ai_studio import generation
 from app.services.ai_studio import knowledge as knowledge_svc
+from app.services.ai_studio import publishing as publishing_svc
 from app.services.ai_studio import templates as templates_svc
 from app.services.ai_studio import workspaces as workspaces_svc
 
@@ -455,3 +475,105 @@ def delete_content_plan_item(
     workspace = db.query(AiWorkspace).filter(AiWorkspace.id == plan.workspace_id).first()
     access_svc.ensure_workspace_access(db, current_user, workspace)
     content_plan_svc.delete_item(db, item)
+
+
+# ─── Knowledge search / reindex (Phase 3, п.22) ────────────────────────────
+
+@router.post("/workspaces/{code}/knowledge/reindex", response_model=ReindexResult)
+async def reindex_knowledge(
+    code: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("ai_studio.manage_knowledge")),
+):
+    workspace = _get_accessible_workspace(db, code, current_user)
+    result = await knowledge_svc.index_pending(db, workspace, user_id=current_user.id)
+    return ReindexResult(**result)
+
+
+# ─── Assets / image generation (Phase 3, п.27) ─────────────────────────────
+
+@router.post("/content/{content_id}/render-image", response_model=AssetOut)
+async def render_content_image(
+    content_id: int,
+    payload: RenderImageRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("ai_studio.generate")),
+):
+    content = _get_content_or_404(db, content_id)
+    workspace = db.query(AiWorkspace).filter(AiWorkspace.id == content.workspace_id).first()
+    access_svc.ensure_workspace_access(db, current_user, workspace)
+    try:
+        asset = await assets_svc.render_image(db, current_user, workspace=workspace, content=content, prompt=payload.prompt)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    log_action(db, current_user.id, "create", "ai_generated_asset", asset.id, {"content_id": content_id})
+    return asset
+
+
+@router.get("/content/{content_id}/assets", response_model=List[AssetOut])
+def list_content_assets(
+    content_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("ai_studio.access")),
+):
+    content = _get_content_or_404(db, content_id)
+    workspace = db.query(AiWorkspace).filter(AiWorkspace.id == content.workspace_id).first()
+    access_svc.ensure_workspace_access(db, current_user, workspace)
+    return assets_svc.list_assets(db, content)
+
+
+# ─── Publishing (Phase 3) — только по явному клику человека ───────────────
+
+@router.get("/workspaces/{code}/publish-channels", response_model=List[ChannelStatusOut])
+def list_publish_channels(
+    code: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("ai_studio.access")),
+):
+    workspace = _get_accessible_workspace(db, code, current_user)
+    return [
+        ChannelStatusOut(channel=ch, configured=publishing_svc.is_channel_configured(ch, workspace.code))
+        for ch in publishing_svc.SUPPORTED_CHANNELS
+    ]
+
+
+@router.post("/content/{content_id}/publish", response_model=PublishLogOut)
+async def publish_content(
+    content_id: int,
+    payload: PublishRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("ai_studio.publish")),
+):
+    content = _get_content_or_404(db, content_id)
+    workspace = db.query(AiWorkspace).filter(AiWorkspace.id == content.workspace_id).first()
+    access_svc.ensure_workspace_access(db, current_user, workspace)
+    try:
+        log = await publishing_svc.publish(db, current_user, workspace=workspace, content=content, channel=payload.channel)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    log_action(db, current_user.id, "create", "ai_publish_log", log.id, {"content_id": content_id, "channel": payload.channel})
+    return log
+
+
+@router.get("/content/{content_id}/publish-logs", response_model=List[PublishLogOut])
+def list_content_publish_logs(
+    content_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("ai_studio.access")),
+):
+    content = _get_content_or_404(db, content_id)
+    workspace = db.query(AiWorkspace).filter(AiWorkspace.id == content.workspace_id).first()
+    access_svc.ensure_workspace_access(db, current_user, workspace)
+    return publishing_svc.list_publish_logs(db, content)
+
+
+# ─── Analytics (Phase 3, п.28) ──────────────────────────────────────────────
+
+@router.get("/workspaces/{code}/analytics", response_model=WorkspaceAnalyticsOut)
+def get_workspace_analytics(
+    code: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("ai_studio.access")),
+):
+    workspace = _get_accessible_workspace(db, code, current_user)
+    return analytics_svc.workspace_summary(db, workspace)

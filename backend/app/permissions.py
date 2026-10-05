@@ -723,6 +723,12 @@ PERMISSION_CATALOG: List[Dict[str, str]] = [
         "description": "Изменение статуса, тегов и избранного у сгенерированного контента.",
     },
     {
+        "key": "ai_studio.publish",
+        "module": "ai_studio",
+        "label": "AI Studio: публикация в соцсети",
+        "description": "Публикация материала в VK/Telegram — только явное действие человека, без автопубликации по расписанию.",
+    },
+    {
         "key": "lego.access",
         "module": "lego",
         "label": "LEGO — Ленинец: доступ к модулю",

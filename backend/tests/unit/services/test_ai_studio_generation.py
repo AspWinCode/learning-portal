@@ -4,6 +4,10 @@ from app.models import AiContentTemplate, AiGeneratedContent, AiWorkspace
 from app.services.ai_studio import generation
 
 
+async def _async_empty():
+    return []
+
+
 class _Query:
     def __init__(self, result=None):
         self._result = result
@@ -96,7 +100,7 @@ async def test_transform_rejects_unknown_action():
 @pytest.mark.asyncio
 async def test_generate_assigns_a_group_key(monkeypatch):
     monkeypatch.setattr(generation.ai_gateway, "is_configured", lambda purpose="text": False)
-    monkeypatch.setattr(generation.knowledge_svc, "search", lambda *a, **k: [])
+    monkeypatch.setattr(generation.knowledge_svc, "search", lambda *a, **k: _async_empty())
 
     content = await generation.generate(
         db=_FakeDB(), user=object(), workspace=_workspace(), template=_template(), input_data={"title": "Турнир"}
@@ -107,7 +111,7 @@ async def test_generate_assigns_a_group_key(monkeypatch):
 @pytest.mark.asyncio
 async def test_transform_inherits_existing_group_key(monkeypatch):
     monkeypatch.setattr(generation.ai_gateway, "is_configured", lambda purpose="text": False)
-    monkeypatch.setattr(generation.knowledge_svc, "search", lambda *a, **k: [])
+    monkeypatch.setattr(generation.knowledge_svc, "search", lambda *a, **k: _async_empty())
 
     source = _source_content(group_key="abc123")
     result = await generation.transform(db=_FakeDB(), user=object(), workspace=_workspace(), source=source, action="shorter")
@@ -118,7 +122,7 @@ async def test_transform_inherits_existing_group_key(monkeypatch):
 @pytest.mark.asyncio
 async def test_transform_backfills_group_key_when_source_has_none(monkeypatch):
     monkeypatch.setattr(generation.ai_gateway, "is_configured", lambda purpose="text": False)
-    monkeypatch.setattr(generation.knowledge_svc, "search", lambda *a, **k: [])
+    monkeypatch.setattr(generation.knowledge_svc, "search", lambda *a, **k: _async_empty())
 
     source = _source_content(group_key=None)
     result = await generation.transform(db=_FakeDB(), user=object(), workspace=_workspace(), source=source, action="shorter")
@@ -129,7 +133,7 @@ async def test_transform_backfills_group_key_when_source_has_none(monkeypatch):
 @pytest.mark.asyncio
 async def test_create_variant_sets_requested_channel(monkeypatch):
     monkeypatch.setattr(generation.ai_gateway, "is_configured", lambda purpose="text": False)
-    monkeypatch.setattr(generation.knowledge_svc, "search", lambda *a, **k: [])
+    monkeypatch.setattr(generation.knowledge_svc, "search", lambda *a, **k: _async_empty())
 
     source = _source_content(group_key="grp-1")
     result = await generation.create_variant(db=_FakeDB(), user=object(), workspace=_workspace(), source=source, channel="telegram")
@@ -140,7 +144,7 @@ async def test_create_variant_sets_requested_channel(monkeypatch):
 @pytest.mark.asyncio
 async def test_event_pack_creates_linked_items_without_fabricating_facts(monkeypatch):
     monkeypatch.setattr(generation.ai_gateway, "is_configured", lambda purpose="text": False)
-    monkeypatch.setattr(generation.knowledge_svc, "search", lambda *a, **k: [])
+    monkeypatch.setattr(generation.knowledge_svc, "search", lambda *a, **k: _async_empty())
 
     items = await generation.event_pack(
         db=_FakeDB(), user=object(), workspace=_workspace(),

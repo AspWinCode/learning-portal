@@ -161,13 +161,47 @@ const DraftsTab: React.FC<{ workspaceCode: string; canGenerate: boolean; canMana
   const [busyId, setBusyId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [variantChannel, setVariantChannel] = useState<Record<number, string>>({});
+  const [publishChannel, setPublishChannel] = useState<Record<number, string>>({});
+  const [publishChannels, setPublishChannels] = useState<aiStudio.ChannelStatus[]>([]);
+  const [assetsByContent, setAssetsByContent] = useState<Record<number, aiStudio.GeneratedAsset[]>>({});
+  const [publishResult, setPublishResult] = useState<Record<number, aiStudio.PublishLog>>({});
 
   const reload = () => aiStudio.listContent(workspaceCode).then((r) => setItems(r.items)).catch(() => setItems([]));
 
   useEffect(() => {
     reload();
+    aiStudio.listPublishChannels(workspaceCode).then(setPublishChannels).catch(() => setPublishChannels([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceCode, reloadKey]);
+
+  const renderImage = async (id: number) => {
+    setBusyId(id);
+    setError(null);
+    try {
+      await aiStudio.renderContentImage(id);
+      const assets = await aiStudio.listContentAssets(id);
+      setAssetsByContent((a) => ({ ...a, [id]: assets }));
+    } catch (e) {
+      setError(extractApiError(e, 'Ошибка'));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const runPublish = async (id: number) => {
+    const channel = publishChannel[id];
+    if (!channel) return;
+    setBusyId(id);
+    setError(null);
+    try {
+      const log = await aiStudio.publishContent(id, channel);
+      setPublishResult((r) => ({ ...r, [id]: log }));
+    } catch (e) {
+      setError(extractApiError(e, 'Ошибка'));
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   const runTransform = async (id: number, action: aiStudio.TransformAction) => {
     setBusyId(id);
@@ -261,6 +295,55 @@ const DraftsTab: React.FC<{ workspaceCode: string; canGenerate: boolean; canMana
               </Button>
             </Stack>
           )}
+          {canGenerate && (
+            <Stack direction="row" spacing={1} sx={{ mt: 1 }} alignItems="center" flexWrap="wrap" useFlexGap>
+              <Button size="small" disabled={busyId === item.id} onClick={() => renderImage(item.id)}>
+                Создать визуал
+              </Button>
+              <FormControl size="small" sx={{ minWidth: 140 }}>
+                <InputLabel id={`publish-channel-${item.id}`}>Опубликовать в</InputLabel>
+                <Select
+                  labelId={`publish-channel-${item.id}`}
+                  label="Опубликовать в"
+                  value={publishChannel[item.id] || ''}
+                  onChange={(e) => setPublishChannel((v) => ({ ...v, [item.id]: e.target.value }))}
+                >
+                  {publishChannels.map((ch) => (
+                    <MenuItem key={ch.channel} value={ch.channel} disabled={!ch.configured}>
+                      {ch.channel}
+                      {!ch.configured ? ' (не настроен)' : ''}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <Button
+                size="small"
+                color="secondary"
+                disabled={!publishChannel[item.id] || busyId === item.id}
+                onClick={() => runPublish(item.id)}
+              >
+                Опубликовать
+              </Button>
+            </Stack>
+          )}
+          {assetsByContent[item.id]?.map((asset) => (
+            <Box key={asset.id} sx={{ mt: 1 }}>
+              {asset.url ? (
+                <img src={asset.url} alt={asset.prompt || 'визуал'} style={{ maxWidth: '100%', maxHeight: 240, borderRadius: 4 }} />
+              ) : (
+                <Typography variant="caption" color="text.secondary">
+                  Визуал сохранён (storage_key: {asset.storage_key})
+                </Typography>
+              )}
+            </Box>
+          ))}
+          {publishResult[item.id] && (
+            <Alert severity={publishResult[item.id].status === 'success' ? 'success' : 'error'} sx={{ mt: 1 }}>
+              {publishResult[item.id].status === 'success'
+                ? `Опубликовано в ${publishResult[item.id].channel}${publishResult[item.id].external_url ? ': ' + publishResult[item.id].external_url : ''}`
+                : publishResult[item.id].error}
+            </Alert>
+          )}
           {canManage && (
             <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
               <Button size="small" onClick={() => setStatus(item.id, 'approved')} disabled={item.status === 'approved'}>
@@ -310,11 +393,29 @@ const KnowledgeTab: React.FC<{ workspaceCode: string; canManage: boolean }> = ({
     await reload();
   };
 
+  const [reindexResult, setReindexResult] = useState<string | null>(null);
+  const reindex = async () => {
+    setReindexResult(null);
+    try {
+      const r = await aiStudio.reindexKnowledge(workspaceCode);
+      setReindexResult(`Переиндексировано: ${r.indexed} (${r.backend}${r.reason ? ', ' + r.reason : ''})`);
+    } catch (e) {
+      setReindexResult(extractApiError(e, 'Ошибка'));
+    }
+  };
+
   return (
     <Stack spacing={2}>
       {canManage && (
         <Paper variant="outlined" sx={{ p: 2 }}>
           <Stack spacing={1}>
+            <Stack direction="row" alignItems="center" justifyContent="space-between">
+              <Typography variant="subtitle2">Добавить запись</Typography>
+              <Button size="small" onClick={reindex}>
+                Переиндексировать эмбеддинги
+              </Button>
+            </Stack>
+            {reindexResult && <Alert severity="info">{reindexResult}</Alert>}
             <TextField size="small" label="Заголовок" value={title} onChange={(e) => setTitle(e.target.value)} />
             <TextField
               size="small"
@@ -675,6 +776,50 @@ const ContentPlanTab: React.FC<{ workspaceCode: string; canGenerate: boolean; ca
   );
 };
 
+// ─── Аналитика направления (п.28 ТЗ) ───────────────────────────────────────
+
+const AnalyticsTab: React.FC<{ workspaceCode: string }> = ({ workspaceCode }) => {
+  const [data, setData] = useState<aiStudio.WorkspaceAnalytics | null>(null);
+
+  useEffect(() => {
+    aiStudio.getWorkspaceAnalytics(workspaceCode).then(setData).catch(() => setData(null));
+  }, [workspaceCode]);
+
+  if (!data) return <CircularProgress size={24} />;
+
+  return (
+    <Stack spacing={2} sx={{ maxWidth: 480 }}>
+      <Paper variant="outlined" sx={{ p: 2 }}>
+        <Stack spacing={1}>
+          <Typography variant="subtitle2">Расход AI Tunnel по направлению</Typography>
+          <Typography variant="body2">Вызовов всего: {data.ai_calls_total}</Typography>
+          <Typography variant="body2">Из них с ошибкой: {data.ai_calls_error}</Typography>
+          <Typography variant="body2">Токенов использовано: {data.ai_tokens_total}</Typography>
+          <Typography variant="body2">Оценочная стоимость: ${data.ai_cost_usd_total.toFixed(4)}</Typography>
+        </Stack>
+      </Paper>
+      <Paper variant="outlined" sx={{ p: 2 }}>
+        <Typography variant="subtitle2" sx={{ mb: 1 }}>
+          Материалы по статусу
+        </Typography>
+        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+          {Object.entries(data.content_by_status).map(([status, count]) => (
+            <Chip key={status} label={`${status}: ${count}`} size="small" />
+          ))}
+          {Object.keys(data.content_by_status).length === 0 && (
+            <Typography variant="body2" color="text.secondary">
+              Материалов пока нет.
+            </Typography>
+          )}
+        </Stack>
+      </Paper>
+      <Paper variant="outlined" sx={{ p: 2 }}>
+        <Typography variant="body2">Активных записей в базе знаний: {data.knowledge_items_active}</Typography>
+      </Paper>
+    </Stack>
+  );
+};
+
 const AiStudioWorkspaceView: React.FC<Props> = ({ workspaceCode }) => {
   const { user } = useAuth();
   const [tab, setTab] = useState(0);
@@ -719,6 +864,7 @@ const AiStudioWorkspaceView: React.FC<Props> = ({ workspaceCode }) => {
         node: <ContentPlanTab workspaceCode={workspaceCode} canGenerate={canGenerate} canManage={canManageContent} />,
       },
       { label: 'База знаний', node: <KnowledgeTab workspaceCode={workspaceCode} canManage={canManageKnowledge} /> },
+      { label: 'Аналитика', node: <AnalyticsTab workspaceCode={workspaceCode} /> },
       { label: 'Настройки направления', node: <SettingsTab workspaceCode={workspaceCode} canManage={canManageWorkspace} /> },
     ],
     [workspaceCode, canGenerate, canManageContent, canManageKnowledge, canManageWorkspace, reloadKey]

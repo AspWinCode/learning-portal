@@ -4409,6 +4409,45 @@ class AiContentPlanItem(Base):
     plan = relationship("AiContentPlan", back_populates="items")
 
 
+class AiGeneratedAsset(Base):
+    """Сгенерированный визуал (п.27 ТЗ) — отдельная сущность от текстового
+    контента: одно текстовое AiGeneratedContent может иметь несколько
+    визуалов (разные промпты/перегенерации)."""
+
+    __tablename__ = "ai_generated_assets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    content_id = Column(Integer, ForeignKey("ai_generated_content.id", ondelete="CASCADE"), nullable=False, index=True)
+    asset_type = Column(String(32), nullable=False, default="image")
+    prompt = Column(Text, nullable=True)
+    provider = Column(String(64), nullable=True)
+    model = Column(String(128), nullable=True)
+    url = Column(String(1024), nullable=True)
+    storage_key = Column(String(512), nullable=True)
+    meta = Column(JSON, nullable=True)
+    created_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class AiPublishLog(Base):
+    """Аудит публикаций (п.28 ТЗ). Запись создаётся ТОЛЬКО по явному
+    действию человека через POST /content/{id}/publish — платформа никогда
+    не публикует материалы сама по расписанию."""
+
+    __tablename__ = "ai_publish_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    content_id = Column(Integer, ForeignKey("ai_generated_content.id", ondelete="CASCADE"), nullable=False, index=True)
+    workspace_id = Column(Integer, ForeignKey("ai_workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    channel = Column(String(32), nullable=False)
+    status = Column(String(16), nullable=False, default="error")  # success/error
+    external_id = Column(String(256), nullable=True)
+    external_url = Column(String(1024), nullable=True)
+    error = Column(Text, nullable=True)
+    published_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
 # ── Умные таблицы (Smart Tables) ──────────────────────────────────────
 # Phase 1: ядро грида + персистенция. См. docs/smart-tables-architecture.md.
 # UI/AI не пишут в cells напрямую — только через OperationExecutor

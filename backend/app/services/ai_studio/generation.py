@@ -110,7 +110,7 @@ async def generate(
         raise ValueError(f"Не заполнены обязательные поля: {', '.join(missing)}")
 
     query_text = " ".join(str(v) for v in input_data.values() if v)
-    knowledge_hits = knowledge_svc.search(db, workspace, query_text)
+    knowledge_hits = await knowledge_svc.search(db, workspace, query_text)
     system_prompt = prompt_builder.build_system_prompt(workspace, template, knowledge_hits)
     user_prompt = prompt_builder.build_user_prompt(template, input_data)
 
@@ -201,7 +201,7 @@ async def _rewrite(
     if source.template_id:
         template = db.query(AiContentTemplate).filter(AiContentTemplate.id == source.template_id).first()
 
-    knowledge_hits = knowledge_svc.search(db, workspace, source.title or "")
+    knowledge_hits = await knowledge_svc.search(db, workspace, source.title or "")
     system_prompt = prompt_builder.build_system_prompt(workspace, template, knowledge_hits)
     user_prompt = f"{instruction}\n\nИсходный текст:\n{source.output_text}"
 
@@ -251,7 +251,7 @@ async def event_pack(
     facts_lines = [f"{key}: {value}" for key, value in event_data.items() if str(value or "").strip()]
     facts_block = "Факты о мероприятии:\n" + "\n".join(facts_lines) if facts_lines else "Факты о мероприятии не предоставлены."
 
-    knowledge_hits = knowledge_svc.search(db, workspace, event_name)
+    knowledge_hits = await knowledge_svc.search(db, workspace, event_name)
     system_prompt = prompt_builder.build_system_prompt(workspace, None, knowledge_hits)
 
     group_key = uuid.uuid4().hex

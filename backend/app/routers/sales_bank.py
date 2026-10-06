@@ -48,6 +48,7 @@ from app.services.bank_identity import (
 )
 from app.services.bank_operation import apply_bank_operation_to_student as bank_operation_apply
 from app.services.finance_ledger import ensure_finance_transaction_for_bank_transaction
+from app.services.student_account_payment import resolve_payment_format
 
 logger = logging.getLogger(__name__)
 
@@ -639,6 +640,7 @@ def do_tochka_import_and_apply(
                         amount=amount,
                         kind=StudentAccountTransactionKind.PAYMENT,
                         note=note,
+                        payment_format=resolve_payment_format(student),
                     )
                 )
                 account.balance += amount

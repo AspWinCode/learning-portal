@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app import auth
 from app.database import get_db
+from app.utils.datetime import utcnow
 from app.models import (
     Abonement,
     AbsenceFollowUp,
@@ -131,7 +132,7 @@ def _resolve_close_by_fact_summary(db: Session, student_id: int):
     if abonement and (abonement.lessons_count or 8) > 0:
         price_per_lesson = student_abonement_price(student, abonement) / (abonement.lessons_count or 8)
     amount = round(price_per_lesson * attended, 2)
-    return student, card, period_start, period_end, attended, amount
+    return student, card, period_start, period_end, attended, amount, abonement
 
 
 @router.get("/payment-status", response_model=List[PaymentStatusItem])
@@ -562,7 +563,7 @@ async def close_by_fact_preview(
     current_user: User = Depends(auth.get_current_active_user),
 ):
     _require_owner(current_user)
-    _, _, period_start, period_end, attended, amount = _resolve_close_by_fact_summary(db, student_id)
+    _, _, period_start, period_end, attended, amount, _ = _resolve_close_by_fact_summary(db, student_id)
     return CloseByFactPreview(
         lessons_attended_in_period=attended,
         amount=amount,
@@ -581,8 +582,9 @@ async def close_by_fact_confirm(
     _require_owner(current_user)
     if not payload.confirm:
         raise HTTPException(status_code=400, detail="Подтвердите закрытие")
-    student, card, period_start, period_end, attended, amount = _resolve_close_by_fact_summary(db, student_id)
+    student, card, period_start, period_end, attended, amount, abonement = _resolve_close_by_fact_summary(db, student_id)
     account = db.query(StudentAccount).filter(StudentAccount.student_id == student_id).order_by(StudentAccount.id).first()
+    payment_format = "individual" if (getattr(abonement, "abonement_format", None) or "").strip().lower() == "individual" else "group"
     if account and amount > 0:
         db.add(
             StudentAccountTransaction(
@@ -590,6 +592,7 @@ async def close_by_fact_confirm(
                 amount=amount,
                 kind=StudentAccountTransactionKind.PAYMENT,
                 note=f"Закрытие по факту: {attended} занятий за период {period_start}–{period_end}",
+                payment_format=payment_format,
             )
         )
         account.balance += amount
@@ -598,6 +601,7 @@ async def close_by_fact_confirm(
     if card:
         card.archived = True
     student.status = StudentStatus.ARCHIVED
+    student.archived_at = utcnow()
     db.commit()
     log_action(
         db,

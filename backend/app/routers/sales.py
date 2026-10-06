@@ -2318,12 +2318,14 @@ async def close_by_fact_confirm(
     price_per_lesson = student_abonement_price(student, abonement) / (abonement.lessons_count or 8) if abonement and (abonement.lessons_count or 8) > 0 else 0.0
     amount = round(price_per_lesson * attended, 2)
     account = db.query(StudentAccount).filter(StudentAccount.student_id == student_id).order_by(StudentAccount.id).first()
+    payment_format = "individual" if (getattr(abonement, "abonement_format", None) or "").strip().lower() == "individual" else "group"
     if account and amount > 0:
         db.add(StudentAccountTransaction(
             account_id=account.id,
             amount=amount,
             kind=StudentAccountTransactionKind.PAYMENT,
             note=f"Закрытие по факту: {attended} занятий за период {period_start}–{period_end}",
+            payment_format=payment_format,
         ))
         account.balance += amount
     for a in db.query(AbsenceFollowUp).filter(AbsenceFollowUp.student_id == student_id).all():
@@ -2331,6 +2333,7 @@ async def close_by_fact_confirm(
     if card:
         card.archived = True
     student.status = StudentStatus.ARCHIVED
+    student.archived_at = utcnow()
     db.commit()
     return {"ok": True, "student_id": student_id, "amount": amount, "lessons_attended": attended}
 

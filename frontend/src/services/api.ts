@@ -101,6 +101,7 @@ import {
   OwnerDashboardSummary,
   AcademyMetricsResponse,
   AcademyMetricsRatingStudent,
+  AcademyMonthlyMetricsResponse,
   AdminDashboardSummary,
   ParentDashboardSummary,
   ParentNpsPromptStatus,
@@ -451,6 +452,13 @@ export const ownerDashboardApi = {
     label: string;
   }): Promise<AcademyMetricsRatingStudent[]> => {
     const response = await api.get('/api/owner-dashboard/academy-metrics/students', { params });
+    return response.data;
+  },
+  getAcademyMetricsMonthly: async (params?: {
+    date_from?: string;
+    date_to?: string;
+  }): Promise<AcademyMonthlyMetricsResponse> => {
+    const response = await api.get('/api/owner-dashboard/academy-metrics/monthly', { params });
     return response.data;
   },
 };

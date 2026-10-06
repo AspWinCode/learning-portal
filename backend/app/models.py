@@ -279,6 +279,10 @@ class Student(Base):
     source = Column(String(128), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    # Момент последней архивации/реактивации (для исторической метрики "активные на месяц X");
+    # NULL = статус не менялся с момента создания/до миграции (см. 0217_academy_monthly_metrics).
+    archived_at = Column(DateTime(timezone=True), nullable=True)
+    activated_at = Column(DateTime(timezone=True), nullable=True)
 
     # Relationships
     parent = relationship("User", back_populates="students", foreign_keys=[parent_id])
@@ -564,6 +568,11 @@ class StudentAccountTransaction(Base):
     discount_value = Column(Float, nullable=False, default=0.0)
     note = Column(String, nullable=True)
     lesson_attendance_id = Column(Integer, ForeignKey("lesson_attendance.id"), nullable=True, index=True)
+    # Иммутабельный снимок формата абонемента ученика на момент ЭТОГО платежа
+    # (group | individual) — не пересчитывается при смене текущего абонемента ученика.
+    # NULL = платёж до миграции 0217, формат для него восстанавливается approximate-фолбэком
+    # на текущий абонемент (см. app.services.owner_dashboard).
+    payment_format = Column(String(16), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     account = relationship("StudentAccount", back_populates="transactions")
@@ -678,6 +687,10 @@ class Lead(Base):
     scheduled_event_type = Column(String(32), nullable=True)  # trial/game_jam/other_event/consultation
     thinking_reason = Column(String(32), nullable=True)  # child/parent/price/schedule/comparing/other
     campaign_event_id = Column(Integer, ForeignKey("campaign_events.id"), nullable=True, index=True)
+    # Момент первого перехода в статус WON (конвертация в ученика). Выставляется один раз и
+    # больше не трогается — в отличие от updated_at, который меняется при любом редактировании
+    # лида. См. app.services.lead_conversion и 0217_academy_monthly_metrics.
+    won_at = Column(DateTime(timezone=True), nullable=True)
 
     # Relationships
     person = relationship("Person", back_populates="leads", foreign_keys=[person_id])
@@ -693,6 +706,29 @@ class Lead(Base):
     tasks = relationship("LeadTask", back_populates="lead", cascade="all, delete-orphan")
     invoices = relationship("Invoice", back_populates="lead", cascade="all, delete-orphan")
     communications = relationship("LeadCommunication", back_populates="lead", cascade="all, delete-orphan")
+
+
+class AcademyMonthlySnapshot(Base):
+    """Кэш закрытых месяцев для «Динамика Академии по месяцам» (owner dashboard).
+    Source of truth остаётся в leads/student_account_transactions/students —
+    снапшот можно пересчитать (rebuild) в любой момент, см.
+    app.services.owner_dashboard.build_academy_monthly_metrics."""
+
+    __tablename__ = "academy_monthly_snapshots"
+
+    id = Column(Integer, primary_key=True, index=True)
+    month = Column(Date, nullable=False, unique=True, index=True)  # первое число месяца
+    active_students = Column(Integer, nullable=False)
+    leads_created = Column(Integer, nullable=False)
+    won_leads = Column(Integer, nullable=False)
+    lead_conversion_pct = Column(Float, nullable=False)
+    payments_total = Column(Float, nullable=False)
+    payments_group = Column(Float, nullable=False)
+    payments_individual = Column(Float, nullable=False)
+    paying_students = Column(Integer, nullable=False)
+    payment_transactions = Column(Integer, nullable=False)
+    average_check = Column(Float, nullable=False)
+    generated_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
 class LeadTaskStatus(str, enum.Enum):

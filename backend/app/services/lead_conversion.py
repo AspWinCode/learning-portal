@@ -28,6 +28,7 @@ from app.services.parent_invite import (
     create_invite_for_existing_parent,
 )
 from app.services.email_sender import is_email_configured, send_email
+from app.utils.datetime import utcnow
 from app.routers.action_log import log_action
 from app.utils.phone import normalize_phone
 from app.services.student_activity import log_student_activity
@@ -244,6 +245,8 @@ def convert_lead_to_student(
         if same_name:
             lead.converted_to_student_id = same_name.id
             lead.status = LeadStatus.WON
+            if lead.won_at is None:
+                lead.won_at = utcnow()
             lead.status_option_id = _get_default_lead_status_option_id(db, LeadStatus.WON)
             if not getattr(same_name, "from_lead_id", None):
                 same_name.from_lead_id = lead.id
@@ -279,6 +282,8 @@ def convert_lead_to_student(
     ensure_default_student_account(db, student.id)
     lead.converted_to_student_id = student.id
     lead.status = LeadStatus.WON
+    if lead.won_at is None:
+        lead.won_at = utcnow()
     lead.status_option_id = _get_default_lead_status_option_id(db, LeadStatus.WON)
     _find_or_create_student_card_for_lead(db, lead, student, student_full_name)
     sync_lead_person(db, lead)

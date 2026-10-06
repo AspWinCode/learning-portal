@@ -19,6 +19,19 @@ from app.models import (
 from app.services.student_card_period import update_card_payment_dates
 
 
+def resolve_payment_format(student: Student) -> str:
+    """Иммутабельный снимок формата абонемента ученика на момент оплаты: 'individual' | 'group'.
+
+    Используется во всех местах создания StudentAccountTransaction(kind=PAYMENT), чтобы
+    прошлые платежи не меняли категорию задним числом при смене текущего абонемента ученика
+    (см. app.services.owner_dashboard и 0217_academy_monthly_metrics). Пакетный ('package')
+    формат по тому же соглашению, что и в owner_dashboard, относится к group.
+    """
+    abonement = getattr(student, "abonement", None)
+    fmt = (getattr(abonement, "abonement_format", None) or "").strip().lower()
+    return "individual" if fmt == "individual" else "group"
+
+
 @dataclass
 class AddPaymentResult:
     """Результат зачисления на счёт ученика."""
@@ -63,6 +76,7 @@ def add_payment_to_student_account(
         kind=StudentAccountTransactionKind.PAYMENT,
         note=(note or "")[:512] if note else None,
         finance_transaction_id=finance_transaction_id,
+        payment_format=resolve_payment_format(student),
     )
     db.add(transaction)
     account.balance += amount

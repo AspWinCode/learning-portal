@@ -1,11 +1,12 @@
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
 
-from sqlalchemy import func, or_
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
 from app.models import (
     AbsenceFollowUp,
+    AcademyMonthlySnapshot,
     EventRegistration,
     EventRegistrationStatus,
     Group,
@@ -560,3 +561,259 @@ def list_students_by_rating(db: Session, *, field_name: str, label: str) -> List
         }
         for student, card in rows
     ]
+
+
+# --- Динамика Академии по месяцам ---
+
+
+def _month_start(d: date) -> date:
+    return date(d.year, d.month, 1)
+
+
+def _next_month_start(d: date) -> date:
+    return date(d.year + 1, 1, 1) if d.month == 12 else date(d.year, d.month + 1, 1)
+
+
+def _utc_month_trunc(column):
+    """date_trunc('month', ...) округляет в TIMEZONE сессии Postgres (может быть не UTC),
+    из-за чего платёж/лид в 23:59 по UTC у границы месяца попадёт не в тот месяц. Явно
+    переводим момент в UTC перед усечением, чтобы месяц определялся календарно по UTC —
+    так же, как определены range_start/range_end в build_academy_monthly_metrics."""
+    return func.date_trunc("month", func.timezone("UTC", column))
+
+
+def _month_list(date_from: date, date_to: date) -> List[date]:
+    """Список первых чисел месяцев от date_from до date_to включительно, по порядку (ASC)."""
+    if date_to < date_from:
+        return []
+    months = []
+    cur = _month_start(date_from)
+    last = _month_start(date_to)
+    while cur <= last:
+        months.append(cur)
+        cur = _next_month_start(cur)
+    return months
+
+
+def _active_students_asof_count(db: Session, as_of: datetime) -> int:
+    """Количество активных учеников "на момент" as_of (используется с as_of = начало
+    следующего месяца, т.е. эквивалент "на последний день месяца").
+
+    Приближение на основе students.archived_at/activated_at (минимальный lifecycle,
+    без полной истории статусов — см. 0217_academy_monthly_metrics): студент считается
+    активным на as_of, если его текущий статус ACTIVE и as_of не попадает в "провал"
+    между последней архивацией и последующей реактивацией; либо если его текущий
+    статус ARCHIVED, но as_of раньше момента архивации (archived_at). Для студентов,
+    у которых архивация произошла ДО миграции (archived_at не был известен и забэкфиллен
+    приблизительно из updated_at), это тоже приближение.
+    """
+    gap_cond = and_(
+        Student.archived_at.isnot(None),
+        Student.activated_at.isnot(None),
+        Student.activated_at > Student.archived_at,
+        Student.archived_at <= as_of,
+        as_of < Student.activated_at,
+    )
+    currently_active_and_was_active_at = and_(Student.status == StudentStatus.ACTIVE, ~gap_cond)
+    currently_archived_but_was_active_at = and_(
+        Student.status == StudentStatus.ARCHIVED,
+        Student.archived_at.isnot(None),
+        as_of < Student.archived_at,
+    )
+    return (
+        db.query(func.count(Student.id))
+        .filter(
+            Student.created_at <= as_of,
+            or_(currently_active_and_was_active_at, currently_archived_but_was_active_at),
+        )
+        .scalar()
+    ) or 0
+
+
+def _resolve_legacy_payment_format(db: Session, student_ids: List[int]) -> Dict[int, str]:
+    """Фолбэк для PAYMENT-транзакций до миграции 0217 (payment_format IS NULL):
+    используем ТЕКУЩИЙ формат абонемента ученика. Approximate — см. отчёт."""
+    if not student_ids:
+        return {}
+    result: Dict[int, str] = {}
+    for student in db.query(Student).filter(Student.id.in_(student_ids)).all():
+        abonement = student.abonement
+        fmt = (getattr(abonement, "abonement_format", None) or "").strip().lower()
+        result[student.id] = "individual" if fmt == "individual" else "group"
+    return result
+
+
+def build_academy_monthly_metrics(
+    db: Session,
+    *,
+    date_from: date,
+    date_to: date,
+) -> List[dict]:
+    """Динамика Академии по месяцам: одна строка на календарный месяц.
+
+    Метрики и их определения (см. owner dashboard report):
+    - leads_created: Lead.created_at в границах месяца.
+    - won_leads: Lead.won_at в границах месяца (won_at фиксируется один раз при переходе
+      в WON, не путать с updated_at) — простая операционная конверсия месяца, не когортная.
+    - payments_total/group/individual: реальные StudentAccountTransaction(kind=PAYMENT) за
+      месяц; group/individual — по снимку payment_format на момент оплаты (с approximate-
+      фолбэком на текущий абонемент для платежей до миграции 0217).
+    - paying_students: уникальные StudentAccount.student_id с PAYMENT за месяц.
+    - average_check: payments_total / paying_students (не на число транзакций).
+    - active_students: активные ученики на последний день месяца (см. _active_students_asof_count).
+    """
+    months = _month_list(date_from, date_to)
+    if not months:
+        return []
+
+    range_start = datetime.combine(months[0], time.min, tzinfo=timezone.utc)
+    range_end = datetime.combine(_next_month_start(months[-1]), time.min, tzinfo=timezone.utc)
+
+    leads_rows = (
+        db.query(_utc_month_trunc(Lead.created_at).label("m"), func.count(Lead.id))
+        .filter(Lead.created_at >= range_start, Lead.created_at < range_end)
+        .group_by("m")
+        .all()
+    )
+    leads_by_month: Dict[date, int] = {row[0].date(): int(row[1]) for row in leads_rows}
+
+    won_rows = (
+        db.query(_utc_month_trunc(Lead.won_at).label("m"), func.count(Lead.id))
+        .filter(Lead.won_at.isnot(None), Lead.won_at >= range_start, Lead.won_at < range_end)
+        .group_by("m")
+        .all()
+    )
+    won_by_month: Dict[date, int] = {row[0].date(): int(row[1]) for row in won_rows}
+
+    totals_rows = (
+        db.query(
+            _utc_month_trunc(StudentAccountTransaction.created_at).label("m"),
+            func.sum(StudentAccountTransaction.amount),
+            func.count(StudentAccountTransaction.id),
+            func.count(func.distinct(StudentAccount.student_id)),
+        )
+        .join(StudentAccount, StudentAccountTransaction.account_id == StudentAccount.id)
+        .filter(
+            StudentAccountTransaction.kind == StudentAccountTransactionKind.PAYMENT,
+            StudentAccountTransaction.created_at >= range_start,
+            StudentAccountTransaction.created_at < range_end,
+        )
+        .group_by("m")
+        .all()
+    )
+    totals_by_month: Dict[date, dict] = {
+        row[0].date(): {
+            "payments_total": float(row[1] or 0),
+            "transactions": int(row[2] or 0),
+            "paying_students": int(row[3] or 0),
+        }
+        for row in totals_rows
+    }
+
+    known_format_rows = (
+        db.query(
+            _utc_month_trunc(StudentAccountTransaction.created_at).label("m"),
+            StudentAccountTransaction.payment_format,
+            func.sum(StudentAccountTransaction.amount),
+        )
+        .join(StudentAccount, StudentAccountTransaction.account_id == StudentAccount.id)
+        .filter(
+            StudentAccountTransaction.kind == StudentAccountTransactionKind.PAYMENT,
+            StudentAccountTransaction.created_at >= range_start,
+            StudentAccountTransaction.created_at < range_end,
+            StudentAccountTransaction.payment_format.isnot(None),
+        )
+        .group_by("m", StudentAccountTransaction.payment_format)
+        .all()
+    )
+    format_by_month: Dict[date, Dict[str, float]] = {}
+    for row in known_format_rows:
+        month_key = row[0].date()
+        fmt = "individual" if (row[1] or "").strip().lower() == "individual" else "group"
+        bucket = format_by_month.setdefault(month_key, {"group": 0.0, "individual": 0.0})
+        bucket[fmt] += float(row[2] or 0)
+
+    legacy_rows = (
+        db.query(
+            _utc_month_trunc(StudentAccountTransaction.created_at).label("m"),
+            StudentAccountTransaction.amount,
+            StudentAccount.student_id,
+        )
+        .join(StudentAccount, StudentAccountTransaction.account_id == StudentAccount.id)
+        .filter(
+            StudentAccountTransaction.kind == StudentAccountTransactionKind.PAYMENT,
+            StudentAccountTransaction.created_at >= range_start,
+            StudentAccountTransaction.created_at < range_end,
+            StudentAccountTransaction.payment_format.is_(None),
+        )
+        .all()
+    )
+    if legacy_rows:
+        legacy_student_ids = list({row[2] for row in legacy_rows if row[2] is not None})
+        legacy_format_map = _resolve_legacy_payment_format(db, legacy_student_ids)
+        for row in legacy_rows:
+            month_key = row[0].date()
+            fmt = legacy_format_map.get(row[2], "group")
+            bucket = format_by_month.setdefault(month_key, {"group": 0.0, "individual": 0.0})
+            bucket[fmt] += float(row[1] or 0)
+
+    rows: List[dict] = []
+    for month_date in months:
+        leads_created = leads_by_month.get(month_date, 0)
+        won_leads = won_by_month.get(month_date, 0)
+        conversion = round(won_leads / leads_created * 100, 1) if leads_created else 0.0
+
+        totals = totals_by_month.get(month_date, {"payments_total": 0.0, "transactions": 0, "paying_students": 0})
+        fmt_bucket = format_by_month.get(month_date, {"group": 0.0, "individual": 0.0})
+        payments_total = round(totals["payments_total"], 2)
+        paying_students = totals["paying_students"]
+        average_check = round(payments_total / paying_students, 2) if paying_students else 0.0
+
+        as_of = datetime.combine(_next_month_start(month_date), time.min, tzinfo=timezone.utc)
+        active_students = _active_students_asof_count(db, as_of)
+
+        rows.append(
+            {
+                "month": f"{month_date.year:04d}-{month_date.month:02d}",
+                "active_students": active_students,
+                "leads_created": leads_created,
+                "won_leads": won_leads,
+                "lead_conversion_pct": conversion,
+                "payments_total": payments_total,
+                "payments_group": round(fmt_bucket["group"], 2),
+                "payments_individual": round(fmt_bucket["individual"], 2),
+                "paying_students": paying_students,
+                "payment_transactions": totals["transactions"],
+                "average_check": average_check,
+            }
+        )
+    return rows
+
+
+def rebuild_academy_monthly_snapshot(db: Session, month: date) -> AcademyMonthlySnapshot:
+    """Пересчитывает и сохраняет (upsert) снапшот одного закрытого месяца.
+
+    Source of truth остаются исходные таблицы (leads/transactions/students) — снапшот
+    это только кэш управленческой отчётности и может быть пересобран в любой момент
+    повторным вызовом этой функции. Не коммитит — вызывающий код должен закоммитить.
+    """
+    month_start = _month_start(month)
+    [row] = build_academy_monthly_metrics(db, date_from=month_start, date_to=month_start)
+
+    snapshot = db.query(AcademyMonthlySnapshot).filter(AcademyMonthlySnapshot.month == month_start).first()
+    if snapshot is None:
+        snapshot = AcademyMonthlySnapshot(month=month_start)
+        db.add(snapshot)
+
+    snapshot.active_students = row["active_students"]
+    snapshot.leads_created = row["leads_created"]
+    snapshot.won_leads = row["won_leads"]
+    snapshot.lead_conversion_pct = row["lead_conversion_pct"]
+    snapshot.payments_total = row["payments_total"]
+    snapshot.payments_group = row["payments_group"]
+    snapshot.payments_individual = row["payments_individual"]
+    snapshot.paying_students = row["paying_students"]
+    snapshot.payment_transactions = row["payment_transactions"]
+    snapshot.average_check = row["average_check"]
+    snapshot.generated_at = utcnow()
+    return snapshot

@@ -10,10 +10,12 @@ from app.models import User
 from app.schemas.owner_dashboard import (
     AcademyMetricsRatingStudent,
     AcademyMetricsResponse,
+    AcademyMonthlyMetricsResponse,
     OwnerDashboardSummaryResponse,
 )
 from app.services.owner_dashboard import (
     build_academy_metrics,
+    build_academy_monthly_metrics,
     build_owner_dashboard_summary,
     list_students_by_rating,
 )
@@ -50,6 +52,32 @@ async def get_academy_metrics(
         else:
             period_end = datetime(now.year, now.month + 1, 1)
     return build_academy_metrics(db, period_start=period_start, period_end=period_end)
+
+
+@router.get("/academy-metrics/monthly", response_model=AcademyMonthlyMetricsResponse)
+async def get_academy_metrics_monthly(
+    date_from: Optional[date] = Query(None, description="Начало периода (первый день месяца, включительно)"),
+    date_to: Optional[date] = Query(None, description="Конец периода (день внутри месяца, включительно)"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("owner_dashboard.access")),
+):
+    now = utcnow()
+    if date_to is not None:
+        period_to = date_to
+    else:
+        period_to = date(now.year, now.month, 1)
+    if date_from is not None:
+        period_from = date_from
+    else:
+        # по умолчанию — 12 последних месяцев, включая текущий
+        start_year = period_to.year
+        start_month = period_to.month - 11
+        while start_month <= 0:
+            start_month += 12
+            start_year -= 1
+        period_from = date(start_year, start_month, 1)
+    months = build_academy_monthly_metrics(db, date_from=period_from, date_to=period_to)
+    return {"months": months}
 
 
 @router.get("/academy-metrics/students", response_model=list[AcademyMetricsRatingStudent])

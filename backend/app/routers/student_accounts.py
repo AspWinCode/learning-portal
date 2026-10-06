@@ -27,6 +27,7 @@ from app.models import (
     UserRole,
 )
 from app.routers.action_log import log_action
+from app.services.student_account_payment import resolve_payment_format
 from app.schemas.students import (
     StudentAccountDeductRequest,
     StudentAccountDiscountRecalculateRequest,
@@ -211,6 +212,10 @@ async def add_payment(
     account = _get_account_and_check(db, account_id, current_user)
     auth.ensure_permission(current_user, "student_accounts.payment")
 
+    student = db.query(Student).filter(Student.id == account.student_id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+
     amount = float(payload.amount)
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Сумма пополнения должна быть больше 0")
@@ -239,6 +244,7 @@ async def add_payment(
         discount_value=discount_value,
         created_at=payment_datetime,
         note=payload.note,
+        payment_format=resolve_payment_format(student),
     )
     finance_tx = None
     if finance_account:

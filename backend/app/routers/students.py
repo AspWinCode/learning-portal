@@ -37,6 +37,7 @@ from app.student_display import (
 from app.services.parent_invite import create_parent_user_no_invite, create_invite_for_existing_parent
 from app.services.student_activity import log_student_activity
 from app.services.student_account_finance import ensure_default_student_account
+from app.utils.datetime import utcnow
 
 router = APIRouter()
 
@@ -1223,6 +1224,13 @@ async def update_student(
         update_data["discount_value"] = _normalized_discount_value(discount_type, discount_value)
         update_data["discount_valid_until"] = _normalized_discount_valid_until(discount_type, discount_valid_until)
     
+    # Фиксируем момент смены статуса для исторической метрики "активные на месяц X"
+    if "status" in update_data and update_data["status"] != db_student.status:
+        if update_data["status"] == StudentStatus.ARCHIVED:
+            update_data["archived_at"] = utcnow()
+        elif update_data["status"] == StudentStatus.ACTIVE:
+            update_data["activated_at"] = utcnow()
+
     # При архивации проверяем, нужно ли деактивировать родителя
     if "status" in update_data and update_data["status"] == StudentStatus.ARCHIVED:
         if db_student.parent_id:

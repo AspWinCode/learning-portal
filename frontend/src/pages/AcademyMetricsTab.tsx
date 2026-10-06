@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Alert,
   Box,
+  Button,
   CircularProgress,
   Dialog,
   DialogContent,
@@ -17,13 +18,27 @@ import {
   TableHead,
   TableRow,
   TextField,
+  Tooltip as MuiTooltip,
   Typography,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import { useQuery } from '@tanstack/react-query';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip as RechartsTooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 
 import { ownerDashboardApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
+import type { AcademyMonthlyMetricsRow } from '../types';
 
 type RatingField = 'grade' | 'school';
 
@@ -44,7 +59,35 @@ const currentMonthBounds = () => {
   };
 };
 
-const rub = (value: number) => `${value.toLocaleString('ru-RU')} ₽`;
+const rub = (value: number) => `${Math.round(value).toLocaleString('ru-RU')} ₽`;
+
+const RU_MONTHS = [
+  'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
+  'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь',
+];
+
+// "2026-09" -> "Сентябрь 2026"; используется и в таблице, и как label оси графиков.
+const formatMonthLabel = (month: string): string => {
+  const [yearStr, monthStr] = month.split('-');
+  const monthIndex = Number(monthStr) - 1;
+  const name = RU_MONTHS[monthIndex] || month;
+  return `${name} ${yearStr}`;
+};
+
+const toMonthInputValue = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  return `${year}-${month}`;
+};
+
+const monthInputToDateFrom = (value: string) => `${value}-01`;
+
+const QUICK_RANGES = [
+  { label: '6 месяцев', months: 6 },
+  { label: '12 месяцев', months: 12 },
+  { label: 'Текущий год', months: null as number | null, sinceJan: true },
+  { label: 'Всё время', months: 120 },
+];
 
 const AcademyMetricsTab: React.FC = () => {
   const navigate = useNavigate();
@@ -67,6 +110,43 @@ const AcademyMetricsTab: React.FC = () => {
       }),
     enabled: !!selectedRating,
   });
+
+  const now = new Date();
+  const [monthFrom, setMonthFrom] = useState<string>(() => {
+    const d = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+    return toMonthInputValue(d);
+  });
+  const [monthTo, setMonthTo] = useState<string>(() => toMonthInputValue(now));
+
+  const applyQuickRange = (months: number | null, sinceJan?: boolean) => {
+    const to = new Date();
+    setMonthTo(toMonthInputValue(to));
+    if (sinceJan) {
+      setMonthFrom(toMonthInputValue(new Date(to.getFullYear(), 0, 1)));
+      return;
+    }
+    const from = new Date(to.getFullYear(), to.getMonth() - ((months || 1) - 1), 1);
+    setMonthFrom(toMonthInputValue(from));
+  };
+
+  const monthlyQuery = useQuery({
+    queryKey: ['owner-dashboard', 'academy-metrics-monthly', monthFrom, monthTo],
+    queryFn: () =>
+      ownerDashboardApi.getAcademyMetricsMonthly({
+        date_from: monthInputToDateFrom(monthFrom),
+        date_to: monthInputToDateFrom(monthTo),
+      }),
+  });
+
+  const monthlyRows: AcademyMonthlyMetricsRow[] = monthlyQuery.data?.months || [];
+  const monthlyChartData = useMemo(
+    () =>
+      monthlyRows.map((row) => ({
+        ...row,
+        monthLabel: formatMonthLabel(row.month),
+      })),
+    [monthlyRows],
+  );
 
   return (
     <Box sx={{ mt: 2 }}>
@@ -231,6 +311,205 @@ const AcademyMetricsTab: React.FC = () => {
               NPS = %Промоутеров(оценка 9–10) − %Детракторов(оценка 0–6) по ответам на опрос в кабинете
               родителя (раз в квартал) за выбранный период.
             </Typography>
+          </Paper>
+
+          <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              Динамика Академии по месяцам
+            </Typography>
+
+            <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2, flexWrap: 'wrap' }}>
+              <Typography variant="body2" color="text.secondary">
+                Период истории:
+              </Typography>
+              <TextField
+                label="С"
+                type="month"
+                size="small"
+                value={monthFrom}
+                onChange={(e) => setMonthFrom(e.target.value)}
+                InputLabelProps={{ shrink: true }}
+              />
+              <TextField
+                label="По"
+                type="month"
+                size="small"
+                value={monthTo}
+                onChange={(e) => setMonthTo(e.target.value)}
+                InputLabelProps={{ shrink: true }}
+              />
+              {QUICK_RANGES.map((range) => (
+                <Button
+                  key={range.label}
+                  size="small"
+                  variant="outlined"
+                  onClick={() => applyQuickRange(range.months, range.sinceJan)}
+                >
+                  {range.label}
+                </Button>
+              ))}
+            </Stack>
+
+            {monthlyQuery.isLoading ? (
+              <Box display="flex" justifyContent="center" py={4}>
+                <CircularProgress />
+              </Box>
+            ) : monthlyQuery.isError ? (
+              <Alert severity="error">
+                {extractApiError(monthlyQuery.error, 'Не удалось загрузить динамику по месяцам')}
+              </Alert>
+            ) : monthlyRows.length === 0 ? (
+              <Typography variant="body2" color="text.secondary">
+                Нет данных за выбранный период.
+              </Typography>
+            ) : (
+              <>
+                <Box sx={{ maxHeight: 440, overflow: 'auto', mb: 3 }}>
+                  <Table size="small" stickyHeader>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Месяц</TableCell>
+                        <TableCell align="right">
+                          Активные ученики
+                          <MuiTooltip title="Количество учеников со статусом Active на последний день месяца.">
+                            <InfoOutlinedIcon fontSize="inherit" sx={{ ml: 0.5, verticalAlign: 'middle', opacity: 0.6 }} />
+                          </MuiTooltip>
+                        </TableCell>
+                        <TableCell align="right">Лиды за месяц</TableCell>
+                        <TableCell align="right">
+                          Выиграно лидов
+                          <MuiTooltip title="Количество лидов, переведённых в статус WON в этом месяце (фиксируется один раз, не меняется при последующем редактировании лида).">
+                            <InfoOutlinedIcon fontSize="inherit" sx={{ ml: 0.5, verticalAlign: 'middle', opacity: 0.6 }} />
+                          </MuiTooltip>
+                        </TableCell>
+                        <TableCell align="right">Конверсия лид → выигран</TableCell>
+                        <TableCell align="right">
+                          Оплаты за месяц
+                          <MuiTooltip title="Фактически зачисленные платежи учеников за календарный месяц.">
+                            <InfoOutlinedIcon fontSize="inherit" sx={{ ml: 0.5, verticalAlign: 'middle', opacity: 0.6 }} />
+                          </MuiTooltip>
+                        </TableCell>
+                        <TableCell align="right">Групповые оплаты</TableCell>
+                        <TableCell align="right">Индивидуальные оплаты</TableCell>
+                        <TableCell align="right">
+                          Средний чек
+                          <MuiTooltip title="Сумма фактически полученных платежей / число уникальных учеников, оплативших в месяце.">
+                            <InfoOutlinedIcon fontSize="inherit" sx={{ ml: 0.5, verticalAlign: 'middle', opacity: 0.6 }} />
+                          </MuiTooltip>
+                        </TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {monthlyRows.map((row) => (
+                        <TableRow key={row.month} hover>
+                          <TableCell>{formatMonthLabel(row.month)}</TableCell>
+                          <TableCell align="right">{row.active_students}</TableCell>
+                          <TableCell align="right">{row.leads_created}</TableCell>
+                          <TableCell align="right">{row.won_leads}</TableCell>
+                          <TableCell align="right">{row.lead_conversion_pct.toFixed(1)}%</TableCell>
+                          <TableCell align="right">{rub(row.payments_total)}</TableCell>
+                          <TableCell align="right">{rub(row.payments_group)}</TableCell>
+                          <TableCell align="right">{rub(row.payments_individual)}</TableCell>
+                          <TableCell align="right">{rub(row.average_check)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </Box>
+
+                <Grid container spacing={2}>
+                  <Grid item xs={12} md={6}>
+                    <Paper variant="outlined" sx={{ p: 2 }}>
+                      <Typography variant="subtitle2" gutterBottom>
+                        Активные ученики
+                      </Typography>
+                      <Box sx={{ height: 260 }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={monthlyChartData} margin={{ top: 12, right: 12, left: 0, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="monthLabel" tick={{ fontSize: 11 }} />
+                            <YAxis tick={{ fontSize: 12 }} width={48} />
+                            <RechartsTooltip />
+                            <Line type="monotone" dataKey="active_students" name="Активные ученики" stroke="#1976d2" strokeWidth={3} dot={false} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </Box>
+                    </Paper>
+                  </Grid>
+
+                  <Grid item xs={12} md={6}>
+                    <Paper variant="outlined" sx={{ p: 2 }}>
+                      <Typography variant="subtitle2" gutterBottom>
+                        Лиды / выиграно
+                      </Typography>
+                      <Box sx={{ height: 260 }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={monthlyChartData} margin={{ top: 12, right: 12, left: 0, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="monthLabel" tick={{ fontSize: 11 }} />
+                            <YAxis tick={{ fontSize: 12 }} width={40} />
+                            <RechartsTooltip
+                              formatter={(value: number, name: string) => [value, name]}
+                              labelFormatter={(label: string, payload: any[]) => {
+                                const row = payload?.[0]?.payload as (AcademyMonthlyMetricsRow & { monthLabel: string }) | undefined;
+                                return row ? `${label} · Конверсия: ${row.lead_conversion_pct.toFixed(1)}%` : label;
+                              }}
+                            />
+                            <Bar dataKey="leads_created" name="Лиды" fill="#90a4ae" />
+                            <Bar dataKey="won_leads" name="Выиграно" fill="#2e7d32" />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </Box>
+                    </Paper>
+                  </Grid>
+
+                  <Grid item xs={12} md={6}>
+                    <Paper variant="outlined" sx={{ p: 2 }}>
+                      <Typography variant="subtitle2" gutterBottom>
+                        Оплаты (группа / индивидуально)
+                      </Typography>
+                      <Box sx={{ height: 260 }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={monthlyChartData} margin={{ top: 12, right: 12, left: 0, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="monthLabel" tick={{ fontSize: 11 }} />
+                            <YAxis tick={{ fontSize: 12 }} width={64} />
+                            <RechartsTooltip
+                              formatter={(value: number, name: string) => [rub(Number(value)), name]}
+                              labelFormatter={(label: string, payload: any[]) => {
+                                const row = payload?.[0]?.payload as (AcademyMonthlyMetricsRow & { monthLabel: string }) | undefined;
+                                return row ? `${label} · Всего: ${rub(row.payments_total)}` : label;
+                              }}
+                            />
+                            <Bar dataKey="payments_group" name="Групповые" stackId="payments" fill="#1976d2" />
+                            <Bar dataKey="payments_individual" name="Индивидуальные" stackId="payments" fill="#f9a825" />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </Box>
+                    </Paper>
+                  </Grid>
+
+                  <Grid item xs={12} md={6}>
+                    <Paper variant="outlined" sx={{ p: 2 }}>
+                      <Typography variant="subtitle2" gutterBottom>
+                        Средний чек
+                      </Typography>
+                      <Box sx={{ height: 260 }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={monthlyChartData} margin={{ top: 12, right: 12, left: 0, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="monthLabel" tick={{ fontSize: 11 }} />
+                            <YAxis tick={{ fontSize: 12 }} width={64} />
+                            <RechartsTooltip formatter={(value: number) => rub(Number(value))} />
+                            <Line type="monotone" dataKey="average_check" name="Средний чек" stroke="#6a1b9a" strokeWidth={3} dot={false} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </Box>
+                    </Paper>
+                  </Grid>
+                </Grid>
+              </>
+            )}
           </Paper>
 
           <Paper variant="outlined" sx={{ p: 2, mt: 3 }}>

@@ -135,4 +135,22 @@ class AcademyMetricsRatingStudent(BaseModel):
     parent_phone: Optional[str] = None
 
 
+class AcademyMonthlyMetricsRow(BaseModel):
+    month: str  # "YYYY-MM"
+    active_students: int
+    leads_created: int
+    won_leads: int
+    lead_conversion_pct: float
+    payments_total: float
+    payments_group: float
+    payments_individual: float
+    paying_students: int
+    payment_transactions: int
+    average_check: float
+
+
+class AcademyMonthlyMetricsResponse(BaseModel):
+    months: List[AcademyMonthlyMetricsRow]
+
+
 __all__ = [name for name in globals() if not name.startswith("_")]

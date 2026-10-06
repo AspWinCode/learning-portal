@@ -288,6 +288,24 @@ export interface AcademyMetricsResponse {
   rating_by_school: AcademyMetricsRatingRow[];
 }
 
+export interface AcademyMonthlyMetricsRow {
+  month: string; // "YYYY-MM"
+  active_students: number;
+  leads_created: number;
+  won_leads: number;
+  lead_conversion_pct: number;
+  payments_total: number;
+  payments_group: number;
+  payments_individual: number;
+  paying_students: number;
+  payment_transactions: number;
+  average_check: number;
+}
+
+export interface AcademyMonthlyMetricsResponse {
+  months: AcademyMonthlyMetricsRow[];
+}
+
 export interface AdminDashboardSummary {
   generated_at: string;
   active_students: number;

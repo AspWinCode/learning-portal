@@ -99,6 +99,11 @@ export interface SheetDetail {
 
 // ── SpreadsheetOperation (Phase 1 + Phase 2, discriminated union) ──
 
+// Одна ячейка диапазона вставки: ровно одно из value/formula (см. backend
+// PasteCell). pустая строка clipboard-ячейки превращается в {value: null}
+// (явная очистка), а не отсутствие записи.
+export type PasteCell = { value: CellValue; formula?: undefined } | { formula: string; value?: undefined };
+
 export type SpreadsheetOperation =
   | { type: 'insert_row'; after_row_id: number | null }
   | { type: 'delete_row'; row_id: number }
@@ -110,7 +115,8 @@ export type SpreadsheetOperation =
   | { type: 'set_formula'; row_id: number; column_id: number; formula: string }
   | { type: 'format_range'; row_ids: number[]; column_ids: number[]; formatting: CellFormatting }
   | { type: 'set_conditional_format'; column_id: number; rules: ConditionalFormatRule[] }
-  | { type: 'sort_rows'; column_id: number; direction: 'asc' | 'desc' };
+  | { type: 'sort_rows'; column_id: number; direction: 'asc' | 'desc' }
+  | { type: 'paste_range'; anchor_row_id: number; anchor_column_id: number; cells: PasteCell[][] };
 
 export interface OperationResult {
   sheet: SheetDetail;

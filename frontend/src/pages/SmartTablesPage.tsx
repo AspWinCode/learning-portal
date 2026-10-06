@@ -9,9 +9,14 @@ import UndoIcon from '@mui/icons-material/Undo';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import DownloadIcon from '@mui/icons-material/Download';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
+import EditIcon from '@mui/icons-material/Edit';
+import DeleteIcon from '@mui/icons-material/Delete';
 import Layout from '../components/Layout';
 import Grid from '../components/smartTables/Grid';
 import AICommandBar from '../components/smartTables/AICommandBar';
+import ConfirmDialog from '../components/ui/ConfirmDialog';
+import FormDialog from '../components/ui/FormDialog';
 import { smartTablesApi } from '../services/api/smartTables';
 import { useSmartTableRealtime } from '../hooks/useSmartTableRealtime';
 import type { SheetDetail, Workbook } from '../types/smartTables';
@@ -111,6 +116,17 @@ const WorkbookView: React.FC<{ workbook: Workbook; onBack: () => void }> = ({ wo
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const canEdit = workbook.role !== 'viewer';
+  const canDeleteSheet = workbook.role === 'owner';
+
+  const [tabMenu, setTabMenu] = useState<{ anchor: HTMLElement; sheetId: number } | null>(null);
+  const [renameTarget, setRenameTarget] = useState<{ id: number; name: string } | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [renameError, setRenameError] = useState('');
+  const [renaming, setRenaming] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
   const { presence, connected } = useSmartTableRealtime(activeSheetId, {
     onSheetUpdate: (sheet) => setDetail(sheet),
   });
@@ -144,6 +160,61 @@ const WorkbookView: React.FC<{ workbook: Workbook; onBack: () => void }> = ({ wo
     const sheet = await smartTablesApi.createSheet(workbook.id, `Лист ${sheets.length + 1}`);
     await loadSheets();
     setActiveSheetId(sheet.sheet.id);
+  };
+
+  const openRename = (sheet: { id: number; name: string }) => {
+    setTabMenu(null);
+    setRenameTarget(sheet);
+    setRenameValue(sheet.name);
+    setRenameError('');
+  };
+
+  const submitRename = async () => {
+    if (!renameTarget) return;
+    const trimmed = renameValue.trim();
+    if (!trimmed) { setRenameError('Введите название'); return; }
+    if (trimmed.length > 255) { setRenameError('Название слишком длинное (максимум 255 символов)'); return; }
+    const duplicate = sheets.some((s) => s.id !== renameTarget.id && s.name.trim().toLowerCase() === trimmed.toLowerCase());
+    if (duplicate) { setRenameError('Лист с таким названием уже существует'); return; }
+    setRenaming(true);
+    try {
+      await smartTablesApi.renameSheet(renameTarget.id, trimmed);
+      setSheets((prev) => prev.map((s) => (s.id === renameTarget.id ? { ...s, name: trimmed } : s)));
+      setRenameTarget(null);
+    } catch (e: any) {
+      setRenameError(e?.response?.data?.detail || 'Не удалось переименовать лист');
+    } finally {
+      setRenaming(false);
+    }
+  };
+
+  const openDelete = (sheet: { id: number; name: string }) => {
+    setTabMenu(null);
+    setDeleteTarget(sheet);
+  };
+
+  const submitDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await smartTablesApi.deleteSheet(deleteTarget.id);
+      const oldIdx = sheets.findIndex((s) => s.id === deleteTarget.id);
+      const remaining = sheets.filter((s) => s.id !== deleteTarget.id);
+      setSheets(remaining);
+      if (activeSheetId === deleteTarget.id) {
+        const prevNeighbor = oldIdx > 0 ? sheets[oldIdx - 1] : null;
+        const nextNeighbor = oldIdx < sheets.length - 1 ? sheets[oldIdx + 1] : null;
+        const newActive = prevNeighbor ?? nextNeighbor ?? null;
+        setActiveSheetId(newActive ? newActive.id : null);
+        if (!newActive) setDetail(null);
+      }
+      setDeleteTarget(null);
+      setError('');
+    } catch (e: any) {
+      setError(e?.response?.data?.detail || 'Не удалось удалить лист');
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -220,11 +291,44 @@ const WorkbookView: React.FC<{ workbook: Workbook; onBack: () => void }> = ({ wo
         <Button startIcon={<UndoIcon />} onClick={handleUndo}>Отменить</Button>
       </Box>
 
-      <Tabs value={activeSheetId ?? false} onChange={(_, v) => setActiveSheetId(v)} sx={{ mb: 1 }}>
-        {sheets.map((s) => <Tab key={s.id} value={s.id} label={s.name} />)}
-      </Tabs>
+      {sheets.length > 0 && (
+        <Tabs value={activeSheetId ?? false} onChange={(_, v) => setActiveSheetId(v)} sx={{ mb: 1 }}>
+          {sheets.map((s) => (
+            <Tab
+              key={s.id}
+              value={s.id}
+              onDoubleClick={() => { if (canEdit) openRename(s); }}
+              label={
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <span>{s.name}</span>
+                  {canEdit && (
+                    <IconButton
+                      size="small"
+                      component="span"
+                      sx={{ p: 0.25 }}
+                      onClick={(e) => { e.stopPropagation(); setTabMenu({ anchor: e.currentTarget, sheetId: s.id }); }}
+                    >
+                      <MoreVertIcon fontSize="inherit" />
+                    </IconButton>
+                  )}
+                </Box>
+              }
+            />
+          ))}
+        </Tabs>
+      )}
+      <Menu open={!!tabMenu} anchorEl={tabMenu?.anchor} onClose={() => setTabMenu(null)}>
+        <MenuItem onClick={() => { const s = sheets.find((x) => x.id === tabMenu?.sheetId); if (s) openRename(s); }}>
+          <EditIcon fontSize="small" sx={{ mr: 1 }} /> Переименовать
+        </MenuItem>
+        {canDeleteSheet && (
+          <MenuItem onClick={() => { const s = sheets.find((x) => x.id === tabMenu?.sheetId); if (s) openDelete(s); }}>
+            <DeleteIcon fontSize="small" sx={{ mr: 1 }} /> Удалить
+          </MenuItem>
+        )}
+      </Menu>
       <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
-        <Button size="small" startIcon={<AddIcon />} onClick={handleAddSheet}>Добавить лист</Button>
+        {canEdit && <Button size="small" startIcon={<AddIcon />} onClick={handleAddSheet}>Добавить лист</Button>}
         <Button
           size="small" startIcon={<UploadFileIcon />} disabled={importing}
           onClick={() => fileInputRef.current?.click()}
@@ -274,8 +378,38 @@ const WorkbookView: React.FC<{ workbook: Workbook; onBack: () => void }> = ({ wo
           onSetConditionalFormat={(columnId, rules) =>
             withOps([{ type: 'set_conditional_format', column_id: columnId, rules }])}
           onSortColumn={(columnId, direction) => withOps([{ type: 'sort_rows', column_id: columnId, direction }])}
+          onPasteRange={(anchorRowId, anchorColumnId, cells) =>
+            withOps([{ type: 'paste_range', anchor_row_id: anchorRowId, anchor_column_id: anchorColumnId, cells }])}
+          readOnly={!canEdit}
         />
       )}
+
+      <FormDialog
+        open={!!renameTarget}
+        title="Переименовать лист"
+        onClose={() => setRenameTarget(null)}
+        onSubmit={submitRename}
+        submitLabel="Сохранить"
+        submitDisabled={renaming}
+      >
+        <TextField
+          autoFocus fullWidth label="Название" value={renameValue}
+          onChange={(e) => { setRenameValue(e.target.value); setRenameError(''); }}
+          error={!!renameError}
+          helperText={renameError}
+          sx={{ mt: 1 }}
+        />
+      </FormDialog>
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title={`Удалить лист «${deleteTarget?.name ?? ''}»?`}
+        description="Все данные этого листа будут удалены. Это действие нельзя отменить обычной кнопкой «Отменить»."
+        confirmLabel={deleting ? 'Удаляю…' : 'Удалить'}
+        destructive
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={submitDelete}
+      />
     </Box>
   );
 };

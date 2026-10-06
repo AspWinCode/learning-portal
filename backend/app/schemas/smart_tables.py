@@ -11,7 +11,7 @@ Import/export (Phase 4) и AI (Phase 5) — следующие фазы
 from datetime import datetime
 from typing import Annotated, Any, List, Literal, Optional, Union
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 ColumnType = Literal[
@@ -215,6 +215,44 @@ class OpSortRows(BaseModel):
     direction: Literal["asc", "desc"] = "asc"
 
 
+# Максимум ячеек в одной paste_range — защита от DoS-пэйлоада (вставка
+# огромного диапазона). Один paste = один HTTP-запрос = одна запись в
+# operation log = одна отмена, так что лимит считается от total cells, а не
+# от числа операций в батче (OperationBatch.max_length здесь не применим —
+# paste всегда один op).
+MAX_PASTE_CELLS = 5000
+
+
+class PasteCell(BaseModel):
+    """Одна ячейка вставляемого диапазона: ровно одно из value/formula."""
+    value: CellValue = None
+    formula: Optional[str] = None
+
+    model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="after")
+    def _exactly_one(self) -> "PasteCell":
+        if self.formula is not None and self.value is not None:
+            raise ValueError("В ячейке paste нельзя указывать и value, и formula одновременно")
+        return self
+
+
+class OpPasteRange(BaseModel):
+    type: Literal["paste_range"] = "paste_range"
+    anchor_row_id: int
+    anchor_column_id: int
+    cells: List[List[PasteCell]] = Field(..., min_length=1, max_length=5000)
+
+    @model_validator(mode="after")
+    def _check_size(self) -> "OpPasteRange":
+        total = sum(len(row) for row in self.cells)
+        if total == 0:
+            raise ValueError("Пустой диапазон вставки")
+        if total > MAX_PASTE_CELLS:
+            raise ValueError("Слишком большой диапазон для вставки")
+        return self
+
+
 SpreadsheetOperation = Annotated[
     Union[
         OpInsertRow,
@@ -228,6 +266,7 @@ SpreadsheetOperation = Annotated[
         OpFormatRange,
         OpSetConditionalFormat,
         OpSortRows,
+        OpPasteRange,
     ],
     Field(discriminator="type"),
 ]

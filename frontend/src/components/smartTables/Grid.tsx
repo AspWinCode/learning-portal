@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, Divider, IconButton,
+  Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, Divider, IconButton,
   MenuItem, Menu, Select, TextField, ToggleButton, Tooltip,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
@@ -18,9 +18,10 @@ import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import RuleIcon from '@mui/icons-material/Rule';
 import type {
-  CellFormatting, CellSnapshot, CellValue, ColumnOut, ConditionOperator, ConditionalFormatRule, RowOut, TextAlign,
+  CellFormatting, CellSnapshot, CellValue, ColumnOut, ConditionOperator, ConditionalFormatRule, PasteCell, RowOut, TextAlign,
 } from '../../types/smartTables';
 import { isFormulaError } from '../../types/smartTables';
+import { MAX_PASTE_CELLS, buildPasteMatrix, parseClipboardText, toPasteCells, toTsv, totalCells } from './clipboard';
 
 // Ядро грида (Phase 1) + форматирование/сортировка/фильтры (Phase 2):
 // собственная виртуализация без сторонних зависимостей (см.
@@ -50,6 +51,8 @@ interface GridProps {
   onFormatRange: (rowIds: number[], columnIds: number[], formatting: CellFormatting) => void;
   onSetConditionalFormat: (columnId: number, rules: ConditionalFormatRule[]) => void;
   onSortColumn: (columnId: number, direction: 'asc' | 'desc') => void;
+  onPasteRange: (anchorRowId: number, anchorColumnId: number, cells: PasteCell[][]) => void;
+  readOnly?: boolean;
 }
 
 function cellStyleOf(value: CellValue, cellFormatting: CellFormatting | undefined, rules: ConditionalFormatRule[] | undefined): React.CSSProperties {
@@ -108,7 +111,7 @@ function displayOf(value: CellValue): string {
 
 const Grid: React.FC<GridProps> = ({
   columns, rows, onSetCell, onSetFormula, onInsertRow, onDeleteRow, onInsertColumn, onDeleteColumn,
-  onFormatRange, onSetConditionalFormat, onSortColumn,
+  onFormatRange, onSetConditionalFormat, onSortColumn, onPasteRange, readOnly = false,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
@@ -124,6 +127,7 @@ const Grid: React.FC<GridProps> = ({
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [filters, setFilters] = useState<Record<number, string>>({});
   const [colorMenu, setColorMenu] = useState<{ anchor: HTMLElement; mode: 'bg' | 'text' } | null>(null);
+  const [pasteError, setPasteError] = useState<string | null>(null);
 
   const active = focus;
 
@@ -177,6 +181,7 @@ const Grid: React.FC<GridProps> = ({
   }, []);
 
   const commitEdit = useCallback(() => {
+    if (readOnly) { setEditingValue(null); return; }
     if (focus && editingValue !== null) {
       if (editingValue.startsWith('=')) {
         onSetFormula(focus.rowId, focus.columnId, editingValue);
@@ -185,7 +190,7 @@ const Grid: React.FC<GridProps> = ({
       }
     }
     setEditingValue(null);
-  }, [focus, editingValue, onSetCell, onSetFormula]);
+  }, [focus, editingValue, onSetCell, onSetFormula, readOnly]);
 
   const moveActive = useCallback((dRow: number, dCol: number, extend: boolean) => {
     setFocus((prev) => {
@@ -228,9 +233,47 @@ const Grid: React.FC<GridProps> = ({
   }, [selectionBounds, filteredRows, sortedColumns]);
 
   const applyFormat = useCallback((formatting: CellFormatting) => {
+    if (readOnly) return;
     const { rowIds, columnIds } = selectedIds();
     if (rowIds.length && columnIds.length) onFormatRange(rowIds, columnIds, formatting);
-  }, [selectedIds, onFormatRange]);
+  }, [selectedIds, onFormatRange, readOnly]);
+
+  const pasteMatrixAt = useCallback((anchorRowId: number, anchorColumnId: number, cells: PasteCell[][]) => {
+    const total = totalCells(cells);
+    if (total > MAX_PASTE_CELLS) {
+      setPasteError('Слишком большой диапазон для вставки');
+      return;
+    }
+    setPasteError(null);
+    onPasteRange(anchorRowId, anchorColumnId, cells);
+  }, [onPasteRange]);
+
+  const handlePaste = useCallback((e: React.ClipboardEvent<HTMLDivElement>) => {
+    if (readOnly || editingValue !== null || !selectionBounds) return;
+    const text = e.clipboardData.getData('text/plain');
+    if (!text) return;
+    e.preventDefault();
+    const parsed = parseClipboardText(text);
+    const selRows = selectionBounds.rowTo - selectionBounds.rowFrom + 1;
+    const selCols = selectionBounds.colTo - selectionBounds.colFrom + 1;
+    const matrix = buildPasteMatrix(parsed, { rows: selRows, cols: selCols });
+    const anchorRow = filteredRows[selectionBounds.rowFrom];
+    const anchorColumn = sortedColumns[selectionBounds.colFrom];
+    if (!anchorRow || !anchorColumn) return;
+    pasteMatrixAt(anchorRow.id, anchorColumn.id, toPasteCells(matrix));
+  }, [readOnly, editingValue, selectionBounds, filteredRows, sortedColumns, pasteMatrixAt]);
+
+  const handleCopy = useCallback((e: React.ClipboardEvent<HTMLDivElement>) => {
+    if (editingValue !== null || !selectionBounds) return;
+    e.preventDefault();
+    const rowSlice = filteredRows.slice(selectionBounds.rowFrom, selectionBounds.rowTo + 1);
+    const colSlice = sortedColumns.slice(selectionBounds.colFrom, selectionBounds.colTo + 1);
+    const matrix = rowSlice.map((row) => colSlice.map((col) => {
+      const snapshot = row.cells[String(col.id)];
+      return snapshot?.formula ?? displayOf(snapshot?.value ?? null);
+    }));
+    e.clipboardData.setData('text/plain', toTsv(matrix));
+  }, [editingValue, selectionBounds, filteredRows, sortedColumns]);
 
   const activeCellFormatting: CellFormatting | undefined = useMemo(() => {
     if (!active) return undefined;
@@ -275,24 +318,35 @@ const Grid: React.FC<GridProps> = ({
       case 'Enter':
       case 'F2':
         e.preventDefault();
+        if (readOnly) break;
         setEditingValue(editSourceOf(row.cells[String(column.id)]));
         break;
       case 'Delete':
       case 'Backspace':
         e.preventDefault();
+        if (readOnly) break;
         if (selectionBounds) {
-          const { rowIds, columnIds } = selectedIds();
-          rowIds.forEach((rId) => columnIds.forEach((cId) => onSetCell(rId, cId, '')));
+          const selRows = selectionBounds.rowTo - selectionBounds.rowFrom + 1;
+          const selCols = selectionBounds.colTo - selectionBounds.colFrom + 1;
+          const anchorRow = filteredRows[selectionBounds.rowFrom];
+          const anchorColumn = sortedColumns[selectionBounds.colFrom];
+          if (anchorRow && anchorColumn) {
+            const cells: PasteCell[][] = Array.from({ length: selRows }, () =>
+              Array.from({ length: selCols }, (): PasteCell => ({ value: null })));
+            pasteMatrixAt(anchorRow.id, anchorColumn.id, cells);
+          }
         }
         break;
       case 'b': if (e.ctrlKey || e.metaKey) { e.preventDefault(); applyFormat({ bold: !activeCellFormatting?.bold }); } break;
       case 'i': if (e.ctrlKey || e.metaKey) { e.preventDefault(); applyFormat({ italic: !activeCellFormatting?.italic }); } break;
       default:
+        if (readOnly) break;
         if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
           setEditingValue(e.key);
         }
     }
-  }, [editingValue, commitEdit, moveActive, onSetCell, selectionBounds, selectedIds, applyFormat, activeCellFormatting]);
+  }, [editingValue, commitEdit, moveActive, selectionBounds, selectedIds, applyFormat, activeCellFormatting,
+    readOnly, filteredRows, sortedColumns, pasteMatrixAt]);
 
   const openConditionalFormat = (columnId: number) => {
     const col = sortedColumns.find((c) => c.id === columnId);
@@ -308,12 +362,21 @@ const Grid: React.FC<GridProps> = ({
   const hasSelection = !!selectionBounds;
 
   return (
-    <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, overflow: 'hidden' }}>
+    <Box
+      sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, overflow: 'hidden' }}
+      onPaste={handlePaste}
+      onCopy={handleCopy}
+    >
+      {pasteError && (
+        <Alert severity="error" onClose={() => setPasteError(null)} sx={{ borderRadius: 0 }}>
+          {pasteError}
+        </Alert>
+      )}
       {/* toolbar */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, p: 0.5, borderBottom: '1px solid', borderColor: 'divider', bgcolor: 'grey.50' }}>
         <Tooltip title="Жирный (Ctrl+B)">
           <span>
-            <ToggleButton size="small" value="bold" selected={!!activeCellFormatting?.bold} disabled={!hasSelection}
+            <ToggleButton size="small" value="bold" selected={!!activeCellFormatting?.bold} disabled={!hasSelection || readOnly}
               onClick={() => applyFormat({ bold: !activeCellFormatting?.bold })}>
               <FormatBoldIcon fontSize="small" />
             </ToggleButton>
@@ -321,7 +384,7 @@ const Grid: React.FC<GridProps> = ({
         </Tooltip>
         <Tooltip title="Курсив (Ctrl+I)">
           <span>
-            <ToggleButton size="small" value="italic" selected={!!activeCellFormatting?.italic} disabled={!hasSelection}
+            <ToggleButton size="small" value="italic" selected={!!activeCellFormatting?.italic} disabled={!hasSelection || readOnly}
               onClick={() => applyFormat({ italic: !activeCellFormatting?.italic })}>
               <FormatItalicIcon fontSize="small" />
             </ToggleButton>
@@ -331,7 +394,7 @@ const Grid: React.FC<GridProps> = ({
         {(['left', 'center', 'right'] as TextAlign[]).map((align) => (
           <Tooltip key={align} title={`Выравнивание: ${align}`}>
             <span>
-              <ToggleButton size="small" value={align} selected={activeCellFormatting?.align === align} disabled={!hasSelection}
+              <ToggleButton size="small" value={align} selected={activeCellFormatting?.align === align} disabled={!hasSelection || readOnly}
                 onClick={() => applyFormat({ align })}>
                 {align === 'left' ? <FormatAlignLeftIcon fontSize="small" /> : align === 'center' ? <FormatAlignCenterIcon fontSize="small" /> : <FormatAlignRightIcon fontSize="small" />}
               </ToggleButton>
@@ -341,21 +404,21 @@ const Grid: React.FC<GridProps> = ({
         <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
         <Tooltip title="Цвет фона">
           <span>
-            <IconButton size="small" disabled={!hasSelection} onClick={(e) => setColorMenu({ anchor: e.currentTarget, mode: 'bg' })}>
+            <IconButton size="small" disabled={!hasSelection || readOnly} onClick={(e) => setColorMenu({ anchor: e.currentTarget, mode: 'bg' })}>
               <FormatColorFillIcon fontSize="small" />
             </IconButton>
           </span>
         </Tooltip>
         <Tooltip title="Цвет текста">
           <span>
-            <IconButton size="small" disabled={!hasSelection} onClick={(e) => setColorMenu({ anchor: e.currentTarget, mode: 'text' })}>
+            <IconButton size="small" disabled={!hasSelection || readOnly} onClick={(e) => setColorMenu({ anchor: e.currentTarget, mode: 'text' })}>
               <FormatColorTextIcon fontSize="small" />
             </IconButton>
           </span>
         </Tooltip>
         <Tooltip title="Очистить форматирование">
           <span>
-            <IconButton size="small" disabled={!hasSelection}
+            <IconButton size="small" disabled={!hasSelection || readOnly}
               onClick={() => applyFormat({ bold: null, italic: null, align: null, bg_color: null, text_color: null })}>
               <FormatClearIcon fontSize="small" />
             </IconButton>
@@ -382,14 +445,18 @@ const Grid: React.FC<GridProps> = ({
             }}
           >
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{col.name}</span>
-            <IconButton size="small" onClick={(e) => setColMenu({ anchor: e.currentTarget, columnId: col.id })}>
-              <span style={{ fontSize: 10 }}>▾</span>
-            </IconButton>
+            {!readOnly && (
+              <IconButton size="small" onClick={(e) => setColMenu({ anchor: e.currentTarget, columnId: col.id })}>
+                <span style={{ fontSize: 10 }}>▾</span>
+              </IconButton>
+            )}
           </Box>
         ))}
-        <IconButton size="small" onClick={() => onInsertColumn(sortedColumns[sortedColumns.length - 1]?.id ?? null)}>
-          <AddIcon fontSize="small" />
-        </IconButton>
+        {!readOnly && (
+          <IconButton size="small" onClick={() => onInsertColumn(sortedColumns[sortedColumns.length - 1]?.id ?? null)}>
+            <AddIcon fontSize="small" />
+          </IconButton>
+        )}
       </Box>
 
       {/* filter row */}
@@ -431,9 +498,9 @@ const Grid: React.FC<GridProps> = ({
                   sx={{
                     width: ROW_HEADER_WIDTH, flexShrink: 0, display: 'flex', alignItems: 'center',
                     justifyContent: 'center', fontSize: 12, color: 'text.secondary', bgcolor: 'grey.50',
-                    cursor: 'pointer',
+                    cursor: readOnly ? 'default' : 'pointer',
                   }}
-                  onClick={(e) => setRowMenu({ anchor: e.currentTarget, rowId: row.id })}
+                  onClick={(e) => { if (!readOnly) setRowMenu({ anchor: e.currentTarget, rowId: row.id }); }}
                 >
                   {idx + 1}
                 </Box>
@@ -449,10 +516,11 @@ const Grid: React.FC<GridProps> = ({
                   return (
                     <Box
                       key={col.id}
+                      data-testid={`cell-${row.id}-${col.id}`}
                       tabIndex={0}
                       onMouseDown={(e) => onCellMouseDown(row, col, e.shiftKey)}
                       onMouseEnter={() => onCellMouseEnter(row, col)}
-                      onDoubleClick={() => { setAnchor({ rowId: row.id, columnId: col.id }); setFocus({ rowId: row.id, columnId: col.id }); setEditingValue(editSourceOf(snapshot)); }}
+                      onDoubleClick={() => { if (readOnly) return; setAnchor({ rowId: row.id, columnId: col.id }); setFocus({ rowId: row.id, columnId: col.id }); setEditingValue(editSourceOf(snapshot)); }}
                       onKeyDown={(e) => onCellKeyDown(e, row, col)}
                       sx={{
                         width: col.width, flexShrink: 0, px: 1, display: 'flex', alignItems: 'center',
@@ -486,11 +554,13 @@ const Grid: React.FC<GridProps> = ({
         </Box>
       </Box>
 
-      <Box sx={{ p: 0.5, borderTop: '1px solid', borderColor: 'divider' }}>
-        <IconButton size="small" onClick={() => onInsertRow(filteredRows[filteredRows.length - 1]?.id ?? null)}>
-          <AddIcon fontSize="small" />
-        </IconButton>
-      </Box>
+      {!readOnly && (
+        <Box sx={{ p: 0.5, borderTop: '1px solid', borderColor: 'divider' }}>
+          <IconButton size="small" onClick={() => onInsertRow(filteredRows[filteredRows.length - 1]?.id ?? null)}>
+            <AddIcon fontSize="small" />
+          </IconButton>
+        </Box>
+      )}
 
       <Menu open={!!colMenu} anchorEl={colMenu?.anchor} onClose={() => setColMenu(null)}>
         <MenuItem onClick={() => { if (colMenu) onInsertColumn(colMenu.columnId); setColMenu(null); }}>

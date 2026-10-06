@@ -60,7 +60,7 @@ def _coerce_value(value, column_type: str):
 
 _VALUE_AFFECTING_OPS = {
     "set_cell", "set_formula", "insert_row", "delete_row", "insert_column", "delete_column",
-    "_restore_row", "_restore_column",
+    "_restore_row", "_restore_column", "paste_range", "_restore_paste_range",
 }
 
 
@@ -352,6 +352,112 @@ class OperationExecutor:
         # (set_formula входит в _VALUE_AFFECTING_OPS) — здесь только сохраняем текст формулы.
         self._write_cell(row, column, None, formula=op["formula"])
         return inverse
+
+    def _op_paste_range(self, op: dict) -> dict:
+        # Единственная операция, реализующая spreadsheet-style paste: сама
+        # досоздаёт недостающие строки/колонки (переиспользуя _op_insert_row/
+        # _op_insert_column — именно поэтому клиент не может прислать это как
+        # набор insert_* + set_cell в одном батче: он не знает id ещё не
+        # созданных строк/колонок), пишет ячейки через тот же _write_cell, что
+        # и set_cell/set_formula, и возвращает ОДИН составной inverse — так
+        # один paste = одна строка в operation log = одна отмена.
+        anchor_row = self.db.get(SmartTableRow, op["anchor_row_id"])
+        if anchor_row is None or anchor_row.sheet_id != self.sheet.id:
+            raise OperationError("anchor_row_id не найден на этом листе")
+        anchor_column = self.db.get(SmartTableColumn, op["anchor_column_id"])
+        if anchor_column is None or anchor_column.sheet_id != self.sheet.id:
+            raise OperationError("anchor_column_id не найден на этом листе")
+
+        matrix: list[list[dict]] = op["cells"]
+        n_rows = len(matrix)
+        n_cols = max((len(r) for r in matrix), default=0)
+        if n_rows == 0 or n_cols == 0:
+            raise OperationError("Пустой диапазон вставки")
+
+        rows = self._fresh_rows()
+        columns = self._fresh_columns()
+        row_start = next((i for i, r in enumerate(rows) if r.id == anchor_row.id), None)
+        col_start = next((i for i, c in enumerate(columns) if c.id == anchor_column.id), None)
+        if row_start is None or col_start is None:
+            raise OperationError("anchor_row_id/anchor_column_id не найдены на этом листе")
+
+        inserted_row_ids: list[int] = []
+        inserted_column_ids: list[int] = []
+
+        last_row_id = rows[-1].id if rows else None
+        for _ in range(max(0, row_start + n_rows - len(rows))):
+            inverse = self._op_insert_row({"after_row_id": last_row_id})
+            last_row_id = inverse["row_id"]
+            inserted_row_ids.append(last_row_id)
+
+        last_column_id = columns[-1].id if columns else None
+        next_col_number = len(columns) + 1
+        for _ in range(max(0, col_start + n_cols - len(columns))):
+            inverse = self._op_insert_column({
+                "after_column_id": last_column_id,
+                "name": f"Колонка {next_col_number}",
+                "column_type": "text",
+            })
+            last_column_id = inverse["column_id"]
+            inserted_column_ids.append(last_column_id)
+            next_col_number += 1
+
+        target_rows = self._fresh_rows()[row_start:row_start + n_rows]
+        target_columns = self._fresh_columns()[col_start:col_start + n_cols]
+        inserted_row_set, inserted_column_set = set(inserted_row_ids), set(inserted_column_ids)
+        cell_restores: list[dict] = []
+
+        for i, row in enumerate(target_rows):
+            cell_row = matrix[i] if i < len(matrix) else []
+            for j, column in enumerate(target_columns):
+                if j >= len(cell_row):
+                    continue
+                entry = cell_row[j]
+                if row.id not in inserted_row_set and column.id not in inserted_column_set:
+                    existing = (
+                        self.db.query(SmartTableCell)
+                        .filter(SmartTableCell.row_id == row.id, SmartTableCell.column_id == column.id)
+                        .first()
+                    )
+                    cell_restores.append({
+                        "row_id": row.id,
+                        "column_id": column.id,
+                        "raw_value": existing.raw_value if existing else None,
+                        "formula": existing.formula if existing else None,
+                    })
+                if entry.get("formula") is not None:
+                    self._write_cell(row, column, None, formula=entry["formula"])
+                else:
+                    self._write_cell(row, column, entry.get("value"), formula=None)
+
+        return {
+            "type": "_restore_paste_range",
+            "inserted_row_ids": inserted_row_ids,
+            "inserted_column_ids": inserted_column_ids,
+            "cell_restores": cell_restores,
+            "redo": {
+                "anchor_row_id": op["anchor_row_id"],
+                "anchor_column_id": op["anchor_column_id"],
+                "cells": op["cells"],
+            },
+        }
+
+    def _op__restore_paste_range(self, op: dict) -> dict:
+        # inverse-only: убирает то, что досоздал paste_range, восстанавливает
+        # значения ранее существовавших ячеек, которые он перезаписал; своим
+        # собственным inverse возвращает исходный paste_range (симметрично
+        # паре delete_row/_restore_row и т.п. — так работает и повторная отмена/redo).
+        for column_id in reversed(op.get("inserted_column_ids") or []):
+            self._op_delete_column({"column_id": column_id})
+        for row_id in reversed(op.get("inserted_row_ids") or []):
+            self._op_delete_row({"row_id": row_id})
+        for entry in op.get("cell_restores") or []:
+            row = self.db.get(SmartTableRow, entry["row_id"])
+            column = self.db.get(SmartTableColumn, entry["column_id"])
+            if row is None or column is None:
+                continue
+            self._write_cell(row, column, entry.get("raw_value"), entry.get("formula"))
+        return {"type": "paste_range", **op["redo"]}
 
     def _get_or_create_cell(self, row: SmartTableRow, column: SmartTableColumn) -> SmartTableCell:
         cell = (

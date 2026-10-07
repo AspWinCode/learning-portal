@@ -247,6 +247,25 @@ const FinanceOverviewPageContent: React.FC = () => {
   );
   const selectedTargetId = selectedModel?.target_id || null;
   const flatArticles = useMemo(() => flattenTree(articleTree), [articleTree]);
+  const articlesForTarget = useCallback(
+    (targetId: number | null | undefined, direction?: string) => {
+      const scoped = targetId
+        ? allArticles.filter((article) => article.target_id === targetId)
+        : allArticles;
+      const scopedByDirection = direction
+        ? scoped.filter((article) => article.direction === direction)
+        : scoped;
+      if (!targetId || scopedByDirection.length > 0) return scopedByDirection;
+
+      // A project may have journal transactions before its finance model and
+      // project-specific articles are created. Keep the journal usable by
+      // falling back to the shared article directory for that direction.
+      return direction
+        ? allArticles.filter((article) => article.direction === direction)
+        : allArticles;
+    },
+    [allArticles]
+  );
   const budgetMap = useMemo(
     () => new Map(budget.map((entry) => [entry.article_id, Number(entry.amount_plan || 0)])),
     [budget]
@@ -295,6 +314,13 @@ const FinanceOverviewPageContent: React.FC = () => {
       ]);
       setArticleTree(tree);
       setArticles(articleList);
+      // The journal uses the global article list for its dropdowns. Keep the
+      // currently selected target in sync after creating or editing an article
+      // without requiring a full page reload.
+      setAllArticles((previous) => [
+        ...previous.filter((article) => article.target_id !== targetId),
+        ...articleList,
+      ]);
       setMetrics(metricList);
       setBudget(budgetList);
       setWidgets(computedWidgets.filter((widget) => !widget.target_id || widget.target_id === targetId));
@@ -1731,7 +1757,7 @@ const FinanceOverviewPageContent: React.FC = () => {
                 onChange={(event) => setBulkArticleId(event.target.value === '' ? '' : Number(event.target.value))}
               >
                 <MenuItem value=""><em>Не менять</em></MenuItem>
-                {(bulkTargetId !== '' ? allArticles.filter((a) => a.target_id === Number(bulkTargetId)) : allArticles).map((article) => (
+                {articlesForTarget(bulkTargetId === '' ? null : Number(bulkTargetId)).map((article) => (
                   <MenuItem key={article.id} value={article.id}>{article.name}</MenuItem>
                 ))}
               </Select>
@@ -1876,8 +1902,7 @@ const FinanceOverviewPageContent: React.FC = () => {
                           <MenuItem value="">
                             <em>Не выбрана</em>
                           </MenuItem>
-                          {(row.target_id ? allArticles.filter((a) => a.target_id === row.target_id) : allArticles)
-                            .filter((article) => article.direction === row.direction)
+                          {articlesForTarget(row.target_id, row.direction)
                             .map((article) => (
                               <MenuItem key={article.id} value={article.id}>
                                 {article.name}
@@ -1961,7 +1986,7 @@ const FinanceOverviewPageContent: React.FC = () => {
           </TableHead>
           <TableBody>
             {displayedJournalRows.map((row) => {
-              const rowArticles = (row.target_id ? allArticles.filter((a) => a.target_id === row.target_id) : allArticles).filter((article) => article.direction === row.direction);
+              const rowArticles = articlesForTarget(row.target_id, row.direction);
               const selectedArticle = rowArticles.find((article) => article.id === row.article_id) || null;
               return (
               <TableRow key={row.id} selected={selectedRowIds.has(row.id)}>
@@ -2673,8 +2698,7 @@ const FinanceOverviewPageContent: React.FC = () => {
                   onChange={(e) => setEditTxArticleId(e.target.value === '' ? '' : Number(e.target.value))}
                 >
                   <MenuItem value="">Не выбрана</MenuItem>
-                  {(editTxTargetId !== '' ? allArticles.filter((a) => a.target_id === Number(editTxTargetId)) : allArticles)
-                    .filter((article) => article.direction === editTxDirection)
+                  {articlesForTarget(editTxTargetId === '' ? null : Number(editTxTargetId), editTxDirection)
                     .map((article) => (
                       <MenuItem key={article.id} value={article.id}>
                         {article.name}
@@ -2916,8 +2940,7 @@ const FinanceOverviewPageContent: React.FC = () => {
                   onChange={(e) => setManualArticleId(e.target.value === '' ? '' : Number(e.target.value))}
                 >
                   <MenuItem value="">Не выбрана</MenuItem>
-                  {(manualTargetId !== '' ? allArticles.filter((a) => a.target_id === Number(manualTargetId)) : allArticles)
-                    .filter((article) => article.direction === manualDirection)
+                  {articlesForTarget(manualTargetId === '' ? null : Number(manualTargetId), manualDirection)
                     .map((article) => (
                       <MenuItem key={article.id} value={article.id}>
                         {article.name}

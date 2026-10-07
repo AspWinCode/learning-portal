@@ -160,7 +160,8 @@ def _access(current_user: User = Depends(auth.require_permission("codelab.access
 
 
 @router.get("/admin/courses")
-async def admin_list_courses(current_user: User = Depends(_manage)):
+async def admin_list_courses(current_user: User = Depends(_access)):
+    """Read-only course list for staff who can review learner submissions."""
     try:
         return await cl.list_courses(current_user)
     except CodelabError as e:
@@ -300,7 +301,8 @@ async def admin_upload_file(file: UploadFile = FastAPIFile(...), current_user: U
 
 
 @router.get("/admin/courses/{course_id}/tree")
-async def admin_get_course_tree(course_id: int, current_user: User = Depends(_manage)):
+async def admin_get_course_tree(course_id: int, current_user: User = Depends(_access)):
+    """Read-only tree used to choose projects in the submissions workspace."""
     try:
         return await cl.get_course_tree(current_user, course_id)
     except CodelabError as e:

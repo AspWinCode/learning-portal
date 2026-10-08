@@ -27,28 +27,42 @@ def _run_db_job(job_name: str, fn: Callable) -> None:
         logger.exception("Background job failed: %s", job_name)
 
 
-def run_ai_studio_publication(publication_id: int) -> None:
+def run_smm_publication(publication_id: int) -> None:
     import asyncio
-    from app.services.ai_studio.publishing import process_publication
+    from app.services.smm_projects.publishing import process_publication
 
     def _job(db):
         asyncio.run(process_publication(db, publication_id))
 
-    _run_db_job(f"ai_studio_publication:{publication_id}", _job)
+    _run_db_job(f"smm_publication:{publication_id}", _job)
 
 
-def run_ai_studio_due_publications() -> None:
-    from app.services.ai_studio import publishing
+def run_smm_due_publications() -> None:
+    from app.services.smm_projects import publishing
 
     def _job(db):
         ids = publishing.due_publication_ids(db)
         if not ids:
             return
-        from app.background_tasks import task_ai_publication
+        from app.background_tasks import task_smm_publication
         for publication_id in ids:
-            task_ai_publication.send(publication_id)
+            task_smm_publication.send(publication_id)
 
-    _run_db_job("ai_studio_due_publications", _job)
+    _run_db_job("smm_due_publications", _job)
+
+
+def run_smm_plan_generation() -> None:
+    """Периодически подкладывает новые пункты в активные контент-планы с
+    заданной периодичностью (см. services.smm_projects.content_plan) и сразу
+    материализует их — это тот самый автопилот, который пользователь
+    включает настройкой периодичности плана, без клика на каждую публикацию."""
+    import asyncio
+    from app.services.smm_projects.content_plan import run_due_plans
+
+    def _job(db):
+        asyncio.run(run_due_plans(db))
+
+    _run_db_job("smm_plan_generation", _job)
 
 
 def run_tochka_auto_import() -> None:

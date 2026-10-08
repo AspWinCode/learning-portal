@@ -1,4 +1,4 @@
-"""Official social-channel adapters for AI Studio."""
+"""Channel adapters for SMM Projects publishing."""
 
 from .base import PublicationContext, Publisher, PublisherResult
 

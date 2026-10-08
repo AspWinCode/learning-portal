@@ -412,6 +412,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const canAccessAgile = hasPermission(user, 'agile.access');
   const canAccessAcademyAi = hasPermission(user, 'academy_ai.access');
   const canAccessAiStudio = hasPermission(user, 'ai_studio.access');
+  const canAccessSmmProjects = hasPermission(user, 'smm_projects.access');
   const canAccessLego = hasPermission(user, 'lego.access');
 
   const effectiveMenuItems = (() => {
@@ -516,6 +517,8 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
     // направлений (ai_studio.access, напр. КодАрена) — пункт меню один, доступ
     // к конкретным направлениям проверяется внутри страницы и на backend.
     if (canAccessAcademyAi || canAccessAiStudio) items.push({ text: 'AI Studio', icon: <AutoAwesome />, path: '/academy-ai' });
+    // SMM-проекты — отдельный модуль автопостинга, не связан с направлениями AI Studio.
+    if (canAccessSmmProjects) items.push({ text: 'SMM-проекты', icon: <AutoAwesome />, path: '/smm-projects' });
     // LEGO — изолированный модуль: пункт только при lego.access (backend всё равно проверяет права).
     if (canAccessLego) items.push({ text: 'LEGO — Ленинец', icon: <Group />, path: '/lego' });
     if (canAccessSettings) items.push({ text: 'Настройки', icon: <Settings />, path: '/admin/settings' });

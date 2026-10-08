@@ -19,19 +19,20 @@ def _env(name: str) -> Optional[str]:
 class VkPublisher(Publisher):
     channel = "vk"
 
-    def _config(self, workspace_code: str) -> Optional[Dict[str, str]]:
-        suffix = workspace_code.upper()
-        token = _env(f"AI_STUDIO_VK_TOKEN_{suffix}")
-        group_id = _env(f"AI_STUDIO_VK_GROUP_ID_{suffix}")
+    def _env_config(self, project_code: str) -> Optional[Dict[str, str]]:
+        suffix = project_code.upper()
+        token = _env(f"SMM_VK_TOKEN_{suffix}")
+        group_id = _env(f"SMM_VK_GROUP_ID_{suffix}")
         return {"token": token, "group_id": group_id} if token and group_id else None
 
-    def is_configured(self, workspace_code: str) -> bool:
-        return self._config(workspace_code) is not None
+    def is_configured(self, project_code: str, config: Optional[Dict[str, str]] = None) -> bool:
+        resolved = config or self._env_config(project_code)
+        return bool(resolved and resolved.get("token") and resolved.get("group_id"))
 
     async def publish(self, context: PublicationContext) -> PublisherResult:
-        config = self._config(context.workspace_code)
+        config = context.config or self._env_config(context.project_code)
         if config is None:
-            raise ValueError(f"VK не настроен для направления «{context.workspace_code}»")
+            raise ValueError(f"VK не настроен для проекта «{context.project_code}»")
         owner_id = f"-{config['group_id']}"
         async with httpx.AsyncClient(timeout=30.0) as client:
             attachments = None

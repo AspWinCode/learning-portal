@@ -1,8 +1,5 @@
-"""Файловое хранилище сгенерированных визуалов AI Studio.
-
-Тот же том, что и disk/academy (DISK_STORAGE_ROOT), но свой подкаталог
-``ai_studio/`` — ничего общего с Academy-хранилищем не делим, только путь
-к общему volume."""
+"""Файловое хранилище визуалов SMM-проектов (тот же volume, что disk/academy/
+ai_studio — DISK_STORAGE_ROOT, свой подкаталог smm_projects/)."""
 import base64
 import os
 import re
@@ -11,9 +8,9 @@ from typing import Optional
 from uuid import uuid4
 
 _DISK_ROOT = Path(os.getenv("DISK_STORAGE_ROOT", "/app/storage/disk")).resolve()
-AI_STUDIO_STORAGE_ROOT = (_DISK_ROOT / "ai_studio").resolve()
+SMM_STORAGE_ROOT = (_DISK_ROOT / "smm_projects").resolve()
 
-MAX_UPLOAD_BYTES = int(os.getenv("AI_STUDIO_MAX_UPLOAD_BYTES", str(50 * 1024 * 1024)))
+MAX_UPLOAD_BYTES = int(os.getenv("SMM_MAX_UPLOAD_BYTES", str(50 * 1024 * 1024)))
 
 
 def _safe_name(value: str, fallback: str = "file") -> str:
@@ -22,12 +19,12 @@ def _safe_name(value: str, fallback: str = "file") -> str:
 
 
 def _ensure_root() -> None:
-    AI_STUDIO_STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
+    SMM_STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
 
 
 def resolve_path(storage_key: str) -> Path:
-    path = (AI_STUDIO_STORAGE_ROOT / storage_key).resolve()
-    if AI_STUDIO_STORAGE_ROOT not in path.parents:
+    path = (SMM_STORAGE_ROOT / storage_key).resolve()
+    if SMM_STORAGE_ROOT not in path.parents:
         raise ValueError("Invalid storage key")
     return path
 

@@ -46,6 +46,7 @@ const StudentPaymentAuditPage = React.lazy(() => import('./pages/StudentPaymentA
 const OwnerUsefulLinksPage = React.lazy(() => import('./pages/OwnerUsefulLinksPage'));
 const TranscriptionPage = React.lazy(() => import('./pages/TranscriptionPage'));
 const AcademyAiPage = React.lazy(() => import('./pages/AcademyAiPage'));
+const SmmProjectsPage = React.lazy(() => import('./pages/SmmProjectsPage'));
 const LegoHome = React.lazy(() => import('./features/lego/LegoHome'));
 const LegoStudentsPage = React.lazy(() => import('./features/lego/LegoStudentsPage'));
 const LegoStudentCardPage = React.lazy(() => import('./features/lego/LegoStudentCardPage'));
@@ -918,6 +919,14 @@ function App() {
               element={
                 <PrivateRoute anyOfPermissions={['academy_ai.access', 'ai_studio.access']}>
                   <AcademyAiPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/smm-projects"
+              element={
+                <PrivateRoute requiredPermission="smm_projects.access">
+                  <SmmProjectsPage />
                 </PrivateRoute>
               }
             />

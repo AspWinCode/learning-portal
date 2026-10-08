@@ -4306,7 +4306,6 @@ class AiWorkspace(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     knowledge_items = relationship("AiKnowledgeItem", back_populates="workspace", cascade="all, delete-orphan")
-    templates = relationship("AiContentTemplate", back_populates="workspace", cascade="all, delete-orphan")
 
 
 class AiWorkspaceAccess(Base):
@@ -4343,119 +4342,178 @@ class AiKnowledgeItem(Base):
     workspace = relationship("AiWorkspace", back_populates="knowledge_items")
 
 
-class AiContentTemplate(Base):
-    """Сценарий генерации (пост/анонс/рассылка/...). input_schema_json описывает
-    поля формы на фронтенде — так owner может позже добавить шаблон без
-    правки backend-кода."""
+class AiDialog(Base):
+    """Диалог «спроси ИИ проанализировать направление» — консультационный
+    режим AI Studio (генерация постов для публикации сюда не входит, это
+    отдельный модуль SMM-проекты). Контекст диалога — бренд-профиль и база
+    знаний направления (AiWorkspace/AiKnowledgeItem), без знаний SMM-проектов."""
 
-    __tablename__ = "ai_content_templates"
+    __tablename__ = "ai_dialogs"
 
     id = Column(Integer, primary_key=True, index=True)
     workspace_id = Column(Integer, ForeignKey("ai_workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
-    code = Column(String(64), nullable=False, index=True)  # social_post/event_announcement/email/...
+    title = Column(String(256), nullable=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    messages = relationship("AiMessage", back_populates="dialog", cascade="all, delete-orphan", order_by="AiMessage.id")
+
+
+class AiMessage(Base):
+    __tablename__ = "ai_messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    dialog_id = Column(Integer, ForeignKey("ai_dialogs.id", ondelete="CASCADE"), nullable=False, index=True)
+    role = Column(String(16), nullable=False)  # user/assistant
+    content = Column(Text, nullable=False)
+    used_knowledge = Column(JSON, nullable=True)  # заголовки использованных knowledge items — для прозрачности источников
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    dialog = relationship("AiDialog", back_populates="messages")
+
+
+# ── SMM-проекты (автопостинг) ──────────────────────────────────────────────
+# Отдельный модуль от AI Studio: Project — независимая сущность (не привязана
+# к AiWorkspace/Академии/КодАрене). Owner создаёт проект, загружает контекст,
+# настраивает каналы публикации и контент-план с периодичностью — после чего
+# система генерирует и публикует материалы автоматически (approve плана =
+# явное действие человека, включающее автоматизацию; сама публикация дальше
+# идёт по расписанию без дополнительного клика — см. services/smm_projects).
+
+class SmmProject(Base):
+    __tablename__ = "smm_projects"
+
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String(64), nullable=False, unique=True, index=True)
+    name = Column(String(256), nullable=False)
+    description = Column(Text, nullable=True)
+    system_prompt = Column(Text, nullable=True)
+    tone_of_voice = Column(Text, nullable=True)
+    audience_description = Column(Text, nullable=True)
+    brand_context = Column(JSON, nullable=True)
+    default_language = Column(String(16), nullable=False, default="ru")
+    is_active = Column(Boolean, nullable=False, default=True, index=True)
+    created_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    knowledge_items = relationship("SmmKnowledgeItem", back_populates="project", cascade="all, delete-orphan")
+    templates = relationship("SmmContentTemplate", back_populates="project", cascade="all, delete-orphan")
+
+
+class SmmProjectAccess(Base):
+    __tablename__ = "smm_project_access"
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("smm_projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    role = Column(String(32), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class SmmKnowledgeItem(Base):
+    """Фактура проекта (о компании/продукте/мероприятиях), которую подмешивает
+    генератор контента. Изоляция между проектами — фильтр project_id везде."""
+
+    __tablename__ = "smm_knowledge_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("smm_projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    title = Column(String(256), nullable=False)
+    content = Column(Text, nullable=False)
+    source_type = Column(String(32), nullable=False, default="manual")
+    source_url = Column(String(1024), nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True, index=True)
+    created_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    project = relationship("SmmProject", back_populates="knowledge_items")
+
+
+class SmmContentTemplate(Base):
+    __tablename__ = "smm_content_templates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("smm_projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    code = Column(String(64), nullable=False, index=True)
     name = Column(String(256), nullable=False)
     description = Column(Text, nullable=True)
     prompt_template = Column(Text, nullable=False)
     input_schema_json = Column(JSON, nullable=True)
-    output_format = Column(String(16), nullable=False, default="json")  # json/text
+    output_format = Column(String(16), nullable=False, default="json")
     sort_order = Column(Integer, nullable=False, default=0)
     is_active = Column(Boolean, nullable=False, default=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
-    workspace = relationship("AiWorkspace", back_populates="templates")
+    project = relationship("SmmProject", back_populates="templates")
 
-    __table_args__ = (UniqueConstraint("workspace_id", "code", name="uq_ai_content_templates_workspace_code"),)
+    __table_args__ = (UniqueConstraint("project_id", "code", name="uq_smm_content_templates_project_code"),)
 
 
-class AiGeneratedContentStatus(str, enum.Enum):
+class SmmChannelConfig(Base):
+    """Настройка канала публикации проекта. secret_encrypted — JSON-блоб
+    (токен + идентификаторы назначения: group_id/chat_id/account_id/username),
+    зашифрован тем же Fernet-ключом, что и Passwords vault (app.services.
+    password_vault_crypto) — секреты не хранятся в открытом виде."""
+
+    __tablename__ = "smm_channel_configs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("smm_projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    channel = Column(String(32), nullable=False)
+    secret_encrypted = Column(Text, nullable=True)
+    is_enabled = Column(Boolean, nullable=False, default=True)
+    created_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    __table_args__ = (UniqueConstraint("project_id", "channel", name="uq_smm_channel_configs_project_channel"),)
+
+
+class SmmContentStatus(str, enum.Enum):
     DRAFT = "draft"
     APPROVED = "approved"
     ARCHIVED = "archived"
 
 
-class AiGeneratedContent(Base):
-    """Результат генерации. AI никогда не публикует сама — только черновик на
-    проверку человеком (тот же паттерн, что у AcademyContentDraft)."""
+class SmmContent(Base):
+    """Сгенерированный материал проекта. AI не публикует напрямую из generate()
+    — только через SmmPublication (вручную или из периодического плана)."""
 
-    __tablename__ = "ai_generated_content"
+    __tablename__ = "smm_content"
 
     id = Column(Integer, primary_key=True, index=True)
-    workspace_id = Column(Integer, ForeignKey("ai_workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
-    template_id = Column(Integer, ForeignKey("ai_content_templates.id", ondelete="SET NULL"), nullable=True, index=True)
-    parent_content_id = Column(Integer, ForeignKey("ai_generated_content.id", ondelete="SET NULL"), nullable=True, index=True)
+    project_id = Column(Integer, ForeignKey("smm_projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    template_id = Column(Integer, ForeignKey("smm_content_templates.id", ondelete="SET NULL"), nullable=True, index=True)
+    plan_item_id = Column(Integer, ForeignKey("smm_content_plan_items.id", ondelete="SET NULL"), nullable=True, index=True)
+    parent_content_id = Column(Integer, ForeignKey("smm_content.id", ondelete="SET NULL"), nullable=True, index=True)
     created_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     title = Column(String(256), nullable=True)
     input_json = Column(JSON, nullable=True)
     prompt_text = Column(Text, nullable=True)
     output_text = Column(Text, nullable=True)
-    output_json = Column(JSON, nullable=True)  # structured master/variant output
+    output_json = Column(JSON, nullable=True)
     provider = Column(String(64), nullable=True)
     model = Column(String(128), nullable=True)
-    status = Column(String(16), nullable=False, default=AiGeneratedContentStatus.DRAFT.value, index=True)
+    status = Column(String(16), nullable=False, default=SmmContentStatus.DRAFT.value, index=True)
     is_favorite = Column(Boolean, nullable=False, default=False)
     tags = Column(JSON, nullable=True)
-    channel = Column(String(32), nullable=True)  # vk/telegram/site/email/short/universal
-    scheduled_date = Column(DateTime(timezone=True), nullable=True)
-    group_key = Column(String(64), nullable=True, index=True)  # объединяет мультиканальные версии и пакеты по событию
-    selected_asset_id = Column(Integer, ForeignKey("ai_generated_assets.id", ondelete="SET NULL"), nullable=True)
+    channel = Column(String(32), nullable=True)
+    group_key = Column(String(64), nullable=True, index=True)
+    selected_asset_id = Column(Integer, ForeignKey("smm_content_assets.id", ondelete="SET NULL"), nullable=True)
+    auto_generated = Column(Boolean, nullable=False, default=False)  # создано планом автоматически, а не вручную
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
 
-class AiContentPlanItemStatus(str, enum.Enum):
-    IDEA = "idea"
-    DRAFT = "draft"
-    READY = "ready"
-    PUBLISHED = "published"
-    SKIPPED = "skipped"
-
-
-class AiContentPlan(Base):
-    """Контент-план направления на период. Сам план — просто контейнер;
-    факты/темы живут в AiContentPlanItem, каждый из которых может (но не
-    обязан) быть доращён до реального AiGeneratedContent."""
-
-    __tablename__ = "ai_content_plans"
+class SmmContentAsset(Base):
+    __tablename__ = "smm_content_assets"
 
     id = Column(Integer, primary_key=True, index=True)
-    workspace_id = Column(Integer, ForeignKey("ai_workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
-    name = Column(String(256), nullable=False)
-    date_from = Column(Date, nullable=True)
-    date_to = Column(Date, nullable=True)
-    created_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-    items = relationship(
-        "AiContentPlanItem", back_populates="plan", cascade="all, delete-orphan", order_by="AiContentPlanItem.publish_date"
-    )
-
-
-class AiContentPlanItem(Base):
-    __tablename__ = "ai_content_plan_items"
-
-    id = Column(Integer, primary_key=True, index=True)
-    plan_id = Column(Integer, ForeignKey("ai_content_plans.id", ondelete="CASCADE"), nullable=False, index=True)
-    publish_date = Column(Date, nullable=True, index=True)
-    channel = Column(String(32), nullable=True)
-    content_type = Column(String(64), nullable=True)  # произвольная метка цели/формата (не обязательно template.code)
-    title = Column(String(256), nullable=False)
-    brief = Column(Text, nullable=True)
-    generated_content_id = Column(Integer, ForeignKey("ai_generated_content.id", ondelete="SET NULL"), nullable=True)
-    status = Column(String(16), nullable=False, default=AiContentPlanItemStatus.IDEA.value, index=True)
-
-    plan = relationship("AiContentPlan", back_populates="items")
-
-
-class AiGeneratedAsset(Base):
-    """Сгенерированный визуал (п.27 ТЗ) — отдельная сущность от текстового
-    контента: одно текстовое AiGeneratedContent может иметь несколько
-    визуалов (разные промпты/перегенерации)."""
-
-    __tablename__ = "ai_generated_assets"
-
-    id = Column(Integer, primary_key=True, index=True)
-    content_id = Column(Integer, ForeignKey("ai_generated_content.id", ondelete="CASCADE"), nullable=False, index=True)
+    content_id = Column(Integer, ForeignKey("smm_content.id", ondelete="CASCADE"), nullable=False, index=True)
     asset_type = Column(String(32), nullable=False, default="image")
     prompt = Column(Text, nullable=True)
     provider = Column(String(64), nullable=True)
@@ -4468,26 +4526,60 @@ class AiGeneratedAsset(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
-class AiPublishLog(Base):
-    """Аудит публикаций (п.28 ТЗ). Запись создаётся ТОЛЬКО по явному
-    действию человека через POST /content/{id}/publish — платформа никогда
-    не публикует материалы сама по расписанию."""
+class SmmContentPlan(Base):
+    """Контент-план проекта. periodicity задаёт автоматическую каденцию
+    генерации (см. services.smm_projects.content_plan): {"unit": "day"|"week",
+    "times": int, "channels": [...], "auto_publish": bool}. Если periodicity
+    не задана — план работает только вручную (add_item/generate_items)."""
 
-    __tablename__ = "ai_publish_logs"
+    __tablename__ = "smm_content_plans"
 
     id = Column(Integer, primary_key=True, index=True)
-    content_id = Column(Integer, ForeignKey("ai_generated_content.id", ondelete="CASCADE"), nullable=False, index=True)
-    workspace_id = Column(Integer, ForeignKey("ai_workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
-    channel = Column(String(32), nullable=False)
-    status = Column(String(16), nullable=False, default="error")  # success/error
-    external_id = Column(String(256), nullable=True)
-    external_url = Column(String(1024), nullable=True)
-    error = Column(Text, nullable=True)
-    published_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    project_id = Column(Integer, ForeignKey("smm_projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(256), nullable=False)
+    date_from = Column(Date, nullable=True)
+    date_to = Column(Date, nullable=True)
+    periodicity = Column(JSON, nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True, index=True)
+    last_generated_at = Column(DateTime(timezone=True), nullable=True)
+    created_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    items = relationship(
+        "SmmContentPlanItem", back_populates="plan", cascade="all, delete-orphan", order_by="SmmContentPlanItem.scheduled_at"
+    )
 
 
-class AiPublicationStatus(str, enum.Enum):
+class SmmContentPlanItemStatus(str, enum.Enum):
+    PENDING = "pending"
+    GENERATING = "generating"
+    READY = "ready"
+    PUBLISHING = "publishing"
+    PUBLISHED = "published"
+    ERROR = "error"
+    SKIPPED = "skipped"
+    CANCELLED = "cancelled"
+
+
+class SmmContentPlanItem(Base):
+    __tablename__ = "smm_content_plan_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    plan_id = Column(Integer, ForeignKey("smm_content_plans.id", ondelete="CASCADE"), nullable=False, index=True)
+    scheduled_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    channel = Column(String(32), nullable=True)
+    content_type = Column(String(64), nullable=True)
+    title = Column(String(256), nullable=False)
+    brief = Column(Text, nullable=True)
+    generated_content_id = Column(Integer, ForeignKey("smm_content.id", ondelete="SET NULL"), nullable=True)
+    status = Column(String(16), nullable=False, default=SmmContentPlanItemStatus.PENDING.value, index=True)
+    last_error = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    plan = relationship("SmmContentPlan", back_populates="items")
+
+
+class SmmPublicationStatus(str, enum.Enum):
     APPROVED = "approved"
     SCHEDULED = "scheduled"
     PUBLISHING = "publishing"
@@ -4496,22 +4588,19 @@ class AiPublicationStatus(str, enum.Enum):
     CANCELLED = "cancelled"
 
 
-class AiPublication(Base):
-    """One immutable channel delivery attempt/plan.
+class SmmPublication(Base):
+    """Одна неизменяемая попытка/план доставки материала в канал — состояние
+    машины автопубликации (ручной или по плану)."""
 
-    AiPublishLog remains the backwards-compatible audit record; this entity is
-    the state machine used by immediate and scheduled delivery.
-    """
-
-    __tablename__ = "ai_publications"
+    __tablename__ = "smm_publications"
 
     id = Column(Integer, primary_key=True, index=True)
-    content_id = Column(Integer, ForeignKey("ai_generated_content.id", ondelete="CASCADE"), nullable=False, index=True)
-    workspace_id = Column(Integer, ForeignKey("ai_workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    content_id = Column(Integer, ForeignKey("smm_content.id", ondelete="CASCADE"), nullable=False, index=True)
+    project_id = Column(Integer, ForeignKey("smm_projects.id", ondelete="CASCADE"), nullable=False, index=True)
     channel = Column(String(32), nullable=False, index=True)
-    asset_id = Column(Integer, ForeignKey("ai_generated_assets.id", ondelete="SET NULL"), nullable=True)
+    asset_id = Column(Integer, ForeignKey("smm_content_assets.id", ondelete="SET NULL"), nullable=True)
     text_snapshot = Column(Text, nullable=False)
-    status = Column(String(16), nullable=False, default=AiPublicationStatus.APPROVED.value, index=True)
+    status = Column(String(16), nullable=False, default=SmmPublicationStatus.APPROVED.value, index=True)
     scheduled_at = Column(DateTime(timezone=True), nullable=True, index=True)
     approved_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     approved_at = Column(DateTime(timezone=True), nullable=True)
@@ -4525,6 +4614,24 @@ class AiPublication(Base):
     idempotency_key = Column(String(128), nullable=False, unique=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class SmmPublishLog(Base):
+    """Аудит публикаций — пишется при каждой попытке (успех/ошибка), в т.ч.
+    автоматических из плана."""
+
+    __tablename__ = "smm_publish_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    content_id = Column(Integer, ForeignKey("smm_content.id", ondelete="CASCADE"), nullable=False, index=True)
+    project_id = Column(Integer, ForeignKey("smm_projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    channel = Column(String(32), nullable=False)
+    status = Column(String(16), nullable=False, default="error")
+    external_id = Column(String(256), nullable=True)
+    external_url = Column(String(1024), nullable=True)
+    error = Column(Text, nullable=True)
+    published_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
 
 # ── Умные таблицы (Smart Tables) ──────────────────────────────────────

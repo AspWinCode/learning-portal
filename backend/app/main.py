@@ -66,6 +66,7 @@ from app.routers import (
     site_settings,
     settings,
     smart_tables,
+    smm_projects,
     sms,
     student_accounts,
     student_portal,
@@ -475,6 +476,7 @@ app.include_router(pixelforge.router, prefix="/api/v1/pixelforge", tags=["pixelf
 app.include_router(codelab.router, prefix="/api/v1/codelab", tags=["codelab"])
 app.include_router(academy_ai.router, prefix="/api/v1/academy-ai", tags=["academy-ai"])
 app.include_router(ai_studio.router, prefix="/api/v1/ai-studio", tags=["ai-studio"])
+app.include_router(smm_projects.router, prefix="/api/v1/smm-projects", tags=["smm-projects"])
 app.include_router(methodist_studio.router, prefix="/api/v1/methodist-studio", tags=["methodist-studio"])
 app.include_router(course_studio.router, prefix="/api/v1/course-studio", tags=["course-studio"])
 app.include_router(seo_pages.router, prefix="/api/v1/seo/pages", tags=["seo"])

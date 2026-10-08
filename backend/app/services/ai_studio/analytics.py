@@ -1,7 +1,6 @@
-"""Простая аналитика направления (п.28 ТЗ): расход токенов/вызовов из
-AiGatewayCallLog (уже общий для всей платформы, фильтруем по feature-префиксу
-"ai_studio:<code>:") + счётчики по контенту и базе знаний. Никаких секретов
-провайдеров здесь не читаем и не возвращаем — только агрегаты."""
+"""Простая аналитика направления: расход токенов/вызовов из AiGatewayCallLog
+(фильтр по feature-префиксу "ai_studio:<code>:") + счётчики диалогов и базы
+знаний. Генерация контента для публикаций сюда не входит — см. smm_projects."""
 from __future__ import annotations
 
 from typing import Any, Dict
@@ -9,7 +8,7 @@ from typing import Any, Dict
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.models import AiGatewayCallLog, AiGeneratedContent, AiKnowledgeItem, AiWorkspace
+from app.models import AiDialog, AiGatewayCallLog, AiKnowledgeItem, AiWorkspace
 
 
 def workspace_summary(db: Session, workspace: AiWorkspace) -> Dict[str, Any]:
@@ -36,13 +35,7 @@ def workspace_summary(db: Session, workspace: AiWorkspace) -> Dict[str, Any]:
         .scalar()
         or 0
     )
-
-    content_by_status = dict(
-        db.query(AiGeneratedContent.status, func.count(AiGeneratedContent.id))
-        .filter(AiGeneratedContent.workspace_id == workspace.id)
-        .group_by(AiGeneratedContent.status)
-        .all()
-    )
+    dialogs_count = db.query(func.count(AiDialog.id)).filter(AiDialog.workspace_id == workspace.id).scalar() or 0
     knowledge_count = (
         db.query(func.count(AiKnowledgeItem.id))
         .filter(AiKnowledgeItem.workspace_id == workspace.id, AiKnowledgeItem.is_active.is_(True))
@@ -55,6 +48,6 @@ def workspace_summary(db: Session, workspace: AiWorkspace) -> Dict[str, Any]:
         "ai_calls_error": int(error_calls),
         "ai_tokens_total": int(total_tokens),
         "ai_cost_usd_total": float(total_cost),
-        "content_by_status": {str(k): int(v) for k, v in content_by_status.items()},
+        "dialogs_total": int(dialogs_count),
         "knowledge_items_active": int(knowledge_count),
     }

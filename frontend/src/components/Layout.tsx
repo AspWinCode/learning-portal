@@ -492,6 +492,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       items.push({ text: 'Журнал', icon: <AccountBalanceWallet />, path: '/finance/overview' });
       if (canAccessAbonements) items.push({ text: 'Абонементы', icon: <LocalOffer />, path: '/abonements' });
       items.push({ text: 'Оплаты', icon: <ReceiptLong />, path: '/finance/payments' });
+      items.push({ text: 'Сверка оплат и занятий', icon: <ReceiptLong />, path: '/owner/student-payment-audit' });
       if (canAccessOwnerCalculations) items.push({ text: 'Расчёты', icon: <ReceiptLong />, path: '/calculations' });
       items.push({ text: 'Путешествия', icon: <FlightTakeoff />, path: '/travel' });
     }

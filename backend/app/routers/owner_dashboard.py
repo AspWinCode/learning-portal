@@ -13,11 +13,16 @@ from app.schemas.owner_dashboard import (
     AcademyMonthlyMetricsResponse,
     OwnerDashboardSummaryResponse,
 )
+from app.schemas.student_payment_audit import StudentPaymentAuditResponse
 from app.services.owner_dashboard import (
     build_academy_metrics,
     build_academy_monthly_metrics,
     build_owner_dashboard_summary,
     list_students_by_rating,
+)
+from app.services.student_payment_audit import (
+    build_danilova_daria_report,
+    build_student_payment_audit,
 )
 from app.utils.datetime import utcnow
 
@@ -91,3 +96,13 @@ async def get_academy_metrics_rating_students(
         return list_students_by_rating(db, field_name=field, label=label)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.get("/student-payment-audit", response_model=StudentPaymentAuditResponse)
+async def get_student_payment_audit(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("owner_dashboard.access")),
+):
+    result = build_student_payment_audit(db)
+    result.danilova_daria = build_danilova_daria_report(db)
+    return result

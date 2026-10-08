@@ -42,6 +42,7 @@ const CalculationsPage = React.lazy(() => import('./pages/CalculationsPage'));
 const B2BSchoolsWorkPage = React.lazy(() => import('./pages/B2BSchoolsWorkPage'));
 const B2BPlanForTodayPage = React.lazy(() => import('./pages/B2BPlanForTodayPage'));
 const OwnerFunnelsPage = React.lazy(() => import('./pages/OwnerFunnelsPage'));
+const StudentPaymentAuditPage = React.lazy(() => import('./pages/StudentPaymentAuditPage'));
 const OwnerUsefulLinksPage = React.lazy(() => import('./pages/OwnerUsefulLinksPage'));
 const TranscriptionPage = React.lazy(() => import('./pages/TranscriptionPage'));
 const AcademyAiPage = React.lazy(() => import('./pages/AcademyAiPage'));
@@ -704,6 +705,14 @@ function App() {
               element={
                 <PrivateRoute requiredPermission="owner_funnels.access">
                   <OwnerFunnelsPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/owner/student-payment-audit"
+              element={
+                <PrivateRoute requiredPermission="owner_dashboard.access">
+                  <StudentPaymentAuditPage />
                 </PrivateRoute>
               }
             />

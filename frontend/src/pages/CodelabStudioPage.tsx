@@ -462,7 +462,11 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
     try {
       const updated = await api.publishCourse(selected.id);
       onToast({ msg: 'Курс опубликован' });
-      setSelected(updated);
+      // Codelab коммитит черновик при публикации, узлы дерева (и их id)
+      // пересоздаются — обязательно перезагружаем дерево, иначе в UI
+      // остаются id старого черновика и следующее "+ Материал" падает
+      // с "Родительский элемент не найден в черновике этого курса".
+      await selectCourse(updated);
       await loadCourses();
     } catch (e: any) {
       onToast({ msg: errMsg(e), err: true });
@@ -474,7 +478,7 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
     try {
       const updated = await api.unpublishCourse(selected.id);
       onToast({ msg: 'Курс снят с публикации' });
-      setSelected(updated);
+      await selectCourse(updated);
       await loadCourses();
     } catch (e: any) {
       onToast({ msg: errMsg(e), err: true });

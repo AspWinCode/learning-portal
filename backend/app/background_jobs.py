@@ -27,6 +27,30 @@ def _run_db_job(job_name: str, fn: Callable) -> None:
         logger.exception("Background job failed: %s", job_name)
 
 
+def run_ai_studio_publication(publication_id: int) -> None:
+    import asyncio
+    from app.services.ai_studio.publishing import process_publication
+
+    def _job(db):
+        asyncio.run(process_publication(db, publication_id))
+
+    _run_db_job(f"ai_studio_publication:{publication_id}", _job)
+
+
+def run_ai_studio_due_publications() -> None:
+    from app.services.ai_studio import publishing
+
+    def _job(db):
+        ids = publishing.due_publication_ids(db)
+        if not ids:
+            return
+        from app.background_tasks import task_ai_publication
+        for publication_id in ids:
+            task_ai_publication.send(publication_id)
+
+    _run_db_job("ai_studio_due_publications", _job)
+
+
 def run_tochka_auto_import() -> None:
     try:
         from app.services.tochka_client import is_configured

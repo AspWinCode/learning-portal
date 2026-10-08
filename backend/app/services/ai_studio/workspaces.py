@@ -33,6 +33,13 @@ BRAND_CONTEXT_FIELDS: List[Dict[str, str]] = [
     {"key": "comms_with_kids", "label": "Коммуникация с детьми"},
     {"key": "comms_with_parents", "label": "Коммуникация с родителями"},
     {"key": "comms_with_partners", "label": "Коммуникация со школами/партнёрами"},
+    {"key": "visual_palette", "label": "Визуальная палитра"},
+    {"key": "visual_style", "label": "Визуальный стиль"},
+    {"key": "logo_usage", "label": "Использование логотипа"},
+    {"key": "allowed_imagery", "label": "Разрешённые образы"},
+    {"key": "forbidden_imagery", "label": "Запрещённые образы"},
+    {"key": "people_style", "label": "Стиль изображения людей"},
+    {"key": "image_composition", "label": "Композиция изображения"},
 ]
 
 

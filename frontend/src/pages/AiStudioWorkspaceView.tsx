@@ -149,7 +149,7 @@ const NewContentTab: React.FC<{ workspaceCode: string; canGenerate: boolean; onG
 
 // ─── Черновики: история генераций + быстрые AI-действия ──────────────────
 
-const VARIANT_CHANNELS = ['vk', 'telegram', 'site', 'email', 'short'];
+const VARIANT_CHANNELS = ['vk', 'telegram', 'instagram', 'max', 'site', 'email', 'short'];
 
 const DraftsTab: React.FC<{ workspaceCode: string; canGenerate: boolean; canManage: boolean; reloadKey: number }> = ({
   workspaceCode,
@@ -165,8 +165,16 @@ const DraftsTab: React.FC<{ workspaceCode: string; canGenerate: boolean; canMana
   const [publishChannels, setPublishChannels] = useState<aiStudio.ChannelStatus[]>([]);
   const [assetsByContent, setAssetsByContent] = useState<Record<number, aiStudio.GeneratedAsset[]>>({});
   const [publishResult, setPublishResult] = useState<Record<number, aiStudio.PublishLog>>({});
+  const [selectedChannels, setSelectedChannels] = useState<Record<number, string[]>>({});
+  const [publications, setPublications] = useState<Record<number, aiStudio.Publication[]>>({});
+  const [scheduleAt, setScheduleAt] = useState<Record<number, string>>({});
+  const [relatedByContent, setRelatedByContent] = useState<Record<number, aiStudio.GeneratedContent[]>>({});
 
-  const reload = () => aiStudio.listContent(workspaceCode).then((r) => setItems(r.items)).catch(() => setItems([]));
+  const reload = () => aiStudio.listContent(workspaceCode).then(async (r) => {
+    setItems(r.items);
+    const related = await Promise.all(r.items.map(async (item) => [item.id, await aiStudio.listRelatedContent(item.id)] as const));
+    setRelatedByContent(Object.fromEntries(related));
+  }).catch(() => setItems([]));
 
   useEffect(() => {
     reload();
@@ -189,13 +197,13 @@ const DraftsTab: React.FC<{ workspaceCode: string; canGenerate: boolean; canMana
   };
 
   const runPublish = async (id: number) => {
-    const channel = publishChannel[id];
-    if (!channel) return;
+    const channels = selectedChannels[id] || (publishChannel[id] ? [publishChannel[id]] : []);
+    if (!channels.length) return;
     setBusyId(id);
     setError(null);
     try {
-      const log = await aiStudio.publishContent(id, channel);
-      setPublishResult((r) => ({ ...r, [id]: log }));
+      const rows = await aiStudio.publishBundle(id, channels.map((channel) => ({ channel, content_id: id })), scheduleAt[id] ? new Date(scheduleAt[id]).toISOString() : null);
+      setPublications((r) => ({ ...r, [id]: rows }));
     } catch (e) {
       setError(extractApiError(e, 'Ошибка'));
     } finally {
@@ -232,7 +240,8 @@ const DraftsTab: React.FC<{ workspaceCode: string; canGenerate: boolean; canMana
   };
 
   const setStatus = async (id: number, status: 'approved' | 'archived') => {
-    await aiStudio.updateContent(id, { status });
+    if (status === 'approved') await aiStudio.approveContent(id);
+    else await aiStudio.updateContent(id, { status });
     await reload();
   };
 
@@ -258,6 +267,16 @@ const DraftsTab: React.FC<{ workspaceCode: string; canGenerate: boolean; canMana
           <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', mt: 1 }}>
             {item.output_text}
           </Typography>
+          {!!relatedByContent[item.id]?.length && (
+            <Stack direction="row" spacing={1} sx={{ mt: 1 }} flexWrap="wrap" useFlexGap>
+              {relatedByContent[item.id].filter((variant) => variant.channel).map((variant) => (
+                <Paper key={variant.id} variant="outlined" sx={{ p: 1, width: 260 }}>
+                  <Typography variant="caption" color="text.secondary">{variant.channel} preview</Typography>
+                  <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{variant.output_text}</Typography>
+                </Paper>
+              ))}
+            </Stack>
+          )}
           {canGenerate && (
             <Stack direction="row" spacing={1} sx={{ mt: 1 }} flexWrap="wrap" useFlexGap>
               {(Object.keys(aiStudio.TRANSFORM_ACTION_LABELS) as aiStudio.TransformAction[]).map((action) => (
@@ -275,7 +294,7 @@ const DraftsTab: React.FC<{ workspaceCode: string; canGenerate: boolean; canMana
           )}
           {canGenerate && (
             <Stack direction="row" spacing={1} sx={{ mt: 1 }} alignItems="center">
-              <FormControl size="small" sx={{ minWidth: 140 }}>
+              <FormControl size="small" sx={{ minWidth: 170 }}>
                 <InputLabel id={`variant-channel-${item.id}`}>Версия для канала</InputLabel>
                 <Select
                   labelId={`variant-channel-${item.id}`}
@@ -300,29 +319,36 @@ const DraftsTab: React.FC<{ workspaceCode: string; canGenerate: boolean; canMana
               <Button size="small" disabled={busyId === item.id} onClick={() => renderImage(item.id)}>
                 Создать визуал
               </Button>
-              <FormControl size="small" sx={{ minWidth: 140 }}>
-                <InputLabel id={`publish-channel-${item.id}`}>Опубликовать в</InputLabel>
-                <Select
-                  labelId={`publish-channel-${item.id}`}
-                  label="Опубликовать в"
-                  value={publishChannel[item.id] || ''}
-                  onChange={(e) => setPublishChannel((v) => ({ ...v, [item.id]: e.target.value }))}
-                >
-                  {publishChannels.map((ch) => (
-                    <MenuItem key={ch.channel} value={ch.channel} disabled={!ch.configured}>
-                      {ch.channel}
-                      {!ch.configured ? ' (не настроен)' : ''}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+              <Select
+                multiple
+                size="small"
+                displayEmpty
+                value={selectedChannels[item.id] || []}
+                onChange={(e) => setSelectedChannels((v) => ({ ...v, [item.id]: typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value }))}
+                renderValue={(selected) => (selected as string[]).length ? (selected as string[]).join(', ') : 'Каналы публикации'}
+                sx={{ minWidth: 210 }}
+              >
+                {publishChannels.map((ch) => (
+                  <MenuItem key={ch.channel} value={ch.channel} disabled={!ch.configured}>
+                    {ch.channel}{!ch.configured ? ' (не настроен)' : ''}
+                  </MenuItem>
+                ))}
+              </Select>
+              <TextField
+                size="small"
+                type="datetime-local"
+                label="Опубликовать в"
+                value={scheduleAt[item.id] || ''}
+                onChange={(e) => setScheduleAt((v) => ({ ...v, [item.id]: e.target.value }))}
+                InputLabelProps={{ shrink: true }}
+              />
               <Button
                 size="small"
                 color="secondary"
-                disabled={!publishChannel[item.id] || busyId === item.id}
+                disabled={!(selectedChannels[item.id] || []).length || item.status !== 'approved' || busyId === item.id}
                 onClick={() => runPublish(item.id)}
               >
-                Опубликовать
+                Опубликовать bundle
               </Button>
             </Stack>
           )}
@@ -335,8 +361,22 @@ const DraftsTab: React.FC<{ workspaceCode: string; canGenerate: boolean; canMana
                   Визуал сохранён (storage_key: {asset.storage_key})
                 </Typography>
               )}
+              {canManage && <Button size="small" onClick={() => aiStudio.selectContentAsset(item.id, asset.id).then(() => reload())}>
+                {asset.is_selected ? 'Выбранный visual' : 'Выбрать visual'}
+              </Button>}
             </Box>
           ))}
+          {publications[item.id]?.length > 0 && (
+            <Stack spacing={0.5} sx={{ mt: 1 }}>
+              <Typography variant="subtitle2">Результаты публикации</Typography>
+              {publications[item.id].map((publication) => (
+                <Alert key={publication.id} severity={publication.status === 'success' ? 'success' : publication.status === 'error' ? 'error' : 'info'}>
+                  {publication.channel}: {publication.status}{publication.external_url ? ` — ${publication.external_url}` : ''}
+                  {publication.status === 'error' && <Button size="small" onClick={() => aiStudio.retryPublication(publication.id).then((row) => setPublications((v) => ({ ...v, [item.id]: (v[item.id] || []).map((p) => p.id === row.id ? row : p) })))}>Повторить</Button>}
+                </Alert>
+              ))}
+            </Stack>
+          )}
           {publishResult[item.id] && (
             <Alert severity={publishResult[item.id].status === 'success' ? 'success' : 'error'} sx={{ mt: 1 }}>
               {publishResult[item.id].status === 'success'

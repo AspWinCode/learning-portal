@@ -24,6 +24,8 @@ from app.background_jobs import (
     run_student_class_autopromo,
     run_tochka_auto_import,
     run_transcription,
+    run_ai_studio_publication,
+    run_ai_studio_due_publications,
 )
 from app.services.email_broadcast_service import send_broadcast as _send_broadcast
 
@@ -126,6 +128,16 @@ def task_academy_ingest_expertise(source_id: int) -> None:
 @dramatiq.actor(queue_name="delivery", max_retries=0)
 def task_transcribe_audio(transcription_id: int) -> None:
     run_transcription(transcription_id)
+
+
+@dramatiq.actor(queue_name="delivery", max_retries=3, min_backoff=30, max_backoff=900)
+def task_ai_publication(publication_id: int) -> None:
+    run_ai_studio_publication(publication_id)
+
+
+@dramatiq.actor(queue_name="periodic")
+def task_ai_studio_due_publications() -> None:
+    run_ai_studio_due_publications()
 
 
 @dramatiq.actor(queue_name="delivery", max_retries=0)

@@ -23,6 +23,7 @@ from app.background_tasks import (
     task_scheduled_messages,
     task_student_class_autopromo,
     task_tochka_auto_import,
+    task_ai_studio_due_publications,
 )
 from app.logging_config import configure_logging
 
@@ -44,6 +45,7 @@ def main() -> None:
     scheduler.add_job(lambda: task_payment_reminder_notifications.send(), "cron", hour=9, minute=0, id="payment_reminder_notifications", max_instances=1)
     scheduler.add_job(lambda: task_parent_weekly_digests.send(), "interval", minutes=15, id="parent_weekly_digests", max_instances=1)
     scheduler.add_job(lambda: task_scheduled_messages.send(), "interval", minutes=1, id="scheduled_messages", max_instances=1)
+    scheduler.add_job(lambda: task_ai_studio_due_publications.send(), "interval", minutes=1, id="ai_studio_due_publications", max_instances=1)
     scheduler.add_job(lambda: task_communication_queue.send(), "interval", minutes=1, id="communication_queue", max_instances=1)
     scheduler.add_job(lambda: task_owner_workspace_max_sync.send(), "interval", minutes=30, id="owner_workspace_max_sync", max_instances=1)
     scheduler.add_job(lambda: task_owner_workspace_notification_email_dispatch.send(), "interval", minutes=1, id="owner_workspace_notification_email_dispatch", max_instances=1)

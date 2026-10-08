@@ -14,6 +14,7 @@ group_key объединяет мультиканальные версии од�
 from __future__ import annotations
 
 import uuid
+import json
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
@@ -43,7 +44,25 @@ CHANNEL_ADAPTATION_HINT: Dict[str, str] = {
     "site": "Адаптируй текст под новость/страницу сайта (более развёрнуто, нейтральный тон).",
     "email": "Адаптируй текст под письмо для рассылки (приветствие, структура, подпись).",
     "short": "Сократи и адаптируй под очень короткий формат (сторис/Shorts-подпись).",
+    "instagram": "Сделай caption для Instagram: сильный opening hook, короткие абзацы, CTA и уместные hashtags без новых фактов.",
+    "max": "Сделай компактный и легко читаемый пост для MAX с CTA и ссылкой при наличии.",
 }
+
+
+def _structured_output(raw: str) -> tuple[str, Optional[Dict[str, Any]]]:
+    """Keep output_text compatible while exposing structured fields to UI/assets."""
+    try:
+        value = json.loads(raw)
+    except (TypeError, ValueError):
+        return raw, None
+    if not isinstance(value, dict):
+        return raw, None
+    parts = [str(value.get(key) or "").strip() for key in ("hook", "body", "cta")]
+    hashtags = value.get("hashtags") or []
+    if hashtags:
+        parts.append(" ".join(str(tag) if str(tag).startswith("#") else f"#{tag}" for tag in hashtags))
+    final_text = "\n\n".join(part for part in parts if part)
+    return final_text or raw, value
 
 # Пакет материалов «из события» (п.12 ТЗ): одна генерация → несколько готовых
 # материалов, связанных одним group_key. Сами факты не выдумываются — это
@@ -114,7 +133,7 @@ async def generate(
     system_prompt = prompt_builder.build_system_prompt(workspace, template, knowledge_hits)
     user_prompt = prompt_builder.build_user_prompt(template, input_data)
 
-    output_text, provider, model = await _complete(
+    raw_output, provider, model = await _complete(
         feature=f"ai_studio:{workspace.code}:{template.code}",
         system_prompt=system_prompt,
         user_prompt=user_prompt,
@@ -122,6 +141,7 @@ async def generate(
         json_mode=(template.output_format == "json"),
         fallback=f"[AI Tunnel недоступен] Черновик по шаблону «{template.name}»: {query_text}",
     )
+    output_text, output_json = _structured_output(raw_output)
 
     title = str(input_data.get("title") or input_data.get("topic") or template.name)[:256]
     content = AiGeneratedContent(
@@ -132,6 +152,7 @@ async def generate(
         input_json=input_data,
         prompt_text=user_prompt,
         output_text=output_text,
+        output_json=output_json,
         provider=provider,
         model=model,
         status=AiGeneratedContentStatus.DRAFT.value,
@@ -205,13 +226,14 @@ async def _rewrite(
     system_prompt = prompt_builder.build_system_prompt(workspace, template, knowledge_hits)
     user_prompt = f"{instruction}\n\nИсходный текст:\n{source.output_text}"
 
-    output_text, provider, model = await _complete(
+    raw_output, provider, model = await _complete(
         feature=feature,
         system_prompt=system_prompt,
         user_prompt=user_prompt,
         user=user,
         fallback=source.output_text or "",
     )
+    output_text, output_json = _structured_output(raw_output)
 
     content = AiGeneratedContent(
         workspace_id=workspace.id,
@@ -222,6 +244,7 @@ async def _rewrite(
         input_json=input_meta,
         prompt_text=user_prompt,
         output_text=output_text,
+        output_json=output_json,
         provider=provider,
         model=model,
         status=AiGeneratedContentStatus.DRAFT.value,

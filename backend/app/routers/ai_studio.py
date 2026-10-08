@@ -20,7 +20,9 @@ from app.database import get_db
 from app.models import (
     AiContentPlan,
     AiContentPlanItem,
+    AiGeneratedAsset,
     AiGeneratedContent,
+    AiPublication,
     AiKnowledgeItem,
     AiWorkspace,
     User,
@@ -47,9 +49,12 @@ from app.schemas.ai_studio import (
     KnowledgeItemOut,
     KnowledgeItemUpdate,
     PublishLogOut,
+    PublishBundleRequest,
+    PublicationOut,
     PublishRequest,
     ReindexResult,
     RenderImageRequest,
+    SelectAssetRequest,
     TemplateOut,
     TransformRequest,
     VariantRequest,
@@ -271,13 +276,29 @@ def update_content(
     access_svc.ensure_workspace_access(db, current_user, workspace)
 
     updates = payload.model_dump(exclude_unset=True)
-    if "status" in updates and updates["status"] not in ("draft", "approved", "archived"):
+    if "status" in updates and updates["status"] not in ("draft", "review", "approved", "archived"):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Недопустимый статус")
     for field, value in updates.items():
         setattr(content, field, value)
     db.commit()
     db.refresh(content)
     log_action(db, current_user.id, "update", "ai_generated_content", content_id, updates)
+    return content
+
+
+@router.post("/content/{content_id}/approve", response_model=ContentOut)
+def approve_content(
+    content_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("ai_studio.manage_content")),
+):
+    content = _get_content_or_404(db, content_id)
+    workspace = db.query(AiWorkspace).filter(AiWorkspace.id == content.workspace_id).first()
+    access_svc.ensure_workspace_access(db, current_user, workspace)
+    content.status = "approved"
+    db.commit()
+    db.refresh(content)
+    log_action(db, current_user.id, "approve", "ai_generated_content", content_id, {"workspace": workspace.code})
     return content
 
 
@@ -522,6 +543,24 @@ def list_content_assets(
     return assets_svc.list_assets(db, content)
 
 
+@router.post("/content/{content_id}/select-asset", response_model=AssetOut)
+def select_content_asset(
+    content_id: int,
+    payload: SelectAssetRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("ai_studio.manage_content")),
+):
+    content = _get_content_or_404(db, content_id)
+    workspace = db.query(AiWorkspace).filter(AiWorkspace.id == content.workspace_id).first()
+    access_svc.ensure_workspace_access(db, current_user, workspace)
+    try:
+        asset = assets_svc.select_asset(db, content, payload.asset_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    log_action(db, current_user.id, "update", "ai_generated_asset", asset.id, {"content_id": content_id, "selected": True})
+    return asset
+
+
 # ─── Publishing (Phase 3) — только по явному клику человека ───────────────
 
 @router.get("/workspaces/{code}/publish-channels", response_model=List[ChannelStatusOut])
@@ -553,6 +592,83 @@ async def publish_content(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     log_action(db, current_user.id, "create", "ai_publish_log", log.id, {"content_id": content_id, "channel": payload.channel})
     return log
+
+
+@router.post("/content/{content_id}/publish-bundle", response_model=List[PublicationOut], status_code=status.HTTP_202_ACCEPTED)
+def publish_bundle(
+    content_id: int,
+    payload: PublishBundleRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("ai_studio.publish")),
+):
+    anchor = _get_content_or_404(db, content_id)
+    workspace = db.query(AiWorkspace).filter(AiWorkspace.id == anchor.workspace_id).first()
+    access_svc.ensure_workspace_access(db, current_user, workspace)
+    items = [item.model_dump() for item in payload.publications]
+    if not items:
+        items = [{"channel": anchor.channel, "content_id": anchor.id, "asset_id": anchor.selected_asset_id}]
+    try:
+        rows = publishing_svc.create_publications(db, current_user, workspace=workspace, items=items, publish_at=payload.publish_at)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    from app.background_tasks import task_ai_publication
+    for row in rows:
+        if row.status == "approved":
+            task_ai_publication.send(row.id)
+    log_action(db, current_user.id, "publish", "ai_publication_bundle", anchor.id, {"count": len(rows), "scheduled": bool(payload.publish_at)})
+    return rows
+
+
+@router.get("/content/{content_id}/publications", response_model=List[PublicationOut])
+def list_publications(
+    content_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("ai_studio.access")),
+):
+    content = _get_content_or_404(db, content_id)
+    workspace = db.query(AiWorkspace).filter(AiWorkspace.id == content.workspace_id).first()
+    access_svc.ensure_workspace_access(db, current_user, workspace)
+    return publishing_svc.list_publications(db, content_id)
+
+
+@router.post("/publications/{publication_id}/retry", response_model=PublicationOut, status_code=status.HTTP_202_ACCEPTED)
+def retry_publication(
+    publication_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("ai_studio.publish")),
+):
+    row = db.query(AiPublication).filter(AiPublication.id == publication_id).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Публикация не найдена")
+    workspace = db.query(AiWorkspace).filter(AiWorkspace.id == row.workspace_id).first()
+    access_svc.ensure_workspace_access(db, current_user, workspace)
+    if row.status != "error":
+        raise HTTPException(status_code=409, detail="Повторить можно только публикацию с ошибкой")
+    row.status = "approved"
+    row.last_error = None
+    db.commit()
+    from app.background_tasks import task_ai_publication
+    task_ai_publication.send(row.id)
+    return row
+
+
+@router.post("/publications/{publication_id}/cancel", response_model=PublicationOut)
+def cancel_publication(
+    publication_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("ai_studio.publish")),
+):
+    row = db.query(AiPublication).filter(AiPublication.id == publication_id).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Публикация не найдена")
+    workspace = db.query(AiWorkspace).filter(AiWorkspace.id == row.workspace_id).first()
+    access_svc.ensure_workspace_access(db, current_user, workspace)
+    if row.status not in ("approved", "scheduled", "error"):
+        raise HTTPException(status_code=409, detail="Публикацию уже нельзя отменить")
+    row.status = "cancelled"
+    db.commit()
+    log_action(db, current_user.id, "cancel_schedule", "ai_publication", row.id, {"content_id": row.content_id})
+    return row
 
 
 @router.get("/content/{content_id}/publish-logs", response_model=List[PublishLogOut])

@@ -86,6 +86,7 @@ export interface GeneratedContent {
   title: string | null;
   input_json: Record<string, unknown> | null;
   output_text: string | null;
+  output_json: Record<string, unknown> | null;
   provider: string | null;
   model: string | null;
   status: 'draft' | 'approved' | 'archived';
@@ -94,6 +95,7 @@ export interface GeneratedContent {
   channel: string | null;
   scheduled_date: string | null;
   group_key: string | null;
+  selected_asset_id: number | null;
   created_at: string | null;
   updated_at: string | null;
 }
@@ -287,11 +289,15 @@ export interface GeneratedAsset {
   model: string | null;
   url: string | null;
   storage_key: string | null;
+  is_selected: boolean;
   created_at: string | null;
 }
 
 export const renderContentImage = (contentId: number, prompt?: string): Promise<GeneratedAsset> =>
   api.post(`${BASE}/content/${contentId}/render-image`, { prompt }).then((r) => r.data);
+
+export const selectContentAsset = (contentId: number, assetId: number): Promise<GeneratedAsset> =>
+  api.post(`${BASE}/content/${contentId}/select-asset`, { asset_id: assetId }).then((r) => r.data);
 
 export const listContentAssets = (contentId: number): Promise<GeneratedAsset[]> =>
   api.get(`${BASE}/content/${contentId}/assets`).then((r) => r.data);
@@ -320,6 +326,42 @@ export const listPublishChannels = (code: string): Promise<ChannelStatus[]> =>
 
 export const publishContent = (contentId: number, channel: string): Promise<PublishLog> =>
   api.post(`${BASE}/content/${contentId}/publish`, { channel }).then((r) => r.data);
+
+export interface Publication {
+  id: number;
+  content_id: number;
+  workspace_id: number;
+  channel: string;
+  asset_id: number | null;
+  text_snapshot: string;
+  status: string;
+  scheduled_at: string | null;
+  approved_by_id: number | null;
+  approved_at: string | null;
+  started_at: string | null;
+  published_at: string | null;
+  external_id: string | null;
+  external_url: string | null;
+  attempt_count: number;
+  last_error: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export const approveContent = (contentId: number): Promise<GeneratedContent> =>
+  api.post(`${BASE}/content/${contentId}/approve`).then((r) => r.data);
+
+export const publishBundle = (
+  contentId: number,
+  publications: Array<{ channel: string; content_id: number; asset_id?: number | null }>,
+  publish_at?: string | null,
+): Promise<Publication[]> => api.post(`${BASE}/content/${contentId}/publish-bundle`, { publications, publish_at }).then((r) => r.data);
+
+export const listPublications = (contentId: number): Promise<Publication[]> =>
+  api.get(`${BASE}/content/${contentId}/publications`).then((r) => r.data);
+
+export const retryPublication = (publicationId: number): Promise<Publication> =>
+  api.post(`${BASE}/publications/${publicationId}/retry`).then((r) => r.data);
 
 export const listContentPublishLogs = (contentId: number): Promise<PublishLog[]> =>
   api.get(`${BASE}/content/${contentId}/publish-logs`).then((r) => r.data);

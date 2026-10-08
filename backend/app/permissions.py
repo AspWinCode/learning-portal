@@ -726,7 +726,19 @@ PERMISSION_CATALOG: List[Dict[str, str]] = [
         "key": "ai_studio.publish",
         "module": "ai_studio",
         "label": "AI Studio: публикация в соцсети",
-        "description": "Публикация материала в VK/Telegram — только явное действие человека, без автопубликации по расписанию.",
+        "description": "Публикация материала в подключённые социальные каналы — только после одобрения человека.",
+    },
+    {
+        "key": "ai_studio.academy.access",
+        "module": "ai_studio",
+        "label": "AI Studio: доступ к Академии",
+        "description": "Доступ к workspace Академии программирования.",
+    },
+    {
+        "key": "ai_studio.kodarena.access",
+        "module": "ai_studio",
+        "label": "AI Studio: доступ к КодАрена",
+        "description": "Доступ к workspace КодАрена.",
     },
     {
         "key": "lego.access",

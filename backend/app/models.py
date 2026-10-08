@@ -4389,6 +4389,7 @@ class AiGeneratedContent(Base):
     input_json = Column(JSON, nullable=True)
     prompt_text = Column(Text, nullable=True)
     output_text = Column(Text, nullable=True)
+    output_json = Column(JSON, nullable=True)  # structured master/variant output
     provider = Column(String(64), nullable=True)
     model = Column(String(128), nullable=True)
     status = Column(String(16), nullable=False, default=AiGeneratedContentStatus.DRAFT.value, index=True)
@@ -4397,6 +4398,7 @@ class AiGeneratedContent(Base):
     channel = Column(String(32), nullable=True)  # vk/telegram/site/email/short/universal
     scheduled_date = Column(DateTime(timezone=True), nullable=True)
     group_key = Column(String(64), nullable=True, index=True)  # объединяет мультиканальные версии и пакеты по событию
+    selected_asset_id = Column(Integer, ForeignKey("ai_generated_assets.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -4461,6 +4463,7 @@ class AiGeneratedAsset(Base):
     url = Column(String(1024), nullable=True)
     storage_key = Column(String(512), nullable=True)
     meta = Column(JSON, nullable=True)
+    is_selected = Column(Boolean, nullable=False, default=False, index=True)
     created_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -4482,6 +4485,46 @@ class AiPublishLog(Base):
     error = Column(Text, nullable=True)
     published_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
+class AiPublicationStatus(str, enum.Enum):
+    APPROVED = "approved"
+    SCHEDULED = "scheduled"
+    PUBLISHING = "publishing"
+    SUCCESS = "success"
+    ERROR = "error"
+    CANCELLED = "cancelled"
+
+
+class AiPublication(Base):
+    """One immutable channel delivery attempt/plan.
+
+    AiPublishLog remains the backwards-compatible audit record; this entity is
+    the state machine used by immediate and scheduled delivery.
+    """
+
+    __tablename__ = "ai_publications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    content_id = Column(Integer, ForeignKey("ai_generated_content.id", ondelete="CASCADE"), nullable=False, index=True)
+    workspace_id = Column(Integer, ForeignKey("ai_workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    channel = Column(String(32), nullable=False, index=True)
+    asset_id = Column(Integer, ForeignKey("ai_generated_assets.id", ondelete="SET NULL"), nullable=True)
+    text_snapshot = Column(Text, nullable=False)
+    status = Column(String(16), nullable=False, default=AiPublicationStatus.APPROVED.value, index=True)
+    scheduled_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    approved_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    approved_at = Column(DateTime(timezone=True), nullable=True)
+    requested_at = Column(DateTime(timezone=True), server_default=func.now())
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    published_at = Column(DateTime(timezone=True), nullable=True)
+    external_id = Column(String(256), nullable=True)
+    external_url = Column(String(1024), nullable=True)
+    attempt_count = Column(Integer, nullable=False, default=0)
+    last_error = Column(Text, nullable=True)
+    idempotency_key = Column(String(128), nullable=False, unique=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
 
 # ── Умные таблицы (Smart Tables) ──────────────────────────────────────

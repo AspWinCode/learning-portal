@@ -27,6 +27,13 @@ GLOBAL_SAFETY_RULES = (
     "запрещённых формулировках."
 )
 
+CHANNEL_RULES = {
+    "vk": "Подробный текст с нормальными абзацами, CTA и ссылкой при наличии.",
+    "telegram": "Короткие абзацы, компактная структура, допустимы эмодзи-маркеры.",
+    "instagram": "Сильный opening hook, caption для visual, уместные hashtags и CTA.",
+    "max": "Компактный readable пост, CTA и ссылка при наличии.",
+}
+
 
 def _brand_block(workspace: AiWorkspace) -> str:
     parts: List[str] = []
@@ -65,6 +72,7 @@ def build_system_prompt(
         blocks.append(knowledge_block)
     if template and template.description:
         blocks.append(f"=== СЦЕНАРИЙ: {template.name} ===\n{template.description.strip()}")
+    blocks.append("=== ПРАВИЛА КАНАЛОВ ===\n" + "\n".join(f"{channel}: {rule}" for channel, rule in CHANNEL_RULES.items()))
     blocks.append(
         "Структурированные сценарии (output_format=json) — верни ТОЛЬКО JSON без markdown-обёртки, "
         "строго с ключами, которые требует задание."

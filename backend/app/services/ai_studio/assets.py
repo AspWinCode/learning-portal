@@ -17,6 +17,33 @@ from app.services import ai_gateway
 from app.services.ai_studio import storage
 
 
+async def build_image_prompt(*, workspace: AiWorkspace, content: AiGeneratedContent, user) -> str:
+    """Build a visual-only prompt from facts and workspace brand profile."""
+    structured = content.output_json if isinstance(content.output_json, dict) else {}
+    if structured.get("image_prompt"):
+        return str(structured["image_prompt"]).strip()
+    brand = workspace.brand_context if isinstance(workspace.brand_context, dict) else {}
+    brand_lines = ", ".join(f"{key}: {value}" for key, value in brand.items() if value)
+    prompt = (
+        "Создай визуальный промпт для social media изображения. Не рисуй текст, даты, цены или логотипы. "
+        "Опирайся только на факты материала. Укажи композицию, настроение и тип визуала.\n"
+        f"Бренд: {brand_lines or 'не задан'}\n"
+        f"Тип материала: {content.title or 'social post'}\n"
+        f"Факты: {content.output_text or content.title or ''}"
+    )
+    if not ai_gateway.is_configured("text"):
+        return prompt
+    result = await ai_gateway.complete_text(
+        feature=f"ai_studio:{workspace.code}:image_prompt",
+        system="Верни только короткий промпт для генератора изображений без пояснений.",
+        prompt=prompt,
+        user_id=getattr(user, "id", None),
+        temperature=0.4,
+        max_tokens=500,
+    )
+    return (result.text or prompt).strip() if result.ok else prompt
+
+
 async def render_image(
     db: Session,
     user,
@@ -25,7 +52,7 @@ async def render_image(
     content: AiGeneratedContent,
     prompt: Optional[str] = None,
 ) -> AiGeneratedAsset:
-    final_prompt = (prompt or content.output_text or content.title or "").strip()
+    final_prompt = (prompt or await build_image_prompt(workspace=workspace, content=content, user=user)).strip()
     if not final_prompt:
         raise ValueError("Нет промпта для генерации изображения")
     if not ai_gateway.is_configured("image"):
@@ -72,3 +99,15 @@ def list_assets(db: Session, content: AiGeneratedContent):
         .order_by(AiGeneratedAsset.created_at.desc())
         .all()
     )
+
+
+def select_asset(db: Session, content: AiGeneratedContent, asset_id: int) -> AiGeneratedAsset:
+    asset = db.query(AiGeneratedAsset).filter(AiGeneratedAsset.id == asset_id, AiGeneratedAsset.content_id == content.id).first()
+    if asset is None:
+        raise ValueError("Visual не принадлежит материалу")
+    db.query(AiGeneratedAsset).filter(AiGeneratedAsset.content_id == content.id).update({"is_selected": False}, synchronize_session=False)
+    asset.is_selected = True
+    content.selected_asset_id = asset.id
+    db.commit()
+    db.refresh(asset)
+    return asset

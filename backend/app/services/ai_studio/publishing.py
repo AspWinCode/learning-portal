@@ -1,134 +1,64 @@
-"""Публикация материала в соцсети (п.34/scheduling-publication из ТЗ).
-
-Важно — это НЕ автопубликация по расписанию. publish() вызывается только из
-POST /content/{id}/publish, который требует права ai_studio.publish и явного
-клика человека в UI. scheduled_date на контенте/пункте плана — это просто
-дата, когда человек ПЛАНИРУЕТ опубликовать вручную; ничто в этом модуле не
-публикует что-либо само по таймеру/крону.
-
-Каждый канал настраивается через env-переменные на направление (без них —
-понятная ошибка "канал не настроен", как и в ai_gateway.is_configured):
-  VK:       AI_STUDIO_VK_TOKEN_<CODE>, AI_STUDIO_VK_GROUP_ID_<CODE>
-  Telegram: AI_STUDIO_TELEGRAM_BOT_TOKEN_<CODE>, AI_STUDIO_TELEGRAM_CHAT_ID_<CODE>
-<CODE> — workspace.code в верхнем регистре (например KODARENA).
-"""
+"""Shared approval-aware publication pipeline for all AI Studio workspaces."""
 from __future__ import annotations
 
-import os
-from typing import Dict, Optional
+from datetime import datetime, timezone
+from typing import Dict, Iterable, Optional
 
-import httpx
 from sqlalchemy.orm import Session
 
-from app.models import AiGeneratedContent, AiPublishLog, AiWorkspace
+from app.models import AiGeneratedAsset, AiGeneratedContent, AiPublication, AiPublicationStatus, AiPublishLog, AiWorkspace
+from app.services.ai_studio import storage
+from app.services.ai_studio.publishers.base import PublicationContext, PublisherResult
+from app.services.ai_studio.publishers.instagram import InstagramPublisher
+from app.services.ai_studio.publishers.max import MaxPublisher
+from app.services.ai_studio.publishers.telegram import TelegramPublisher
+from app.services.ai_studio.publishers.vk import VkPublisher
 
-SUPPORTED_CHANNELS = ("vk", "telegram")
-
-VK_API_VERSION = "5.199"
-
-
-def _env(name: str) -> Optional[str]:
-    value = os.getenv(name)
-    return value.strip() if value and value.strip() else None
-
-
-def _vk_config(workspace_code: str) -> Optional[Dict[str, str]]:
-    suffix = workspace_code.upper()
-    token = _env(f"AI_STUDIO_VK_TOKEN_{suffix}")
-    group_id = _env(f"AI_STUDIO_VK_GROUP_ID_{suffix}")
-    if not token or not group_id:
-        return None
-    return {"token": token, "group_id": group_id}
-
-
-def _telegram_config(workspace_code: str) -> Optional[Dict[str, str]]:
-    suffix = workspace_code.upper()
-    bot_token = _env(f"AI_STUDIO_TELEGRAM_BOT_TOKEN_{suffix}")
-    chat_id = _env(f"AI_STUDIO_TELEGRAM_CHAT_ID_{suffix}")
-    if not bot_token or not chat_id:
-        return None
-    return {"bot_token": bot_token, "chat_id": chat_id}
+SUPPORTED_CHANNELS = ("vk", "telegram", "instagram", "max")
+PUBLISHERS = {"vk": VkPublisher(), "telegram": TelegramPublisher(), "instagram": InstagramPublisher(), "max": MaxPublisher()}
 
 
 def is_channel_configured(channel: str, workspace_code: str) -> bool:
-    if channel == "vk":
-        return _vk_config(workspace_code) is not None
-    if channel == "telegram":
-        return _telegram_config(workspace_code) is not None
-    return False
+    publisher = PUBLISHERS.get(channel)
+    return bool(publisher and publisher.is_configured(workspace_code))
 
 
-async def _publish_vk(workspace_code: str, text: str) -> Dict[str, Optional[str]]:
-    config = _vk_config(workspace_code)
-    if config is None:
-        raise ValueError(f"VK не настроен для направления «{workspace_code}» (нет токена/group_id)")
-    owner_id = f"-{config['group_id']}"
-    async with httpx.AsyncClient(timeout=20.0) as client:
-        resp = await client.post(
-            "https://api.vk.com/method/wall.post",
-            data={
-                "owner_id": owner_id,
-                "message": text,
-                "access_token": config["token"],
-                "v": VK_API_VERSION,
-            },
-        )
-        data = resp.json()
-    if "error" in data:
-        raise ValueError(str(data["error"].get("error_msg") or data["error"]))
-    post_id = (data.get("response") or {}).get("post_id")
-    if post_id is None:
-        raise ValueError("VK API не вернул post_id")
-    return {"external_id": str(post_id), "external_url": f"https://vk.com/wall{owner_id}_{post_id}"}
+def _context(workspace: AiWorkspace, publication: AiPublication, asset: Optional[AiGeneratedAsset]) -> PublicationContext:
+    return PublicationContext(
+        workspace_code=workspace.code, channel=publication.channel, text=publication.text_snapshot,
+        asset_bytes=storage.read_bytes(asset.storage_key) if asset and asset.storage_key else None,
+        asset_filename=f"ai_studio_{publication.content_id}.png", asset_url=asset.url if asset else None,
+    )
 
 
-async def _publish_telegram(workspace_code: str, text: str) -> Dict[str, Optional[str]]:
-    config = _telegram_config(workspace_code)
-    if config is None:
-        raise ValueError(f"Telegram не настроен для направления «{workspace_code}» (нет bot token/chat_id)")
-    async with httpx.AsyncClient(timeout=20.0) as client:
-        resp = await client.post(
-            f"https://api.telegram.org/bot{config['bot_token']}/sendMessage",
-            json={"chat_id": config["chat_id"], "text": text},
-        )
-        data = resp.json()
-    if not data.get("ok"):
-        raise ValueError(str(data.get("description") or "Telegram API вернул ошибку"))
-    message_id = (data.get("result") or {}).get("message_id")
-    return {"external_id": str(message_id) if message_id is not None else None, "external_url": None}
+async def _deliver(workspace: AiWorkspace, publication: AiPublication, asset: Optional[AiGeneratedAsset]) -> PublisherResult:
+    publisher = PUBLISHERS.get(publication.channel)
+    if publisher is None:
+        raise ValueError(f"Канал «{publication.channel}» не поддерживается")
+    if not publisher.is_configured(workspace.code):
+        raise ValueError(f"Канал «{publication.channel}» не настроен для направления «{workspace.code}»")
+    return await publisher.publish(_context(workspace, publication, asset))
 
 
-async def publish(
-    db: Session,
-    user,
-    *,
-    workspace: AiWorkspace,
-    content: AiGeneratedContent,
-    channel: str,
-) -> AiPublishLog:
+async def publish(db: Session, user, *, workspace: AiWorkspace, content: AiGeneratedContent, channel: str) -> AiPublishLog:
+    """Backwards-compatible immediate publishing with server-side approval check."""
     if channel not in SUPPORTED_CHANNELS:
         raise ValueError(f"Канал «{channel}» не поддерживается. Доступны: {', '.join(SUPPORTED_CHANNELS)}")
-    if not is_channel_configured(channel, workspace.code):
-        raise ValueError(f"Канал «{channel}» не настроен для направления «{workspace.code}»")
-
+    if content.status and content.status != "approved":
+        raise ValueError("Материал можно публиковать только после одобрения")
     text = (content.output_text or "").strip()
     if not text:
         raise ValueError("У материала нет текста для публикации")
-
-    log = AiPublishLog(
-        content_id=content.id,
-        workspace_id=workspace.id,
-        channel=channel,
-        published_by_id=getattr(user, "id", None),
-    )
+    publication = AiPublication(content_id=content.id, workspace_id=workspace.id, channel=channel, asset_id=getattr(content, "selected_asset_id", None), text_snapshot=text, status=AiPublicationStatus.PUBLISHING.value, approved_by_id=getattr(user, "id", None), approved_at=datetime.now(timezone.utc), idempotency_key=f"legacy:{content.id}:{channel}", attempt_count=1)
+    asset = None
+    if publication.asset_id:
+        asset = db.query(AiGeneratedAsset).filter(AiGeneratedAsset.id == publication.asset_id, AiGeneratedAsset.content_id == content.id).first()
+    log = AiPublishLog(content_id=content.id, workspace_id=workspace.id, channel=channel, published_by_id=getattr(user, "id", None))
     try:
-        result = await (_publish_vk(workspace.code, text) if channel == "vk" else _publish_telegram(workspace.code, text))
-        log.status = "success"
-        log.external_id = result.get("external_id")
-        log.external_url = result.get("external_url")
-    except Exception as exc:  # noqa: BLE001 — внешний API, любая ошибка должна попасть в аудит, не в 500
-        log.status = "error"
-        log.error = str(exc)
+        result = await _deliver(workspace, publication, asset)
+        log.status, log.external_id, log.external_url = "success", result.external_id, result.external_url
+    except Exception as exc:  # noqa: BLE001
+        log.status, log.error = "error", str(exc)
     db.add(log)
     db.commit()
     db.refresh(log)
@@ -137,10 +67,74 @@ async def publish(
     return log
 
 
+def create_publications(db: Session, user, *, workspace: AiWorkspace, items: Iterable[Dict[str, Optional[int]]], publish_at: Optional[datetime]) -> list[AiPublication]:
+    now = datetime.now(timezone.utc)
+    publications = []
+    for item in items:
+        channel, content_id = str(item.get("channel") or "").lower(), int(item.get("content_id") or 0)
+        if channel not in SUPPORTED_CHANNELS:
+            raise ValueError(f"Канал «{channel}» не поддерживается")
+        content = db.query(AiGeneratedContent).filter(AiGeneratedContent.id == content_id, AiGeneratedContent.workspace_id == workspace.id).first()
+        if content is None:
+            raise ValueError("Материал не найден в выбранном направлении")
+        if content.status != "approved":
+            raise ValueError(f"Материал #{content.id} можно публиковать только после одобрения")
+        text = (content.output_text or "").strip()
+        if not text:
+            raise ValueError(f"Материал #{content.id} не содержит текста")
+        asset_id = item.get("asset_id") or getattr(content, "selected_asset_id", None)
+        if asset_id and not db.query(AiGeneratedAsset).filter(AiGeneratedAsset.id == asset_id, AiGeneratedAsset.content_id == content.id).first():
+            raise ValueError("Выбранный visual не принадлежит материалу")
+        scheduled = publish_at if publish_at and publish_at > now else None
+        state = AiPublicationStatus.SCHEDULED.value if scheduled else AiPublicationStatus.APPROVED.value
+        idem = f"publication:{content.id}:{channel}:{scheduled.isoformat() if scheduled else 'now'}"
+        existing = db.query(AiPublication).filter(AiPublication.idempotency_key == idem).first()
+        if existing:
+            publications.append(existing)
+            continue
+        row = AiPublication(content_id=content.id, workspace_id=workspace.id, channel=channel, asset_id=asset_id, text_snapshot=text, status=state, scheduled_at=scheduled, approved_by_id=getattr(user, "id", None), approved_at=now, idempotency_key=idem)
+        db.add(row)
+        publications.append(row)
+    db.commit()
+    for row in publications:
+        db.refresh(row)
+    return publications
+
+
+async def process_publication(db: Session, publication_id: int) -> Optional[AiPublication]:
+    row = db.query(AiPublication).filter(AiPublication.id == publication_id).first()
+    if row is None or row.status in (AiPublicationStatus.SUCCESS.value, AiPublicationStatus.CANCELLED.value):
+        return row
+    now = datetime.now(timezone.utc)
+    if row.status == AiPublicationStatus.SCHEDULED.value and row.scheduled_at and row.scheduled_at > now:
+        return row
+    claimed = db.query(AiPublication).filter(AiPublication.id == publication_id, AiPublication.status.in_([AiPublicationStatus.APPROVED.value, AiPublicationStatus.SCHEDULED.value])).update({"status": AiPublicationStatus.PUBLISHING.value, "started_at": now, "attempt_count": AiPublication.attempt_count + 1}, synchronize_session=False)
+    db.commit()
+    if claimed != 1:
+        return db.query(AiPublication).filter(AiPublication.id == publication_id).first()
+    row = db.query(AiPublication).filter(AiPublication.id == publication_id).first()
+    workspace = db.query(AiWorkspace).filter(AiWorkspace.id == row.workspace_id).first()
+    asset = db.query(AiGeneratedAsset).filter(AiGeneratedAsset.id == row.asset_id, AiGeneratedAsset.content_id == row.content_id).first() if row.asset_id else None
+    try:
+        result = await _deliver(workspace, row, asset)
+        row.status, row.external_id, row.external_url, row.published_at, row.last_error = AiPublicationStatus.SUCCESS.value, result.external_id, result.external_url, datetime.now(timezone.utc), None
+        log_status, error = "success", None
+    except Exception as exc:  # noqa: BLE001
+        row.status, row.last_error = AiPublicationStatus.ERROR.value, str(exc)
+        log_status, error = "error", str(exc)
+    db.add(AiPublishLog(content_id=row.content_id, workspace_id=row.workspace_id, channel=row.channel, status=log_status, external_id=row.external_id, external_url=row.external_url, error=error, published_by_id=row.approved_by_id))
+    db.commit()
+    return row
+
+
+def due_publication_ids(db: Session, limit: int = 100) -> list[int]:
+    now = datetime.now(timezone.utc)
+    return [row[0] for row in db.query(AiPublication.id).filter(AiPublication.status == AiPublicationStatus.SCHEDULED.value, AiPublication.scheduled_at <= now).order_by(AiPublication.scheduled_at).limit(limit).all()]
+
+
+def list_publications(db: Session, content_id: int):
+    return db.query(AiPublication).filter(AiPublication.content_id == content_id).order_by(AiPublication.created_at.desc()).all()
+
+
 def list_publish_logs(db: Session, content: AiGeneratedContent):
-    return (
-        db.query(AiPublishLog)
-        .filter(AiPublishLog.content_id == content.id)
-        .order_by(AiPublishLog.created_at.desc())
-        .all()
-    )
+    return db.query(AiPublishLog).filter(AiPublishLog.content_id == content.id).order_by(AiPublishLog.created_at.desc()).all()

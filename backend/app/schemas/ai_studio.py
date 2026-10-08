@@ -124,6 +124,7 @@ class ContentOut(BaseModel):
     title: Optional[str]
     input_json: Optional[Dict[str, Any]]
     output_text: Optional[str]
+    output_json: Optional[Dict[str, Any]]
     provider: Optional[str]
     model: Optional[str]
     status: str
@@ -132,6 +133,7 @@ class ContentOut(BaseModel):
     channel: Optional[str]
     scheduled_date: Optional[datetime]
     group_key: Optional[str]
+    selected_asset_id: Optional[int]
     created_at: Optional[datetime]
     updated_at: Optional[datetime]
 
@@ -151,6 +153,7 @@ class ContentUpdate(BaseModel):
     scheduled_date: Optional[datetime] = None
     title: Optional[str] = None
     output_text: Optional[str] = None
+    selected_asset_id: Optional[int] = None
 
 
 class TransformRequest(BaseModel):
@@ -254,6 +257,10 @@ class RenderImageRequest(BaseModel):
     prompt: Optional[str] = None
 
 
+class SelectAssetRequest(BaseModel):
+    asset_id: int
+
+
 class AssetOut(BaseModel):
     id: int
     content_id: int
@@ -263,6 +270,7 @@ class AssetOut(BaseModel):
     model: Optional[str]
     url: Optional[str]
     storage_key: Optional[str]
+    is_selected: bool
     created_at: Optional[datetime]
 
     model_config = _ORM
@@ -272,6 +280,40 @@ class AssetOut(BaseModel):
 
 class PublishRequest(BaseModel):
     channel: str = Field(..., min_length=1, max_length=32)
+
+
+class PublicationItem(BaseModel):
+    channel: str = Field(..., min_length=1, max_length=32)
+    content_id: int
+    asset_id: Optional[int] = None
+
+
+class PublishBundleRequest(BaseModel):
+    publications: List[PublicationItem] = Field(default_factory=list)
+    publish_at: Optional[datetime] = None
+
+
+class PublicationOut(BaseModel):
+    id: int
+    content_id: int
+    workspace_id: int
+    channel: str
+    asset_id: Optional[int]
+    text_snapshot: str
+    status: str
+    scheduled_at: Optional[datetime]
+    approved_by_id: Optional[int]
+    approved_at: Optional[datetime]
+    started_at: Optional[datetime]
+    published_at: Optional[datetime]
+    external_id: Optional[str]
+    external_url: Optional[str]
+    attempt_count: int
+    last_error: Optional[str]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+
+    model_config = _ORM
 
 
 class PublishLogOut(BaseModel):

@@ -156,6 +156,7 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
   const [transactions, setTransactions] = useState<StudentAccountTransaction[]>([]);
   const [transactionsAccountId, setTransactionsAccountId] = useState<number | null>(null);
   const [transactionsLoading, setTransactionsLoading] = useState(false);
+  const [transactionsShowAll, setTransactionsShowAll] = useState(false);
   const [timelineEvents, setTimelineEvents] = useState<StudentTimelineEvent[]>([]);
   const [timelineType, setTimelineType] = useState<string>('all');
   const [timelineDateFrom, setTimelineDateFrom] = useState('');
@@ -620,9 +621,25 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
       return;
     }
     setTransactionsAccountId(acc.id);
+    setTransactionsShowAll(false);
     setTransactionsLoading(true);
     try {
-      const list = await studentAccountsApi.getTransactions(acc.id);
+      const list = await studentAccountsApi.getTransactions(acc.id, false);
+      setTransactions(list);
+    } catch {
+      setTransactions([]);
+    } finally {
+      setTransactionsLoading(false);
+    }
+  };
+
+  const toggleTransactionsShowAll = async () => {
+    if (transactionsAccountId === null) return;
+    const nextShowAll = !transactionsShowAll;
+    setTransactionsShowAll(nextShowAll);
+    setTransactionsLoading(true);
+    try {
+      const list = await studentAccountsApi.getTransactions(transactionsAccountId, nextShowAll);
       setTransactions(list);
     } catch {
       setTransactions([]);
@@ -640,7 +657,7 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
         setAccounts(updated);
       }
       if (transactionsAccountId === accountId) {
-        const txs = await studentAccountsApi.getTransactions(accountId);
+        const txs = await studentAccountsApi.getTransactions(accountId, transactionsShowAll);
         setTransactions(txs);
       }
     } catch (err: any) {
@@ -683,7 +700,7 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
       const updated = await studentsApi.getAccounts(studentId);
       setAccounts(updated);
       if (transactionsAccountId === paymentDialog.account.id) {
-        const txs = await studentAccountsApi.getTransactions(paymentDialog.account.id);
+        const txs = await studentAccountsApi.getTransactions(paymentDialog.account.id, transactionsShowAll);
         setTransactions(txs);
       }
       setPaymentDialog(null);
@@ -730,7 +747,7 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
       setStudent(freshStudent);
       setStudentCard(Array.isArray(freshCards) && freshCards.length > 0 ? freshCards[0] : studentCard);
       if (transactionsAccountId === discountDialog.account.id) {
-        const txs = await studentAccountsApi.getTransactions(discountDialog.account.id);
+        const txs = await studentAccountsApi.getTransactions(discountDialog.account.id, transactionsShowAll);
         setTransactions(txs);
       }
       setDiscountDialog(null);
@@ -1206,6 +1223,21 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
                           </Stack>
                           {transactionsAccountId === acc.id && (
                             <Box sx={{ mt: 1.5 }}>
+                              <FormControlLabel
+                                sx={{ mb: 0.5 }}
+                                control={
+                                  <Checkbox
+                                    size="small"
+                                    checked={transactionsShowAll}
+                                    onChange={toggleTransactionsShowAll}
+                                  />
+                                }
+                                label={
+                                  <Typography variant="caption" color="text.secondary">
+                                    Показать всю историю (включая до 1 сентября)
+                                  </Typography>
+                                }
+                              />
                               {transactionsLoading ? (
                                 <Box sx={{ display: 'flex', justifyContent: 'center', py: 1 }}><CircularProgress size={20} /></Box>
                               ) : transactions.length === 0 ? (

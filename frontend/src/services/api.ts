@@ -622,8 +622,10 @@ export const studentAccountsApi = {
     const response = await api.post(`/api/student-accounts/${accountId}/deduct`, data);
     return response.data;
   },
-  getTransactions: async (accountId: number): Promise<StudentAccountTransaction[]> => {
-    const response = await api.get(`/api/student-accounts/${accountId}/transactions`);
+  getTransactions: async (accountId: number, showAll: boolean = false): Promise<StudentAccountTransaction[]> => {
+    const response = await api.get(`/api/student-accounts/${accountId}/transactions`, {
+      params: showAll ? { show_all: true } : undefined,
+    });
     return response.data;
   },
   deleteTransaction: async (accountId: number, transactionId: number): Promise<StudentAccount> => {

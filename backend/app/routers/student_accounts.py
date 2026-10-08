@@ -3,7 +3,7 @@
 from datetime import date, datetime, timezone
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session, selectinload
 
 from app import auth
@@ -39,6 +39,12 @@ from app.schemas.students import (
 from app.services.student_activity import log_student_activity
 
 router = APIRouter()
+
+# Начало текущего учебного периода отображения: история операций (платежи/списания)
+# до этой даты по умолчанию скрыта в карточке ученика — летние/старые записи путали
+# при сверке текущих оплат и посещений. Данные в БД не удаляются, только фильтр показа
+# (см. GET /{account_id}/transactions, параметр show_all=true показывает всё).
+HISTORY_VISIBLE_FROM = date(2026, 9, 1)
 
 
 def _normalize_discount(discount_type: str, discount_value: float) -> tuple[str, float, DiscountType]:
@@ -387,12 +393,18 @@ async def deduct_lesson(
 @router.get("/{account_id}/transactions", response_model=List[StudentAccountTransactionResponse])
 async def list_account_transactions(
     account_id: int,
+    show_all: bool = Query(False, description="Показать всю историю, включая записи до HISTORY_VISIBLE_FROM"),
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
     auth.ensure_permission(current_user, "student_accounts.access")
     account = _get_account_and_check(db, account_id, current_user)
-    return account.transactions
+    if show_all:
+        return account.transactions
+    return [
+        t for t in account.transactions
+        if t.created_at is not None and t.created_at.date() >= HISTORY_VISIBLE_FROM
+    ]
 
 
 @router.delete("/{account_id}/transactions/{transaction_id}", response_model=StudentAccountResponse)

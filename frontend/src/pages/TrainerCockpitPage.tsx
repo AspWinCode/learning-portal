@@ -24,6 +24,7 @@ import {
 } from '@mui/material';
 import Layout from '../components/Layout';
 import { trainerCockpitApi, trainerLessonsApi } from '../services/api';
+import { codelabStudioApi } from '../services/codelabApi';
 import type { TrainerLessonSlot } from '../types';
 import { extractApiError } from '../utils/extractApiError';
 import { useTrainerCockpitStore } from '../stores/trainerCockpitStore';
@@ -54,6 +55,15 @@ const TrainerCockpitPage: React.FC = () => {
     queryKey: ['trainer-cockpit', 'summary', today],
     queryFn: () => trainerCockpitApi.getSummary(today),
   });
+
+  const pendingReviewsQuery = useQuery({
+    queryKey: ['trainer-cockpit', 'pending-reviews'],
+    queryFn: () => codelabStudioApi.listPendingReviews(),
+    staleTime: 60_000,
+  });
+  const pendingReviews = pendingReviewsQuery.data || [];
+  const pendingCount = pendingReviews.filter((r) => r.status === 'submitted').length;
+  const revisionCount = pendingReviews.filter((r) => r.status === 'needs_revision').length;
 
   const todayLessonsQuery = useQuery({
     queryKey: ['trainer-cockpit', 'today-lessons', today],
@@ -266,6 +276,33 @@ const TrainerCockpitPage: React.FC = () => {
                         <Typography color="text.secondary">Черновиков нет.</Typography>
                       )}
                     </Box>
+                  </Stack>
+                )}
+              </CardContent>
+            </Card>
+          </Grid>
+
+          <Grid item xs={12} lg={5}>
+            <Card sx={{ height: '100%' }}>
+              <CardContent>
+                <Typography variant="h6" sx={{ mb: 2 }}>
+                  Работы учеников
+                </Typography>
+                {pendingReviewsQuery.isLoading ? (
+                  <LinearProgress />
+                ) : (
+                  <Stack spacing={1.5}>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <Typography color="text.secondary">На проверке:</Typography>
+                      <Typography sx={{ fontWeight: 700 }}>{pendingCount}</Typography>
+                    </Stack>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <Typography color="text.secondary">На доработке у ученика:</Typography>
+                      <Typography sx={{ fontWeight: 700 }}>{revisionCount}</Typography>
+                    </Stack>
+                    <Button variant="outlined" onClick={() => navigate('/trainer/submissions')} sx={{ alignSelf: 'flex-start' }}>
+                      Перейти к проверке
+                    </Button>
                   </Stack>
                 )}
               </CardContent>

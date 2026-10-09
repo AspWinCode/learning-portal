@@ -143,6 +143,15 @@ export interface CodelabProjectSubmissionReview extends CodelabProjectSubmission
   item_title: string;
 }
 
+// Элемент сквозного списка /trainer/pending-reviews — та же сдача, с контекстом
+// курса/проекта, чтобы можно было сразу открыть review-эндпоинты (которым нужны
+// course_id + item_id). Ничего не хранится локально — чистая агрегация.
+export interface CodelabPendingReview extends CodelabProjectSubmissionReview {
+  course_id: number;
+  course_title: string;
+  item_id: number;
+}
+
 // Тесты — видимые ученику (примеры) и скрытые (только для проверки).
 export interface CodelabProblemTest {
   input: string;
@@ -277,6 +286,8 @@ export const codelabStudioApi = {
     api.put(`${B}/courses/${courseId}/projects/${itemId}/submissions/${submissionId}/review`, { decision, score, comment }).then((r) => r.data),
   remindProjectSubmission: (courseId: number, itemId: number, submissionId: number): Promise<void> =>
     api.post(`${B}/courses/${courseId}/projects/${itemId}/submissions/${submissionId}/remind`).then(() => undefined),
+  listPendingReviews: (): Promise<CodelabPendingReview[]> =>
+    api.get(`${B}/trainer/pending-reviews`).then((r) => r.data),
   // Bearer-токен идёт заголовком (см. api/client.ts), не cookie — обычная
   // <a href="..."> ссылка на этот эндпоинт получила бы 401, поэтому качаем
   // через axios (responseType: 'blob') и триггерим сохранение сами.

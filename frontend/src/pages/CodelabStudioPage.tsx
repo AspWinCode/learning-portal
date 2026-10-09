@@ -111,7 +111,7 @@ function TreeItemRow({ item, depth, onAddChild, onEdit, onArchive, onDelete }: {
   );
 }
 
-type Toast = { msg: string; err?: boolean } | null;
+export type Toast = { msg: string; err?: boolean } | null;
 type TabKey = 'courses' | 'submissions' | 'analytics' | 'status';
 
 /** Студия методиста (создание/публикация курсов), кабинет преподавателя
@@ -845,7 +845,7 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
   );
 }
 
-const PROJECT_STATUS_LABEL: Record<string, string> = {
+export const PROJECT_STATUS_LABEL: Record<string, string> = {
   draft: 'Черновик', submitted: 'Ждёт проверки', needs_revision: 'На доработке', accepted: 'Принято',
 };
 
@@ -855,7 +855,7 @@ function collectProjectItems(nodes: CodelabLearningItem[]): CodelabLearningItem[
 
 // ────────────────────── Проекты (файлы ученика, ручная проверка) ──────────────
 
-function ProjectReviewDialog({ courseId, itemId, submissionId, onClose, onSaved, onToast }: {
+export function ProjectReviewDialog({ courseId, itemId, submissionId, onClose, onSaved, onToast }: {
   courseId: number; itemId: number; submissionId: number;
   onClose: () => void; onSaved: () => void; onToast: (t: Toast) => void;
 }) {

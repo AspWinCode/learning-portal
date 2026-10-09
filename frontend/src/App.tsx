@@ -58,6 +58,7 @@ const LegoDebtsPage = React.lazy(() => import('./features/lego/LegoDebtsPage'));
 const LegoEventsPage = React.lazy(() => import('./features/lego/LegoEventsPage'));
 const ParentDashboardPage = React.lazy(() => import('./pages/ParentDashboardPage'));
 const TrainerCockpitPage = React.lazy(() => import('./pages/TrainerCockpitPage'));
+const TrainerSubmissionsPage = React.lazy(() => import('./pages/TrainerSubmissionsPage'));
 const TrainerGradesPage = React.lazy(() => import('./pages/TrainerGradesPage'));
 const SalesLeadsPage = React.lazy(() => import('./pages/SalesLeadsPage'));
 const QuestionnaireAttemptsPage = React.lazy(() => import('./pages/QuestionnaireAttemptsPage'));
@@ -336,6 +337,16 @@ function App() {
                 <PrivateRoute requiredPermission="trainer_cockpit.access">
                   <SectionBoundary>
                     <TrainerCockpitPage />
+                  </SectionBoundary>
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/trainer/submissions"
+              element={
+                <PrivateRoute requiredPermission="submissions.access">
+                  <SectionBoundary>
+                    <TrainerSubmissionsPage />
                   </SectionBoundary>
                 </PrivateRoute>
               }

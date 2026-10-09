@@ -528,6 +528,93 @@ async def admin_remind_project_submission(
     return result
 
 
+# ─── Работы учеников: сквозной список по всем курсам (Trainer Cockpit) ─────
+
+def _tree_roots(tree) -> list:
+    if isinstance(tree, list):
+        return tree
+    if isinstance(tree, dict):
+        if isinstance(tree.get("items"), list):
+            return tree["items"]
+        if isinstance(tree.get("tree"), list):
+            return tree["tree"]
+        if isinstance(tree.get("children"), list):
+            return [tree]
+    return []
+
+
+def _walk_project_items(items: list) -> list:
+    """Рекурсивно обходит дерево курса (module/submodule/topic/subtopic) и
+    собирает элементы type="project" (проекты с ручной проверкой)."""
+    found: list = []
+    for item in items or []:
+        if not isinstance(item, dict):
+            continue
+        if item.get("type") == "project":
+            found.append(item)
+        children = item.get("children")
+        if children:
+            found.extend(_walk_project_items(children))
+    return found
+
+
+@router.get("/trainer/pending-reviews")
+async def list_pending_project_reviews(
+    current_user: User = Depends(_access),
+    db: Session = Depends(get_db),
+):
+    """Сквозной список сдач проектов (ручная проверка) по всем опубликованным
+    курсам Codelab — для карточки «Работы учеников» в Trainer Cockpit и
+    страницы /trainer/submissions. Ничего не хранит локально, это агрегация
+    уже существующих эндпоинтов (list_courses/get_course_tree/
+    list_project_submissions), которые сами достаточны для истории попыток и
+    проверки (CodelabProjectSubmission.history/reviewed_at/review_comment) —
+    поэтому отдельная локальная модель для этого не заводится.
+
+    RBAC-002: тренер видит сдачи только учеников своих активных групп (как и
+    в admin_list_submissions/admin_list_project_submissions); methodist/admin
+    видят все. Статус "draft" (ученик ещё не начинал) не возвращается."""
+    is_trainer = auth.resolve_effective_role(current_user) == UserRole.TRAINER
+    my_student_ids = _trainer_student_ids(db, current_user.id) if is_trainer else set()
+
+    try:
+        courses = await cl.list_courses(current_user)
+    except CodelabError as e:
+        _raise(e)
+        return
+
+    results: list[dict] = []
+    for course in courses:
+        if course.get("status") != "published" or course.get("is_archived"):
+            continue
+        try:
+            tree = await cl.get_course_tree(current_user, course["id"])
+        except CodelabError:
+            continue
+        for item in _walk_project_items(_tree_roots(tree)):
+            try:
+                rows = await cl.list_project_submissions(current_user, course["id"], item.get("id"))
+            except CodelabError:
+                continue
+            for row in rows:
+                if row.get("status") == "draft":
+                    continue
+                if is_trainer:
+                    sid = _student_id_from_external_ref(row.get("student_external_ref", ""))
+                    if sid not in my_student_ids:
+                        continue
+                results.append({
+                    **row,
+                    "course_id": course.get("id"),
+                    "course_title": course.get("title"),
+                    "item_id": item.get("id"),
+                    "item_title": item.get("title"),
+                })
+
+    results.sort(key=lambda r: r.get("submitted_at") or "", reverse=True)
+    return results
+
+
 @router.get("/admin/courses/{course_id}/analytics")
 async def admin_get_course_analytics(course_id: int, current_user: User = Depends(_access)):
     """ANA-001/002/005: агрегаты курса и рейтинг задач по сложности."""

@@ -1438,7 +1438,7 @@ class LeadActivity(Base):
     id = Column(Integer, primary_key=True, index=True)
     lead_id = Column(Integer, ForeignKey("leads.id"), nullable=False, index=True)
     type = Column(String(64), nullable=False, index=True)  # lead_created, call, message, task_created, task_done, invoice_created, invoice_paid, status_changed, comment_added
-    title = Column(String(255), nullable=False)
+    title = Column(Text, nullable=False)
     description = Column(Text, nullable=True)
     channel = Column(String(64), nullable=True)  # sms, telegram, max, email, phone
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)

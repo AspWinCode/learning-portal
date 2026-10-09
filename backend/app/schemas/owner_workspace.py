@@ -148,7 +148,7 @@ class OwnerUsefulLinkFolderResponse(BaseModel):
 
 class OwnerUsefulLinkBase(BaseModel):
     folder_id: Optional[int] = None
-    title: str
+    title: str = Field(..., min_length=1, max_length=4096)
     description: Optional[str] = None
     url: str
     tags: List[str] = Field(default_factory=list)
@@ -187,7 +187,7 @@ class OwnerUsefulLinkCreate(OwnerUsefulLinkBase):
 
 class OwnerUsefulLinkUpdate(BaseModel):
     folder_id: Optional[int] = None
-    title: Optional[str] = None
+    title: Optional[str] = Field(default=None, min_length=1, max_length=4096)
     description: Optional[str] = None
     url: Optional[str] = None
     tags: Optional[List[str]] = None

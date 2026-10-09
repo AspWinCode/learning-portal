@@ -22,6 +22,7 @@ from app.schemas.codelab import (
 from app.services import codelab_client as cl
 from app.services.codelab_client import CodelabError
 from app.services.codelab_sso import CODELAB_EXTERNAL_BASE, fetch_student_codelab_progress
+from app.services.communication_hub import CommunicationService
 from app.services.kodex_sso import SSO_KODEX_SHARED_SECRET
 
 logger = logging.getLogger(__name__)
@@ -425,6 +426,38 @@ async def _get_and_authorize_project_row(
     return target
 
 
+def _notify_student_revision_requested(db: Session, target: dict, comment: str, trainer: User) -> None:
+    """Уведомляет ученика (точнее, родителя — так уже устроен
+    CommunicationService._resolve_recipient для recipient_type="student"), что
+    его работу отправили на доработку. `comment` — именно только что введённый
+    комментарий тренера (payload.comment), а не старое значение из `target`,
+    которое снято до применения текущего решения. Best-effort: ошибка отправки
+    не должна ронять сам review-эндпоинт, поэтому не поднимаем исключение наружу."""
+    student_id = _student_id_from_external_ref(target.get("student_external_ref", ""))
+    if not student_id:
+        return
+    try:
+        CommunicationService.send(
+            db,
+            channel="email",
+            recipient_type="student",
+            recipient_id=student_id,
+            created_by=trainer.id,
+            dedupe_key=f"codelab-revision:{target.get('id')}:{target.get('attempt_number')}",
+            context={
+                "subject": f"Доработка: {target.get('item_title') or 'проект'}",
+                "message": (
+                    f"Здравствуйте!\n\n"
+                    f"Работа «{target.get('item_title') or ''}» отправлена на доработку "
+                    f"тренером {trainer.full_name or trainer.email}.\n\n"
+                    f"Комментарий: {comment}"
+                ),
+            },
+        )
+    except Exception:
+        logger.exception("codelab: revision notification failed for submission %s", target.get("id"))
+
+
 @router.get("/admin/courses/{course_id}/projects/{item_id}/submissions")
 async def admin_list_project_submissions(
     course_id: int, item_id: int, current_user: User = Depends(_access), db: Session = Depends(get_db),
@@ -503,13 +536,16 @@ async def admin_review_project_submission(
 ):
     """GRD-004-аналог: тренер (только своей группы) или методист/админ
     принимает работу или отправляет на доработку."""
-    await _get_and_authorize_project_row(current_user, db, course_id, item_id, submission_id)
+    target = await _get_and_authorize_project_row(current_user, db, course_id, item_id, submission_id)
     try:
         result = await cl.review_project_submission(current_user, submission_id, payload.decision, payload.score, payload.comment)
     except CodelabError as e:
         _raise(e)
         return
     log_action(db, current_user.id, payload.decision, "codelab_project_submission", submission_id, {"score": payload.score})
+
+    if payload.decision == "needs_revision":
+        _notify_student_revision_requested(db, target, payload.comment, current_user)
     return result
 
 

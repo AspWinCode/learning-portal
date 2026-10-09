@@ -221,6 +221,7 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
   const [tochkaPayerValue, setTochkaPayerValue] = useState('');
   const [tochkaPayerSaving, setTochkaPayerSaving] = useState(false);
   const [tochkaPayerError, setTochkaPayerError] = useState<string | null>(null);
+  const studentPortalPhone = (student?.phone || studentCard?.student_phone || '').trim();
 
   useEffect(() => {
     if (!open || !studentId) return;
@@ -386,12 +387,15 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
   };
 
   const handleGrantAccess = async (catalogItemId: number, options?: { deadline_at?: string; reset_progress?: boolean }) => {
-    if (!studentId) return;
+    if (!studentId || !studentPortalPhone) {
+      setPortalError('Укажите телефон ученика перед выдачей доступа к курсу');
+      return;
+    }
     setAccessBusyId(catalogItemId);
     setPortalError(null);
     try {
       const grant = await studentPortalAdminApi.grantAccess({
-        student_id: studentId,
+        student_phone: studentPortalPhone,
         catalog_item_id: catalogItemId,
         deadline_at: options?.deadline_at || undefined,
         reset_progress: options?.reset_progress,
@@ -1507,7 +1511,7 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
                                     <Button
                                       size="small"
                                       variant="outlined"
-                                      disabled={!portalView?.credential || accessBusyId === item.id}
+                                      disabled={!studentPortalPhone || accessBusyId === item.id}
                                       onClick={() => openGrantDialog(item)}
                                     >
                                       Выдать доступ
@@ -1521,9 +1525,9 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
                           })}
                         </Stack>
                       )}
-                      {!portalView?.credential && (
+                      {!studentPortalPhone && (
                         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-                          Сначала создайте логин — без него ученик не сможет войти в кабинет.
+                          Укажите телефон ученика — по нему выдаётся доступ и работает вход в кабинет.
                         </Typography>
                       )}
                     </Box>

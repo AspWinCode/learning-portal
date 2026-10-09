@@ -660,7 +660,8 @@ export const studentPortalAdminApi = {
     return response.data;
   },
   grantAccess: async (payload: {
-    student_id: number;
+    student_id?: number;
+    student_phone?: string;
     catalog_item_id: number;
     starts_at?: string;
     deadline_at?: string;

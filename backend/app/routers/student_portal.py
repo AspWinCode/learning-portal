@@ -7,6 +7,7 @@ from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
+from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 
 from app import auth
@@ -71,6 +72,30 @@ from app.services.kodex_sso import SSO_KODEX_SHARED_SECRET, build_launch_redirec
 import logging as _logging
 
 _logger = _logging.getLogger(__name__)
+
+
+def _student_ids_by_phone(db: Session, phone: str) -> set[int]:
+    normalized = normalize_phone(phone)
+    digits = normalized.lstrip("+")
+    if len(digits) < 10:
+        return set()
+    tail = digits[-10:]
+    student_ids = {
+        sid
+        for (sid,) in db.query(Student.id)
+        .filter(Student.phone.isnot(None), func.regexp_replace(Student.phone, r"\D", "", "g").like(f"%{tail}"))
+        .all()
+    }
+    student_ids |= {
+        sid
+        for (sid,) in db.query(StudentCard.student_id)
+        .filter(
+            StudentCard.student_id.isnot(None),
+            func.regexp_replace(func.coalesce(StudentCard.student_phone, StudentCard.phone_normalized, ""), r"\D", "", "g").like(f"%{tail}"),
+        )
+        .all()
+    }
+    return student_ids
 
 
 def _view_student_permission(current_user: User = Depends(auth.get_current_active_user)) -> User:
@@ -205,30 +230,9 @@ async def student_login(payload: StudentLoginRequest, db: Session = Depends(get_
 async def student_login_by_phone(request: Request, payload: StudentPhoneLoginRequest, db: Session = Depends(get_db)):
     """Вход по номеру телефона: телефон должен совпасть с телефоном ученика в его карточке."""
     from datetime import datetime, timezone
-    from sqlalchemy import func
 
     denied = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Номер не найден. Проверьте номер или обратитесь к тренеру")
-    normalized = normalize_phone(payload.phone)
-    digits = normalized.lstrip("+")
-    if len(digits) < 10:
-        raise denied
-    tail = digits[-10:]
-
-    student_ids = {
-        sid
-        for (sid,) in db.query(Student.id)
-        .filter(Student.phone.isnot(None), func.regexp_replace(Student.phone, r"\D", "", "g").like(f"%{tail}"))
-        .all()
-    }
-    student_ids |= {
-        sid
-        for (sid,) in db.query(StudentCard.student_id)
-        .filter(
-            StudentCard.student_id.isnot(None),
-            func.regexp_replace(func.coalesce(StudentCard.student_phone, StudentCard.phone_normalized, ""), r"\D", "", "g").like(f"%{tail}"),
-        )
-        .all()
-    }
+    student_ids = _student_ids_by_phone(db, payload.phone)
     # Неоднозначность (один номер у нескольких учеников) — не угадываем, чтобы не пустить в чужой кабинет.
     if len(student_ids) != 1:
         raise denied
@@ -769,7 +773,16 @@ async def admin_grant_course_access(
     current_user: User = Depends(auth.require_permission("student_portal.manage")),
     db: Session = Depends(get_db),
 ):
-    student = db.query(Student).filter(Student.id == payload.student_id).first()
+    student = None
+    if payload.student_phone:
+        student_ids = _student_ids_by_phone(db, payload.student_phone)
+        if len(student_ids) != 1:
+            raise HTTPException(status_code=422, detail="Укажите уникальный телефон ученика")
+        student = db.query(Student).filter(Student.id == student_ids.pop()).first()
+    elif payload.student_id is not None:
+        student = db.query(Student).filter(Student.id == payload.student_id).first()
+    else:
+        raise HTTPException(status_code=422, detail="Укажите телефон или ID ученика")
     if not student:
         raise HTTPException(status_code=404, detail="Ученик не найден")
     item = db.query(CourseCatalogItem).filter(CourseCatalogItem.id == payload.catalog_item_id).first()

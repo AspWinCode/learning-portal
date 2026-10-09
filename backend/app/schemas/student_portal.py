@@ -108,7 +108,8 @@ class StudentCredentialOut(BaseModel):
 
 
 class GrantCourseAccessRequest(BaseModel):
-    student_id: int
+    student_id: Optional[int] = None
+    student_phone: Optional[str] = None
     catalog_item_id: int
     starts_at: Optional[datetime] = None
     deadline_at: Optional[datetime] = None

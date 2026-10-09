@@ -169,6 +169,9 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
   const canRecordPayments = hasPermission(user, 'student_accounts.payment');
   const canInviteParent = hasPermission(user, 'students.manage') && !!student?.parent_id;
   const canManageStudentPortal = hasPermission(user, 'student_portal.manage');
+  // Тренер (student_portal.view_student) видит кабинет ученика read-only —
+  // без создания/изменения логина и выдачи/отзыва доступа к курсам.
+  const canViewStudentPortal = canManageStudentPortal || hasPermission(user, 'student_portal.view_student');
   const canViewKodexDetail = hasPermission(user, 'kodex.access');
   const [kodexDetail, setKodexDetail] = useState<KodexStudentDetail | null>(null);
   const [kodexDetailOpen, setKodexDetailOpen] = useState(false);
@@ -332,7 +335,7 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
   };
 
   useEffect(() => {
-    if (tab === 'cabinet' && studentId && canManageStudentPortal) {
+    if (tab === 'cabinet' && studentId && canViewStudentPortal) {
       void loadPortalData();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -792,7 +795,7 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
               <Tab value="overview" label="Обзор" />
               <Tab value="history" label="История" />
               {canAccessAccounts && <Tab value="accounts" label="Счёт" />}
-              {canManageStudentPortal && <Tab value="cabinet" label="Кабинет" />}
+              {canViewStudentPortal && <Tab value="cabinet" label="Кабинет" />}
             </Tabs>
             {tab === 'overview' && (
               <>
@@ -1415,7 +1418,7 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
               </Paper>
             )}
 
-            {tab === 'cabinet' && canManageStudentPortal && (
+            {tab === 'cabinet' && canViewStudentPortal && (
               <Paper variant="outlined" sx={{ p: 2 }}>
                 <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 2 }}>Личный кабинет ученика</Typography>
                 {portalError && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setPortalError(null)}>{portalError}</Alert>}
@@ -1434,7 +1437,9 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
                               label={portalView.credential.is_active ? 'Активен' : 'Отключён'}
                               color={portalView.credential.is_active ? 'success' : 'default'}
                             />
-                            <Button size="small" variant="text" onClick={openEditCredential}>Изменить</Button>
+                            {canManageStudentPortal && (
+                              <Button size="small" variant="text" onClick={openEditCredential}>Изменить</Button>
+                            )}
                           </Stack>
                           <Stack direction="row" spacing={1} alignItems="center">
                             <TextField
@@ -1452,7 +1457,7 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
                             </Button>
                           </Stack>
                         </Stack>
-                      ) : (
+                      ) : canManageStudentPortal ? (
                         <Stack direction="row" spacing={1} alignItems="center">
                           <TextField size="small" label="Логин" value={newLogin} onChange={(e) => setNewLogin(e.target.value)} sx={{ width: 160 }} />
                           <TextField size="small" label="Пароль" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} sx={{ width: 160 }} />
@@ -1465,6 +1470,8 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
                             Создать логин
                           </Button>
                         </Stack>
+                      ) : (
+                        <Typography variant="body2" color="text.secondary">Логин не создан.</Typography>
                       )}
                     </Box>
 
@@ -1485,25 +1492,29 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
                                     <Typography variant="caption" color="text.secondary">{item.description}</Typography>
                                   )}
                                 </Box>
-                                {isActive ? (
-                                  <Button
-                                    size="small"
-                                    color="error"
-                                    variant="outlined"
-                                    disabled={accessBusyId === item.id}
-                                    onClick={() => grant && handleRevokeAccess(grant.id, item.id)}
-                                  >
-                                    Отозвать
-                                  </Button>
+                                {canManageStudentPortal ? (
+                                  isActive ? (
+                                    <Button
+                                      size="small"
+                                      color="error"
+                                      variant="outlined"
+                                      disabled={accessBusyId === item.id}
+                                      onClick={() => grant && handleRevokeAccess(grant.id, item.id)}
+                                    >
+                                      Отозвать
+                                    </Button>
+                                  ) : (
+                                    <Button
+                                      size="small"
+                                      variant="outlined"
+                                      disabled={!portalView?.credential || accessBusyId === item.id}
+                                      onClick={() => openGrantDialog(item)}
+                                    >
+                                      Выдать доступ
+                                    </Button>
+                                  )
                                 ) : (
-                                  <Button
-                                    size="small"
-                                    variant="outlined"
-                                    disabled={!portalView?.credential || accessBusyId === item.id}
-                                    onClick={() => openGrantDialog(item)}
-                                  >
-                                    Выдать доступ
-                                  </Button>
+                                  <Chip size="small" label={isActive ? 'Выдан' : 'Не выдан'} color={isActive ? 'success' : 'default'} />
                                 )}
                               </Stack>
                             );

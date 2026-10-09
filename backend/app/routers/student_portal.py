@@ -34,6 +34,7 @@ from app.models import (
     StudentCredential,
     Topic,
     User,
+    UserRole,
 )
 from app.schemas.student_portal import (
     BulkGrantAffectedStudent,
@@ -70,6 +71,60 @@ from app.services.kodex_sso import SSO_KODEX_SHARED_SECRET, build_launch_redirec
 import logging as _logging
 
 _logger = _logging.getLogger(__name__)
+
+
+def _view_student_permission(current_user: User = Depends(auth.get_current_active_user)) -> User:
+    """student_portal.manage (админ/owner/methodist/manager) ИЛИ узкое
+    student_portal.view_student (тренер — только свои ученики, см.
+    _ensure_trainer_owns_student ниже)."""
+    if not (
+        auth.has_permission(current_user, "student_portal.manage")
+        or auth.has_permission(current_user, "student_portal.view_student")
+    ):
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+    return current_user
+
+
+def _analytics_permission(current_user: User = Depends(auth.get_current_active_user)) -> User:
+    """student_portal.manage ИЛИ узкое student_portal.analytics (тренер —
+    только свои группы, см. _ensure_trainer_owns_group_for_analytics ниже)."""
+    if not (
+        auth.has_permission(current_user, "student_portal.manage")
+        or auth.has_permission(current_user, "student_portal.analytics")
+    ):
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+    return current_user
+
+
+def _ensure_trainer_owns_student(db: Session, current_user: User, student_id: int) -> None:
+    """object-level scope для student_portal.view_student: тренер видит
+    карточку кабинета только ученика из своей активной группы. Admin/owner/
+    methodist/manager (student_portal.manage) не ограничены."""
+    if auth.resolve_effective_role(current_user) != UserRole.TRAINER:
+        return
+    is_own_student = (
+        db.query(GroupStudent.id)
+        .join(Group, Group.id == GroupStudent.group_id)
+        .filter(
+            Group.trainer_id == current_user.id,
+            GroupStudent.student_id == student_id,
+            GroupStudent.left_at.is_(None),
+        )
+        .first()
+        is not None
+    )
+    if not is_own_student:
+        raise HTTPException(status_code=403, detail="Ученик не из ваших групп")
+
+
+def _ensure_trainer_owns_group_for_analytics(db: Session, current_user: User, group_id: int) -> None:
+    """object-level scope для student_portal.analytics: тренер видит
+    активность только своей группы."""
+    if auth.resolve_effective_role(current_user) != UserRole.TRAINER:
+        return
+    group = db.query(Group).filter(Group.id == group_id).first()
+    if not group or group.trainer_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Группа не ваша")
 
 
 async def _sync_pixelforge_enrollment(item: "CourseCatalogItem", student_id: int, *, enroll: bool) -> None:
@@ -606,12 +661,13 @@ async def admin_update_catalog_item(
 @router.get("/admin/students/{student_id}", response_model=StudentPortalAdminView)
 async def admin_get_student_portal_view(
     student_id: int,
-    current_user: User = Depends(auth.require_permission("student_portal.manage")),
+    current_user: User = Depends(_view_student_permission),
     db: Session = Depends(get_db),
 ):
     student = db.query(Student).filter(Student.id == student_id).first()
     if not student:
         raise HTTPException(status_code=404, detail="Ученик не найден")
+    _ensure_trainer_owns_student(db, current_user, student_id)
     credential = db.query(StudentCredential).filter(StudentCredential.student_id == student_id).first()
     grants = db.query(StudentCourseAccess).filter(StudentCourseAccess.student_id == student_id).all()
     progress_rows = (
@@ -914,13 +970,14 @@ async def admin_revoke_course_access(
 def admin_group_activity(
     group_id: int,
     catalog_item_id: int,
-    current_user: User = Depends(auth.require_permission("student_portal.manage")),
+    current_user: User = Depends(_analytics_permission),
     db: Session = Depends(get_db),
 ):
     from datetime import datetime, timezone
 
     from app.services.group_activity import compute_group_activity
 
+    _ensure_trainer_owns_group_for_analytics(db, current_user, group_id)
     rows = compute_group_activity(db, group_id, catalog_item_id)
     return GroupActivityResponse(
         generated_at=datetime.now(timezone.utc),
@@ -934,7 +991,7 @@ def admin_group_activity(
 def admin_group_activity_csv(
     group_id: int,
     catalog_item_id: int,
-    current_user: User = Depends(auth.require_permission("student_portal.manage")),
+    current_user: User = Depends(_analytics_permission),
     db: Session = Depends(get_db),
 ):
     """ANA-004: та же выборка, что и group-activity, в CSV с учётом тех же
@@ -944,6 +1001,7 @@ def admin_group_activity_csv(
 
     from app.services.group_activity import compute_group_activity
 
+    _ensure_trainer_owns_group_for_analytics(db, current_user, group_id)
     rows = compute_group_activity(db, group_id, catalog_item_id)
     buf = io.StringIO()
     writer = csv.writer(buf)

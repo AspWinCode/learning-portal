@@ -657,6 +657,18 @@ PERMISSION_CATALOG: List[Dict[str, str]] = [
         "description": "Принять работу или отправить её на доработку с комментарием.",
     },
     {
+        "key": "student_portal.view_student",
+        "module": "student_portal",
+        "label": "Кабинет ученика: просмотр карточки",
+        "description": "Просмотр логина, выданных курсов и прогресса конкретного ученика в кабинете. Тренер видит только своих учеников.",
+    },
+    {
+        "key": "student_portal.analytics",
+        "module": "student_portal",
+        "label": "Кабинет ученика: аналитика активности группы",
+        "description": "Отчёт по активности группы в курсе-витрине (ANA-003/004/005). Тренер видит только свои группы.",
+    },
+    {
         "key": "academy_ai.access",
         "module": "academy_ai",
         "label": "ИИ-консультант: доступ",

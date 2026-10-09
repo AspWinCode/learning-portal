@@ -158,7 +158,9 @@ def test_owner_custom_role_does_not_keep_implicit_wildcard_access() -> None:
     assert auth.has_permission(user, "owner_calculations.access") is False
 
 
-def test_trainer_defaults_keep_tasks_and_projects_access() -> None:
+def test_trainer_defaults_keep_tasks_access_but_not_projects_or_owner_workspace() -> None:
+    # TRAINER role rework: Проекты и Owner Workspace убраны у тренера (см.
+    # tests/unit/test_trainer_role_permissions.py для полной матрицы прав).
     user = User(
         email="trainer@example.com",
         hashed_password="x",
@@ -168,8 +170,8 @@ def test_trainer_defaults_keep_tasks_and_projects_access() -> None:
     )
 
     assert auth.has_permission(user, "tasks.access") is True
-    assert auth.has_permission(user, "projects.access") is True
-    assert auth.has_permission(user, "owner_workspace.access") is True
+    assert auth.has_permission(user, "projects.access") is False
+    assert auth.has_permission(user, "owner_workspace.access") is False
 
 
 def test_permission_catalog_includes_communication_hub_keys() -> None:

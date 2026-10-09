@@ -4,6 +4,22 @@ import { api } from '../../services/api/client';
 
 const BASE = '/lego';
 
+export interface LegoQuestionnaire {
+  full_name: string;
+  birth_date: string;
+  parent_name: string;
+  parent_phone: string;
+  secondary_phone?: string;
+  school?: string;
+  experience: 'none' | 'home' | 'classes';
+  preferred_schedule?: string;
+  comment?: string;
+  consent: boolean;
+}
+
+export const submitLegoQuestionnaire = (payload: LegoQuestionnaire): Promise<{ ok: boolean }> =>
+  api.post(`${BASE}/public/questionnaire`, payload).then((r) => r.data);
+
 export type LegoPaymentStatusCode = 'unpaid' | 'ok' | 'due_soon' | 'overdue' | 'overdue_3' | 'overdue_10';
 
 export interface LegoStudent {

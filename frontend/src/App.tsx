@@ -48,6 +48,7 @@ const TranscriptionPage = React.lazy(() => import('./pages/TranscriptionPage'));
 const AcademyAiPage = React.lazy(() => import('./pages/AcademyAiPage'));
 const SmmProjectsPage = React.lazy(() => import('./pages/SmmProjectsPage'));
 const LegoHome = React.lazy(() => import('./features/lego/LegoHome'));
+const LegoQuestionnairePage = React.lazy(() => import('./features/lego/LegoQuestionnairePage'));
 const LegoStudentsPage = React.lazy(() => import('./features/lego/LegoStudentsPage'));
 const LegoStudentCardPage = React.lazy(() => import('./features/lego/LegoStudentCardPage'));
 const LegoGroupsPage = React.lazy(() => import('./features/lego/LegoGroupsPage'));
@@ -297,6 +298,7 @@ function App() {
             <Route path="/anketa/ekspert" element={<ExpertQuestionnairePage />} />
             <Route path="/anketa/ege-trial" element={<EgeTrialQuestionnairePage />} />
             <Route path="/anketa/student/:questionnaireId" element={<PublicStudentQuestionnairePage />} />
+            <Route path="/anketa/lego-leninets" element={<LegoQuestionnairePage />} />
             <Route
               path="/anketa/tilda_lead"
               element={

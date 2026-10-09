@@ -9,8 +9,8 @@ from datetime import date, time
 from decimal import Decimal
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -52,6 +52,54 @@ router = APIRouter()
 
 
 # ── Схемы ────────────────────────────────────────────────────────────────────
+
+class LegoQuestionnaireIn(BaseModel):
+    full_name: str = Field(..., min_length=1, max_length=256)
+    birth_date: date
+    parent_name: str = Field(..., min_length=1, max_length=256)
+    parent_phone: str = Field(..., max_length=32)
+    secondary_phone: Optional[str] = Field(None, max_length=32)
+    school: Optional[str] = Field(None, max_length=256)
+    experience: str = Field(..., pattern=r"^(none|home|classes)$")
+    preferred_schedule: Optional[str] = Field(None, max_length=500)
+    comment: Optional[str] = Field(None, max_length=2000)
+    consent: bool
+
+    @field_validator("full_name", "parent_name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Укажите ФИО")
+        return value
+
+    @field_validator("parent_phone", "secondary_phone")
+    @classmethod
+    def validate_phone(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        digits = "".join(c for c in value if c in "0123456789")
+        if len(digits) == 11 and digits[0] in "78":
+            digits = "7" + digits[1:]
+        elif len(digits) == 10:
+            digits = "7" + digits
+        else:
+            raise ValueError("Укажите телефон из 10 цифр или 11 цифр с кодом 7/8")
+        return "+" + digits
+
+    @field_validator("birth_date")
+    @classmethod
+    def validate_birth_date(cls, value: date) -> date:
+        if value > date.today() or value.year < 1900:
+            raise ValueError("Проверьте дату рождения")
+        return value
+
+    @field_validator("consent")
+    @classmethod
+    def validate_consent(cls, value: bool) -> bool:
+        if not value:
+            raise ValueError("Необходимо согласие на обработку данных анкеты")
+        return value
 
 class LegoStudentIn(BaseModel):
     full_name: str = Field(..., min_length=1, max_length=256)
@@ -309,6 +357,47 @@ def _summary_from_rows(rows: List[dict], include_money: bool) -> dict:
         summary["expected_debt_amount"] = round(sum(r["payment_amount"] or 0 for r in debt_rows), 2)
         summary["overdue_amount"] = round(sum(r["payment_amount"] or 0 for r in overdue), 2)
     return summary
+
+
+@router.post("/public/questionnaire")
+def submit_questionnaire(payload: LegoQuestionnaireIn, db: Session = Depends(get_db)) -> dict:
+    # Повторная отправка не создаёт вторую карточку и не меняет данные существующей.
+    existing = db.query(LegoStudent).filter(
+        func.lower(LegoStudent.full_name) == payload.full_name.lower(),
+        LegoStudent.birth_date == payload.birth_date,
+        func.regexp_replace(LegoStudent.parent_phone, "[^0-9]", "", "g").like(
+            f"%{payload.parent_phone[-10:]}"
+        ),
+    ).first()
+    if existing:
+        return {"ok": True}
+    experience_labels = {"none": "Нет опыта", "home": "Собирает дома", "classes": "Посещал занятия"}
+    notes = ["Анкета LEGO — Ленинец", f"Опыт LEGO: {experience_labels[payload.experience]}"]
+    for label, value in (
+        ("Школа / детский сад", payload.school),
+        ("Удобное время", payload.preferred_schedule),
+        ("Комментарий", payload.comment),
+    ):
+        if value and value.strip():
+            notes.append(f"{label}: {value.strip()}")
+    notes.append(f"Согласие на обработку данных анкеты: {date.today().isoformat()}")
+    student = LegoStudent(
+        full_name=payload.full_name,
+        birth_date=payload.birth_date,
+        parent_name=payload.parent_name,
+        parent_phone=payload.parent_phone,
+        secondary_phone=payload.secondary_phone,
+        comment="\n".join(notes),
+        start_date=date.today(),
+        status=LEGO_STUDENT_ACTIVE,
+        payment_period=LEGO_PERIOD_MONTHLY,
+        payment_active=False,
+    )
+    db.add(student)
+    db.commit()
+    db.refresh(student)
+    log_action(db, None, "lego_questionnaire_submit", "lego_student", student.id, {})
+    return {"ok": True}
 
 
 # ── Дашборд ──────────────────────────────────────────────────────────────────

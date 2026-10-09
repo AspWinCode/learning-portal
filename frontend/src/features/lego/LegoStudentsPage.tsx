@@ -3,6 +3,7 @@ import { Link as RouterLink } from 'react-router-dom';
 import { Alert, Button, Paper, Stack, Table, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from '@mui/material';
 import { LegoShell } from './LegoShell';
 import { createStudent, formatDate, listStudents, LegoStudent } from './legoApi';
+import { ContentCopy, OpenInNew } from '@mui/icons-material';
 
 const emptyForm = { full_name: '', parent_name: '', parent_phone: '', birth_date: '', start_date: '', comment: '' };
 
@@ -11,6 +12,8 @@ const LegoStudentsPage: React.FC = () => {
   const [students, setStudents] = useState<LegoStudent[]>([]);
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState<string | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
+  const questionnaireUrl = `${window.location.origin}/anketa/lego-leninets`;
 
   const load = () => listStudents({ q: q || undefined }).then(setStudents).catch(() => setError('Не удалось загрузить список'));
 
@@ -40,6 +43,18 @@ const LegoStudentsPage: React.FC = () => {
 
   return (
     <LegoShell title="Дети">
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 2 }}>
+        <Button variant="outlined" startIcon={<OpenInNew />} href={questionnaireUrl} target="_blank" rel="noopener noreferrer">Анкета LEGO — Ленинец</Button>
+        <Button startIcon={<ContentCopy />} onClick={async () => {
+          try {
+            await navigator.clipboard.writeText(questionnaireUrl);
+            setLinkCopied(true);
+          } catch {
+            setError(`Ссылка на анкету: ${questionnaireUrl}`);
+          }
+        }}>Скопировать ссылку</Button>
+      </Stack>
+      {linkCopied && <Alert severity="success" onClose={() => setLinkCopied(false)} sx={{ mb: 2 }}>Ссылка скопирована</Alert>}
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
       <Paper variant="outlined" sx={{ p: 2, mb: 3 }} component="form" onSubmit={onCreate}>
         <Typography variant="subtitle1" fontWeight={600} gutterBottom>Новый ребёнок</Typography>

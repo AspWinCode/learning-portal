@@ -5,7 +5,7 @@ import { LegoQuestionnaire, submitLegoQuestionnaire } from './legoApi';
 const LegoQuestionnairePage: React.FC = () => {
   const [form, setForm] = useState<LegoQuestionnaire>({
     full_name: '', birth_date: '', parent_name: '', parent_phone: '', secondary_phone: '',
-    school: '', experience: 'none', preferred_schedule: '', comment: '', consent: false,
+    school: '', experience: 'none', comment: '', consent: false,
   });
   const [busy, setBusy] = useState(false);
   const submitting = useRef(false);
@@ -71,7 +71,6 @@ const LegoQuestionnairePage: React.FC = () => {
                   <TextField label="Телефон родителя" type="tel" required fullWidth autoComplete="tel" value={form.parent_phone} onChange={change('parent_phone')} inputProps={{ maxLength: 32 }} />
                   <TextField label="Дополнительный телефон" type="tel" fullWidth value={form.secondary_phone} onChange={change('secondary_phone')} inputProps={{ maxLength: 32 }} />
                   <Typography variant="subtitle1" fontWeight={600} sx={{ pt: 1 }}>Занятия</Typography>
-                  <TextField label="Удобные дни и время" fullWidth value={form.preferred_schedule} onChange={change('preferred_schedule')} inputProps={{ maxLength: 500 }} />
                   <TextField label="Пожелания и комментарий" fullWidth multiline minRows={3} value={form.comment} onChange={change('comment')} inputProps={{ maxLength: 2000 }} />
                   <FormControlLabel sx={{ alignItems: 'flex-start', mx: 0 }} control={<Checkbox required checked={form.consent} onChange={(e) => setForm((prev) => ({ ...prev, consent: e.target.checked }))} />} label="Я являюсь законным представителем ребёнка и согласен на обработку указанных данных для связи со мной и организации занятий LEGO — Ленинец." />
                   <Button type="submit" variant="contained" disabled={busy}>{busy ? 'Отправка...' : 'Отправить анкету'}</Button>

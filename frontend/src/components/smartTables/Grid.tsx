@@ -19,6 +19,7 @@ import FilterListIcon from '@mui/icons-material/FilterList';
 import RuleIcon from '@mui/icons-material/Rule';
 import LinkIcon from '@mui/icons-material/Link';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import DriveFileRenameOutlineIcon from '@mui/icons-material/DriveFileRenameOutline';
 import type {
   CellFormatting, CellSnapshot, CellValue, ColumnOut, ConditionOperator, ConditionalFormatRule, PasteCell, RowOut,
   SmartLinkMetadata, SmartLinkTarget, TextAlign,
@@ -56,6 +57,7 @@ interface GridProps {
   onDeleteRow: (rowId: number) => void;
   onInsertColumn: (afterColumnId: number | null) => void;
   onDeleteColumn: (columnId: number) => void;
+  onRenameColumn: (columnId: number, name: string) => void;
   onResizeColumn: (columnId: number, width: number) => void;
   onResizeRow: (rowId: number, height: number) => void;
   onFormatRange: (rowIds: number[], columnIds: number[], formatting: CellFormatting) => void;
@@ -66,6 +68,7 @@ interface GridProps {
   onOpenSmartLink: (target: SmartLinkTarget) => void;
   onEditSmartLink: (rowId: number, columnId: number, snapshot?: CellSnapshot) => void;
   onClearSmartLink: (rowId: number, columnId: number) => void;
+  expanded?: boolean;
   readOnly?: boolean;
 }
 
@@ -151,9 +154,9 @@ function measureTextWidth(text: string, font = '13px Arial'): number {
 }
 
 const Grid: React.FC<GridProps> = ({
-  columns, rows, onSetCell, onSetFormula, onInsertRow, onDeleteRow, onInsertColumn, onDeleteColumn,
+  columns, rows, onSetCell, onSetFormula, onInsertRow, onDeleteRow, onInsertColumn, onDeleteColumn, onRenameColumn,
   onResizeColumn, onResizeRow, onFormatRange, onSetConditionalFormat, onSortColumn, onPasteRange,
-  focusTarget = null, onOpenSmartLink, onEditSmartLink, onClearSmartLink, readOnly = false,
+  focusTarget = null, onOpenSmartLink, onEditSmartLink, onClearSmartLink, expanded = false, readOnly = false,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const skipNextBlurCommitRef = useRef(false);
@@ -174,6 +177,8 @@ const Grid: React.FC<GridProps> = ({
   const [rowMenu, setRowMenu] = useState<{ anchor: HTMLElement; rowId: number } | null>(null);
   const [cellMenu, setCellMenu] = useState<{ anchor: HTMLElement; rowId: number; columnId: number } | null>(null);
   const [highlightCell, setHighlightCell] = useState<ActiveCell | null>(null);
+  const [renameColumn, setRenameColumn] = useState<{ id: number; name: string } | null>(null);
+  const [renameColumnError, setRenameColumnError] = useState('');
   const [condFormatColumnId, setCondFormatColumnId] = useState<number | null>(null);
   const [condRules, setCondRules] = useState<ConditionalFormatRule[]>([]);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -533,11 +538,31 @@ const Grid: React.FC<GridProps> = ({
     setCondFormatColumnId(null);
   };
 
+  const openRenameColumn = (columnId: number) => {
+    const column = columns.find((item) => item.id === columnId);
+    if (!column) return;
+    setRenameColumn({ id: column.id, name: column.name });
+    setRenameColumnError('');
+    setColMenu(null);
+  };
+
+  const saveColumnName = () => {
+    if (!renameColumn) return;
+    const name = renameColumn.name.trim();
+    if (!name) { setRenameColumnError('Введите название колонки'); return; }
+    if (name.length > 255) { setRenameColumnError('Название слишком длинное'); return; }
+    onRenameColumn(renameColumn.id, name);
+    setRenameColumn(null);
+  };
+
   const hasSelection = !!selectionBounds;
 
   return (
     <Box
-      sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, overflow: 'hidden' }}
+      sx={{
+        border: '1px solid', borderColor: 'divider', borderRadius: 1, overflow: 'hidden',
+        ...(expanded ? { display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 } : {}),
+      }}
       onPaste={handlePaste}
       onCopy={handleCopy}
     >
@@ -628,6 +653,7 @@ const Grid: React.FC<GridProps> = ({
           <Box
             key={col.id}
             onClick={(e) => selectColumn(col.id, e.shiftKey)}
+            onDoubleClick={() => { if (!readOnly) openRenameColumn(col.id); }}
             onContextMenu={(e) => {
               e.preventDefault();
               selectColumn(col.id, e.shiftKey);
@@ -697,7 +723,12 @@ const Grid: React.FC<GridProps> = ({
       <Box
         ref={containerRef}
         onScroll={handleScroll}
-        sx={{ height: 520, overflow: 'auto', position: 'relative' }}
+        sx={{
+          height: expanded ? 'auto' : 520,
+          flex: expanded ? 1 : undefined,
+          minHeight: expanded ? 240 : undefined,
+          overflow: 'auto', position: 'relative',
+        }}
       >
         <Box sx={{ height: totalHeight, position: 'relative' }}>
           {visibleRows.map((row, i) => {
@@ -859,6 +890,10 @@ const Grid: React.FC<GridProps> = ({
       )}
 
       <Menu open={!!colMenu} anchorEl={colMenu?.anchor} onClose={() => setColMenu(null)}>
+        <MenuItem onClick={() => { if (colMenu) openRenameColumn(colMenu.columnId); }}>
+          <DriveFileRenameOutlineIcon fontSize="small" sx={{ mr: 1 }} /> Переименовать колонку
+        </MenuItem>
+        <Divider />
         <MenuItem onClick={() => { if (colMenu) onInsertColumn(previousColumnId(colMenu.columnId)); setColMenu(null); }}>
           <AddIcon fontSize="small" sx={{ mr: 1 }} /> Вставить колонку слева
         </MenuItem>
@@ -943,6 +978,27 @@ const Grid: React.FC<GridProps> = ({
           ))}
         </Box>
       </Menu>
+
+      <Dialog open={!!renameColumn} onClose={() => setRenameColumn(null)} fullWidth maxWidth="xs">
+        <DialogTitle>Переименовать колонку</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus fullWidth label="Название" value={renameColumn?.name ?? ''}
+            onChange={(event) => {
+              setRenameColumn((current) => current ? { ...current, name: event.target.value } : current);
+              setRenameColumnError('');
+            }}
+            onKeyDown={(event) => { if (event.key === 'Enter') saveColumnName(); }}
+            error={!!renameColumnError}
+            helperText={renameColumnError}
+            sx={{ mt: 1 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRenameColumn(null)}>Отмена</Button>
+          <Button variant="contained" onClick={saveColumnName}>Сохранить</Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={condFormatColumnId !== null} onClose={() => setCondFormatColumnId(null)} fullWidth maxWidth="sm">
         <DialogTitle>Условное форматирование</DialogTitle>

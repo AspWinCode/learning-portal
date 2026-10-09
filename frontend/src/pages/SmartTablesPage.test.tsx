@@ -93,6 +93,29 @@ describe('Deep links', () => {
     expect(await screen.findByText('Целевая ячейка больше не существует')).toBeInTheDocument();
     expect(screen.getByText('План')).toBeInTheDocument();
   });
+
+  it('toggles the table fullscreen mode and exits with Escape', async () => {
+    (smartTablesApi.listWorkbooks as any).mockResolvedValue([makeWorkbook('editor')]);
+    (smartTablesApi.listSheets as any).mockResolvedValue([
+      { id: 2, workbook_id: 1, name: 'План', position: 0, frozen_rows: 0, frozen_columns: 0 },
+    ]);
+    (smartTablesApi.getSheet as any).mockResolvedValue(makeDetail(2, 'План'));
+
+    render(
+      <MemoryRouter initialEntries={['/smart-tables/1/sheets/2']}>
+        <Routes>
+          <Route path="/smart-tables/:workbookId/sheets/:sheetId" element={<SmartTablesPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    const enterButton = await screen.findByRole('button', { name: 'Развернуть таблицу на весь экран' });
+    fireEvent.click(enterButton);
+    expect(screen.getByRole('button', { name: 'Выйти из полноэкранного режима' })).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.getByRole('button', { name: 'Развернуть таблицу на весь экран' })).toBeInTheDocument();
+  });
 });
 
 afterEach(() => {

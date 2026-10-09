@@ -213,6 +213,20 @@ class OpDeleteColumn(BaseModel):
     column_id: int
 
 
+class OpRenameColumn(BaseModel):
+    type: Literal["rename_column"] = "rename_column"
+    column_id: int
+    name: str = Field(..., min_length=1, max_length=255)
+
+    @field_validator("name")
+    @classmethod
+    def _non_blank_name(cls, value: str) -> str:
+        name = value.strip()
+        if not name:
+            raise ValueError("Название колонки не может быть пустым")
+        return name
+
+
 class OpResizeColumn(BaseModel):
     type: Literal["resize_column"] = "resize_column"
     column_id: int
@@ -310,6 +324,7 @@ SpreadsheetOperation = Annotated[
         OpDeleteRow,
         OpInsertColumn,
         OpDeleteColumn,
+        OpRenameColumn,
         OpResizeColumn,
         OpResizeRow,
         OpSetCell,

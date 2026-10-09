@@ -12,6 +12,8 @@ import DownloadIcon from '@mui/icons-material/Download';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
+import FullscreenIcon from '@mui/icons-material/Fullscreen';
+import FullscreenExitIcon from '@mui/icons-material/FullscreenExit';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout';
 import Grid from '../components/smartTables/Grid';
@@ -130,6 +132,7 @@ const WorkbookView: React.FC<WorkbookViewProps> = ({
   const [error, setError] = useState('');
   const [targetError, setTargetError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const canEdit = workbook.role !== 'viewer';
   const canDeleteSheet = workbook.role === 'owner';
@@ -189,6 +192,20 @@ const WorkbookView: React.FC<WorkbookViewProps> = ({
   useEffect(() => {
     if (activeSheetId !== null) loadSheetDetail(activeSheetId);
   }, [activeSheetId, loadSheetDetail]);
+
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const previousOverflow = document.body.style.overflow;
+    const exitOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsFullscreen(false);
+    };
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', exitOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', exitOnEscape);
+    };
+  }, [isFullscreen]);
 
   useEffect(() => {
     if (!detail || !focusTarget) {
@@ -345,7 +362,10 @@ const WorkbookView: React.FC<WorkbookViewProps> = ({
   };
 
   return (
-    <Box>
+    <Box sx={isFullscreen ? {
+      position: 'fixed', inset: 0, zIndex: 1400, bgcolor: 'background.default', p: 2,
+      display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden',
+    } : undefined}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
         <IconButton onClick={onBack}><ArrowBackIcon /></IconButton>
         <Typography variant="h5">{workbook.name}</Typography>
@@ -361,6 +381,14 @@ const WorkbookView: React.FC<WorkbookViewProps> = ({
             </AvatarGroup>
           </Tooltip>
         )}
+        <Tooltip title={isFullscreen ? 'Выйти из полноэкранного режима' : 'Развернуть таблицу на весь экран'}>
+          <IconButton
+            aria-label={isFullscreen ? 'Выйти из полноэкранного режима' : 'Развернуть таблицу на весь экран'}
+            onClick={() => setIsFullscreen((value) => !value)}
+          >
+            {isFullscreen ? <FullscreenExitIcon /> : <FullscreenIcon />}
+          </IconButton>
+        </Tooltip>
         <Button startIcon={<UndoIcon />} onClick={handleUndo}>Отменить</Button>
       </Box>
 
@@ -447,6 +475,7 @@ const WorkbookView: React.FC<WorkbookViewProps> = ({
           onInsertColumn={(afterColumnId) =>
             withOps([{ type: 'insert_column', after_column_id: afterColumnId, name: 'Новая колонка', column_type: 'text' }])}
           onDeleteColumn={(columnId) => withOps([{ type: 'delete_column', column_id: columnId }])}
+          onRenameColumn={(columnId, name) => withOps([{ type: 'rename_column', column_id: columnId, name }])}
           onResizeColumn={(columnId, width) => withOps([{ type: 'resize_column', column_id: columnId, width }])}
           onResizeRow={(rowId, height) => withOps([{ type: 'resize_row', row_id: rowId, height }])}
           onFormatRange={(rowIds, columnIds, formatting) =>
@@ -461,6 +490,7 @@ const WorkbookView: React.FC<WorkbookViewProps> = ({
           onEditSmartLink={(rowId, columnId, snapshot) => setLinkEditor({ rowId, columnId, snapshot })}
           onClearSmartLink={(rowId, columnId) =>
             withOps([{ type: 'set_cell', row_id: rowId, column_id: columnId, value: null }])}
+          expanded={isFullscreen}
           readOnly={!canEdit}
         />
       )}

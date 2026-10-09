@@ -292,6 +292,24 @@ class TestSmartLinks:
         assert cell.computed_value == "До ссылки"
         assert cell.cell_metadata == {}
 
+
+class TestColumnRename:
+    def test_rename_column_and_undo(self, db, sheet, owner_user):
+        sheet_obj, _, cols = sheet
+        ex = _executor(db, sheet_obj, owner_user.id)
+        from app.schemas.smart_tables import OpRenameColumn
+
+        original_name = cols[0].name
+        ex.apply_batch([OpRenameColumn(column_id=cols[0].id, name="Ответственный")])
+        db.commit()
+        db.refresh(cols[0])
+        assert cols[0].name == "Ответственный"
+
+        assert ex.undo_last() is True
+        db.commit()
+        db.refresh(cols[0])
+        assert cols[0].name == original_name
+
     def test_plain_set_cell_removes_existing_smart_link_metadata(self, db, sheet, owner_user):
         sheet_obj, rows, cols = sheet
         ex = _executor(db, sheet_obj, owner_user.id)

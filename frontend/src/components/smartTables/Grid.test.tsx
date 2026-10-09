@@ -30,6 +30,7 @@ function renderGrid(overrides: Partial<React.ComponentProps<typeof Grid>> = {}) 
       onDeleteRow={noop}
       onInsertColumn={noop}
       onDeleteColumn={noop}
+      onRenameColumn={noop}
       onResizeColumn={noop}
       onResizeRow={noop}
       onFormatRange={noop}
@@ -197,5 +198,24 @@ describe('Grid smart links', () => {
       behavior: 'smooth',
     })));
     expect(cell(2, 11)).toHaveAttribute('aria-selected', 'true');
+  });
+});
+
+describe('Grid column names', () => {
+  it('renames a column from a header double click', () => {
+    const onRenameColumn = vi.fn();
+    renderGrid({ onRenameColumn });
+
+    fireEvent.doubleClick(screen.getByText('A'));
+    fireEvent.change(screen.getByLabelText('Название'), { target: { value: 'Ответственный' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+
+    expect(onRenameColumn).toHaveBeenCalledWith(10, 'Ответственный');
+  });
+
+  it('does not open column rename for a viewer', () => {
+    renderGrid({ readOnly: true });
+    fireEvent.doubleClick(screen.getByText('A'));
+    expect(screen.queryByText('Переименовать колонку')).toBeNull();
   });
 });

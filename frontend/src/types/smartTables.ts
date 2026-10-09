@@ -126,6 +126,7 @@ export type SpreadsheetOperation =
   | { type: 'resize_row'; row_id: number; height: number }
   | { type: 'insert_column'; after_column_id: number | null; name: string; column_type: ColumnType }
   | { type: 'delete_column'; column_id: number }
+  | { type: 'rename_column'; column_id: number; name: string }
   | { type: 'resize_column'; column_id: number; width: number }
   | { type: 'set_cell'; row_id: number; column_id: number; value: CellValue }
   | { type: 'set_formula'; row_id: number; column_id: number; formula: string }

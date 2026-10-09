@@ -322,6 +322,14 @@ class OperationExecutor:
         column.width = op["width"]
         return {"type": "resize_column", "column_id": column.id, "width": prev_width}
 
+    def _op_rename_column(self, op: dict) -> dict:
+        column = self.db.get(SmartTableColumn, op["column_id"])
+        if column is None or column.sheet_id != self.sheet.id:
+            raise OperationError("column_id не найден на этом листе")
+        previous_name = column.name
+        column.name = op["name"].strip()
+        return {"type": "rename_column", "column_id": column.id, "name": previous_name}
+
     # ── cells ───────────────────────────────────────────────────
 
     def _op_set_cell(self, op: dict) -> dict:

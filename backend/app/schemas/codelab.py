@@ -48,6 +48,20 @@ class CodelabCourseWebhook(BaseModel):
     course: CodelabWebhookCourse
 
 
+class CodelabWebhookSubmission(BaseModel):
+    id: int
+    course_id: int
+    item_id: int
+    attempt_number: int
+    submitted_at: Optional[str] = None
+    student_external_ref: str
+
+
+class CodelabSubmissionWebhook(BaseModel):
+    event: str  # project_submitted | project_resubmitted
+    submission: CodelabWebhookSubmission
+
+
 # ─── Студия методиста / кабинет преподавателя — проксирование admin-API Codelab ─
 # Портал ничего не хранит, только прокидывает в /api/lms-admin/** Codelab
 # (codelab_client.py). Поля намеренно нетипизированы построчно (dict) там, где

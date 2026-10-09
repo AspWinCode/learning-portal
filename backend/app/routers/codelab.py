@@ -1,6 +1,8 @@
 import hashlib
 import hmac
+import json
 import logging
+import os
 
 from fastapi import APIRouter, Depends, File as FastAPIFile, HTTPException, Request, Response, UploadFile, status
 from sqlalchemy.orm import Session
@@ -18,6 +20,8 @@ from app.schemas.codelab import (
     CodelabProjectCommentIn,
     CodelabProjectReviewIn,
     CodelabStudentProgress,
+    CodelabSubmissionWebhook,
+    CodelabWebhookSubmission,
 )
 from app.services import codelab_client as cl
 from app.services.codelab_client import CodelabError
@@ -89,13 +93,81 @@ async def get_student_progress(
     return CodelabStudentProgress(started=True, **overview)
 
 
-# ─── Вебхук публикации курса — ведёт пункт витрины портала ──────────────────────
+# ─── Вебхук публикации курса / сдачи проекта ────────────────────────────────
+
+COURSE_WEBHOOK_EVENTS = {"published", "unpublished", "deleted"}
+SUBMISSION_WEBHOOK_EVENTS = {"project_submitted", "project_resubmitted"}
+
+
+def _trainers_for_student(db: Session, student_id: int) -> list:
+    """Все тренеры, у которых ученик состоит в активной группе — тот же
+    принцип, что в _trainer_student_ids, только в обратную сторону. Ученик
+    может быть в нескольких группах (разные предметы/тренеры) — уведомляем
+    всех, т.к. вебхук не знает, к какой именно группе относится курс.
+
+    DISTINCT по id, не по всей строке: у User есть JSON-колонки (например
+    trainer_lesson_formats), а Postgres не умеет сравнивать json на равенство
+    — SELECT DISTINCT по полной сущности User на такой таблице упадёт."""
+    trainer_ids = {
+        row[0]
+        for row in db.query(Group.trainer_id)
+        .join(GroupStudent, GroupStudent.group_id == Group.id)
+        .filter(GroupStudent.student_id == student_id, GroupStudent.left_at.is_(None))
+        .distinct()
+        .all()
+    }
+    if not trainer_ids:
+        return []
+    return db.query(User).filter(User.id.in_(trainer_ids)).all()
+
+
+def _notify_trainers_of_submission(db: Session, event: str, submission: CodelabWebhookSubmission) -> None:
+    """Best-effort: уведомляет тренера(ов) ученика о новой/повторной сдаче
+    проекта. Ошибка не должна возвращать вебхуку не-200 — Codelab не обязан
+    повторять доставку, и 5xx здесь не несёт дополнительной информации."""
+    try:
+        student_id = _student_id_from_external_ref(submission.student_external_ref)
+        if not student_id:
+            logger.warning("codelab webhook: unrecognized student_external_ref %r", submission.student_external_ref)
+            return
+        student = db.query(Student).filter(Student.id == student_id).first()
+        if not student:
+            return
+        trainers = _trainers_for_student(db, student_id)
+        if not trainers:
+            return
+
+        is_resubmit = event == "project_resubmitted"
+        portal_base = (os.getenv("PORTAL_BASE_URL") or "https://tirskix.space").rstrip("/")
+        subject = f"{'Повторная сдача' if is_resubmit else 'Новая сдача'}: {student.full_name}"
+        message = (
+            f"{'Повторно отправлена' if is_resubmit else 'Отправлена'} работа ученика "
+            f"{student.full_name} (попытка {submission.attempt_number}).\n\n"
+            f"Проверить: {portal_base}/trainer/submissions"
+        )
+        for trainer in trainers:
+            try:
+                CommunicationService.send(
+                    db,
+                    channel="email",
+                    recipient_type="user",
+                    recipient_id=trainer.id,
+                    created_by=None,
+                    dedupe_key=f"codelab-submission:{submission.id}:{submission.attempt_number}:{trainer.id}",
+                    context={"subject": subject, "message": message},
+                )
+            except Exception:
+                logger.exception("codelab webhook: notify trainer %s failed", trainer.id)
+    except Exception:
+        logger.exception("codelab webhook: submission notification failed for submission %s", submission.id)
+
 
 @router.post("/courses/webhook")
 async def codelab_course_webhook(request: Request, db: Session = Depends(get_db)):
-    """Codelab зовёт при смене видимости курса. Подпись — HMAC тела общим
-    секретом (заголовок X-LP-Signature, как X-Kodex-Signature у progress-sync).
-    Ведёт пункт витрины `codelab-<course_id>`."""
+    """Codelab зовёт при смене видимости курса и при сдаче/пересдаче проекта.
+    Подпись — HMAC тела общим секретом (заголовок X-LP-Signature, как
+    X-Kodex-Signature у progress-sync). Общий event-дискриминатор решает,
+    какую из двух схем парсить (у них разная форма тела)."""
     raw = await request.body()
     sig = request.headers.get("X-LP-Signature", "")
     secret = SSO_KODEX_SHARED_SECRET.encode("utf-8")
@@ -103,6 +175,20 @@ async def codelab_course_webhook(request: Request, db: Session = Depends(get_db)
         hmac.new(secret, raw, hashlib.sha256).hexdigest(), sig
     ):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Неверная подпись")
+
+    try:
+        event = json.loads(raw).get("event")
+    except (json.JSONDecodeError, AttributeError):
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+
+    if event in SUBMISSION_WEBHOOK_EVENTS:
+        payload = CodelabSubmissionWebhook.model_validate_json(raw)
+        _notify_trainers_of_submission(db, payload.event, payload.submission)
+        return {"ok": True}
+
+    if event not in COURSE_WEBHOOK_EVENTS:
+        logger.warning("codelab webhook: unknown event %r", event)
+        return {"ok": True}
 
     payload = CodelabCourseWebhook.model_validate_json(raw)
     c = payload.course
@@ -132,8 +218,7 @@ async def codelab_course_webhook(request: Request, db: Session = Depends(get_db)
         if item:
             item.is_active = False
             db.commit()
-    else:
-        logger.warning("codelab webhook: unknown event %r", payload.event)
+    return {"ok": True}
 
     return {"ok": True}
 

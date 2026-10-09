@@ -30,6 +30,11 @@ import { MAX_PASTE_CELLS, buildPasteMatrix, parseClipboardText, toPasteCells, to
 
 const ROW_HEADER_WIDTH = 44;
 const OVERSCAN_PX = 300;
+const MIN_COLUMN_WIDTH = 40;
+const MAX_COLUMN_WIDTH = 1000;
+const MIN_ROW_HEIGHT = 16;
+const MAX_ROW_HEIGHT = 500;
+const DEFAULT_ROW_HEIGHT = 32;
 
 const PALETTE = ['#ffffff', '#ffebee', '#fff3e0', '#fffde7', '#e8f5e9', '#e3f2fd', '#ede7f6', '#fafafa'];
 const TEXT_PALETTE = ['#000000', '#c62828', '#ef6c00', '#2e7d32', '#1565c0', '#6a1b9a'];
@@ -48,6 +53,8 @@ interface GridProps {
   onDeleteRow: (rowId: number) => void;
   onInsertColumn: (afterColumnId: number | null) => void;
   onDeleteColumn: (columnId: number) => void;
+  onResizeColumn: (columnId: number, width: number) => void;
+  onResizeRow: (rowId: number, height: number) => void;
   onFormatRange: (rowIds: number[], columnIds: number[], formatting: CellFormatting) => void;
   onSetConditionalFormat: (columnId: number, rules: ConditionalFormatRule[]) => void;
   onSortColumn: (columnId: number, direction: 'asc' | 'desc') => void;
@@ -109,17 +116,38 @@ function displayOf(value: CellValue): string {
   return String(value);
 }
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(Math.round(value), min), max);
+}
+
+function measureTextWidth(text: string, font = '13px Arial'): number {
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return text.length * 8;
+  ctx.font = font;
+  return ctx.measureText(text).width;
+}
+
 const Grid: React.FC<GridProps> = ({
   columns, rows, onSetCell, onSetFormula, onInsertRow, onDeleteRow, onInsertColumn, onDeleteColumn,
-  onFormatRange, onSetConditionalFormat, onSortColumn, onPasteRange, readOnly = false,
+  onResizeColumn, onResizeRow, onFormatRange, onSetConditionalFormat, onSortColumn, onPasteRange,
+  readOnly = false,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const skipNextBlurCommitRef = useRef(false);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(500);
   const [anchor, setAnchor] = useState<ActiveCell | null>(null);
   const [focus, setFocus] = useState<ActiveCell | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [editingValue, setEditingValue] = useState<string | null>(null);
+  const [resizing, setResizing] = useState<
+    | { kind: 'column'; id: number; start: number; initial: number; current: number }
+    | { kind: 'row'; id: number; start: number; initial: number; current: number }
+    | null
+  >(null);
+  const [columnPreview, setColumnPreview] = useState<Record<number, number>>({});
+  const [rowPreview, setRowPreview] = useState<Record<number, number>>({});
   const [colMenu, setColMenu] = useState<{ anchor: HTMLElement; columnId: number } | null>(null);
   const [rowMenu, setRowMenu] = useState<{ anchor: HTMLElement; rowId: number } | null>(null);
   const [condFormatColumnId, setCondFormatColumnId] = useState<number | null>(null);
@@ -132,6 +160,8 @@ const Grid: React.FC<GridProps> = ({
   const active = focus;
 
   const sortedColumns = columns;
+  const columnWidthOf = useCallback((column: ColumnOut) => columnPreview[column.id] ?? column.width, [columnPreview]);
+  const rowHeightOf = useCallback((row: RowOut) => rowPreview[row.id] ?? row.height, [rowPreview]);
   const filteredRows = useMemo(() => {
     const activeFilters = Object.entries(filters).filter(([, v]) => v.trim() !== '');
     if (activeFilters.length === 0) return rows;
@@ -146,23 +176,23 @@ const Grid: React.FC<GridProps> = ({
     let acc = 0;
     return filteredRows.map((r) => {
       const top = acc;
-      acc += r.height;
+      acc += rowHeightOf(r);
       return top;
     });
-  }, [filteredRows]);
+  }, [filteredRows, rowHeightOf]);
   const totalHeight = rowOffsets.length
-    ? rowOffsets[rowOffsets.length - 1] + filteredRows[filteredRows.length - 1].height
+    ? rowOffsets[rowOffsets.length - 1] + rowHeightOf(filteredRows[filteredRows.length - 1])
     : 0;
 
   const { startIdx, endIdx } = useMemo(() => {
     const top = Math.max(0, scrollTop - OVERSCAN_PX);
     const bottom = scrollTop + viewportHeight + OVERSCAN_PX;
     let start = 0;
-    while (start < rowOffsets.length && rowOffsets[start] + filteredRows[start].height < top) start++;
+    while (start < rowOffsets.length && rowOffsets[start] + rowHeightOf(filteredRows[start]) < top) start++;
     let end = start;
     while (end < rowOffsets.length && rowOffsets[end] < bottom) end++;
     return { startIdx: start, endIdx: end };
-  }, [scrollTop, viewportHeight, rowOffsets, filteredRows]);
+  }, [scrollTop, viewportHeight, rowOffsets, filteredRows, rowHeightOf]);
 
   const visibleRows = filteredRows.slice(startIdx, endIdx);
 
@@ -175,12 +205,49 @@ const Grid: React.FC<GridProps> = ({
   }, []);
 
   useEffect(() => {
+    setColumnPreview({});
+  }, [columns]);
+
+  useEffect(() => {
+    setRowPreview({});
+  }, [rows]);
+
+  useEffect(() => {
     const stop = () => setIsDragging(false);
     window.addEventListener('mouseup', stop);
     return () => window.removeEventListener('mouseup', stop);
   }, []);
 
-  const commitEdit = useCallback(() => {
+  useEffect(() => {
+    if (!resizing) return undefined;
+    const move = (e: MouseEvent) => {
+      if (resizing.kind === 'column') {
+        const next = clamp(resizing.initial + e.clientX - resizing.start, MIN_COLUMN_WIDTH, MAX_COLUMN_WIDTH);
+        setColumnPreview((prev) => ({ ...prev, [resizing.id]: next }));
+        setResizing((prev) => prev && prev.kind === 'column' ? { ...prev, current: next } : prev);
+      } else {
+        const next = clamp(resizing.initial + e.clientY - resizing.start, MIN_ROW_HEIGHT, MAX_ROW_HEIGHT);
+        setRowPreview((prev) => ({ ...prev, [resizing.id]: next }));
+        setResizing((prev) => prev && prev.kind === 'row' ? { ...prev, current: next } : prev);
+      }
+    };
+    const up = () => {
+      setResizing((prev) => {
+        if (!prev) return null;
+        if (prev.kind === 'column' && prev.current !== prev.initial) onResizeColumn(prev.id, prev.current);
+        if (prev.kind === 'row' && prev.current !== prev.initial) onResizeRow(prev.id, prev.current);
+        return null;
+      });
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up, { once: true });
+    return () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+    };
+  }, [resizing, onResizeColumn, onResizeRow]);
+
+  const commitEdit = useCallback((skipNextBlur = false) => {
     if (readOnly) { setEditingValue(null); return; }
     if (focus && editingValue !== null) {
       if (editingValue.startsWith('=')) {
@@ -189,8 +256,15 @@ const Grid: React.FC<GridProps> = ({
         onSetCell(focus.rowId, focus.columnId, editingValue);
       }
     }
+    if (skipNextBlur) skipNextBlurCommitRef.current = true;
     setEditingValue(null);
   }, [focus, editingValue, onSetCell, onSetFormula, readOnly]);
+
+  const editCell = useCallback((row: RowOut, column: ColumnOut, seed?: string) => {
+    setAnchor({ rowId: row.id, columnId: column.id });
+    setFocus({ rowId: row.id, columnId: column.id });
+    setEditingValue(seed ?? editSourceOf(row.cells[String(column.id)]));
+  }, []);
 
   const moveActive = useCallback((dRow: number, dCol: number, extend: boolean) => {
     setFocus((prev) => {
@@ -231,6 +305,49 @@ const Grid: React.FC<GridProps> = ({
     const columnIds = sortedColumns.slice(selectionBounds.colFrom, selectionBounds.colTo + 1).map((c) => c.id);
     return { rowIds, columnIds };
   }, [selectionBounds, filteredRows, sortedColumns]);
+
+  const selectColumn = useCallback((columnId: number, extend: boolean) => {
+    if (!filteredRows.length) return;
+    const cell = { rowId: filteredRows[0].id, columnId };
+    const last = { rowId: filteredRows[filteredRows.length - 1].id, columnId };
+    if (!extend || !anchor) setAnchor(cell);
+    setFocus(last);
+  }, [anchor, filteredRows]);
+
+  const selectRow = useCallback((rowId: number, extend: boolean) => {
+    if (!sortedColumns.length) return;
+    const cell = { rowId, columnId: sortedColumns[0].id };
+    const last = { rowId, columnId: sortedColumns[sortedColumns.length - 1].id };
+    if (!extend || !anchor) setAnchor(cell);
+    setFocus(last);
+  }, [anchor, sortedColumns]);
+
+  const previousColumnId = useCallback((columnId: number): number | null => {
+    const idx = sortedColumns.findIndex((c) => c.id === columnId);
+    return idx > 0 ? sortedColumns[idx - 1].id : null;
+  }, [sortedColumns]);
+
+  const previousRowId = useCallback((rowId: number): number | null => {
+    const idx = filteredRows.findIndex((r) => r.id === rowId);
+    return idx > 0 ? filteredRows[idx - 1].id : null;
+  }, [filteredRows]);
+
+  const autoFitColumn = useCallback((column: ColumnOut) => {
+    const headerWidth = measureTextWidth(column.name, '600 13px Arial');
+    const maxCellWidth = filteredRows.slice(0, 1000).reduce((max, row) => {
+      const text = displayOf(row.cells[String(column.id)]?.value);
+      return Math.max(max, measureTextWidth(text, '13px Arial'));
+    }, headerWidth);
+    const width = clamp(maxCellWidth + 52, MIN_COLUMN_WIDTH, MAX_COLUMN_WIDTH);
+    setColumnPreview((prev) => ({ ...prev, [column.id]: width }));
+    if (width !== column.width) onResizeColumn(column.id, width);
+  }, [filteredRows, onResizeColumn]);
+
+  const autoFitRow = useCallback((row: RowOut) => {
+    const height = clamp(DEFAULT_ROW_HEIGHT, MIN_ROW_HEIGHT, MAX_ROW_HEIGHT);
+    setRowPreview((prev) => ({ ...prev, [row.id]: height }));
+    if (height !== row.height) onResizeRow(row.id, height);
+  }, [onResizeRow]);
 
   const applyFormat = useCallback((formatting: CellFormatting) => {
     if (readOnly) return;
@@ -283,7 +400,7 @@ const Grid: React.FC<GridProps> = ({
 
   const onCellMouseDown = useCallback((row: RowOut, column: ColumnOut, shiftKey: boolean) => {
     const cell = { rowId: row.id, columnId: column.id };
-    if (editingValue !== null) commitEdit();
+    if (editingValue !== null) commitEdit(true);
     if (shiftKey && anchor) {
       setFocus(cell);
     } else {
@@ -301,9 +418,10 @@ const Grid: React.FC<GridProps> = ({
     if (editingValue !== null) {
       if (e.key === 'Enter') {
         e.preventDefault();
-        commitEdit();
+        commitEdit(true);
         moveActive(1, 0, false);
       } else if (e.key === 'Escape') {
+        skipNextBlurCommitRef.current = true;
         setEditingValue(null);
       }
       return;
@@ -342,11 +460,12 @@ const Grid: React.FC<GridProps> = ({
       default:
         if (readOnly) break;
         if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
-          setEditingValue(e.key);
+          e.preventDefault();
+          editCell(row, column, e.key);
         }
     }
   }, [editingValue, commitEdit, moveActive, selectionBounds, selectedIds, applyFormat, activeCellFormatting,
-    readOnly, filteredRows, sortedColumns, pasteMatrixAt]);
+    readOnly, filteredRows, sortedColumns, pasteMatrixAt, editCell]);
 
   const openConditionalFormat = (columnId: number) => {
     const col = sortedColumns.find((c) => c.id === columnId);
@@ -438,17 +557,45 @@ const Grid: React.FC<GridProps> = ({
         {sortedColumns.map((col) => (
           <Box
             key={col.id}
+            onClick={(e) => selectColumn(col.id, e.shiftKey)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              selectColumn(col.id, e.shiftKey);
+              if (!readOnly) setColMenu({ anchor: e.currentTarget, columnId: col.id });
+            }}
             sx={{
-              width: col.width, flexShrink: 0, display: 'flex', alignItems: 'center',
+              width: columnWidthOf(col), flexShrink: 0, display: 'flex', alignItems: 'center',
               justifyContent: 'space-between', px: 1, py: 0.5, fontWeight: 600, fontSize: 13,
-              borderRight: '1px solid', borderColor: 'divider',
+              borderRight: '1px solid', borderColor: 'divider', position: 'relative', cursor: 'default',
+              bgcolor: selectionBounds && sortedColumns.indexOf(col) >= selectionBounds.colFrom && sortedColumns.indexOf(col) <= selectionBounds.colTo
+                ? 'rgba(25, 118, 210, 0.12)'
+                : undefined,
             }}
           >
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{col.name}</span>
             {!readOnly && (
-              <IconButton size="small" onClick={(e) => setColMenu({ anchor: e.currentTarget, columnId: col.id })}>
-                <span style={{ fontSize: 10 }}>▾</span>
-              </IconButton>
+              <>
+                <IconButton size="small" onClick={(e) => { e.stopPropagation(); setColMenu({ anchor: e.currentTarget, columnId: col.id }); }}>
+                  <span style={{ fontSize: 10 }}>▾</span>
+                </IconButton>
+                <Box
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setResizing({ kind: 'column', id: col.id, start: e.clientX, initial: columnWidthOf(col), current: columnWidthOf(col) });
+                  }}
+                  onDoubleClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    autoFitColumn(col);
+                  }}
+                  sx={{
+                    position: 'absolute', top: 0, right: -4, width: 8, height: '100%',
+                    cursor: 'col-resize', zIndex: 2,
+                    '&:hover': { bgcolor: 'primary.main', opacity: 0.35 },
+                  }}
+                />
+              </>
             )}
           </Box>
         ))}
@@ -464,7 +611,7 @@ const Grid: React.FC<GridProps> = ({
         <Box sx={{ display: 'flex', bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider' }}>
           <Box sx={{ width: ROW_HEADER_WIDTH, flexShrink: 0 }} />
           {sortedColumns.map((col) => (
-            <Box key={col.id} sx={{ width: col.width, flexShrink: 0, px: 0.5, py: 0.5, borderRight: '1px solid', borderColor: 'divider' }}>
+            <Box key={col.id} sx={{ width: columnWidthOf(col), flexShrink: 0, px: 0.5, py: 0.5, borderRight: '1px solid', borderColor: 'divider' }}>
               <TextField
                 size="small" variant="standard" placeholder="Фильтр…" fullWidth
                 value={filters[col.id] ?? ''}
@@ -490,7 +637,7 @@ const Grid: React.FC<GridProps> = ({
               <Box
                 key={row.id}
                 sx={{
-                  position: 'absolute', top, left: 0, right: 0, height: row.height,
+                  position: 'absolute', top, left: 0, right: 0, height: rowHeightOf(row),
                   display: 'flex', borderBottom: '1px solid', borderColor: 'divider',
                 }}
               >
@@ -498,11 +645,38 @@ const Grid: React.FC<GridProps> = ({
                   sx={{
                     width: ROW_HEADER_WIDTH, flexShrink: 0, display: 'flex', alignItems: 'center',
                     justifyContent: 'center', fontSize: 12, color: 'text.secondary', bgcolor: 'grey.50',
-                    cursor: readOnly ? 'default' : 'pointer',
+                    cursor: 'default', position: 'relative',
+                    ...(selectionBounds && idx >= selectionBounds.rowFrom && idx <= selectionBounds.rowTo
+                      ? { bgcolor: 'rgba(25, 118, 210, 0.12)', color: 'primary.main', fontWeight: 600 }
+                      : {}),
                   }}
-                  onClick={(e) => { if (!readOnly) setRowMenu({ anchor: e.currentTarget, rowId: row.id }); }}
+                  onClick={(e) => selectRow(row.id, e.shiftKey)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    selectRow(row.id, e.shiftKey);
+                    if (!readOnly) setRowMenu({ anchor: e.currentTarget, rowId: row.id });
+                  }}
                 >
                   {idx + 1}
+                  {!readOnly && (
+                    <Box
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setResizing({ kind: 'row', id: row.id, start: e.clientY, initial: rowHeightOf(row), current: rowHeightOf(row) });
+                      }}
+                      onDoubleClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        autoFitRow(row);
+                      }}
+                      sx={{
+                        position: 'absolute', left: 0, bottom: -4, width: '100%', height: 8,
+                        cursor: 'row-resize', zIndex: 2,
+                        '&:hover': { bgcolor: 'primary.main', opacity: 0.35 },
+                      }}
+                    />
+                  )}
                 </Box>
                 {sortedColumns.map((col, colIdx) => {
                   const isActive = active?.rowId === row.id && active?.columnId === col.id;
@@ -520,14 +694,14 @@ const Grid: React.FC<GridProps> = ({
                       tabIndex={0}
                       onMouseDown={(e) => onCellMouseDown(row, col, e.shiftKey)}
                       onMouseEnter={() => onCellMouseEnter(row, col)}
-                      onDoubleClick={() => { if (readOnly) return; setAnchor({ rowId: row.id, columnId: col.id }); setFocus({ rowId: row.id, columnId: col.id }); setEditingValue(editSourceOf(snapshot)); }}
+                      onDoubleClick={() => { if (!readOnly) editCell(row, col); }}
                       onKeyDown={(e) => onCellKeyDown(e, row, col)}
                       sx={{
-                        width: col.width, flexShrink: 0, px: 1, display: 'flex', alignItems: 'center',
+                        width: columnWidthOf(col), flexShrink: 0, px: 1, display: 'flex', alignItems: 'center',
                         fontSize: 13, borderRight: '1px solid', borderColor: 'divider',
                         outline: isActive ? '2px solid' : 'none', outlineColor: 'primary.main',
                         outlineOffset: -2, backgroundColor: finalBg ?? 'background.paper',
-                        overflow: 'hidden', userSelect: 'none', ...restStyle,
+                        overflow: 'hidden', userSelect: isEditing ? 'text' : 'none', ...restStyle,
                       }}
                     >
                       {isEditing ? (
@@ -537,8 +711,31 @@ const Grid: React.FC<GridProps> = ({
                           fullWidth
                           value={editingValue}
                           onChange={(e) => setEditingValue(e.target.value)}
-                          onBlur={() => { commitEdit(); }}
-                          InputProps={{ disableUnderline: true, sx: { fontSize: 13 } }}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onClick={(e) => e.stopPropagation()}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              commitEdit(true);
+                              moveActive(1, 0, false);
+                            } else if (e.key === 'Escape') {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              skipNextBlurCommitRef.current = true;
+                              setEditingValue(null);
+                            } else {
+                              e.stopPropagation();
+                            }
+                          }}
+                          onBlur={() => {
+                            if (skipNextBlurCommitRef.current) {
+                              skipNextBlurCommitRef.current = false;
+                              return;
+                            }
+                            commitEdit();
+                          }}
+                          InputProps={{ disableUnderline: true, sx: { fontSize: 13, userSelect: 'text', cursor: 'text' } }}
                         />
                       ) : (
                         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%', textAlign: restStyle.textAlign }}>
@@ -563,6 +760,9 @@ const Grid: React.FC<GridProps> = ({
       )}
 
       <Menu open={!!colMenu} anchorEl={colMenu?.anchor} onClose={() => setColMenu(null)}>
+        <MenuItem onClick={() => { if (colMenu) onInsertColumn(previousColumnId(colMenu.columnId)); setColMenu(null); }}>
+          <AddIcon fontSize="small" sx={{ mr: 1 }} /> Вставить колонку слева
+        </MenuItem>
         <MenuItem onClick={() => { if (colMenu) onInsertColumn(colMenu.columnId); setColMenu(null); }}>
           <AddIcon fontSize="small" sx={{ mr: 1 }} /> Вставить колонку справа
         </MenuItem>
@@ -583,6 +783,9 @@ const Grid: React.FC<GridProps> = ({
       </Menu>
 
       <Menu open={!!rowMenu} anchorEl={rowMenu?.anchor} onClose={() => setRowMenu(null)}>
+        <MenuItem onClick={() => { if (rowMenu) onInsertRow(previousRowId(rowMenu.rowId)); setRowMenu(null); }}>
+          <AddIcon fontSize="small" sx={{ mr: 1 }} /> Вставить строку выше
+        </MenuItem>
         <MenuItem onClick={() => { if (rowMenu) onInsertRow(rowMenu.rowId); setRowMenu(null); }}>
           <AddIcon fontSize="small" sx={{ mr: 1 }} /> Вставить строку ниже
         </MenuItem>

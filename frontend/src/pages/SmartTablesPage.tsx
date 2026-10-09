@@ -373,6 +373,8 @@ const WorkbookView: React.FC<{ workbook: Workbook; onBack: () => void }> = ({ wo
           onInsertColumn={(afterColumnId) =>
             withOps([{ type: 'insert_column', after_column_id: afterColumnId, name: 'Новая колонка', column_type: 'text' }])}
           onDeleteColumn={(columnId) => withOps([{ type: 'delete_column', column_id: columnId }])}
+          onResizeColumn={(columnId, width) => withOps([{ type: 'resize_column', column_id: columnId, width }])}
+          onResizeRow={(rowId, height) => withOps([{ type: 'resize_row', row_id: rowId, height }])}
           onFormatRange={(rowIds, columnIds, formatting) =>
             withOps([{ type: 'format_range', row_ids: rowIds, column_ids: columnIds, formatting }])}
           onSetConditionalFormat={(columnId, rules) =>

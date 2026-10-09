@@ -1,6 +1,7 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import SmartTablesPage from './SmartTablesPage';
 import { smartTablesApi } from '../services/api/smartTables';
 import type { SheetDetail, Workbook } from '../types/smartTables';
@@ -35,13 +36,63 @@ function makeWorkbook(role: Workbook['role']): Workbook {
 
 async function openWorkbook(role: Workbook['role']) {
   (smartTablesApi.listWorkbooks as any).mockResolvedValue([makeWorkbook(role)]);
-  render(<SmartTablesPage />);
+  render(
+    <MemoryRouter initialEntries={['/smart-tables']}>
+      <Routes>
+        <Route path="/smart-tables" element={<SmartTablesPage />} />
+        <Route path="/smart-tables/:workbookId" element={<SmartTablesPage />} />
+        <Route path="/smart-tables/:workbookId/sheets/:sheetId" element={<SmartTablesPage />} />
+      </Routes>
+    </MemoryRouter>,
+  );
   const card = await screen.findByText('Моя таблица');
   fireEvent.click(card);
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
+});
+
+describe('Deep links', () => {
+  it('loads the workbook and requested sheet directly from the URL', async () => {
+    (smartTablesApi.listWorkbooks as any).mockResolvedValue([makeWorkbook('viewer')]);
+    (smartTablesApi.listSheets as any).mockResolvedValue([
+      { id: 2, workbook_id: 1, name: 'План', position: 0, frozen_rows: 0, frozen_columns: 0 },
+    ]);
+    (smartTablesApi.getSheet as any).mockResolvedValue(makeDetail(2, 'План'));
+
+    render(
+      <MemoryRouter initialEntries={['/smart-tables/1/sheets/2?row=102&column=10']}>
+        <Routes>
+          <Route path="/smart-tables/:workbookId/sheets/:sheetId" element={<SmartTablesPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await screen.findByText('План');
+    expect(smartTablesApi.listWorkbooks).toHaveBeenCalled();
+    expect(smartTablesApi.listSheets).toHaveBeenCalledWith(1);
+    expect(smartTablesApi.getSheet).toHaveBeenCalledWith(2);
+  });
+
+  it('keeps the sheet open and warns when the target cell was deleted', async () => {
+    (smartTablesApi.listWorkbooks as any).mockResolvedValue([makeWorkbook('viewer')]);
+    (smartTablesApi.listSheets as any).mockResolvedValue([
+      { id: 2, workbook_id: 1, name: 'План', position: 0, frozen_rows: 0, frozen_columns: 0 },
+    ]);
+    (smartTablesApi.getSheet as any).mockResolvedValue(makeDetail(2, 'План'));
+
+    render(
+      <MemoryRouter initialEntries={['/smart-tables/1/sheets/2?row=999&column=10']}>
+        <Routes>
+          <Route path="/smart-tables/:workbookId/sheets/:sheetId" element={<SmartTablesPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Целевая ячейка больше не существует')).toBeInTheDocument();
+    expect(screen.getByText('План')).toBeInTheDocument();
+  });
 });
 
 afterEach(() => {

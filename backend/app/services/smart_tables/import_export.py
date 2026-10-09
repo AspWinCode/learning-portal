@@ -160,7 +160,7 @@ def import_sheet(
                 row_id=row.id, column_id=column.id, raw_value=str(raw_value), formula=None,
                 computed_value=computed, formatting={},
             ))
-            snapshot[str(column.id)] = {"value": computed, "formula": None, "formatting": {}}
+            snapshot[str(column.id)] = {"value": computed, "formula": None, "formatting": {}, "metadata": {}}
         row.cells_snapshot = snapshot
 
     db.flush()

@@ -12,14 +12,17 @@ import DownloadIcon from '@mui/icons-material/Download';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout';
 import Grid from '../components/smartTables/Grid';
+import SmartLinkDialog from '../components/smartTables/SmartLinkDialog';
 import AICommandBar from '../components/smartTables/AICommandBar';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 import FormDialog from '../components/ui/FormDialog';
 import { smartTablesApi } from '../services/api/smartTables';
 import { useSmartTableRealtime } from '../hooks/useSmartTableRealtime';
-import type { SheetDetail, Workbook } from '../types/smartTables';
+import type { ActiveCell } from '../components/smartTables/Grid';
+import type { CellSnapshot, SheetDetail, SmartLinkTarget, Workbook } from '../types/smartTables';
 
 // Phase 1 страница: список workbooks -> открыть workbook (листы + грид).
 // Запись данных — только через applyOperations (OperationExecutor на бэке),
@@ -108,12 +111,24 @@ const WorkbookList: React.FC<{ onOpen: (w: Workbook) => void }> = ({ onOpen }) =
   );
 };
 
-const WorkbookView: React.FC<{ workbook: Workbook; onBack: () => void }> = ({ workbook, onBack }) => {
+interface WorkbookViewProps {
+  workbook: Workbook;
+  requestedSheetId: number | null;
+  focusTarget: ActiveCell | null;
+  onBack: () => void;
+  onOpenSheet: (sheetId: number, focus?: ActiveCell | null, replace?: boolean) => void;
+  onOpenWorkbook: (workbookId: number, sheetId?: number | null, focus?: ActiveCell | null) => void;
+}
+
+const WorkbookView: React.FC<WorkbookViewProps> = ({
+  workbook, requestedSheetId, focusTarget, onBack, onOpenSheet, onOpenWorkbook,
+}) => {
   const [sheets, setSheets] = useState<{ id: number; name: string }[]>([]);
   const [sheetsLoaded, setSheetsLoaded] = useState(false);
   const [activeSheetId, setActiveSheetId] = useState<number | null>(null);
   const [detail, setDetail] = useState<SheetDetail | null>(null);
   const [error, setError] = useState('');
+  const [targetError, setTargetError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const canEdit = workbook.role !== 'viewer';
@@ -126,6 +141,11 @@ const WorkbookView: React.FC<{ workbook: Workbook; onBack: () => void }> = ({ wo
   const [renaming, setRenaming] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [linkEditor, setLinkEditor] = useState<{
+    rowId: number;
+    columnId: number;
+    snapshot?: CellSnapshot;
+  } | null>(null);
 
   const { presence, connected } = useSmartTableRealtime(activeSheetId, {
     onSheetUpdate: (sheet) => setDetail(sheet),
@@ -134,11 +154,25 @@ const WorkbookView: React.FC<{ workbook: Workbook; onBack: () => void }> = ({ wo
   const loadSheets = useCallback(async () => {
     const list = await smartTablesApi.listSheets(workbook.id);
     setSheets(list.map((s) => ({ id: s.id, name: s.name })));
-    if (list.length && activeSheetId === null) setActiveSheetId(list[0].id);
+    if (requestedSheetId !== null) {
+      if (list.some((sheet) => sheet.id === requestedSheetId)) {
+        setActiveSheetId(requestedSheetId);
+      } else {
+        setActiveSheetId(null);
+        setError('Лист больше не существует');
+      }
+    } else if (list.length) {
+      setActiveSheetId(list[0].id);
+      onOpenSheet(list[0].id, null, true);
+    }
     setSheetsLoaded(true);
-  }, [workbook.id, activeSheetId]);
+  }, [workbook.id, requestedSheetId, onOpenSheet]);
 
   useEffect(() => { loadSheets(); }, [loadSheets]);
+
+  useEffect(() => {
+    if (requestedSheetId !== null) setActiveSheetId(requestedSheetId);
+  }, [requestedSheetId]);
 
   const loadSheetDetail = useCallback(async (sheetId: number) => {
     setLoading(true);
@@ -156,10 +190,21 @@ const WorkbookView: React.FC<{ workbook: Workbook; onBack: () => void }> = ({ wo
     if (activeSheetId !== null) loadSheetDetail(activeSheetId);
   }, [activeSheetId, loadSheetDetail]);
 
+  useEffect(() => {
+    if (!detail || !focusTarget) {
+      setTargetError('');
+      return;
+    }
+    const rowExists = detail.rows.some((row) => row.id === focusTarget.rowId);
+    const columnExists = detail.columns.some((column) => column.id === focusTarget.columnId);
+    setTargetError(rowExists && columnExists ? '' : 'Целевая ячейка больше не существует');
+  }, [detail, focusTarget]);
+
   const handleAddSheet = async () => {
     const sheet = await smartTablesApi.createSheet(workbook.id, `Лист ${sheets.length + 1}`);
     await loadSheets();
     setActiveSheetId(sheet.sheet.id);
+    onOpenSheet(sheet.sheet.id);
   };
 
   const openRename = (sheet: { id: number; name: string }) => {
@@ -206,6 +251,8 @@ const WorkbookView: React.FC<{ workbook: Workbook; onBack: () => void }> = ({ wo
         const nextNeighbor = oldIdx < sheets.length - 1 ? sheets[oldIdx + 1] : null;
         const newActive = prevNeighbor ?? nextNeighbor ?? null;
         setActiveSheetId(newActive ? newActive.id : null);
+        if (newActive) onOpenSheet(newActive.id);
+        else onBack();
         if (!newActive) setDetail(null);
       }
       setDeleteTarget(null);
@@ -230,6 +277,7 @@ const WorkbookView: React.FC<{ workbook: Workbook; onBack: () => void }> = ({ wo
       const sheet = await smartTablesApi.importFile(workbook.id, file);
       await loadSheets();
       setActiveSheetId(sheet.sheet.id);
+      onOpenSheet(sheet.sheet.id);
       setError('');
     } catch (err: any) {
       setError(err?.response?.data?.detail || 'Не удалось импортировать файл');
@@ -271,6 +319,31 @@ const WorkbookView: React.FC<{ workbook: Workbook; onBack: () => void }> = ({ wo
     }
   };
 
+  const handleOpenSmartLink = (target: SmartLinkTarget) => {
+    if (target.type === 'external_url') {
+      let parsed: URL;
+      try { parsed = new URL(target.url); } catch { setError('Некорректная внешняя ссылка'); return; }
+      if (!['http:', 'https:'].includes(parsed.protocol)) { setError('Разрешены только http/https ссылки'); return; }
+      window.open(parsed.toString(), '_blank', 'noopener,noreferrer');
+      return;
+    }
+    onOpenWorkbook(
+      target.workbook_id,
+      target.sheet_id,
+      target.row_id != null && target.column_id != null
+        ? { rowId: target.row_id, columnId: target.column_id }
+        : null,
+    );
+  };
+
+  const saveSmartLink = async (label: string, target: SmartLinkTarget) => {
+    if (!linkEditor) return;
+    await withOps([{
+      type: 'set_smart_link', row_id: linkEditor.rowId, column_id: linkEditor.columnId, label, target,
+    }]);
+    setLinkEditor(null);
+  };
+
   return (
     <Box>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
@@ -292,7 +365,7 @@ const WorkbookView: React.FC<{ workbook: Workbook; onBack: () => void }> = ({ wo
       </Box>
 
       {sheets.length > 0 && (
-        <Tabs value={activeSheetId ?? false} onChange={(_, v) => setActiveSheetId(v)} sx={{ mb: 1 }}>
+        <Tabs value={activeSheetId ?? false} onChange={(_, v) => { setActiveSheetId(v); onOpenSheet(v); }} sx={{ mb: 1 }}>
           {sheets.map((s) => (
             <Tab
               key={s.id}
@@ -349,6 +422,7 @@ const WorkbookView: React.FC<{ workbook: Workbook; onBack: () => void }> = ({ wo
       </Box>
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      {targetError && <Alert severity="warning" sx={{ mb: 2 }}>{targetError}</Alert>}
 
       {activeSheetId !== null && <AICommandBar sheetId={activeSheetId} onSheetUpdated={setDetail} />}
 
@@ -382,9 +456,22 @@ const WorkbookView: React.FC<{ workbook: Workbook; onBack: () => void }> = ({ wo
           onSortColumn={(columnId, direction) => withOps([{ type: 'sort_rows', column_id: columnId, direction }])}
           onPasteRange={(anchorRowId, anchorColumnId, cells) =>
             withOps([{ type: 'paste_range', anchor_row_id: anchorRowId, anchor_column_id: anchorColumnId, cells }])}
+          focusTarget={focusTarget}
+          onOpenSmartLink={handleOpenSmartLink}
+          onEditSmartLink={(rowId, columnId, snapshot) => setLinkEditor({ rowId, columnId, snapshot })}
+          onClearSmartLink={(rowId, columnId) =>
+            withOps([{ type: 'set_cell', row_id: rowId, column_id: columnId, value: null }])}
           readOnly={!canEdit}
         />
       )}
+
+      <SmartLinkDialog
+        open={!!linkEditor}
+        currentWorkbookId={workbook.id}
+        snapshot={linkEditor?.snapshot}
+        onClose={() => setLinkEditor(null)}
+        onSave={saveSmartLink}
+      />
 
       <FormDialog
         open={!!renameTarget}
@@ -417,15 +504,70 @@ const WorkbookView: React.FC<{ workbook: Workbook; onBack: () => void }> = ({ wo
 };
 
 const SmartTablesPage: React.FC = () => {
+  const navigate = useNavigate();
+  const { workbookId: workbookIdParam, sheetId: sheetIdParam } = useParams();
+  const [searchParams] = useSearchParams();
   const [openWorkbook, setOpenWorkbook] = useState<Workbook | null>(null);
+  const [loadingWorkbook, setLoadingWorkbook] = useState(false);
+  const [routeError, setRouteError] = useState('');
+  const workbookId = workbookIdParam ? Number(workbookIdParam) : null;
+  const sheetId = sheetIdParam ? Number(sheetIdParam) : null;
+  const rowId = searchParams.get('row') ? Number(searchParams.get('row')) : null;
+  const columnId = searchParams.get('column') ? Number(searchParams.get('column')) : null;
+  const focusTarget = Number.isFinite(rowId) && Number.isFinite(columnId) && rowId !== null && columnId !== null
+    ? { rowId, columnId }
+    : null;
+
+  useEffect(() => {
+    if (workbookId === null || !Number.isFinite(workbookId)) {
+      setOpenWorkbook(null);
+      setRouteError('');
+      return;
+    }
+    setLoadingWorkbook(true);
+    smartTablesApi.listWorkbooks().then((workbooks) => {
+      const workbook = workbooks.find((item) => item.id === workbookId) || null;
+      setOpenWorkbook(workbook);
+      setRouteError(workbook ? '' : 'Таблица удалена или недоступна');
+    }).catch(() => {
+      setOpenWorkbook(null);
+      setRouteError('У вас нет доступа к этой таблице');
+    }).finally(() => setLoadingWorkbook(false));
+  }, [workbookId]);
+
+  const openSheet = useCallback((nextSheetId: number, focus: ActiveCell | null = null, replace = false) => {
+    if (workbookId === null) return;
+    const query = focus ? `?row=${focus.rowId}&column=${focus.columnId}` : '';
+    navigate(`/smart-tables/${workbookId}/sheets/${nextSheetId}${query}`, { replace });
+  }, [navigate, workbookId]);
+
+  const openTarget = useCallback((targetWorkbookId: number, targetSheetId?: number | null, focus?: ActiveCell | null) => {
+    if (!targetSheetId) {
+      navigate(`/smart-tables/${targetWorkbookId}`);
+      return;
+    }
+    const query = focus ? `?row=${focus.rowId}&column=${focus.columnId}` : '';
+    navigate(`/smart-tables/${targetWorkbookId}/sheets/${targetSheetId}${query}`);
+  }, [navigate]);
 
   return (
     <Layout>
       <Box sx={{ p: 3 }}>
-        {openWorkbook ? (
-          <WorkbookView workbook={openWorkbook} onBack={() => setOpenWorkbook(null)} />
+        {routeError ? (
+          <Alert severity="warning">{routeError}</Alert>
+        ) : loadingWorkbook ? (
+          <CircularProgress />
+        ) : openWorkbook ? (
+          <WorkbookView
+            workbook={openWorkbook}
+            requestedSheetId={sheetId}
+            focusTarget={focusTarget}
+            onBack={() => navigate('/smart-tables')}
+            onOpenSheet={openSheet}
+            onOpenWorkbook={openTarget}
+          />
         ) : (
-          <WorkbookList onOpen={setOpenWorkbook} />
+          <WorkbookList onOpen={(workbook) => navigate(`/smart-tables/${workbook.id}`)} />
         )}
       </Box>
     </Layout>

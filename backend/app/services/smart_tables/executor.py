@@ -59,7 +59,8 @@ def _coerce_value(value, column_type: str):
 
 
 _VALUE_AFFECTING_OPS = {
-    "set_cell", "set_formula", "insert_row", "delete_row", "insert_column", "delete_column",
+    "set_cell", "set_formula", "set_smart_link", "_restore_cell",
+    "insert_row", "delete_row", "insert_column", "delete_column",
     "_restore_row", "_restore_column", "paste_range", "_restore_paste_range",
 }
 
@@ -184,7 +185,12 @@ class OperationExecutor:
         idx = next((i for i, r in enumerate(rows_sorted) if r.id == row.id), None)
         after_row_id = rows_sorted[idx - 1].id if idx and idx > 0 else None
         cells = {
-            str(c.column_id): {"raw_value": c.raw_value, "formula": c.formula, "formatting": c.formatting or {}}
+            str(c.column_id): {
+                "raw_value": c.raw_value,
+                "formula": c.formula,
+                "metadata": c.cell_metadata or {},
+                "formatting": c.formatting or {},
+            }
             for c in row.cells
         }
         self.db.delete(row)
@@ -206,7 +212,10 @@ class OperationExecutor:
             column = self.db.get(SmartTableColumn, int(column_id))
             if column is None:
                 continue
-            self._write_cell(row, column, payload.get("raw_value"), payload.get("formula"))
+            self._write_cell(
+                row, column, payload.get("raw_value"), payload.get("formula"),
+                metadata=payload.get("metadata"),
+            )
             if payload.get("formatting"):
                 cell = self._get_or_create_cell(row, column)
                 cell.formatting = dict(payload["formatting"])
@@ -252,7 +261,12 @@ class OperationExecutor:
         after_column_id = columns_sorted[idx - 1].id if idx and idx > 0 else None
         name, column_type, config = column.name, column.type, dict(column.config or {})
         cells = {
-            str(c.row_id): {"raw_value": c.raw_value, "formula": c.formula, "formatting": c.formatting or {}}
+            str(c.row_id): {
+                "raw_value": c.raw_value,
+                "formula": c.formula,
+                "metadata": c.cell_metadata or {},
+                "formatting": c.formatting or {},
+            }
             for c in self.db.query(SmartTableCell).filter(SmartTableCell.column_id == column.id).all()
         }
         self.db.delete(column)
@@ -290,7 +304,10 @@ class OperationExecutor:
             row = self.db.get(SmartTableRow, int(row_id))
             if row is None:
                 continue
-            self._write_cell(row, column, payload.get("raw_value"), payload.get("formula"))
+            self._write_cell(
+                row, column, payload.get("raw_value"), payload.get("formula"),
+                metadata=payload.get("metadata"),
+            )
             if payload.get("formatting"):
                 cell = self._get_or_create_cell(row, column)
                 cell.formatting = dict(payload["formatting"])
@@ -320,13 +337,7 @@ class OperationExecutor:
             .filter(SmartTableCell.row_id == row.id, SmartTableCell.column_id == column.id)
             .first()
         )
-        # если в ячейке была формула — undo должен вернуть формулу, а не её
-        # последний computed_value (иначе откат set_cell поверх формульной
-        # ячейки необратимо стирает формулу)
-        if existing is not None and existing.formula:
-            inverse = {"type": "set_formula", "row_id": row.id, "column_id": column.id, "formula": existing.formula}
-        else:
-            inverse = {"type": "set_cell", "row_id": row.id, "column_id": column.id, "value": existing.raw_value if existing else None}
+        inverse = self._cell_inverse(row, column, existing)
         self._write_cell(row, column, op.get("value"), formula=None)
         return inverse
 
@@ -343,14 +354,33 @@ class OperationExecutor:
             .filter(SmartTableCell.row_id == row.id, SmartTableCell.column_id == column.id)
             .first()
         )
-        if existing is not None and existing.formula:
-            inverse = {"type": "set_formula", "row_id": row.id, "column_id": column.id, "formula": existing.formula}
-        else:
-            inverse = {"type": "set_cell", "row_id": row.id, "column_id": column.id, "value": existing.raw_value if existing else None}
+        inverse = self._cell_inverse(row, column, existing)
         # computed_value для формульной ячейки считает FormulaEngine.recalculate_sheet(),
         # которую apply_batch/undo_last вызывают сразу после применения этой операции
         # (set_formula входит в _VALUE_AFFECTING_OPS) — здесь только сохраняем текст формулы.
         self._write_cell(row, column, None, formula=op["formula"])
+        return inverse
+
+    def _op_set_smart_link(self, op: dict) -> dict:
+        row = self.db.get(SmartTableRow, op["row_id"])
+        if row is None or row.sheet_id != self.sheet.id:
+            raise OperationError("row_id не найден на этом листе")
+        column = self.db.get(SmartTableColumn, op["column_id"])
+        if column is None or column.sheet_id != self.sheet.id:
+            raise OperationError("column_id не найден на этом листе")
+        existing = (
+            self.db.query(SmartTableCell)
+            .filter(SmartTableCell.row_id == row.id, SmartTableCell.column_id == column.id)
+            .first()
+        )
+        inverse = self._cell_inverse(row, column, existing)
+        self._write_cell(
+            row,
+            column,
+            op["label"],
+            formula=None,
+            metadata={"type": "smart_link", "target": op["target"]},
+        )
         return inverse
 
     def _op_paste_range(self, op: dict) -> dict:
@@ -424,6 +454,8 @@ class OperationExecutor:
                         "column_id": column.id,
                         "raw_value": existing.raw_value if existing else None,
                         "formula": existing.formula if existing else None,
+                        "metadata": existing.cell_metadata if existing else {},
+                        "formatting": existing.formatting if existing else {},
                     })
                 if entry.get("formula") is not None:
                     self._write_cell(row, column, None, formula=entry["formula"])
@@ -456,8 +488,47 @@ class OperationExecutor:
             column = self.db.get(SmartTableColumn, entry["column_id"])
             if row is None or column is None:
                 continue
-            self._write_cell(row, column, entry.get("raw_value"), entry.get("formula"))
+            self._write_cell(
+                row, column, entry.get("raw_value"), entry.get("formula"),
+                metadata=entry.get("metadata"),
+            )
+            cell = self._get_or_create_cell(row, column)
+            cell.formatting = dict(entry.get("formatting") or {})
+            self._sync_snapshot(row, column, cell)
         return {"type": "paste_range", **op["redo"]}
+
+    def _cell_inverse(self, row: SmartTableRow, column: SmartTableColumn, cell: Optional[SmartTableCell]) -> dict:
+        return {
+            "type": "_restore_cell",
+            "row_id": row.id,
+            "column_id": column.id,
+            "raw_value": cell.raw_value if cell else None,
+            "formula": cell.formula if cell else None,
+            "metadata": dict(cell.cell_metadata or {}) if cell else {},
+            "formatting": dict(cell.formatting or {}) if cell else {},
+        }
+
+    def _op__restore_cell(self, op: dict) -> dict:
+        row = self.db.get(SmartTableRow, op["row_id"])
+        column = self.db.get(SmartTableColumn, op["column_id"])
+        if row is None or row.sheet_id != self.sheet.id:
+            raise OperationError("row_id не найден на этом листе")
+        if column is None or column.sheet_id != self.sheet.id:
+            raise OperationError("column_id не найден на этом листе")
+        existing = (
+            self.db.query(SmartTableCell)
+            .filter(SmartTableCell.row_id == row.id, SmartTableCell.column_id == column.id)
+            .first()
+        )
+        inverse = self._cell_inverse(row, column, existing)
+        self._write_cell(
+            row, column, op.get("raw_value"), op.get("formula"),
+            metadata=op.get("metadata"),
+        )
+        cell = self._get_or_create_cell(row, column)
+        cell.formatting = dict(op.get("formatting") or {})
+        self._sync_snapshot(row, column, cell)
+        return inverse
 
     def _get_or_create_cell(self, row: SmartTableRow, column: SmartTableColumn) -> SmartTableCell:
         cell = (
@@ -466,29 +537,39 @@ class OperationExecutor:
             .first()
         )
         if cell is None:
-            cell = SmartTableCell(row_id=row.id, column_id=column.id, formatting={})
+            cell = SmartTableCell(row_id=row.id, column_id=column.id, cell_metadata={}, formatting={})
             self.db.add(cell)
             self.db.flush()
         return cell
 
     def _sync_snapshot(self, row: SmartTableRow, column: SmartTableColumn, cell: SmartTableCell) -> None:
         snapshot = dict(row.cells_snapshot or {})
-        if cell.computed_value is None and not cell.formatting and not cell.formula:
+        if cell.computed_value is None and not cell.formatting and not cell.formula and not cell.cell_metadata:
             snapshot.pop(str(column.id), None)
         else:
             snapshot[str(column.id)] = {
                 "value": cell.computed_value,
                 "formula": cell.formula,
                 "formatting": cell.formatting or {},
+                "metadata": cell.cell_metadata or {},
             }
         row.cells_snapshot = snapshot
 
-    def _write_cell(self, row: SmartTableRow, column: SmartTableColumn, raw_value, formula: Optional[str]):
+    def _write_cell(
+        self,
+        row: SmartTableRow,
+        column: SmartTableColumn,
+        raw_value,
+        formula: Optional[str],
+        *,
+        metadata: Optional[dict] = None,
+    ):
         computed = _coerce_value(raw_value, column.type)
         cell = self._get_or_create_cell(row, column)
         cell.raw_value = None if raw_value is None else str(raw_value)
         cell.formula = formula
         cell.computed_value = computed
+        cell.cell_metadata = dict(metadata or {})
         self._sync_snapshot(row, column, cell)
         self.db.flush()
 

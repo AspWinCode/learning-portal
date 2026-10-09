@@ -220,6 +220,7 @@ class FormulaEngine:
                 "value": value,
                 "formula": cell.formula,
                 "formatting": cell.formatting or {},
+                "metadata": cell.cell_metadata or {},
             }
             row.cells_snapshot = snapshot
         self.db.flush()

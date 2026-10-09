@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import Grid from './Grid';
 import type { ColumnOut, RowOut } from '../../types/smartTables';
@@ -30,10 +30,15 @@ function renderGrid(overrides: Partial<React.ComponentProps<typeof Grid>> = {}) 
       onDeleteRow={noop}
       onInsertColumn={noop}
       onDeleteColumn={noop}
+      onResizeColumn={noop}
+      onResizeRow={noop}
       onFormatRange={noop}
       onSetConditionalFormat={noop}
       onSortColumn={noop}
       onPasteRange={onPasteRange}
+      onOpenSmartLink={noop}
+      onEditSmartLink={noop}
+      onClearSmartLink={noop}
       {...overrides}
     />
   );
@@ -136,5 +141,61 @@ describe('Grid Delete/Backspace batching', () => {
     selectRange([1, 10], [2, 11]);
     fireEvent.keyDown(cell(1, 10), { key: 'Delete' });
     expect(onPasteRange).not.toHaveBeenCalled();
+  });
+});
+
+describe('Grid smart links', () => {
+  const smartRows: RowOut[] = [{
+    id: 1,
+    sheet_id: 1,
+    position: 0,
+    height: 32,
+    cells: {
+      '10': {
+        value: 'Открыть',
+        formula: null,
+        formatting: {},
+        metadata: {
+          type: 'smart_link',
+          target: { type: 'smart_table', workbook_id: 7, sheet_id: 24, row_id: 91, column_id: 18 },
+        },
+      },
+    },
+  }];
+
+  it('opens a smart link without selecting through the button click', () => {
+    const onOpenSmartLink = vi.fn();
+    renderGrid({ rows: smartRows, onOpenSmartLink });
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть' }));
+    expect(onOpenSmartLink).toHaveBeenCalledWith({
+      type: 'smart_table', workbook_id: 7, sheet_id: 24, row_id: 91, column_id: 18,
+    });
+  });
+
+  it('lets a viewer open but not edit a smart link', () => {
+    const onOpenSmartLink = vi.fn();
+    const onEditSmartLink = vi.fn();
+    renderGrid({ rows: smartRows, readOnly: true, onOpenSmartLink, onEditSmartLink });
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть' }));
+    fireEvent.doubleClick(cell(1, 10));
+    expect(onOpenSmartLink).toHaveBeenCalledTimes(1);
+    expect(onEditSmartLink).not.toHaveBeenCalled();
+  });
+
+  it('selects and scrolls to a deep-link target cell', async () => {
+    const scrollTo = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
+      configurable: true,
+      value: scrollTo,
+    });
+
+    renderGrid({ focusTarget: { rowId: 2, columnId: 11 } });
+
+    await waitFor(() => expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({
+      top: expect.any(Number),
+      left: expect.any(Number),
+      behavior: 'smooth',
+    })));
+    expect(cell(2, 11)).toHaveAttribute('aria-selected', 'true');
   });
 });

@@ -4,7 +4,22 @@
 
 export type ColumnType =
   | 'text' | 'number' | 'currency' | 'percentage' | 'date' | 'datetime'
-  | 'boolean' | 'select' | 'multi_select' | 'formula' | 'ai';
+  | 'boolean' | 'select' | 'multi_select' | 'formula' | 'ai' | 'smart_link';
+
+export type SmartLinkTarget =
+  | {
+      type: 'smart_table';
+      workbook_id: number;
+      sheet_id?: number | null;
+      row_id?: number | null;
+      column_id?: number | null;
+    }
+  | { type: 'external_url'; url: string };
+
+export interface SmartLinkMetadata {
+  type: 'smart_link';
+  target: SmartLinkTarget;
+}
 
 export interface FormulaError {
   error: string; // '#CIRCULAR' | '#DIV/0!' | '#VALUE!' | '#REF!' | '#N/A' | '#NAME?' | '#ERROR!'
@@ -81,6 +96,7 @@ export interface CellSnapshot {
   value: CellValue;
   formula: string | null; // исходный текст формулы (с '='), если ячейка формульная
   formatting: CellFormatting;
+  metadata?: SmartLinkMetadata | Record<string, unknown>;
 }
 
 export interface RowOut {
@@ -113,6 +129,7 @@ export type SpreadsheetOperation =
   | { type: 'resize_column'; column_id: number; width: number }
   | { type: 'set_cell'; row_id: number; column_id: number; value: CellValue }
   | { type: 'set_formula'; row_id: number; column_id: number; formula: string }
+  | { type: 'set_smart_link'; row_id: number; column_id: number; label: string; target: SmartLinkTarget }
   | { type: 'format_range'; row_ids: number[]; column_ids: number[]; formatting: CellFormatting }
   | { type: 'set_conditional_format'; column_id: number; rules: ConditionalFormatRule[] }
   | { type: 'sort_rows'; column_id: number; direction: 'asc' | 'desc' }

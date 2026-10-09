@@ -257,6 +257,59 @@ class TestPasteRangeLimit:
             OpPasteRange(anchor_row_id=rows[0].id, anchor_column_id=cols[0].id, cells=[huge_row])
 
 
+class TestSmartLinks:
+    def test_set_and_undo_restore_label_target_and_metadata(self, db, sheet, owner_user):
+        sheet_obj, rows, cols = sheet
+        ex = _executor(db, sheet_obj, owner_user.id)
+        from app.models import SmartTableCell
+        from app.schemas.smart_tables import OpSetCell, OpSetSmartLink
+
+        ex.apply_batch([OpSetCell(row_id=rows[0].id, column_id=cols[0].id, value="До ссылки")])
+        ex.apply_batch([OpSetSmartLink(
+            row_id=rows[0].id,
+            column_id=cols[0].id,
+            label="Открыть",
+            target={
+                "type": "smart_table",
+                "workbook_id": sheet_obj.workbook_id,
+                "sheet_id": sheet_obj.id,
+                "row_id": rows[1].id,
+                "column_id": cols[1].id,
+            },
+        )])
+        db.commit()
+
+        cell = db.query(SmartTableCell).filter_by(row_id=rows[0].id, column_id=cols[0].id).one()
+        assert cell.computed_value == "Открыть"
+        assert cell.cell_metadata["type"] == "smart_link"
+        assert cell.cell_metadata["target"]["row_id"] == rows[1].id
+        snapshot = rows[0].cells_snapshot[str(cols[0].id)]
+        assert snapshot["metadata"] == cell.cell_metadata
+
+        assert ex.undo_last() is True
+        db.commit()
+        db.refresh(cell)
+        assert cell.computed_value == "До ссылки"
+        assert cell.cell_metadata == {}
+
+    def test_plain_set_cell_removes_existing_smart_link_metadata(self, db, sheet, owner_user):
+        sheet_obj, rows, cols = sheet
+        ex = _executor(db, sheet_obj, owner_user.id)
+        from app.models import SmartTableCell
+        from app.schemas.smart_tables import OpSetCell, OpSetSmartLink
+
+        ex.apply_batch([OpSetSmartLink(
+            row_id=rows[0].id, column_id=cols[0].id, label="Открыть",
+            target={"type": "external_url", "url": "https://example.com"},
+        )])
+        ex.apply_batch([OpSetCell(row_id=rows[0].id, column_id=cols[0].id, value="Текст")])
+        db.commit()
+
+        cell = db.query(SmartTableCell).filter_by(row_id=rows[0].id, column_id=cols[0].id).one()
+        assert cell.computed_value == "Текст"
+        assert cell.cell_metadata == {}
+
+
 class TestSheetRenamePermissions:
     def test_editor_can_rename_viewer_cannot(self, db, workbook, sheet, editor_user, viewer_user):
         from app import auth

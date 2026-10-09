@@ -17,8 +17,11 @@ import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import RuleIcon from '@mui/icons-material/Rule';
+import LinkIcon from '@mui/icons-material/Link';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import type {
-  CellFormatting, CellSnapshot, CellValue, ColumnOut, ConditionOperator, ConditionalFormatRule, PasteCell, RowOut, TextAlign,
+  CellFormatting, CellSnapshot, CellValue, ColumnOut, ConditionOperator, ConditionalFormatRule, PasteCell, RowOut,
+  SmartLinkMetadata, SmartLinkTarget, TextAlign,
 } from '../../types/smartTables';
 import { isFormulaError } from '../../types/smartTables';
 import { MAX_PASTE_CELLS, buildPasteMatrix, parseClipboardText, toPasteCells, toTsv, totalCells } from './clipboard';
@@ -59,6 +62,10 @@ interface GridProps {
   onSetConditionalFormat: (columnId: number, rules: ConditionalFormatRule[]) => void;
   onSortColumn: (columnId: number, direction: 'asc' | 'desc') => void;
   onPasteRange: (anchorRowId: number, anchorColumnId: number, cells: PasteCell[][]) => void;
+  focusTarget?: ActiveCell | null;
+  onOpenSmartLink: (target: SmartLinkTarget) => void;
+  onEditSmartLink: (rowId: number, columnId: number, snapshot?: CellSnapshot) => void;
+  onClearSmartLink: (rowId: number, columnId: number) => void;
   readOnly?: boolean;
 }
 
@@ -116,6 +123,21 @@ function displayOf(value: CellValue): string {
   return String(value);
 }
 
+function smartLinkOf(snapshot: CellSnapshot | undefined): SmartLinkMetadata | null {
+  const metadata = snapshot?.metadata;
+  if (!metadata || metadata.type !== 'smart_link' || !('target' in metadata)) return null;
+  return metadata as SmartLinkMetadata;
+}
+
+function smartLinkAddress(target: SmartLinkTarget): string {
+  if (target.type === 'external_url') return target.url;
+  const base = `/smart-tables/${target.workbook_id}`;
+  if (!target.sheet_id) return base;
+  const sheet = `${base}/sheets/${target.sheet_id}`;
+  if (target.row_id == null || target.column_id == null) return sheet;
+  return `${sheet}?row=${target.row_id}&column=${target.column_id}`;
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(Math.round(value), min), max);
 }
@@ -131,7 +153,7 @@ function measureTextWidth(text: string, font = '13px Arial'): number {
 const Grid: React.FC<GridProps> = ({
   columns, rows, onSetCell, onSetFormula, onInsertRow, onDeleteRow, onInsertColumn, onDeleteColumn,
   onResizeColumn, onResizeRow, onFormatRange, onSetConditionalFormat, onSortColumn, onPasteRange,
-  readOnly = false,
+  focusTarget = null, onOpenSmartLink, onEditSmartLink, onClearSmartLink, readOnly = false,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const skipNextBlurCommitRef = useRef(false);
@@ -150,6 +172,8 @@ const Grid: React.FC<GridProps> = ({
   const [rowPreview, setRowPreview] = useState<Record<number, number>>({});
   const [colMenu, setColMenu] = useState<{ anchor: HTMLElement; columnId: number } | null>(null);
   const [rowMenu, setRowMenu] = useState<{ anchor: HTMLElement; rowId: number } | null>(null);
+  const [cellMenu, setCellMenu] = useState<{ anchor: HTMLElement; rowId: number; columnId: number } | null>(null);
+  const [highlightCell, setHighlightCell] = useState<ActiveCell | null>(null);
   const [condFormatColumnId, setCondFormatColumnId] = useState<number | null>(null);
   const [condRules, setCondRules] = useState<ConditionalFormatRule[]>([]);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -195,6 +219,33 @@ const Grid: React.FC<GridProps> = ({
   }, [scrollTop, viewportHeight, rowOffsets, filteredRows, rowHeightOf]);
 
   const visibleRows = filteredRows.slice(startIdx, endIdx);
+
+  useEffect(() => {
+    if (!focusTarget) return;
+    if (Object.values(filters).some((value) => value.trim() !== '')) {
+      setFilters({});
+      return;
+    }
+    const rowIndex = filteredRows.findIndex((row) => row.id === focusTarget.rowId);
+    const columnIndex = sortedColumns.findIndex((column) => column.id === focusTarget.columnId);
+    if (rowIndex < 0 || columnIndex < 0) return;
+    const cell = { rowId: focusTarget.rowId, columnId: focusTarget.columnId };
+    setAnchor(cell);
+    setFocus(cell);
+    setHighlightCell(cell);
+    const left = sortedColumns.slice(0, columnIndex).reduce((sum, column) => sum + columnWidthOf(column), 0);
+    const container = containerRef.current;
+    if (container) {
+      if (typeof container.scrollTo === 'function') {
+        container.scrollTo({ top: rowOffsets[rowIndex], left, behavior: 'smooth' });
+      } else {
+        container.scrollTop = rowOffsets[rowIndex];
+        container.scrollLeft = left;
+      }
+    }
+    const timer = window.setTimeout(() => setHighlightCell(null), 1800);
+    return () => window.clearTimeout(timer);
+  }, [focusTarget?.rowId, focusTarget?.columnId, filteredRows, sortedColumns, rowOffsets, filters, columnWidthOf]);
 
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     setScrollTop(e.currentTarget.scrollTop);
@@ -437,7 +488,11 @@ const Grid: React.FC<GridProps> = ({
       case 'F2':
         e.preventDefault();
         if (readOnly) break;
-        setEditingValue(editSourceOf(row.cells[String(column.id)]));
+        if (column.type === 'smart_link' || smartLinkOf(row.cells[String(column.id)])) {
+          onEditSmartLink(row.id, column.id, row.cells[String(column.id)]);
+        } else {
+          setEditingValue(editSourceOf(row.cells[String(column.id)]));
+        }
         break;
       case 'Delete':
       case 'Backspace':
@@ -465,7 +520,7 @@ const Grid: React.FC<GridProps> = ({
         }
     }
   }, [editingValue, commitEdit, moveActive, selectionBounds, selectedIds, applyFormat, activeCellFormatting,
-    readOnly, filteredRows, sortedColumns, pasteMatrixAt, editCell]);
+    readOnly, filteredRows, sortedColumns, pasteMatrixAt, editCell, onEditSmartLink]);
 
   const openConditionalFormat = (columnId: number) => {
     const col = sortedColumns.find((c) => c.id === columnId);
@@ -540,6 +595,21 @@ const Grid: React.FC<GridProps> = ({
             <IconButton size="small" disabled={!hasSelection || readOnly}
               onClick={() => applyFormat({ bold: null, italic: null, align: null, bg_color: null, text_color: null })}>
               <FormatClearIcon fontSize="small" />
+            </IconButton>
+          </span>
+        </Tooltip>
+        <Tooltip title="Добавить или изменить умную ссылку">
+          <span>
+            <IconButton
+              size="small"
+              disabled={!active || readOnly}
+              onClick={() => {
+                if (!active) return;
+                const row = rows.find((item) => item.id === active.rowId);
+                onEditSmartLink(active.rowId, active.columnId, row?.cells[String(active.columnId)]);
+              }}
+            >
+              <LinkIcon fontSize="small" />
             </IconButton>
           </span>
         </Tooltip>
@@ -682,6 +752,7 @@ const Grid: React.FC<GridProps> = ({
                   const isActive = active?.rowId === row.id && active?.columnId === col.id;
                   const isEditing = isActive && editingValue !== null;
                   const snapshot = row.cells[String(col.id)];
+                  const smartLink = smartLinkOf(snapshot);
                   const value = snapshot?.value;
                   const selected = isSelected(idx, colIdx);
                   const rules = col.config?.conditional_formats;
@@ -691,15 +762,30 @@ const Grid: React.FC<GridProps> = ({
                     <Box
                       key={col.id}
                       data-testid={`cell-${row.id}-${col.id}`}
+                      aria-selected={isActive}
                       tabIndex={0}
                       onMouseDown={(e) => onCellMouseDown(row, col, e.shiftKey)}
                       onMouseEnter={() => onCellMouseEnter(row, col)}
-                      onDoubleClick={() => { if (!readOnly) editCell(row, col); }}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        setAnchor({ rowId: row.id, columnId: col.id });
+                        setFocus({ rowId: row.id, columnId: col.id });
+                        setCellMenu({ anchor: e.currentTarget, rowId: row.id, columnId: col.id });
+                      }}
+                      onDoubleClick={() => {
+                        if (readOnly) return;
+                        if (smartLink || col.type === 'smart_link') onEditSmartLink(row.id, col.id, snapshot);
+                        else editCell(row, col);
+                      }}
                       onKeyDown={(e) => onCellKeyDown(e, row, col)}
                       sx={{
                         width: columnWidthOf(col), flexShrink: 0, px: 1, display: 'flex', alignItems: 'center',
                         fontSize: 13, borderRight: '1px solid', borderColor: 'divider',
-                        outline: isActive ? '2px solid' : 'none', outlineColor: 'primary.main',
+                        outline: isActive ? '2px solid' : 'none',
+                        outlineColor: highlightCell?.rowId === row.id && highlightCell?.columnId === col.id ? 'warning.main' : 'primary.main',
+                        boxShadow: highlightCell?.rowId === row.id && highlightCell?.columnId === col.id
+                          ? 'inset 0 0 0 3px rgba(237, 108, 2, 0.45)'
+                          : undefined,
                         outlineOffset: -2, backgroundColor: finalBg ?? 'background.paper',
                         overflow: 'hidden', userSelect: isEditing ? 'text' : 'none', ...restStyle,
                       }}
@@ -737,6 +823,19 @@ const Grid: React.FC<GridProps> = ({
                           }}
                           InputProps={{ disableUnderline: true, sx: { fontSize: 13, userSelect: 'text', cursor: 'text' } }}
                         />
+                      ) : smartLink ? (
+                        <Button
+                          size="small"
+                          variant="text"
+                          endIcon={smartLink.target.type === 'external_url' ? <OpenInNewIcon fontSize="inherit" /> : undefined}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onClick={(e) => { e.stopPropagation(); onOpenSmartLink(smartLink.target); }}
+                          sx={{ minWidth: 0, px: 0.75, maxWidth: '100%', textTransform: 'none' }}
+                        >
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {displayOf(value) || 'Открыть'}
+                          </span>
+                        </Button>
                       ) : (
                         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%', textAlign: restStyle.textAlign }}>
                           {displayOf(value)}
@@ -792,6 +891,38 @@ const Grid: React.FC<GridProps> = ({
         <MenuItem onClick={() => { if (rowMenu) onDeleteRow(rowMenu.rowId); setRowMenu(null); }}>
           <DeleteIcon fontSize="small" sx={{ mr: 1 }} /> Удалить строку
         </MenuItem>
+      </Menu>
+
+      <Menu open={!!cellMenu} anchorEl={cellMenu?.anchor} onClose={() => setCellMenu(null)}>
+        {(() => {
+          if (!cellMenu) return null;
+          const row = rows.find((item) => item.id === cellMenu.rowId);
+          const column = columns.find((item) => item.id === cellMenu.columnId);
+          const snapshot = row?.cells[String(cellMenu.columnId)];
+          const link = smartLinkOf(snapshot);
+          return [
+            link && (
+              <MenuItem key="open" onClick={() => { onOpenSmartLink(link.target); setCellMenu(null); }}>
+                <OpenInNewIcon fontSize="small" sx={{ mr: 1 }} /> Открыть ссылку
+              </MenuItem>
+            ),
+            !readOnly && (
+              <MenuItem key="edit" onClick={() => { onEditSmartLink(cellMenu.rowId, cellMenu.columnId, snapshot); setCellMenu(null); }}>
+                <LinkIcon fontSize="small" sx={{ mr: 1 }} /> {link || column?.type === 'smart_link' ? 'Редактировать ссылку' : 'Добавить ссылку'}
+              </MenuItem>
+            ),
+            link && !readOnly && (
+              <MenuItem key="clear" onClick={() => { onClearSmartLink(cellMenu.rowId, cellMenu.columnId); setCellMenu(null); }}>
+                <DeleteIcon fontSize="small" sx={{ mr: 1 }} /> Удалить ссылку
+              </MenuItem>
+            ),
+            link && (
+              <MenuItem key="copy" onClick={() => { navigator.clipboard?.writeText(smartLinkAddress(link.target)); setCellMenu(null); }}>
+                Копировать адрес
+              </MenuItem>
+            ),
+          ];
+        })()}
       </Menu>
 
       <Menu open={!!colorMenu} anchorEl={colorMenu?.anchor} onClose={() => setColorMenu(null)}>

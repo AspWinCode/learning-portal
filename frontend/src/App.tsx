@@ -1171,6 +1171,26 @@ function App() {
               }
             />
             <Route
+              path="/smart-tables/:workbookId"
+              element={
+                <PrivateRoute>
+                  <SectionBoundary>
+                    <SmartTablesPage />
+                  </SectionBoundary>
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/smart-tables/:workbookId/sheets/:sheetId"
+              element={
+                <PrivateRoute>
+                  <SectionBoundary>
+                    <SmartTablesPage />
+                  </SectionBoundary>
+                </PrivateRoute>
+              }
+            />
+            <Route
               path="/travel"
               element={
                 <PrivateRoute>

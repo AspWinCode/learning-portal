@@ -10,13 +10,14 @@ Import/export (Phase 4) и AI (Phase 5) — следующие фазы
 """
 from datetime import datetime
 from typing import Annotated, Any, List, Literal, Optional, Union
+from urllib.parse import urlparse
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 ColumnType = Literal[
     "text", "number", "currency", "percentage", "date", "datetime",
-    "boolean", "select", "multi_select", "formula", "ai",
+    "boolean", "select", "multi_select", "formula", "ai", "smart_link",
 ]
 
 class FormulaErrorOut(BaseModel):
@@ -54,6 +55,47 @@ class ConditionalFormatRule(BaseModel):
     bg_color: Optional[str] = None
     text_color: Optional[str] = None
     bold: Optional[bool] = None
+
+
+class SmartTableLinkTarget(BaseModel):
+    type: Literal["smart_table"] = "smart_table"
+    workbook_id: int
+    sheet_id: Optional[int] = None
+    row_id: Optional[int] = None
+    column_id: Optional[int] = None
+
+    model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="after")
+    def _validate_cell_target(self) -> "SmartTableLinkTarget":
+        has_row = self.row_id is not None
+        has_column = self.column_id is not None
+        if has_row != has_column:
+            raise ValueError("row_id и column_id должны быть указаны вместе")
+        if has_row and self.sheet_id is None:
+            raise ValueError("Для перехода к ячейке требуется sheet_id")
+        return self
+
+
+class ExternalUrlLinkTarget(BaseModel):
+    type: Literal["external_url"] = "external_url"
+    url: str = Field(..., min_length=1, max_length=2048)
+
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("url")
+    @classmethod
+    def _http_only(cls, value: str) -> str:
+        parsed = urlparse(value.strip())
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("Разрешены только абсолютные http/https URL")
+        return value.strip()
+
+
+SmartLinkTarget = Annotated[
+    Union[SmartTableLinkTarget, ExternalUrlLinkTarget],
+    Field(discriminator="type"),
+]
 
 
 # ── Сущности ────────────────────────────────────────────────────
@@ -124,6 +166,7 @@ class CellSnapshot(BaseModel):
     value: CellValue = None
     formula: Optional[str] = None
     formatting: dict = Field(default_factory=dict)
+    metadata: dict = Field(default_factory=dict)
 
 
 class RowOut(BaseModel):
@@ -196,6 +239,14 @@ class OpSetFormula(BaseModel):
     formula: str = Field(..., min_length=1, max_length=2000)  # с ведущим '=' или без — парсер сам срежет
 
 
+class OpSetSmartLink(BaseModel):
+    type: Literal["set_smart_link"] = "set_smart_link"
+    row_id: int
+    column_id: int
+    label: str = Field(..., min_length=1, max_length=255)
+    target: SmartLinkTarget
+
+
 class OpFormatRange(BaseModel):
     type: Literal["format_range"] = "format_range"
     row_ids: List[int] = Field(..., min_length=1, max_length=5000)
@@ -263,6 +314,7 @@ SpreadsheetOperation = Annotated[
         OpResizeRow,
         OpSetCell,
         OpSetFormula,
+        OpSetSmartLink,
         OpFormatRange,
         OpSetConditionalFormat,
         OpSortRows,

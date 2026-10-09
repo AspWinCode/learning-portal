@@ -4,7 +4,9 @@ import {
   FormControlLabel, InputLabel, MenuItem, Radio, RadioGroup, Select, TextField,
 } from '@mui/material';
 import { smartTablesApi } from '../../services/api/smartTables';
-import type { CellSnapshot, SheetDetail, SheetSummary, SmartLinkTarget, Workbook } from '../../types/smartTables';
+import type {
+  CellSnapshot, SheetDetail, SheetSummary, SmartLinkMetadata, SmartLinkTarget, Workbook,
+} from '../../types/smartTables';
 
 interface SmartLinkDialogProps {
   open: boolean;
@@ -45,7 +47,9 @@ function resolveAddress(detail: SheetDetail, address: string): { rowId: number; 
 const SmartLinkDialog: React.FC<SmartLinkDialogProps> = ({
   open, currentWorkbookId, snapshot, onClose, onSave,
 }) => {
-  const existing = snapshot?.metadata?.type === 'smart_link' ? snapshot.metadata.target : null;
+  const existing = snapshot?.metadata?.type === 'smart_link'
+    ? (snapshot.metadata as SmartLinkMetadata).target
+    : null;
   const [label, setLabel] = useState('Открыть');
   const [kind, setKind] = useState<'smart_table' | 'external_url'>('smart_table');
   const [workbooks, setWorkbooks] = useState<Workbook[]>([]);

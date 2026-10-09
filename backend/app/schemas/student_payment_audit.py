@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date as Date
 from typing import List, Optional
 
 from pydantic import BaseModel
@@ -7,7 +7,7 @@ from pydantic import BaseModel
 class PaymentDetail(BaseModel):
     transaction_id: int
     account_id: int
-    date: Optional[date] = None
+    date: Optional[Date] = None
     amount: float
     finance_transaction_id: Optional[int] = None
     payment_format: Optional[str] = None
@@ -39,11 +39,11 @@ class StudentPaymentAuditEntry(BaseModel):
 
     payment_count: int
     payment_total: float
-    first_payment_date: Optional[date] = None
-    last_payment_date: Optional[date] = None
+    first_payment_date: Optional[Date] = None
+    last_payment_date: Optional[Date] = None
     payments: List[PaymentDetail] = []
 
-    learning_period_start: Optional[date] = None
+    learning_period_start: Optional[Date] = None
     period_state: str
     lessons_passed: Optional[int] = None
     lessons_attended: Optional[int] = None

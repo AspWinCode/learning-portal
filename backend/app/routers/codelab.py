@@ -160,6 +160,22 @@ def _access(current_user: User = Depends(auth.require_permission("codelab.access
     return current_user
 
 
+def _submissions_view(current_user: User = Depends(auth.get_current_active_user)) -> User:
+    """Просмотр сданных работ: codelab.access (как раньше) ИЛИ отдельное узкое
+    submissions.access — чтобы кастомная роль могла получить доступ именно к
+    разделу «Работы учеников» без полного codelab.access (курсы, аналитика)."""
+    if not (auth.has_permission(current_user, "codelab.access") or auth.has_permission(current_user, "submissions.access")):
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+    return current_user
+
+
+def _submissions_review(current_user: User = Depends(auth.get_current_active_user)) -> User:
+    """Решение по работе (принять/на доработку): codelab.access ИЛИ submissions.review."""
+    if not (auth.has_permission(current_user, "codelab.access") or auth.has_permission(current_user, "submissions.review")):
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+    return current_user
+
+
 @router.get("/admin/courses")
 async def admin_list_courses(current_user: User = Depends(_access)):
     """Read-only course list for staff who can review learner submissions."""
@@ -332,7 +348,7 @@ async def admin_unpublish_course(course_id: int, current_user: User = Depends(_m
 # ─── Кабинет преподавателя (TCH-001/003/004) ───────────────────────────────────
 
 @router.get("/admin/courses/{course_id}/submissions")
-async def admin_list_submissions(course_id: int, current_user: User = Depends(_access), db: Session = Depends(get_db)):
+async def admin_list_submissions(course_id: int, current_user: User = Depends(_submissions_view), db: Session = Depends(get_db)):
     """RBAC-002: методист/админ видят все посылки курса; тренер — только
     учеников своих групп. Codelab не знает про группы LMS, поэтому список
     приходит целиком, а фильтрация по группе — здесь."""
@@ -356,7 +372,7 @@ async def admin_grade_submission(
     course_id: int,
     submission_id: int,
     payload: CodelabGradeIn,
-    current_user: User = Depends(_access),
+    current_user: User = Depends(_submissions_review),
     db: Session = Depends(get_db),
 ):
     """RBAC-002: тренер может оценивать только посылки учеников своих групп.
@@ -460,7 +476,7 @@ def _notify_student_revision_requested(db: Session, target: dict, comment: str, 
 
 @router.get("/admin/courses/{course_id}/projects/{item_id}/submissions")
 async def admin_list_project_submissions(
-    course_id: int, item_id: int, current_user: User = Depends(_access), db: Session = Depends(get_db),
+    course_id: int, item_id: int, current_user: User = Depends(_submissions_view), db: Session = Depends(get_db),
 ):
     """RBAC-002: методист/админ видят весь ростер проекта; тренер — только
     учеников своих групп (включая тех, кто ещё не начал сдавать — заводится
@@ -481,7 +497,7 @@ async def admin_list_project_submissions(
 @router.get("/admin/courses/{course_id}/projects/{item_id}/submissions/{submission_id}")
 async def admin_get_project_submission(
     course_id: int, item_id: int, submission_id: int,
-    current_user: User = Depends(_access), db: Session = Depends(get_db),
+    current_user: User = Depends(_submissions_view), db: Session = Depends(get_db),
 ):
     await _get_and_authorize_project_row(current_user, db, course_id, item_id, submission_id)
     try:
@@ -493,7 +509,7 @@ async def admin_get_project_submission(
 @router.get("/admin/courses/{course_id}/projects/{item_id}/submissions/{submission_id}/files/{file_id}/download")
 async def admin_download_project_file(
     course_id: int, item_id: int, submission_id: int, file_id: int,
-    current_user: User = Depends(_access), db: Session = Depends(get_db),
+    current_user: User = Depends(_submissions_view), db: Session = Depends(get_db),
 ):
     target = await _get_and_authorize_project_row(current_user, db, course_id, item_id, submission_id)
     if not any(f.get("id") == file_id for f in target.get("files", [])):
@@ -514,7 +530,7 @@ async def admin_download_project_file(
 @router.post("/admin/courses/{course_id}/projects/{item_id}/submissions/{submission_id}/files/{file_id}/comments")
 async def admin_comment_project_file(
     course_id: int, item_id: int, submission_id: int, file_id: int, payload: CodelabProjectCommentIn,
-    current_user: User = Depends(_access), db: Session = Depends(get_db),
+    current_user: User = Depends(_submissions_view), db: Session = Depends(get_db),
 ):
     target = await _get_and_authorize_project_row(current_user, db, course_id, item_id, submission_id)
     if not any(f.get("id") == file_id for f in target.get("files", [])):
@@ -532,7 +548,7 @@ async def admin_comment_project_file(
 @router.put("/admin/courses/{course_id}/projects/{item_id}/submissions/{submission_id}/review")
 async def admin_review_project_submission(
     course_id: int, item_id: int, submission_id: int, payload: CodelabProjectReviewIn,
-    current_user: User = Depends(_access), db: Session = Depends(get_db),
+    current_user: User = Depends(_submissions_review), db: Session = Depends(get_db),
 ):
     """GRD-004-аналог: тренер (только своей группы) или методист/админ
     принимает работу или отправляет на доработку."""
@@ -552,7 +568,7 @@ async def admin_review_project_submission(
 @router.post("/admin/courses/{course_id}/projects/{item_id}/submissions/{submission_id}/remind")
 async def admin_remind_project_submission(
     course_id: int, item_id: int, submission_id: int,
-    current_user: User = Depends(_access), db: Session = Depends(get_db),
+    current_user: User = Depends(_submissions_view), db: Session = Depends(get_db),
 ):
     await _get_and_authorize_project_row(current_user, db, course_id, item_id, submission_id)
     try:
@@ -596,7 +612,7 @@ def _walk_project_items(items: list) -> list:
 
 @router.get("/trainer/pending-reviews")
 async def list_pending_project_reviews(
-    current_user: User = Depends(_access),
+    current_user: User = Depends(_submissions_view),
     db: Session = Depends(get_db),
 ):
     """Сквозной список сдач проектов (ручная проверка) по всем опубликованным

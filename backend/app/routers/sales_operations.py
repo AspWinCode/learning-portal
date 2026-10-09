@@ -168,7 +168,7 @@ async def list_negative_balance(
 async def create_custom_lesson(
     payload: CustomLessonCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("lessons.manage")),
+    current_user: User = Depends(auth.require_permission("lessons.manual_create")),
 ):
     try:
         start_t = datetime.strptime(payload.start_time.strip(), "%H:%M").time()
@@ -263,7 +263,7 @@ async def update_custom_lesson(
     lesson_id: int,
     payload: CustomLessonUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("lessons.manage")),
+    current_user: User = Depends(auth.require_permission("lessons.manual_create")),
 ):
     lesson = db.query(CustomLesson).filter(CustomLesson.id == lesson_id).first()
     if not lesson:
@@ -338,7 +338,7 @@ async def update_custom_lesson(
 async def delete_custom_lesson(
     lesson_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("lessons.manage")),
+    current_user: User = Depends(auth.require_permission("lessons.manual_create")),
 ):
     lesson = db.query(CustomLesson).filter(CustomLesson.id == lesson_id).first()
     if not lesson:

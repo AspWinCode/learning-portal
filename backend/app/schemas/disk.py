@@ -33,3 +33,22 @@ class DiskFolderCreate(BaseModel):
 class DiskItemUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     parent_id: Optional[int] = None
+
+
+class DiskAccessGrantCreate(BaseModel):
+    user_id: Optional[int] = None
+    role: Optional[str] = Field(None, max_length=32)
+
+
+class DiskAccessGrantResponse(BaseModel):
+    id: int
+    folder_id: int
+    user_id: Optional[int] = None
+    user_name: Optional[str] = None
+    role: Optional[str] = None
+    can_view: bool = True
+    created_by_id: Optional[int] = None
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True

@@ -408,6 +408,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const canAccessUsers = hasPermission(user, 'users.access');
   const canAccessRoles = hasPermission(user, 'roles.access');
   const canAccessPasswords = hasPermission(user, 'passwords.access');
+  const canAccessDisk = hasPermission(user, 'disk.access');
+  const canAccessSubmissions = hasPermission(user, 'submissions.access');
   const canAccessNotes = notesEnabledRoles.includes(role ?? '') || role === 'owner' || role === 'admin';
   const canAccessAgile = hasPermission(user, 'agile.access');
   const canAccessAcademyAi = hasPermission(user, 'academy_ai.access');
@@ -478,11 +480,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
     if (role === 'trainer') {
       items.push({ text: 'Оценки тренера', icon: <Grade />, path: '/trainer-grades' });
+      if (canAccessSubmissions) items.push({ text: 'Работы учеников', icon: <Assignment />, path: '/trainer/submissions' });
       items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
-      items.push({ text: 'Проекты', icon: <Assignment />, path: '/projects' });
-      items.push({ text: 'Таск трекер', icon: <Assignment />, path: '/owner-workspace/projects' });
-      items.push({ text: 'Полезные ссылки', icon: <Link />, path: '/owner-workspace/links' });
-      items.push({ text: 'Диск', icon: <Folder />, path: '/disk' });
+      if (canAccessDisk) items.push({ text: 'Диск', icon: <Folder />, path: '/disk' });
       if (canAccessPasswords) items.push({ text: 'Пароли', icon: <Lock />, path: '/passwords' });
       if (canAccessNotes) items.push({ text: 'Заметки', icon: <EditNoteIcon />, path: '/notes' });
     }

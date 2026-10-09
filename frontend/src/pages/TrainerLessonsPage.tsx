@@ -62,10 +62,10 @@ const TrainerLessonsPage: React.FC = () => {
   const { user } = useAuth();
   const effectiveRole = getEffectiveRole(user);
   const canAccessLessons = hasPermission(user, 'lessons.access');
-  const canManageLessons = hasPermission(user, 'lessons.manage');
   const canMoveLessons = hasPermission(user, 'lessons.schedule_manage');
-  const canAddStudentToLesson = canManageLessons;
+  const canAddStudentToLesson = hasPermission(user, 'lessons.manage_roster');
   const canRemoveStudentFromLesson = hasPermission(user, 'lessons.override');
+  const canCreateManualLesson = hasPermission(user, 'lessons.manual_create');
   const [searchParams] = useSearchParams();
   const [viewDate, setViewDate] = useState(() => format(startOfDay(new Date()), 'yyyy-MM-dd'));
   const [slots, setSlots] = useState<TrainerLessonSlot[]>([]);
@@ -116,7 +116,6 @@ const TrainerLessonsPage: React.FC = () => {
     end_time: string;
   } | null>(null);
 
-  const canCreateManualLesson = canMoveLessons && hasPermission(user, 'sales.access');
   const [addLessonChoiceOpen, setAddLessonChoiceOpen] = useState(false);
   const [manualLessonDialogOpen, setManualLessonDialogOpen] = useState(false);
   const [manualTitle, setManualTitle] = useState('');
@@ -164,12 +163,12 @@ const TrainerLessonsPage: React.FC = () => {
 
   useEffect(() => {
     if (!user) return;
-    if (!canManageLessons) return;
+    if (!canMoveLessons && !canCreateManualLesson) return;
     groupsApi
       .getAll()
       .then((data) => setGroups((data || []).filter((g: Group) => g.status === 'active')))
       .catch(() => {});
-  }, [user, canManageLessons]);
+  }, [user, canMoveLessons, canCreateManualLesson]);
 
   useEffect(() => {
     if (!user) return;
@@ -667,7 +666,7 @@ const TrainerLessonsPage: React.FC = () => {
           <Button size="small" onClick={handleToday}>Сегодня</Button>
           <Button size="small" onClick={handleNextDay}>{'>'}</Button>
           <Typography variant="h6">{displayDate} ({displayWeekday})</Typography>
-          {canManageLessons && (
+          {(canMoveLessons || canCreateManualLesson) && (
             <Button size="small" variant="outlined" onClick={openAddLessonChoice}>
               Добавить урок
             </Button>

@@ -471,6 +471,12 @@ PERMISSION_CATALOG: List[Dict[str, str]] = [
         "description": "Создание слотов, перенос и отмена уроков.",
     },
     {
+        "key": "lessons.manual_create",
+        "module": "lessons",
+        "label": "Создание ручных уроков",
+        "description": "Создание, изменение и удаление ручных/дополнительных уроков (CustomLesson). Не путать с правом работать с уже назначенным уроком (lessons.mark_attendance).",
+    },
+    {
         "key": "lessons.override",
         "module": "lessons",
         "label": "Расширенные действия по урокам",
@@ -510,13 +516,19 @@ PERMISSION_CATALOG: List[Dict[str, str]] = [
         "key": "disk.access",
         "module": "disk",
         "label": "Disk: просмотр",
-        "description": "Просмотр файлов на диске.",
+        "description": "Вход в раздел «Диск». Что конкретно видно внутри — определяется ACL папок (доступ по умолчанию закрыт, пока owner/admin не выдаст его явно).",
     },
     {
         "key": "disk.manage",
         "module": "disk",
         "label": "Disk: управление",
-        "description": "Загрузка, переименование и удаление файлов на диске.",
+        "description": "Создание папок, загрузка, переименование, перемещение и удаление файлов. Полный доступ ко всем папкам без учёта ACL.",
+    },
+    {
+        "key": "disk.manage_access",
+        "module": "disk",
+        "label": "Disk: управление доступом",
+        "description": "Выдача и отзыв доступа к папкам диска (ACL) для пользователей и ролей.",
     },
     {
         "key": "kodex.access",
@@ -631,6 +643,18 @@ PERMISSION_CATALOG: List[Dict[str, str]] = [
         "module": "codelab",
         "label": "Codelab: управление",
         "description": "Управление настройками интеграции Codelab.",
+    },
+    {
+        "key": "submissions.access",
+        "module": "submissions",
+        "label": "Работы учеников: просмотр",
+        "description": "Доступ к разделу «Работы учеников» (сданные решения). Какие именно работы видны — определяется object-level правилами (свои группы/ученики для тренера, все — для admin/owner/methodist).",
+    },
+    {
+        "key": "submissions.review",
+        "module": "submissions",
+        "label": "Работы учеников: проверка",
+        "description": "Принять работу или отправить её на доработку с комментарием.",
     },
     {
         "key": "academy_ai.access",

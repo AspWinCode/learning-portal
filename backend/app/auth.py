@@ -64,8 +64,6 @@ DEFAULT_ROLE_PERMISSIONS: Dict[str, Set[str]] = {
     },
     UserRole.TRAINER.value: {
         "tasks.access",
-        "projects.access",
-        "owner_workspace.access",
         "groups.access",
         "programs.access",
         "students.access",
@@ -74,9 +72,13 @@ DEFAULT_ROLE_PERMISSIONS: Dict[str, Set[str]] = {
         "characteristics.access",
         "characteristics.manage",
         "lessons.access",
-        "lessons.manage",
+        "lessons.mark_attendance",
+        "lessons.manage_roster",
         "trainer_cockpit.access",
         "student_portal.manage",
+        "disk.access",
+        "submissions.access",
+        "submissions.review",
         "technolab.access",
         "pixelforge.access",
         "codelab.access",
@@ -106,6 +108,8 @@ DEFAULT_ROLE_PERMISSIONS: Dict[str, Set[str]] = {
         "codelab.manage",
         "programs.access",
         "programs.manage",
+        "lessons.access",
+        "lessons.manual_create",
     },
     UserRole.DEVELOPER.value: {
         "agile.access",
@@ -121,6 +125,8 @@ DEFAULT_ROLE_PERMISSIONS: Dict[str, Set[str]] = {
         # добавляет учеников по одному или массово, назначает/отзывает курсы.
         "groups.access",
         "groups.manage",
+        "lessons.access",
+        "lessons.manual_create",
     },
 }
 

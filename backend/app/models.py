@@ -2102,6 +2102,32 @@ class Grade(Base):
     trainer = relationship("User", back_populates="grades")
 
 
+class SubmissionReviewLog(Base):
+    """Журнал решений тренера по работам учеников, присланным через внешние
+    учебные системы (Codelab и т.п.). Сами присланные решения (код/файлы/ответ)
+    хранятся во внешнем сервисе — здесь фиксируется только наша история проверки
+    (кто, когда, какое решение принял, с каким комментарием), поскольку внешний
+    сервис не гарантирует сохранение истории версий на своей стороне. Не путать с
+    копией работы ученика — это журнал review-событий, не хранилище контента."""
+
+    __tablename__ = "submission_review_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    source = Column(String(32), nullable=False, index=True)  # codelab | pixelforge | technolab
+    external_submission_id = Column(String(128), nullable=False, index=True)
+    student_id = Column(Integer, ForeignKey("students.id", ondelete="SET NULL"), nullable=True, index=True)
+    group_id = Column(Integer, ForeignKey("groups.id", ondelete="SET NULL"), nullable=True, index=True)
+    trainer_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    decision = Column(String(32), nullable=False)  # accepted | needs_revision
+    comment = Column(Text, nullable=True)
+    attempt_number = Column(Integer, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+    student = relationship("Student", foreign_keys=[student_id])
+    group = relationship("Group", foreign_keys=[group_id])
+    trainer = relationship("User", foreign_keys=[trainer_id])
+
+
 class Characteristic(Base):
     __tablename__ = "characteristics"
 
@@ -3221,6 +3247,30 @@ class DiskItem(Base):
 
     parent = relationship("DiskItem", remote_side=[id], backref="children")
     owner = relationship("User", foreign_keys=[owner_id])
+
+
+class DiskFolderAccess(Base):
+    """ACL-грант на папку диска: по конкретному пользователю или по роли.
+
+    В отличие от AiWorkspaceAccess/SmmProjectAccess (там отсутствие строк = доступ
+    открыт всем с базовым правом), здесь по умолчанию DENY: если для папки и всех
+    её предков нет ни одной подходящей строки — не-admin/owner пользователь её не
+    видит вовсе. Грант на папку действует на всё её поддерево (наследование),
+    явного deny в первой версии нет."""
+
+    __tablename__ = "disk_folder_access"
+
+    id = Column(Integer, primary_key=True, index=True)
+    folder_id = Column(Integer, ForeignKey("disk_items.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    role = Column(String(32), nullable=True, index=True)
+    can_view = Column(Boolean, nullable=False, default=True)
+    created_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    folder = relationship("DiskItem", foreign_keys=[folder_id])
+    user = relationship("User", foreign_keys=[user_id])
+    created_by = relationship("User", foreign_keys=[created_by_id])
 
 
 class PasswordEntry(Base):

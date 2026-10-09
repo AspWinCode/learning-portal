@@ -13,8 +13,15 @@ from sqlalchemy.orm import Session, joinedload
 
 from app import auth
 from app.database import get_db
-from app.models import DiskItem, User
-from app.schemas.disk import DiskFolderCreate, DiskItemResponse, DiskItemsResponse, DiskItemUpdate
+from app.models import DiskFolderAccess, DiskItem, User
+from app.schemas.disk import (
+    DiskAccessGrantCreate,
+    DiskAccessGrantResponse,
+    DiskFolderCreate,
+    DiskItemResponse,
+    DiskItemsResponse,
+    DiskItemUpdate,
+)
 
 router = APIRouter()
 
@@ -68,7 +75,9 @@ def _assert_folder(db: Session, folder_id: Optional[int]) -> Optional[DiskItem]:
     return folder
 
 
-def _build_breadcrumbs(db: Session, parent_id: Optional[int]) -> List[DiskItemResponse]:
+def _build_breadcrumbs(db: Session, parent_id: Optional[int], user: User) -> List[DiskItemResponse]:
+    # Не раскрываем названия предков выше точки, где у пользователя есть грант.
+    cutoff_id = None if _has_disk_bypass(user) else _find_granting_ancestor(db, user, parent_id) if parent_id else None
     chain: List[DiskItem] = []
     current_id = parent_id
     seen: set[int] = set()
@@ -80,6 +89,8 @@ def _build_breadcrumbs(db: Session, parent_id: Optional[int]) -> List[DiskItemRe
         if item.item_type != "folder":
             break
         chain.append(item)
+        if cutoff_id is not None and item.id == cutoff_id:
+            break
         current_id = item.parent_id
     return [_item_to_response(item) for item in reversed(chain)]
 
@@ -111,27 +122,100 @@ def _soft_delete_tree(db: Session, item: DiskItem, deleted_at: datetime) -> None
         _soft_delete_tree(db, child, deleted_at)
 
 
+def _has_disk_bypass(user: User) -> bool:
+    """disk.manage обходит ACL целиком — как у admin/owner сегодня."""
+    return auth.has_permission(user, "disk.manage")
+
+
+def _has_direct_grant(db: Session, user: User, folder_id: int) -> bool:
+    effective_role = auth.resolve_effective_role(user).value
+    return (
+        db.query(DiskFolderAccess.id)
+        .filter(
+            DiskFolderAccess.folder_id == folder_id,
+            DiskFolderAccess.can_view.is_(True),
+            or_(DiskFolderAccess.user_id == user.id, DiskFolderAccess.role == effective_role),
+        )
+        .first()
+        is not None
+    )
+
+
+def _find_granting_ancestor(db: Session, user: User, item_id: int) -> Optional[int]:
+    """Возвращает id папки на уровне item_id или выше, где есть прямой ACL-грант
+    для пользователя. None — доступа нет ни на одном уровне."""
+    current_id: Optional[int] = item_id
+    seen: set[int] = set()
+    while current_id is not None:
+        if current_id in seen:
+            break
+        seen.add(current_id)
+        if _has_direct_grant(db, user, current_id):
+            return current_id
+        parent = db.query(DiskItem.parent_id).filter(DiskItem.id == current_id).first()
+        current_id = parent[0] if parent else None
+    return None
+
+
+def _ensure_can_view_item(db: Session, user: User, item: DiskItem) -> None:
+    if _has_disk_bypass(user):
+        return
+    if _find_granting_ancestor(db, user, item.id) is None:
+        raise HTTPException(status_code=404, detail="Disk item not found")
+
+
+def _ensure_can_view_folder(db: Session, user: User, folder_id: Optional[int]) -> None:
+    """folder_id=None — корень диска: у него нет ACL-записи, в корне просматриваются
+    только элементы, явно выданные пользователю (см. list_disk_items)."""
+    if folder_id is None or _has_disk_bypass(user):
+        return
+    if _find_granting_ancestor(db, user, folder_id) is None:
+        raise HTTPException(status_code=404, detail="Disk item not found")
+
+
 @router.get("/items", response_model=DiskItemsResponse)
 async def list_disk_items(
     parent_id: Optional[int] = Query(None),
     search: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("owner_workspace.access")),
+    current_user: User = Depends(auth.require_permission("disk.access")),
 ):
     if parent_id is not None:
         _assert_folder(db, parent_id)
+    _ensure_can_view_folder(db, current_user, parent_id)
+    bypass = _has_disk_bypass(current_user)
 
     q = db.query(DiskItem).options(joinedload(DiskItem.owner)).filter(DiskItem.deleted_at.is_(None))
     search_value = (search or "").strip()
     if search_value:
         like = f"%{search_value}%"
         q = q.filter(or_(DiskItem.name.ilike(like), DiskItem.content_type.ilike(like)))
+    elif parent_id is None and not bypass:
+        # Корень диска для ограниченного пользователя: только явно выданные ему
+        # папки/файлы (у корня самого по себе ACL-записи нет, наследовать не от кого).
+        granted_ids = {
+            row[0]
+            for row in db.query(DiskFolderAccess.folder_id)
+            .filter(
+                DiskFolderAccess.can_view.is_(True),
+                or_(
+                    DiskFolderAccess.user_id == current_user.id,
+                    DiskFolderAccess.role == auth.resolve_effective_role(current_user).value,
+                ),
+            )
+            .all()
+        }
+        q = q.filter(DiskItem.id.in_(granted_ids)) if granted_ids else q.filter(False)
     else:
         q = q.filter(DiskItem.parent_id == parent_id)
     rows = q.order_by(DiskItem.item_type.asc(), DiskItem.name.asc(), DiskItem.created_at.desc()).all()
+
+    if search_value and not bypass:
+        rows = [item for item in rows if _find_granting_ancestor(db, current_user, item.id) is not None]
+
     return DiskItemsResponse(
         items=[_item_to_response(item) for item in rows],
-        breadcrumbs=[] if search_value else _build_breadcrumbs(db, parent_id),
+        breadcrumbs=[] if search_value else _build_breadcrumbs(db, parent_id, current_user),
     )
 
 
@@ -139,7 +223,7 @@ async def list_disk_items(
 async def create_disk_folder(
     payload: DiskFolderCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("owner_workspace.access")),
+    current_user: User = Depends(auth.require_permission("disk.manage")),
 ):
     parent = _assert_folder(db, payload.parent_id)
     row = DiskItem(
@@ -160,7 +244,7 @@ async def upload_disk_file(
     parent_id: Optional[int] = Query(None),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("owner_workspace.access")),
+    current_user: User = Depends(auth.require_permission("disk.manage")),
 ):
     parent = _assert_folder(db, parent_id)
     filename = _safe_name(file.filename or "file", "file")
@@ -196,7 +280,7 @@ async def update_disk_item(
     item_id: int,
     payload: DiskItemUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("owner_workspace.access")),
+    current_user: User = Depends(auth.require_permission("disk.manage")),
 ):
     item = _get_active_item(db, item_id)
     data = payload.model_dump(exclude_unset=True)
@@ -221,9 +305,10 @@ async def download_disk_file(
     item_id: int,
     inline: bool = False,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("owner_workspace.access")),
+    current_user: User = Depends(auth.require_permission("disk.access")),
 ):
     item = _get_active_item(db, item_id)
+    _ensure_can_view_item(db, current_user, item)
     if item.item_type != "file" or not item.storage_key:
         raise HTTPException(status_code=404, detail="File not found")
     path = (DISK_STORAGE_ROOT / item.storage_key).resolve()
@@ -243,9 +328,95 @@ async def download_disk_file(
 async def delete_disk_item(
     item_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("owner_workspace.access")),
+    current_user: User = Depends(auth.require_permission("disk.manage")),
 ):
     item = _get_active_item(db, item_id)
     _soft_delete_tree(db, item, datetime.now(timezone.utc))
+    db.commit()
+    return None
+
+
+@router.get("/items/{item_id}/access", response_model=List[DiskAccessGrantResponse])
+async def list_disk_folder_access(
+    item_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("disk.manage_access")),
+):
+    folder = _get_active_item(db, item_id)
+    if folder.item_type != "folder":
+        raise HTTPException(status_code=400, detail="Access grants apply to folders only")
+    rows = (
+        db.query(DiskFolderAccess)
+        .options(joinedload(DiskFolderAccess.user))
+        .filter(DiskFolderAccess.folder_id == folder.id)
+        .order_by(DiskFolderAccess.created_at.desc())
+        .all()
+    )
+    return [
+        DiskAccessGrantResponse(
+            id=row.id,
+            folder_id=row.folder_id,
+            user_id=row.user_id,
+            user_name=row.user.full_name if row.user else None,
+            role=row.role,
+            can_view=row.can_view,
+            created_by_id=row.created_by_id,
+            created_at=row.created_at,
+        )
+        for row in rows
+    ]
+
+
+@router.post("/items/{item_id}/access", response_model=DiskAccessGrantResponse, status_code=status.HTTP_201_CREATED)
+async def grant_disk_folder_access(
+    item_id: int,
+    payload: DiskAccessGrantCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("disk.manage_access")),
+):
+    folder = _get_active_item(db, item_id)
+    if folder.item_type != "folder":
+        raise HTTPException(status_code=400, detail="Access grants apply to folders only")
+    if not payload.user_id and not payload.role:
+        raise HTTPException(status_code=400, detail="Specify either user_id or role")
+    if payload.user_id and payload.role:
+        raise HTTPException(status_code=400, detail="Specify only one of user_id or role")
+    if payload.user_id:
+        grantee = db.query(User).filter(User.id == payload.user_id).first()
+        if not grantee:
+            raise HTTPException(status_code=404, detail="User not found")
+    row = DiskFolderAccess(
+        folder_id=folder.id,
+        user_id=payload.user_id,
+        role=payload.role,
+        can_view=True,
+        created_by_id=current_user.id,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    db.refresh(row, ["user"])
+    return DiskAccessGrantResponse(
+        id=row.id,
+        folder_id=row.folder_id,
+        user_id=row.user_id,
+        user_name=row.user.full_name if row.user else None,
+        role=row.role,
+        can_view=row.can_view,
+        created_by_id=row.created_by_id,
+        created_at=row.created_at,
+    )
+
+
+@router.delete("/access/{access_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def revoke_disk_folder_access(
+    access_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("disk.manage_access")),
+):
+    row = db.query(DiskFolderAccess).filter(DiskFolderAccess.id == access_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Access grant not found")
+    db.delete(row)
     db.commit()
     return None

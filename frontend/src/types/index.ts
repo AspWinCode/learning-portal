@@ -2416,6 +2416,17 @@ export interface DiskItemsResponse {
   breadcrumbs: DiskItem[];
 }
 
+export interface DiskAccessGrant {
+  id: number;
+  folder_id: number;
+  user_id?: number | null;
+  user_name?: string | null;
+  role?: string | null;
+  can_view: boolean;
+  created_by_id?: number | null;
+  created_at?: string | null;
+}
+
 export interface Transcription {
   id: number;
   filename: string;

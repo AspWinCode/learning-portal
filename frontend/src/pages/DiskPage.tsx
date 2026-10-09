@@ -31,12 +31,22 @@ import VisibilityIcon from '@mui/icons-material/Visibility';
 import DriveFileMoveIcon from '@mui/icons-material/DriveFileMove';
 import FolderIcon from '@mui/icons-material/Folder';
 import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile';
+import LockPersonIcon from '@mui/icons-material/LockPerson';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 
 import { diskApi } from '../services/api';
-import { DiskItem } from '../types';
+import { DiskAccessGrant, DiskItem } from '../types';
 import { extractApiError } from '../utils/extractApiError';
+import { useAuth } from '../contexts/AuthContext';
+import { hasPermission } from '../utils/permissions';
+
+const ROLE_LABELS: Record<string, string> = {
+  trainer: 'Все тренеры',
+  methodist: 'Все методисты',
+  manager: 'Все менеджеры',
+  sales: 'Все продажи',
+};
 
 const formatBytes = (bytes: number) => {
   if (!bytes) return '0 Б';
@@ -56,6 +66,9 @@ const formatDate = (value?: string | null) => {
 };
 
 const DiskPage: React.FC = () => {
+  const { user } = useAuth();
+  const canManage = hasPermission(user, 'disk.manage');
+  const canManageAccess = hasPermission(user, 'disk.manage_access');
   const [parentId, setParentId] = useState<number | null>(null);
   const [items, setItems] = useState<DiskItem[]>([]);
   const [breadcrumbs, setBreadcrumbs] = useState<DiskItem[]>([]);
@@ -71,6 +84,12 @@ const DiskPage: React.FC = () => {
   const [menuItem, setMenuItem] = useState<DiskItem | null>(null);
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [accessFolder, setAccessFolder] = useState<DiskItem | null>(null);
+  const [accessGrants, setAccessGrants] = useState<DiskAccessGrant[]>([]);
+  const [accessLoading, setAccessLoading] = useState(false);
+  const [accessError, setAccessError] = useState<string | null>(null);
+  const [grantUserId, setGrantUserId] = useState('');
+  const [grantRole, setGrantRole] = useState('');
 
   useEffect(() => {
     const timer = window.setTimeout(() => setSearch(searchInput.trim()), 350);
@@ -200,6 +219,54 @@ const DiskPage: React.FC = () => {
     setParentId(item.id);
   };
 
+  const openAccessDialog = async (item: DiskItem) => {
+    setAccessFolder(item);
+    setAccessError(null);
+    setGrantUserId('');
+    setGrantRole('');
+    setAccessLoading(true);
+    try {
+      const grants = await diskApi.listAccess(item.id);
+      setAccessGrants(grants);
+    } catch (err: unknown) {
+      setAccessError(extractApiError(err, 'Не удалось загрузить доступ'));
+    } finally {
+      setAccessLoading(false);
+    }
+  };
+
+  const addAccessGrant = async () => {
+    if (!accessFolder) return;
+    const userId = grantUserId.trim() ? Number(grantUserId.trim()) : undefined;
+    const role = grantRole.trim() || undefined;
+    if (!userId && !role) return;
+    setAccessLoading(true);
+    setAccessError(null);
+    try {
+      const grant = await diskApi.grantAccess(accessFolder.id, { user_id: userId, role });
+      setAccessGrants((prev) => [grant, ...prev]);
+      setGrantUserId('');
+      setGrantRole('');
+    } catch (err: unknown) {
+      setAccessError(extractApiError(err, 'Не удалось выдать доступ'));
+    } finally {
+      setAccessLoading(false);
+    }
+  };
+
+  const removeAccessGrant = async (grantId: number) => {
+    setAccessLoading(true);
+    setAccessError(null);
+    try {
+      await diskApi.revokeAccess(grantId);
+      setAccessGrants((prev) => prev.filter((grant) => grant.id !== grantId));
+    } catch (err: unknown) {
+      setAccessError(extractApiError(err, 'Не удалось отозвать доступ'));
+    } finally {
+      setAccessLoading(false);
+    }
+  };
+
   return (
     <Box sx={{ p: { xs: 2, md: 3 }, maxWidth: 1400, mx: 'auto' }}>
       <Stack spacing={2}>
@@ -224,12 +291,16 @@ const DiskPage: React.FC = () => {
               onChange={(event) => setSearchInput(event.target.value)}
               sx={{ flex: 1, minWidth: 240 }}
             />
-            <Button variant="outlined" startIcon={<CreateNewFolderIcon />} onClick={() => setFolderDialogOpen(true)}>
-              Папка
-            </Button>
-            <Button variant="contained" startIcon={<UploadFileIcon />} onClick={() => fileInputRef.current?.click()}>
-              Загрузить
-            </Button>
+            {canManage && (
+              <Button variant="outlined" startIcon={<CreateNewFolderIcon />} onClick={() => setFolderDialogOpen(true)}>
+                Папка
+              </Button>
+            )}
+            {canManage && (
+              <Button variant="contained" startIcon={<UploadFileIcon />} onClick={() => fileInputRef.current?.click()}>
+                Загрузить
+              </Button>
+            )}
             <input
               ref={fileInputRef}
               hidden
@@ -294,9 +365,11 @@ const DiskPage: React.FC = () => {
                         </IconButton>
                       </>
                     )}
-                    <IconButton size="small" onClick={(event) => openMenu(event, item)} aria-label="Меню">
-                      <MoreVertIcon fontSize="small" />
-                    </IconButton>
+                    {(canManage || (canManageAccess && item.item_type === 'folder')) && (
+                      <IconButton size="small" onClick={(event) => openMenu(event, item)} aria-label="Меню">
+                        <MoreVertIcon fontSize="small" />
+                      </IconButton>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}
@@ -315,28 +388,45 @@ const DiskPage: React.FC = () => {
       </Stack>
 
       <Menu anchorEl={menuAnchor} open={Boolean(menuAnchor)} onClose={closeMenu}>
-        <MenuItem
-          onClick={() => {
-            if (!menuItem) return;
-            setRenameItem(menuItem);
-            setRenameValue(menuItem.name);
-            closeMenu();
-          }}
-        >
-          <DriveFileMoveIcon fontSize="small" style={{ marginRight: 8 }} />
-          Переименовать
-        </MenuItem>
-        <MenuItem
-          onClick={() => {
-            if (!menuItem) return;
-            const item = menuItem;
-            closeMenu();
-            void deleteItem(item);
-          }}
-        >
-          <DeleteIcon fontSize="small" style={{ marginRight: 8 }} />
-          Удалить
-        </MenuItem>
+        {canManage && (
+          <MenuItem
+            onClick={() => {
+              if (!menuItem) return;
+              setRenameItem(menuItem);
+              setRenameValue(menuItem.name);
+              closeMenu();
+            }}
+          >
+            <DriveFileMoveIcon fontSize="small" style={{ marginRight: 8 }} />
+            Переименовать
+          </MenuItem>
+        )}
+        {canManageAccess && menuItem?.item_type === 'folder' && (
+          <MenuItem
+            onClick={() => {
+              if (!menuItem) return;
+              const item = menuItem;
+              closeMenu();
+              void openAccessDialog(item);
+            }}
+          >
+            <LockPersonIcon fontSize="small" style={{ marginRight: 8 }} />
+            Доступ
+          </MenuItem>
+        )}
+        {canManage && (
+          <MenuItem
+            onClick={() => {
+              if (!menuItem) return;
+              const item = menuItem;
+              closeMenu();
+              void deleteItem(item);
+            }}
+          >
+            <DeleteIcon fontSize="small" style={{ marginRight: 8 }} />
+            Удалить
+          </MenuItem>
+        )}
       </Menu>
 
       <Dialog open={folderDialogOpen} onClose={() => setFolderDialogOpen(false)} maxWidth="xs" fullWidth>
@@ -382,6 +472,63 @@ const DiskPage: React.FC = () => {
           <Button variant="contained" disabled={busy || !renameValue.trim()} onClick={() => void saveRename()}>
             Сохранить
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(accessFolder)} onClose={() => setAccessFolder(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>Доступ к папке «{accessFolder?.name}»</DialogTitle>
+        <DialogContent>
+          {accessError && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setAccessError(null)}>{accessError}</Alert>}
+          {accessLoading && <LinearProgress sx={{ mb: 2 }} />}
+          <Stack spacing={1} sx={{ mb: 2 }}>
+            {accessGrants.length === 0 && (
+              <Typography color="text.secondary">Доступ пока никому не выдан — папка не видна никому, кроме owner/admin.</Typography>
+            )}
+            {accessGrants.map((grant) => (
+              <Stack key={grant.id} direction="row" alignItems="center" justifyContent="space-between">
+                <Typography>
+                  {grant.user_id ? (grant.user_name || `Пользователь #${grant.user_id}`) : (ROLE_LABELS[grant.role || ''] || grant.role)}
+                </Typography>
+                <Button size="small" color="error" onClick={() => void removeAccessGrant(grant.id)}>
+                  Отозвать
+                </Button>
+              </Stack>
+            ))}
+          </Stack>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'center' }}>
+            <TextField
+              size="small"
+              label="ID пользователя"
+              value={grantUserId}
+              onChange={(event) => { setGrantUserId(event.target.value); setGrantRole(''); }}
+              sx={{ flex: 1 }}
+            />
+            <Typography color="text.secondary">или</Typography>
+            <TextField
+              size="small"
+              select
+              label="Роль"
+              value={grantRole}
+              onChange={(event) => { setGrantRole(event.target.value); setGrantUserId(''); }}
+              SelectProps={{ native: true }}
+              sx={{ flex: 1 }}
+            >
+              <option value="" />
+              {Object.entries(ROLE_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </TextField>
+            <Button
+              variant="contained"
+              disabled={accessLoading || (!grantUserId.trim() && !grantRole.trim())}
+              onClick={() => void addAccessGrant()}
+            >
+              Выдать
+            </Button>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAccessFolder(null)}>Закрыть</Button>
         </DialogActions>
       </Dialog>
     </Box>

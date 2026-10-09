@@ -1,16 +1,19 @@
 import { User } from '../types';
 
+// Держать в точности синхронным с backend/app/auth.py::DEFAULT_ROLE_PERMISSIONS —
+// это только fallback на случай, если user.effective_permissions не пришёл с
+// сервера; реальные ограничения всегда проверяются backend'ом.
 const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
   admin: ['*'],
   owner: ['*'],
-  sales: ['sales.access', 'finance.access', 'tasks.access', 'projects.access', 'owner_workspace.access', 'students.access', 'students.manage', 'lessons.access', 'lessons.manage', 'lessons.schedule_manage', 'student_accounts.access', 'student_accounts.manage', 'student_accounts.payment', 'persons.access', 'persons.manage'],
-  trainer: ['tasks.access', 'projects.access', 'owner_workspace.access', 'groups.access', 'programs.access', 'students.access', 'grades.access', 'grades.manage', 'characteristics.access', 'characteristics.manage', 'lessons.access', 'lessons.manage', 'trainer_cockpit.access', 'technolab.access', 'pixelforge.access', 'codelab.access'],
+  sales: ['sales.access', 'sales.manage_leads', 'sales.manage_events', 'sales.manage_invoices', 'sales.manage_student_cards', 'sales.manage_bank', 'finance.access', 'finance.manage', 'communications.access', 'communications.manage', 'tasks.access', 'projects.access', 'owner_workspace.access', 'students.access', 'students.manage', 'lessons.access', 'lessons.manage', 'lessons.schedule_manage', 'student_accounts.access', 'student_accounts.manage', 'student_accounts.payment', 'persons.access', 'persons.manage'],
+  trainer: ['tasks.access', 'groups.access', 'programs.access', 'students.access', 'grades.access', 'grades.manage', 'characteristics.access', 'characteristics.manage', 'lessons.access', 'lessons.mark_attendance', 'lessons.manage_roster', 'trainer_cockpit.access', 'student_portal.manage', 'disk.access', 'submissions.access', 'submissions.review', 'technolab.access', 'pixelforge.access', 'codelab.access'],
   parent: ['programs.access', 'groups.access', 'grades.access', 'characteristics.access', 'student_accounts.access', 'student_accounts.payment', 'parent_dashboard.access'],
   guest: ['programs.access'],
   seo_manager: ['seo.access', 'seo.manage'],
-  methodist: ['kodex.access', 'kodex.manage', 'technolab.access', 'technolab.manage', 'pixelforge.access', 'pixelforge.manage', 'codelab.access', 'codelab.manage', 'programs.access', 'programs.manage'],
+  methodist: ['kodex.access', 'kodex.manage', 'technolab.access', 'technolab.manage', 'pixelforge.access', 'pixelforge.manage', 'codelab.access', 'codelab.manage', 'programs.access', 'programs.manage', 'lessons.access', 'lessons.manual_create'],
   developer: ['agile.access', 'agile.manage', 'tasks.access', 'projects.access', 'owner_workspace.access'],
-  manager: ['students.access', 'student_portal.manage', 'groups.access', 'groups.manage'],
+  manager: ['students.access', 'student_portal.manage', 'groups.access', 'groups.manage', 'lessons.access', 'lessons.manual_create'],
 };
 
 export const getEffectiveRole = (user: User | null | undefined): string | null => {

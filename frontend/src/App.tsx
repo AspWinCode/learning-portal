@@ -634,7 +634,7 @@ function App() {
             <Route
               path="/operations/manual-lessons"
               element={
-                <PrivateRoute requiredPermission="lessons.manage">
+                <PrivateRoute requiredPermission="lessons.manual_create">
                   <SectionBoundary>
                     <ManualLessonsPage />
                   </SectionBoundary>
@@ -953,7 +953,7 @@ function App() {
             <Route
               path="/disk"
               element={
-                <PrivateRoute requiredPermission="owner_workspace.access">
+                <PrivateRoute requiredPermission="disk.access">
                   <SectionBoundary>
                     <DiskPage />
                   </SectionBoundary>

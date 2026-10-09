@@ -115,6 +115,7 @@ import {
   PersonSearchResponse,
   DiskItem,
   DiskItemsResponse,
+  DiskAccessGrant,
   Transcription,
   TranscriptionsListResponse,
   PasswordEntry,
@@ -4123,6 +4124,17 @@ export const diskApi = {
   },
   deleteItem: async (itemId: number): Promise<void> => {
     await api.delete(`/disk/items/${itemId}`);
+  },
+  listAccess: async (folderId: number): Promise<DiskAccessGrant[]> => {
+    const response = await api.get(`/disk/items/${folderId}/access`);
+    return response.data;
+  },
+  grantAccess: async (folderId: number, payload: { user_id?: number | null; role?: string | null }): Promise<DiskAccessGrant> => {
+    const response = await api.post(`/disk/items/${folderId}/access`, payload);
+    return response.data;
+  },
+  revokeAccess: async (accessId: number): Promise<void> => {
+    await api.delete(`/disk/access/${accessId}`);
   },
 };
 

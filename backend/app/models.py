@@ -1847,13 +1847,13 @@ class LessonRosterExclusion(Base):
 
 
 class TrainerPeriodBonus(Base):
-    """Премия тренеру за период (месяц) для страницы «Расчёты». Owner."""
+    """Премия тренеру за период для страницы «Расчёты». Owner."""
     __tablename__ = "trainer_period_bonuses"
     __table_args__ = (UniqueConstraint("trainer_id", "period", name="uq_trainer_period_bonus"),)
 
     id = Column(Integer, primary_key=True, index=True)
     trainer_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    period = Column(String(7), nullable=False, index=True)  # YYYY-MM
+    period = Column(String(32), nullable=False, index=True)  # YYYY-MM or YYYY-MM-DD_YYYY-MM-DD
     bonus = Column(Float, nullable=False, default=0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -1867,7 +1867,7 @@ class TrainerPayout(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     trainer_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    period = Column(String(7), nullable=False, index=True)  # YYYY-MM
+    period = Column(String(32), nullable=False, index=True)  # YYYY-MM or YYYY-MM-DD_YYYY-MM-DD
     lessons_count = Column(Integer, nullable=False, default=0)
     hours_count = Column(Float, nullable=False, default=0)
     rate_per_lesson = Column(Float, nullable=True)

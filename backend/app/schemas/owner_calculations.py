@@ -1,3 +1,4 @@
+from datetime import date
 from typing import List, Optional
 
 from pydantic import BaseModel
@@ -39,3 +40,5 @@ class TrainerBonusPayload(BaseModel):
 
 class TrainerPayPayload(BaseModel):
     period: str
+    date_from: Optional[date] = None
+    date_to: Optional[date] = None

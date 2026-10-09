@@ -49,13 +49,7 @@ def _slot_duration_hours(start_t: Optional[time], end_t: Optional[time]) -> floa
     return max(0, d.total_seconds() / 3600.0)
 
 
-@router.get("/owner/calculations/trainers", response_model=List[TrainerCalculationRow])
-async def get_calculations_trainers(
-    month: str = Query(..., description="Период YYYY-MM"),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("owner_calculations.access")),
-):
-    """Список тренеров для расчётов за месяц: ставки, уроки/часы, оплата, премия, итог. Только owner."""
+def _month_window(month: str) -> Tuple[date, date]:
     try:
         year, month_num = int(month[:4]), int(month[5:7])
         period_start = date(year, month_num, 1)
@@ -65,6 +59,45 @@ async def get_calculations_trainers(
             period_end = date(year, month_num + 1, 1) - timedelta(days=1)
     except (ValueError, IndexError):
         raise HTTPException(status_code=400, detail="Invalid month; use YYYY-MM")
+    return period_start, period_end
+
+
+def _range_key(period_start: date, period_end: date) -> str:
+    month = period_start.strftime("%Y-%m")
+    if (period_start, period_end) == _month_window(month):
+        return month
+    return f"{period_start.isoformat()}_{period_end.isoformat()}"
+
+
+def _resolve_period(
+    *,
+    month: Optional[str] = None,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+) -> Tuple[date, date, str]:
+    if date_from or date_to:
+        if not date_from or not date_to:
+            raise HTTPException(status_code=400, detail="date_from and date_to must be provided together")
+        if date_from > date_to:
+            raise HTTPException(status_code=400, detail="date_from must be before or equal date_to")
+        return date_from, date_to, _range_key(date_from, date_to)
+
+    if not month:
+        raise HTTPException(status_code=400, detail="month or date_from/date_to is required")
+    period_start, period_end = _month_window(month)
+    return period_start, period_end, month
+
+
+@router.get("/owner/calculations/trainers", response_model=List[TrainerCalculationRow])
+async def get_calculations_trainers(
+    month: Optional[str] = Query(None, description="Период YYYY-MM"),
+    date_from: Optional[date] = Query(None, description="Начало периода YYYY-MM-DD"),
+    date_to: Optional[date] = Query(None, description="Конец периода YYYY-MM-DD"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("owner_calculations.access")),
+):
+    """Список тренеров для расчётов за период: ставки, уроки/часы, оплата, премия, итог. Только owner."""
+    period_start, period_end, period = _resolve_period(month=month, date_from=date_from, date_to=date_to)
 
     trainers = (
         db.query(User)
@@ -80,17 +113,17 @@ async def get_calculations_trainers(
 
     bonuses = {
         (b.trainer_id, b.period): b.bonus
-        for b in db.query(TrainerPeriodBonus).filter(TrainerPeriodBonus.period == month).all()
+        for b in db.query(TrainerPeriodBonus).filter(TrainerPeriodBonus.period == period).all()
     }
     paid_periods = {
-        (p.trainer_id, p.period) for p in db.query(TrainerPayout).filter(TrainerPayout.period == month).all()
+        (p.trainer_id, p.period) for p in db.query(TrainerPayout).filter(TrainerPayout.period == period).all()
     }
 
     result = []
     for t in trainers:
         tid = t.id
         b = breakdowns[tid]
-        bonus = bonuses.get((tid, month), 0.0)
+        bonus = bonuses.get((tid, period), 0.0)
         total = b.base_payment + bonus
         result.append(
             TrainerCalculationRow(
@@ -102,7 +135,7 @@ async def get_calculations_trainers(
                 base_payment=round(b.base_payment, 2),
                 bonus=round(bonus, 2),
                 total_payment=round(total, 2),
-                already_paid=(tid, month) in paid_periods,
+                already_paid=(tid, period) in paid_periods,
                 groups=b.groups,
             )
         )
@@ -148,8 +181,8 @@ async def add_trainer_bonus(
     user = db.query(User).filter(User.id == trainer_id, User.role == UserRole.TRAINER).first()
     if not user:
         raise HTTPException(status_code=404, detail="Trainer not found")
-    if len(payload.period) != 7 or payload.period[4] != "-":
-        raise HTTPException(status_code=400, detail="period must be YYYY-MM")
+    if not payload.period or len(payload.period) > 32:
+        raise HTTPException(status_code=400, detail="period is required")
     rec = (
         db.query(TrainerPeriodBonus)
         .filter(TrainerPeriodBonus.trainer_id == trainer_id, TrainerPeriodBonus.period == payload.period)
@@ -308,24 +341,27 @@ async def pay_trainer(
     if not user:
         raise HTTPException(status_code=404, detail="Trainer not found")
     if len(payload.period) != 7 or payload.period[4] != "-":
-        raise HTTPException(status_code=400, detail="period must be YYYY-MM")
+        if not payload.date_from or not payload.date_to:
+            raise HTTPException(status_code=400, detail="date_from/date_to are required for custom periods")
+    period_start, period_end, period = _resolve_period(
+        month=payload.period if len(payload.period) == 7 and payload.period[4] == "-" else None,
+        date_from=payload.date_from,
+        date_to=payload.date_to,
+    )
     existing = (
         db.query(TrainerPayout)
-        .filter(TrainerPayout.trainer_id == trainer_id, TrainerPayout.period == payload.period)
+        .filter(TrainerPayout.trainer_id == trainer_id, TrainerPayout.period == period)
         .first()
     )
     if existing:
         raise HTTPException(status_code=400, detail="Период уже выплачен")
 
-    year, month_num = int(payload.period[:4]), int(payload.period[5:7])
-    period_start = date(year, month_num, 1)
-    period_end = (date(year, month_num + 1, 1) - timedelta(days=1)) if month_num < 12 else date(year, 12, 31)
     breakdown = _compute_trainer_breakdowns(db, [user], period_start, period_end)[trainer_id]
     lessons_count = breakdown.lessons_count
     hours_count = breakdown.hours_count
     bonus_rec = (
         db.query(TrainerPeriodBonus)
-        .filter(TrainerPeriodBonus.trainer_id == trainer_id, TrainerPeriodBonus.period == payload.period)
+        .filter(TrainerPeriodBonus.trainer_id == trainer_id, TrainerPeriodBonus.period == period)
         .first()
     )
     bonus = (getattr(bonus_rec, "bonus", None) or 0) if bonus_rec else 0
@@ -335,7 +371,7 @@ async def pay_trainer(
     db.add(
         TrainerPayout(
             trainer_id=trainer_id,
-            period=payload.period,
+            period=period,
             lessons_count=lessons_count,
             hours_count=hours_count,
             rate_per_lesson=None,
@@ -354,7 +390,7 @@ async def pay_trainer(
             .filter(FinanceArticle.name == "Зарплата тренеров")
             .first()
         )
-        period_label = f"{year}-{month_num:02d}"
+        period_label = period if len(period) == 7 else f"{period_start.isoformat()} - {period_end.isoformat()}"
         description = f"Выплата тренеру {user.full_name} за {period_label}"
         db.add(
             FinanceTransaction(
@@ -386,6 +422,6 @@ async def pay_trainer(
         "pay",
         "trainer_payout",
         trainer_id,
-        {"period": payload.period, "lessons_count": lessons_count, "hours_count": hours_count, "total": round(total, 2)},
+        {"period": period, "lessons_count": lessons_count, "hours_count": hours_count, "total": round(total, 2)},
     )
     return {"ok": True}

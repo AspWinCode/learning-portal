@@ -42,6 +42,23 @@ const getDefaultMonth = () => {
   return `${y}-${m}`;
 };
 
+const getMonthRange = (month: string) => {
+  const [year, monthNumber] = month.split('-').map(Number);
+  const start = new Date(year, monthNumber - 1, 1);
+  const end = new Date(year, monthNumber, 0);
+  return {
+    dateFrom: formatDateInput(start),
+    dateTo: formatDateInput(end),
+  };
+};
+
+const formatDateInput = (date: Date) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat('ru-RU', {
     style: 'currency',
@@ -52,12 +69,22 @@ const formatCurrency = (value: number) =>
 const formatDecimal = (value: number) =>
   new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(value || 0);
 
-const formatPeriod = (month: string) => {
-  const [year, monthNumber] = month.split('-').map(Number);
-  if (!year || !monthNumber) return month;
-  return new Intl.DateTimeFormat('ru-RU', { month: 'long', year: 'numeric' }).format(
-    new Date(year, monthNumber - 1, 1),
-  );
+const formatRange = (dateFrom: string, dateTo: string) => {
+  if (!dateFrom || !dateTo) return 'выбранный период';
+  const from = new Date(`${dateFrom}T00:00:00`);
+  const to = new Date(`${dateTo}T00:00:00`);
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return `${dateFrom} — ${dateTo}`;
+  const formatter = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+  return `${formatter.format(from)} — ${formatter.format(to)}`;
+};
+
+const getPeriodKey = (dateFrom: string, dateTo: string) => {
+  if (dateFrom && dateTo) {
+    const month = dateFrom.slice(0, 7);
+    const range = getMonthRange(month);
+    if (dateFrom === range.dateFrom && dateTo === range.dateTo) return month;
+  }
+  return `${dateFrom}_${dateTo}`;
 };
 
 type RateFieldProps = {
@@ -165,7 +192,9 @@ const GroupRatesTable: React.FC<GroupRatesTableProps> = ({ groups, onChange, onB
 );
 
 const CalculationsPage: React.FC = () => {
-  const [month, setMonth] = useState(getDefaultMonth);
+  const defaultRange = useMemo(() => getMonthRange(getDefaultMonth()), []);
+  const [dateFrom, setDateFrom] = useState(defaultRange.dateFrom);
+  const [dateTo, setDateTo] = useState(defaultRange.dateTo);
   const [rows, setRows] = useState<TrainerCalculationRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -174,6 +203,8 @@ const CalculationsPage: React.FC = () => {
   const [bonusSaving, setBonusSaving] = useState(false);
   const [payingId, setPayingId] = useState<number | null>(null);
   const [expandedTrainerId, setExpandedTrainerId] = useState<number | null>(null);
+  const periodKey = useMemo(() => getPeriodKey(dateFrom, dateTo), [dateFrom, dateTo]);
+  const periodLabel = useMemo(() => formatRange(dateFrom, dateTo), [dateFrom, dateTo]);
 
   const summary = useMemo(
     () => ({
@@ -199,10 +230,22 @@ const CalculationsPage: React.FC = () => {
   );
 
   const load = useCallback(async () => {
+    if (!dateFrom || !dateTo) {
+      setRows([]);
+      setError('Выберите дату начала и дату окончания');
+      setLoading(false);
+      return;
+    }
+    if (dateFrom > dateTo) {
+      setRows([]);
+      setError('Дата начала не должна быть позже даты окончания');
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
-      const data = await ownerCalculationsApi.getTrainers(month);
+      const data = await ownerCalculationsApi.getTrainers({ period: periodKey, date_from: dateFrom, date_to: dateTo });
       setRows(data);
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось загрузить расчёты'));
@@ -210,7 +253,7 @@ const CalculationsPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [month]);
+  }, [dateFrom, dateTo, periodKey]);
 
   useEffect(() => {
     load();
@@ -221,7 +264,7 @@ const CalculationsPage: React.FC = () => {
     setBonusSaving(true);
     setError(null);
     try {
-      await ownerCalculationsApi.addBonus(bonusDialog.trainerId, month, Number(bonusAmount));
+      await ownerCalculationsApi.addBonus(bonusDialog.trainerId, periodKey, Number(bonusAmount));
       setBonusDialog(null);
       setBonusAmount('');
       load();
@@ -236,7 +279,7 @@ const CalculationsPage: React.FC = () => {
     setPayingId(trainerId);
     setError(null);
     try {
-      await ownerCalculationsApi.pay(trainerId, month);
+      await ownerCalculationsApi.pay(trainerId, { period: periodKey, date_from: dateFrom, date_to: dateTo });
       load();
     } catch (err: any) {
       setError(extractApiError(err, 'Не удалось оформить выплату'));
@@ -315,24 +358,38 @@ const CalculationsPage: React.FC = () => {
           >
             <Box>
               <Typography variant="h6" fontWeight={900}>
-                Расчёты за {formatPeriod(month)}
+                Расчёты за {periodLabel}
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 Ставки, премии и выплаты тренерам за выбранный период.
               </Typography>
             </Box>
-            <TextField
-              label="Период"
-              type="month"
-              value={month}
-              onChange={(e) => setMonth(e.target.value.slice(0, 7))}
-              InputLabelProps={{ shrink: true }}
-              size="small"
-              sx={{
-                width: { xs: '100%', sm: 220 },
-                '& .MuiOutlinedInput-root': { bgcolor: '#fff', borderRadius: 2 },
-              }}
-            />
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ width: { xs: '100%', md: 'auto' } }}>
+              <TextField
+                label="С даты"
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                InputLabelProps={{ shrink: true }}
+                size="small"
+                sx={{
+                  width: { xs: '100%', sm: 180 },
+                  '& .MuiOutlinedInput-root': { bgcolor: '#fff', borderRadius: 2 },
+                }}
+              />
+              <TextField
+                label="До даты"
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                InputLabelProps={{ shrink: true }}
+                size="small"
+                sx={{
+                  width: { xs: '100%', sm: 180 },
+                  '& .MuiOutlinedInput-root': { bgcolor: '#fff', borderRadius: 2 },
+                }}
+              />
+            </Stack>
           </Stack>
 
           <Box

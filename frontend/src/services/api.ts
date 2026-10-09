@@ -3439,9 +3439,17 @@ export interface TrainerCalculationRow {
   groups: TrainerGroupCalculationRow[];
 }
 
+export interface OwnerCalculationPeriod {
+  period: string;
+  date_from: string;
+  date_to: string;
+}
+
 export const ownerCalculationsApi = {
-  getTrainers: async (month: string): Promise<TrainerCalculationRow[]> => {
-    const response = await api.get('/api/owner/calculations/trainers', { params: { month } });
+  getTrainers: async (period: OwnerCalculationPeriod): Promise<TrainerCalculationRow[]> => {
+    const response = await api.get('/api/owner/calculations/trainers', {
+      params: { date_from: period.date_from, date_to: period.date_to },
+    });
     return response.data;
   },
   updateGroupRate: async (
@@ -3455,8 +3463,8 @@ export const ownerCalculationsApi = {
     const response = await api.post(`/api/owner/calculations/trainers/${trainerId}/bonus`, { period, bonus });
     return response.data;
   },
-  pay: async (trainerId: number, period: string): Promise<{ ok: boolean }> => {
-    const response = await api.post(`/api/owner/calculations/trainers/${trainerId}/pay`, { period });
+  pay: async (trainerId: number, period: OwnerCalculationPeriod): Promise<{ ok: boolean }> => {
+    const response = await api.post(`/api/owner/calculations/trainers/${trainerId}/pay`, period);
     return response.data;
   },
 };

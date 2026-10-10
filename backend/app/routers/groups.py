@@ -18,7 +18,7 @@ from app.schemas.groups import (
     LessonSlotExtraPolicyResponse,
 )
 from app.schemas.students import StudentResponse
-from app.models import Group, User, GroupStatus, UserRole, GroupStudent, GroupStudentSchedule, Student, StudentStatus, GroupSchedule, LessonSlotExtraPolicy, ProgramStatus, GroupProgram, Program, GroupMessengerLink
+from app.models import Group, User, GroupStatus, UserRole, GroupStudent, GroupStudentSchedule, Student, StudentStatus, GroupSchedule, LessonSlotExtraPolicy, ProgramStatus, GroupProgram, Program
 from app.routers.action_log import log_action
 from app.services.student_activity import log_student_activity
 from app.services.student_card_period import release_students_from_archived_group

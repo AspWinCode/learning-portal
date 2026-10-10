@@ -72,7 +72,7 @@ def verify_group_max(group_id: int, payload: MaxGroupConnectRequest, db: Session
 
 @router.post("/groups/{group_id}/messengers/max/connect", response_model=MaxGroupLinkResponse)
 def connect_group_max(group_id: int, payload: MaxGroupConnectRequest, db: Session = Depends(get_db), user: User = Depends(auth.get_current_active_user)):
-    group = _group(db, group_id)
+    _group(db, group_id)
     if not auth.has_permission(user, "groups.messenger_link"):
         raise HTTPException(status_code=403, detail="Нет права подключать MAX-чаты")
     try:
@@ -95,7 +95,7 @@ def connect_group_max(group_id: int, payload: MaxGroupConnectRequest, db: Sessio
 
 @router.delete("/groups/{group_id}/messengers/max")
 def disconnect_group_max(group_id: int, db: Session = Depends(get_db), user: User = Depends(auth.get_current_active_user)):
-    group = _group(db, group_id)
+    _group(db, group_id)
     if not auth.has_permission(user, "groups.messenger_link"):
         raise HTTPException(status_code=403, detail="Нет права отключать MAX-чаты")
     link = db.query(GroupMessengerLink).filter_by(group_id=group_id, provider="max", is_active=True).first()

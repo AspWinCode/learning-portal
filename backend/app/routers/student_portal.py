@@ -68,10 +68,19 @@ from app.schemas.student_portal import (
     UpcomingLessonOut,
 )
 from app.services.kodex_sso import SSO_KODEX_SHARED_SECRET, build_launch_redirect_url
+from app.student_display import get_student_first_name
 
 import logging as _logging
 
 _logger = _logging.getLogger(__name__)
+
+
+def _student_profile_out(student: Student) -> StudentProfileOut:
+    return StudentProfileOut(
+        id=student.id,
+        full_name=student.full_name,
+        first_name=get_student_first_name(student.full_name),
+    )
 
 
 def _student_ids_by_phone(db: Session, phone: str) -> set[int]:
@@ -222,7 +231,7 @@ async def student_login(payload: StudentLoginRequest, db: Session = Depends(get_
     db.commit()
 
     token = auth.create_student_access_token(student.id, credential.login)
-    return StudentLoginResponse(access_token=token, student=StudentProfileOut.model_validate(student))
+    return StudentLoginResponse(access_token=token, student=_student_profile_out(student))
 
 
 @router.post("/auth/login-phone", response_model=StudentLoginResponse)
@@ -248,12 +257,12 @@ async def student_login_by_phone(request: Request, payload: StudentPhoneLoginReq
         db.commit()
 
     token = auth.create_student_access_token(student.id, credential.login if credential else f"phone:{student.id}")
-    return StudentLoginResponse(access_token=token, student=StudentProfileOut.model_validate(student))
+    return StudentLoginResponse(access_token=token, student=_student_profile_out(student))
 
 
 @router.get("/me", response_model=StudentProfileOut)
 async def get_student_me(current_student: Student = Depends(auth.get_current_student)):
-    return StudentProfileOut.model_validate(current_student)
+    return _student_profile_out(current_student)
 
 
 _PORTAL_SETTINGS_KEY = "student_portal.settings"

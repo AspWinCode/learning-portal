@@ -1156,6 +1156,25 @@ export const groupsApi = {
   removeSchedule: async (groupId: number, scheduleId: number): Promise<void> => {
     await api.delete(`/api/groups/${groupId}/schedules/${scheduleId}`);
   },
+  getMaxLink: async (groupId: number): Promise<import('../types').MaxGroupLink> => {
+    const response = await api.get(`/api/groups/${groupId}/messengers/max`);
+    return response.data;
+  },
+  verifyMax: async (groupId: number, chat_id: string): Promise<import('../types').MaxGroupLink> => {
+    const response = await api.post(`/api/groups/${groupId}/messengers/max/verify`, { chat_id });
+    return response.data;
+  },
+  connectMax: async (groupId: number, chat_id: string): Promise<import('../types').MaxGroupLink> => {
+    const response = await api.post(`/api/groups/${groupId}/messengers/max/connect`, { chat_id });
+    return response.data;
+  },
+  disconnectMax: async (groupId: number): Promise<void> => {
+    await api.delete(`/api/groups/${groupId}/messengers/max`);
+  },
+  sendMax: async (groupId: number, text: string): Promise<{ success: boolean; message_id?: string | null }> => {
+    const response = await api.post(`/api/groups/${groupId}/messengers/max/send`, { text });
+    return response.data;
+  },
 };
 
 export const projectsApi = {
@@ -4081,6 +4100,26 @@ export const maxApi = {
     scheduled_at?: string | null;
   }): Promise<MaxSendResponse> => {
     const response = await api.post('/api/max/send', payload);
+    return response.data;
+  },
+  getStatus: async (): Promise<{ enabled: boolean; configured: boolean }> => {
+    const response = await api.get('/api/max/group-status');
+    return response.data;
+  },
+  listBroadcasts: async (): Promise<import('../types').MaxBroadcast[]> => {
+    const response = await api.get('/api/communications/broadcasts/max');
+    return response.data;
+  },
+  getBroadcast: async (id: number): Promise<import('../types').MaxBroadcast> => {
+    const response = await api.get(`/api/communications/broadcasts/max/${id}`);
+    return response.data;
+  },
+  retryFailed: async (id: number): Promise<import('../types').MaxBroadcast> => {
+    const response = await api.post(`/api/communications/broadcasts/max/${id}/retry-failed`);
+    return response.data;
+  },
+  createBroadcast: async (payload: { scope: 'active_groups' | 'selected_groups'; group_ids?: number[]; text: string }): Promise<import('../types').MaxBroadcast> => {
+    const response = await api.post('/api/communications/broadcasts/max', payload);
     return response.data;
   },
 };

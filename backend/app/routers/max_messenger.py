@@ -4,6 +4,7 @@
 """
 
 import logging
+import os
 from datetime import datetime, timezone
 from typing import Optional, Tuple
 
@@ -25,11 +26,20 @@ from app.services.max_messenger import (
     get_personal_qr,
     MAX_MESSAGE_TEXT_LIMIT,
 )
+from app.services.max_client import get_max_client
 from app.routers.action_log import log_action
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+@router.get("/max/group-status")
+def api_max_group_status(
+    current_user: User = Depends(auth.require_permission("groups.access")),
+):
+    """Safe MAX group integration status; never returns the bot token."""
+    return {"enabled": os.getenv("MAX_ENABLED", "1").strip().lower() not in {"0", "false", "no"}, "configured": get_max_client().configured}
 
 
 @router.get("/max/configured")

@@ -401,6 +401,10 @@ class StudentCourseProgress(Base):
     rank_name = Column(String(64), nullable=True)
     badges_count = Column(Integer, nullable=False, default=0)
     last_badge_name = Column(String(128), nullable=True)
+    # Агрегат, не копия сдач: сколько проектов этого курса у ученика сейчас
+    # в статусе "на доработку" на Codelab — обновляется из admin_review_project_submission
+    # (routers/codelab.py) при каждом решении тренера, не из progress-sync.
+    revision_required_count = Column(Integer, nullable=False, default=0, server_default="0")
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
 
     student = relationship("Student", back_populates="course_progress")
@@ -824,6 +828,68 @@ class MaxMessage(Base):
 
     lead = relationship("Lead")
     creator = relationship("User", foreign_keys=[created_by])
+
+
+class GroupMessengerLink(Base):
+    """Verified link between an LMS group and a chat in an official messenger API."""
+    __tablename__ = "group_messenger_links"
+    __table_args__ = (
+        UniqueConstraint("group_id", "provider", name="uq_group_messenger_link_provider"),
+        UniqueConstraint("provider", "external_chat_id", name="uq_group_messenger_link_chat"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    group_id = Column(Integer, ForeignKey("groups.id", ondelete="CASCADE"), nullable=False, index=True)
+    provider = Column(String(32), nullable=False, server_default="max", index=True)
+    external_chat_id = Column(String(64), nullable=False)
+    external_chat_title = Column(String(512), nullable=True)
+    is_active = Column(Boolean, nullable=False, server_default="true", index=True)
+    connected_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    connected_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    last_verified_at = Column(DateTime(timezone=True), nullable=True)
+    last_verification_status = Column(String(32), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    group = relationship("Group", back_populates="messenger_links")
+    connected_by = relationship("User", foreign_keys=[connected_by_user_id])
+
+
+class MaxBroadcast(Base):
+    __tablename__ = "max_broadcasts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    provider = Column(String(32), nullable=False, server_default="max")
+    message = Column(Text, nullable=False)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    status = Column(String(20), nullable=False, server_default="pending", index=True)
+    total_targets = Column(Integer, nullable=False, server_default="0")
+    success_count = Column(Integer, nullable=False, server_default="0")
+    failed_count = Column(Integer, nullable=False, server_default="0")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    finished_at = Column(DateTime(timezone=True), nullable=True)
+
+    creator = relationship("User", foreign_keys=[created_by])
+    targets = relationship("MaxBroadcastTarget", back_populates="broadcast", cascade="all, delete-orphan")
+
+
+class MaxBroadcastTarget(Base):
+    __tablename__ = "max_broadcast_targets"
+    __table_args__ = (UniqueConstraint("broadcast_id", "group_id", name="uq_max_broadcast_target_group"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    broadcast_id = Column(Integer, ForeignKey("max_broadcasts.id", ondelete="CASCADE"), nullable=False, index=True)
+    group_id = Column(Integer, ForeignKey("groups.id"), nullable=False, index=True)
+    external_chat_id = Column(String(64), nullable=False)
+    chat_title = Column(String(512), nullable=True)
+    status = Column(String(16), nullable=False, server_default="pending", index=True)
+    attempts = Column(Integer, nullable=False, server_default="0")
+    last_error = Column(Text, nullable=True)
+    sent_at = Column(DateTime(timezone=True), nullable=True)
+
+    broadcast = relationship("MaxBroadcast", back_populates="targets")
+    group = relationship("Group")
 
 
 class SmsTemplate(Base):
@@ -1600,6 +1666,7 @@ class Group(Base):
     lesson_slot_extra_policies = relationship("LessonSlotExtraPolicy", back_populates="group", cascade="all, delete-orphan")
     group_lesson_slots = relationship("GroupLessonSlot", back_populates="group", cascade="all, delete-orphan")
     programs = relationship("Program", secondary="group_programs", viewonly=True)
+    messenger_links = relationship("GroupMessengerLink", back_populates="group", cascade="all, delete-orphan")
 
 
 class GroupStudent(Base):

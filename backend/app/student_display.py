@@ -6,6 +6,17 @@ from sqlalchemy.orm import Session
 from app.models import Student, StudentCard
 
 
+def get_student_first_name(full_name: Optional[str]) -> str:
+    """Извлекает имя ученика из ФИО, хранящегося в формате «Фамилия Имя
+    Отчество» (см. app/routers/sales.py:657). Второе слово — имя; если слов
+    меньше двух (одно слово, пусто, None), возвращает то, что есть, не гадая
+    о структуре."""
+    parts = (full_name or "").split()
+    if len(parts) >= 2:
+        return parts[1]
+    return parts[0] if parts else ""
+
+
 def get_student_display_name(db: Session, student: Student) -> str:
     """Возвращает ФИО для отображения: из карточки ученика (не архивной), если привязана, иначе student.full_name."""
     if not student:

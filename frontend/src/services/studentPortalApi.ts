@@ -4,6 +4,7 @@ import type { CourseCatalogItemOut } from '../types';
 export interface StudentPortalProfile {
   id: number;
   full_name: string;
+  first_name: string;
 }
 
 export interface StudentGrade {

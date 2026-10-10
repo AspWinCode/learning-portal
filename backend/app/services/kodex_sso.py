@@ -20,6 +20,7 @@ from app.models import CourseCatalogItem, Student
 SSO_KODEX_SHARED_SECRET = os.getenv("SSO_KODEX_SHARED_SECRET", "")
 SSO_TOKEN_TTL_SECONDS = int(os.getenv("SSO_KODEX_TOKEN_TTL_SECONDS", "60"))
 KODEX_EXTERNAL_BASE = os.getenv("KODEX_BASE_URL", "https://kodex.tirskix.space")
+PORTAL_BASE_URL = os.getenv("PORTAL_BASE_URL", "https://tirskix.space")
 
 
 def build_launch_redirect_url(student: Student, catalog_item: CourseCatalogItem) -> Optional[str]:
@@ -48,6 +49,11 @@ def build_launch_redirect_url(student: Student, catalog_item: CourseCatalogItem)
         "role": "student",
         "groups": [g.name for g in active_groups],
         "directions": sorted({g.direction for g in active_groups if g.direction}),
+        # Куда вернуть ученика кнопкой «Назад в кабинет» на стороне внешней
+        # площадки (Codelab и т.п.). Значение формирует портал, не браузер —
+        # подписано тем же JWT, поэтому площадка может доверять ему без
+        # отдельной проверки на open redirect (см. п.3/21 кабинета ученика).
+        "return_to": f"{PORTAL_BASE_URL.rstrip('/')}/student-portal",
         "iat": now,
         "exp": now + timedelta(seconds=SSO_TOKEN_TTL_SECONDS),
         "jti": str(uuid4()),

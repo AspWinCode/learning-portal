@@ -9,7 +9,17 @@ from sqlalchemy.orm import Session
 
 from app import auth
 from app.database import get_db
-from app.models import CourseCatalogItem, CourseCatalogItemKind, Group, GroupStudent, Student, StudentStatus, User, UserRole
+from app.models import (
+    CourseCatalogItem,
+    CourseCatalogItemKind,
+    Group,
+    GroupStudent,
+    Student,
+    StudentCourseProgress,
+    StudentStatus,
+    User,
+    UserRole,
+)
 from app.routers.action_log import log_action
 from app.schemas.codelab import (
     CodelabCourseArchiveIn,
@@ -630,6 +640,32 @@ async def admin_comment_project_file(
     return result
 
 
+def _adjust_revision_required_count(db: Session, student_id: int, course_id: int, delta: int) -> None:
+    """П.20: агрегат «сколько проектов этого курса у ученика на доработке»,
+    для бейджа на карточке курса в Student Portal — без копирования самих
+    сдач. delta вычисляется вызывающим кодом по факту смены статуса ОДНОГО
+    проекта (старый статус vs только что принятое решение), поэтому здесь
+    достаточно применить его к счётчику, не пересчитывая остальные проекты
+    курса заново."""
+    if delta == 0:
+        return
+    item = db.query(CourseCatalogItem).filter(CourseCatalogItem.code == codelab_course_code(course_id)).first()
+    if not item:
+        return
+    progress = (
+        db.query(StudentCourseProgress)
+        .filter(StudentCourseProgress.student_id == student_id, StudentCourseProgress.catalog_item_id == item.id)
+        .first()
+    )
+    if not progress:
+        if delta <= 0:
+            return
+        progress = StudentCourseProgress(student_id=student_id, catalog_item_id=item.id, revision_required_count=0)
+        db.add(progress)
+    progress.revision_required_count = max(0, (progress.revision_required_count or 0) + delta)
+    db.commit()
+
+
 @router.put("/admin/courses/{course_id}/projects/{item_id}/submissions/{submission_id}/review")
 async def admin_review_project_submission(
     course_id: int, item_id: int, submission_id: int, payload: CodelabProjectReviewIn,
@@ -644,6 +680,14 @@ async def admin_review_project_submission(
         _raise(e)
         return
     log_action(db, current_user.id, payload.decision, "codelab_project_submission", submission_id, {"score": payload.score})
+
+    old_status = target.get("status")
+    student_id = _student_id_from_external_ref(target.get("student_external_ref", ""))
+    if student_id is not None:
+        was_pending = old_status == "needs_revision"
+        is_pending = payload.decision == "needs_revision"
+        if was_pending != is_pending:
+            _adjust_revision_required_count(db, student_id, course_id, 1 if is_pending else -1)
 
     if payload.decision == "needs_revision":
         _notify_student_revision_requested(db, target, payload.comment, current_user)

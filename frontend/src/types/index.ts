@@ -438,6 +438,38 @@ export interface Group {
   /** Краткое расписание (например, "Вт, Чт · 20:00–21:00"). */
   schedule_short?: string | null;
   online_url?: string | null;
+  max_link?: MaxGroupLink | null;
+}
+
+export interface MaxGroupLink {
+  group_id: number;
+  chat_id: string;
+  chat_title?: string | null;
+  connected: boolean;
+  is_active: boolean;
+  last_verified_at?: string | null;
+  verification_status?: string | null;
+}
+
+export interface MaxBroadcastTarget {
+  id: number;
+  group_id: number;
+  chat_title?: string | null;
+  status: string;
+  attempts: number;
+  last_error?: string | null;
+  sent_at?: string | null;
+}
+
+export interface MaxBroadcast {
+  id: number;
+  status: string;
+  text: string;
+  total_targets: number;
+  success_count: number;
+  failed_count: number;
+  created_at: string;
+  targets: MaxBroadcastTarget[];
 }
 
 /** Параметры конкретного ученика в группе. */
@@ -2574,6 +2606,7 @@ export interface CourseProgressOut {
   badges_count: number;
   last_badge_name?: string | null;
   updated_at?: string | null;
+  revision_required_count: number;
 }
 
 export interface CourseCatalogItemOut {

@@ -62,4 +62,49 @@ class MaxSendResponse(BaseModel):
     error: Optional[str] = None
 
 
+class MaxGroupConnectRequest(BaseModel):
+    chat_id: str = Field(..., min_length=1, max_length=64)
+
+
+class MaxGroupLinkResponse(BaseModel):
+    group_id: int
+    chat_id: str
+    chat_title: Optional[str] = None
+    connected: bool
+    is_active: bool = True
+    last_verified_at: Optional[datetime] = None
+    verification_status: Optional[str] = None
+
+
+class MaxGroupSendRequest(BaseModel):
+    text: str = Field(..., min_length=1, max_length=4000)
+
+
+class MaxBroadcastCreateRequest(BaseModel):
+    scope: Literal["active_groups", "selected_groups"] = "active_groups"
+    group_ids: Optional[list[int]] = None
+    text: str = Field(..., min_length=1, max_length=4000)
+
+
+class MaxBroadcastTargetResponse(BaseModel):
+    id: int
+    group_id: int
+    chat_title: Optional[str] = None
+    status: str
+    attempts: int
+    last_error: Optional[str] = None
+    sent_at: Optional[datetime] = None
+
+
+class MaxBroadcastResponse(BaseModel):
+    id: int
+    status: str
+    text: str
+    total_targets: int
+    success_count: int
+    failed_count: int
+    created_at: datetime
+    targets: list[MaxBroadcastTargetResponse] = []
+
+
 __all__ = [name for name in globals() if not name.startswith("_")]

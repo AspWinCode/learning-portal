@@ -34,6 +34,7 @@ import { getEffectiveRole, hasPermission } from '../utils/permissions';
 import { ConfirmDialog, DataTable, EmptyState, FormDialog, StatusChip } from '../components/ui';
 import AssignCourseToGroupDialog from '../components/AssignCourseToGroupDialog';
 import GroupActivityDialog from '../components/GroupActivityDialog';
+import MaxGroupDialog from '../components/MaxGroupDialog';
 
 const GroupsPage: React.FC = () => {
   const [groups, setGroups] = useState<Group[]>([]);
@@ -44,6 +45,7 @@ const GroupsPage: React.FC = () => {
   const [archiveTarget, setArchiveTarget] = useState<Group | null>(null);
   const [assignCourseOpen, setAssignCourseOpen] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
+  const [maxOpen, setMaxOpen] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
   const [groupDetails, setGroupDetails] = useState<Group | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
@@ -70,6 +72,7 @@ const GroupsPage: React.FC = () => {
   const { user } = useAuth();
   const effectiveRole = getEffectiveRole(user);
   const canManageGroups = hasPermission(user, 'groups.manage');
+  const canManageMax = hasPermission(user, 'groups.messenger_link');
   const canViewMembers = canManageGroups || effectiveRole === 'trainer';
 
   const displayedGroups = groups.filter((g) => (groupsTab === 'active' ? g.status === 'active' : g.status === 'archived'));
@@ -392,6 +395,13 @@ const GroupsPage: React.FC = () => {
     },
     { key: 'students', header: 'Ученики', render: (group: Group) => group.students?.length ?? '-' },
     {
+      key: 'max', header: 'MAX', render: (group: Group) => (
+        <Button size="small" variant="text" onClick={() => { setSelectedGroup(group); setMaxOpen(true); }}>
+          {group.max_link?.connected ? 'MAX ✓' : 'Подключить MAX'}
+        </Button>
+      ),
+    },
+    {
       key: 'status',
       header: 'Статус',
       render: (group: Group) => (
@@ -473,6 +483,7 @@ const GroupsPage: React.FC = () => {
           />
         }
       />
+      {selectedGroup && <MaxGroupDialog open={maxOpen} groupId={selectedGroup.id} groupName={selectedGroup.name} canManage={canManageMax} onClose={() => setMaxOpen(false)} onChanged={loadGroups} />}
       {/* Диалог создания группы */}
       {canManageGroups && (
         <FormDialog open={open} title="Создать группу" onClose={() => setOpen(false)} onSubmit={handleCreate} submitLabel="Создать" maxWidth="sm">

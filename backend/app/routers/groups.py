@@ -18,7 +18,7 @@ from app.schemas.groups import (
     LessonSlotExtraPolicyResponse,
 )
 from app.schemas.students import StudentResponse
-from app.models import Group, User, GroupStatus, UserRole, GroupStudent, GroupStudentSchedule, Student, StudentStatus, GroupSchedule, LessonSlotExtraPolicy, ProgramStatus, GroupProgram, Program
+from app.models import Group, User, GroupStatus, UserRole, GroupStudent, GroupStudentSchedule, Student, StudentStatus, GroupSchedule, LessonSlotExtraPolicy, ProgramStatus, GroupProgram, Program, GroupMessengerLink
 from app.routers.action_log import log_action
 from app.services.student_activity import log_student_activity
 from app.services.student_card_period import release_students_from_archived_group
@@ -64,6 +64,8 @@ def _group_to_response(db: Session, g: Group) -> GroupResponse:
     base["start_date"] = getattr(g, "start_date", None)
     base["lesson_format"] = getattr(g, "lesson_format", None) or "group"
     base["online_url"] = getattr(g, "online_url", None)
+    link = next((item for item in (getattr(g, "messenger_links", None) or []) if item.provider == "max" and item.is_active), None)
+    base["max_link"] = {"group_id": g.id, "chat_id": link.external_chat_id, "chat_title": link.external_chat_title, "connected": True, "is_active": True, "last_verified_at": link.last_verified_at, "verification_status": link.last_verification_status} if link else None
     return GroupResponse(**base)
 
 
@@ -112,6 +114,8 @@ def _serialize_groups(db: Session, groups: List[Group], effective_role: UserRole
         base["students"] = students_out
         base["schedules"] = [GroupScheduleResponse.model_validate(s) for s in (getattr(g, "group_schedules", None) or [])]
         base["programs"] = getattr(g, "programs", None) or []
+        link = next((item for item in (getattr(g, "messenger_links", None) or []) if item.provider == "max" and item.is_active), None)
+        base["max_link"] = {"group_id": g.id, "chat_id": link.external_chat_id, "chat_title": link.external_chat_title, "connected": True, "is_active": True, "last_verified_at": link.last_verified_at, "verification_status": link.last_verification_status} if link else None
         result.append(GroupResponse(**base))
     return result
 
@@ -301,7 +305,8 @@ async def update_group(
     db_group = db.query(Group).filter(Group.id == group_id).first()
     if db_group is None:
         raise HTTPException(status_code=404, detail="Group not found")
-    
+
+    old_trainer_id = db_group.trainer_id
     update_data = group_update.model_dump(exclude_unset=True)
     update_data.pop("schedules", None)  # list of dicts or None
 
@@ -346,6 +351,15 @@ async def update_group(
     db.refresh(db_group)
 
     log_action(db, current_user.id, "update", "group", group_id, {**update_data, "schedules_updated": group_update.schedules is not None})
+    # Отдельная запись для смены тренера — постоянная переназначение группы
+    # (Group.trainer_id), не разовая замена на урок (LessonTrainerOverride,
+    # см. trainer_lessons.py). Старые LessonAttendance.trainer_id/Grade.trainer_id
+    # этим не затрагиваются — там уже хранится фактический тренер на момент урока.
+    if "trainer_id" in update_data and update_data["trainer_id"] != old_trainer_id:
+        log_action(db, current_user.id, "reassign_trainer", "group", group_id, {
+            "old_trainer_id": old_trainer_id,
+            "new_trainer_id": update_data["trainer_id"],
+        })
     await invalidate_namespace(CACHE_NS_GROUPS)
     return _group_to_response(db, db_group)
 
@@ -701,4 +715,3 @@ async def delete_group(
     log_action(db, current_user.id, "archive", "group", group_id)
     await invalidate_namespace(CACHE_NS_GROUPS)
     return {"message": "Group archived"}
-

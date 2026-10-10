@@ -93,6 +93,24 @@ PERMISSION_CATALOG: List[Dict[str, str]] = [
         "description": "Create and edit communication templates.",
     },
     {
+        "key": "groups.messenger_link",
+        "module": "groups",
+        "label": "Подключение MAX к группе",
+        "description": "Проверка, подключение и отключение официального MAX-чата учебной группы.",
+    },
+    {
+        "key": "communications.max_send",
+        "module": "communications",
+        "label": "Отправка сообщений в MAX",
+        "description": "Отправка сообщений в подключённые MAX-чаты учебных групп.",
+    },
+    {
+        "key": "communications.broadcast",
+        "module": "communications",
+        "label": "Массовая рассылка в MAX",
+        "description": "Создание и просмотр массовых рассылок по подключённым группам.",
+    },
+    {
         "key": "admin_tools.reset_trainer_password",
         "module": "admin_tools",
         "label": "Сброс пароля тренера",

@@ -83,6 +83,7 @@ class GroupResponse(GroupBase):
     group_students: Optional[List[GroupStudentInfo]] = []
     programs: Optional[List[ProgramSummaryResponse]] = []
     schedules: Optional[List[GroupScheduleResponse]] = []
+    max_link: Optional[Dict[str, Any]] = None
 
     model_config = ConfigDict(from_attributes=True)
 

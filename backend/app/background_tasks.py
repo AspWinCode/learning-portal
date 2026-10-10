@@ -154,3 +154,9 @@ def task_send_email_broadcast(broadcast_id: int) -> None:
         _send_broadcast(db, broadcast_id)
     finally:
         db.close()
+
+
+@dramatiq.actor(queue_name="delivery", max_retries=3, min_backoff=30, max_backoff=900)
+def task_max_broadcast_target(target_id: int) -> None:
+    from app.services.max_broadcast import process_max_broadcast_target
+    process_max_broadcast_target(target_id)

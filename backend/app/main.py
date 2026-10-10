@@ -41,6 +41,7 @@ from app.routers import (
     groups,
     kodex,
     max_messenger,
+    max_groups,
     methodist_studio,
     notes,
     owner_calculations,
@@ -465,6 +466,7 @@ app.include_router(passwords.router, prefix="/api/v1/passwords", tags=["password
 app.include_router(admin_tools.router, prefix="/api/v1/admin-tools", tags=["admin_tools"])
 app.include_router(sms.router, prefix="/api/v1", tags=["sms"])
 app.include_router(max_messenger.router, prefix="/api/v1", tags=["max"])
+app.include_router(max_groups.router, prefix="/api/v1", tags=["max-groups"])
 app.include_router(owner_workspace.router, prefix="/api/v1/owner-workspace", tags=["owner_workspace"])
 app.include_router(disk.router, prefix="/api/v1/disk", tags=["disk"])
 app.include_router(student_portal.router, prefix="/api/v1/student-portal", tags=["student_portal"])

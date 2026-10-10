@@ -29,6 +29,7 @@ class StudentProfileOut(BaseModel):
 
     id: int
     full_name: str
+    first_name: str = ""
 
 
 class StudentLoginResponse(BaseModel):
@@ -47,6 +48,9 @@ class CourseProgressOut(BaseModel):
     badges_count: int = 0
     last_badge_name: Optional[str] = None
     updated_at: Optional[datetime] = None
+    # Агрегат с Codelab (не копия сдач): сколько проектов этого курса у ученика
+    # сейчас в статусе "на доработку" — для бейджа на карточке курса (п.20).
+    revision_required_count: int = 0
 
 
 class CourseCatalogItemOut(BaseModel):

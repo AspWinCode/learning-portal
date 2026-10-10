@@ -24,6 +24,7 @@ import { CommunicationQueueItem, CommunicationTemplate } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { hasPermission } from '../utils/permissions';
 import { extractApiError } from '../utils/extractApiError';
+import MaxBroadcastsSubTab from './MaxBroadcastsSubTab';
 
 const CHANNEL_OPTIONS: CommunicationTemplate['channel'][] = ['email', 'sms', 'max', 'web_push'];
 
@@ -169,6 +170,10 @@ const CommunicationsSettingsPage: React.FC = () => {
             {error}
           </Alert>
         )}
+
+        <Paper sx={{ p: 2 }}>
+          <MaxBroadcastsSubTab />
+        </Paper>
 
         <Paper sx={{ p: 2 }}>
           <Typography variant="h6" mb={2}>Weekly Digest для родителей</Typography>

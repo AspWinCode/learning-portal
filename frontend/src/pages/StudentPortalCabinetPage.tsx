@@ -127,7 +127,7 @@ const StudentPortalCabinetPage: React.FC = () => {
   const solvedTasks = courses.reduce((s, c) => s + (c.progress?.cases_solved ?? 0), 0);
   const totalBadges = courses.reduce((s, c) => s + (c.progress?.badges_count ?? 0), 0);
   const overallPct = totalTasks > 0 ? Math.round((solvedTasks / totalTasks) * 100) : 0;
-  const firstName = profile?.full_name?.split(' ')[0] ?? profile?.full_name ?? '';
+  const firstName = profile?.first_name || profile?.full_name || '';
   const initials = profile?.full_name?.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() ?? '?';
 
   return (
@@ -459,6 +459,18 @@ const StudentPortalCabinetPage: React.FC = () => {
                                   </Box>
                                 )}
                               </Stack>
+                            </Box>
+                          )}
+
+                          {!!p?.revision_required_count && p.revision_required_count > 0 && (
+                            <Box sx={{
+                              display: 'flex', alignItems: 'center', gap: 0.75,
+                              bgcolor: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.35)',
+                              borderRadius: 2, px: 1, py: 0.6,
+                            }}>
+                              <Typography sx={{ color: '#F59E0B', fontSize: '0.78rem', fontWeight: 700 }}>
+                                ⚠ {p.revision_required_count === 1 ? '1 работа требует доработки' : `${p.revision_required_count} работы требуют доработки`}
+                              </Typography>
                             </Box>
                           )}
 

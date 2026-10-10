@@ -20,7 +20,7 @@ MAX_MESSAGE_TEXT_LIMIT = 4000
 # --- Официальный Bot API (platform-api.max.ru) ---
 
 def _get_base_url() -> str:
-    return (os.getenv("MAX_API_BASE_URL") or "https://platform-api.max.ru").strip().rstrip("/")
+    return (os.getenv("MAX_API_BASE_URL") or "https://platform-api2.max.ru").strip().rstrip("/")
 
 
 def _get_token() -> str:

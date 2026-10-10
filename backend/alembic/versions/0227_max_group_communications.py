@@ -1,13 +1,13 @@
 """Official MAX links and asynchronous group broadcasts.
 
-Revision ID: 0225
-Revises: 0224
+Revision ID: 0227
+Revises: 0226
 """
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0225"
-down_revision = "0224"
+revision = "0227"
+down_revision = "0226"
 branch_labels = None
 depends_on = None
 

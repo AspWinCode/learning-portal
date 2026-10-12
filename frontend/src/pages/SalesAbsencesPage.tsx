@@ -227,98 +227,142 @@ const SalesAbsencesPage: React.FC = () => {
   const renderAbsenceCard = (absence: AbsenceFollowUp) => {
     const stage = STAGES.find((item) => item.value === absence.stage);
     const canPickMakeup = absence.stage === 'missed' || absence.stage === 'link_sent' || absence.stage === 'missed_makeup';
+    const studentLabel = absence.student_name || `Ученик #${absence.student_id}`;
+    const isExpanded = expandedIds.has(absence.id);
 
     return (
       <Paper
         key={absence.id}
         variant="outlined"
         sx={{
-          p: 1.5,
           borderRadius: 1.5,
           bgcolor: 'background.paper',
           borderLeft: `4px solid ${stage?.color || '#64748b'}`,
+          overflow: 'hidden',
         }}
       >
-        <Stack spacing={1.25}>
-          <Box>
-            <Typography variant="subtitle2" sx={{ fontWeight: 800, lineHeight: 1.25 }}>
-              {absence.student_name || `Ученик #${absence.student_id}`}
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.4 }}>
-              {absence.program_name || absence.group_name || `Группа #${absence.group_id}`}
-            </Typography>
-            <Typography variant="caption" color="text.secondary" display="block">
-              Пропуск: {formatDate(absence.lesson_date)}
-            </Typography>
+        {/* Свёрнутый заголовок — вся строка кликабельна (имя/строка/стрелка),
+            единственный интерактивный элемент (без button-в-button), чтобы
+            клавиатура/скринридер видели одну цель. */}
+        <Box
+          role="button"
+          tabIndex={0}
+          aria-expanded={isExpanded}
+          aria-label={`${isExpanded ? 'Свернуть' : 'Развернуть'} карточку ${studentLabel}`}
+          onClick={() => toggleExpanded(absence.id)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              toggleExpanded(absence.id);
+            }
+          }}
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 1,
+            p: 1.5,
+            cursor: 'pointer',
+            userSelect: 'none',
+            '&:hover': { bgcolor: 'action.hover' },
+            '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: -2 },
+          }}
+        >
+          <Typography
+            variant="subtitle2"
+            sx={{ fontWeight: 800, lineHeight: 1.25, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+          >
+            {studentLabel}
+          </Typography>
+          <Box
+            aria-hidden="true"
+            sx={{ width: 40, height: 40, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <ExpandMoreIcon sx={{ transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
           </Box>
+        </Box>
 
-          <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
-            <Chip size="small" label={STAGE_LABELS[absence.stage] || absence.stage} />
-            {absence.absence_reason && (
-              <Chip
-                size="small"
-                variant="outlined"
-                label={`Причина: ${REASON_LABELS[absence.absence_reason] || absence.absence_reason}`}
-              />
-            )}
-          </Stack>
-
-          {absence.absence_comment && (
-            <Typography variant="body2" color="text.secondary">
-              {absence.absence_comment}
-            </Typography>
-          )}
-
-          {(absence.stage === 'assigned' || absence.stage === 'link_sent') &&
-            (absence.makeup_group_name || absence.makeup_custom_lesson_title) && (
-              <Box sx={{ bgcolor: 'action.hover', borderRadius: 1, p: 1 }}>
-                <Typography variant="caption" color="text.secondary">
-                  Назначено
+        <Collapse in={isExpanded} timeout="auto" unmountOnExit>
+          <Box sx={{ px: 1.5, pb: 1.5 }}>
+            <Stack spacing={1.25}>
+              <Box>
+                <Typography variant="body2" color="text.secondary">
+                  {absence.program_name || absence.group_name || `Группа #${absence.group_id}`}
                 </Typography>
-                <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                  {absence.makeup_group_name || absence.makeup_custom_lesson_title}
+                <Typography variant="caption" color="text.secondary" display="block">
+                  Пропуск: {formatDate(absence.lesson_date)}
                 </Typography>
-                {absence.makeup_lesson_date && (
-                  <Typography variant="caption" color="text.secondary">
-                    {formatDate(absence.makeup_lesson_date)}
-                  </Typography>
-                )}
               </Box>
-            )}
 
-          <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-            {canPickMakeup && (
-              <Button size="small" variant="contained" onClick={() => openSuggest(absence)}>
-                Подобрать
-              </Button>
-            )}
-            {absence.stage === 'assigned' && (
-              <Button size="small" color="warning" variant="outlined" onClick={() => handleStageChange(absence.id, 'missed_makeup')}>
-                Не пришел
-              </Button>
-            )}
-            {absence.stage === 'missed' && (
-              <Button size="small" color="inherit" onClick={() => handleStageChange(absence.id, 'no_makeup_needed')}>
-                Не нужна
-              </Button>
-            )}
-          </Stack>
+              <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
+                <Chip size="small" label={STAGE_LABELS[absence.stage] || absence.stage} />
+                {absence.absence_reason && (
+                  <Chip
+                    size="small"
+                    variant="outlined"
+                    label={`Причина: ${REASON_LABELS[absence.absence_reason] || absence.absence_reason}`}
+                  />
+                )}
+              </Stack>
 
-          <FormControl size="small" fullWidth>
-            <InputLabel>Этап</InputLabel>
-            <Select
-              value={absence.stage}
-              label="Этап"
-              onChange={(event) => handleStageChange(absence.id, event.target.value)}
-            >
-              {STAGES.map((item) => (
-                <MenuItem key={item.value} value={item.value}>
-                  {item.label}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        </Stack>
+              {absence.absence_comment && (
+                <Typography variant="body2" color="text.secondary">
+                  {absence.absence_comment}
+                </Typography>
+              )}
+
+              {(absence.stage === 'assigned' || absence.stage === 'link_sent') &&
+                (absence.makeup_group_name || absence.makeup_custom_lesson_title) && (
+                  <Box sx={{ bgcolor: 'action.hover', borderRadius: 1, p: 1 }}>
+                    <Typography variant="caption" color="text.secondary">
+                      Назначено
+                    </Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                      {absence.makeup_group_name || absence.makeup_custom_lesson_title}
+                    </Typography>
+                    {absence.makeup_lesson_date && (
+                      <Typography variant="caption" color="text.secondary">
+                        {formatDate(absence.makeup_lesson_date)}
+                      </Typography>
+                    )}
+                  </Box>
+                )}
+
+              <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                {canPickMakeup && (
+                  <Button size="small" variant="contained" onClick={() => openSuggest(absence)}>
+                    Подобрать
+                  </Button>
+                )}
+                {absence.stage === 'assigned' && (
+                  <Button size="small" color="warning" variant="outlined" onClick={() => handleStageChange(absence.id, 'missed_makeup')}>
+                    Не пришел
+                  </Button>
+                )}
+                {absence.stage === 'missed' && (
+                  <Button size="small" color="inherit" onClick={() => handleStageChange(absence.id, 'no_makeup_needed')}>
+                    Не нужна
+                  </Button>
+                )}
+              </Stack>
+
+              <FormControl size="small" fullWidth>
+                <InputLabel>Этап</InputLabel>
+                <Select
+                  value={absence.stage}
+                  label="Этап"
+                  onChange={(event) => handleStageChange(absence.id, event.target.value)}
+                >
+                  {STAGES.map((item) => (
+                    <MenuItem key={item.value} value={item.value}>
+                      {item.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Stack>
+          </Box>
+        </Collapse>
       </Paper>
     );
   };

@@ -180,6 +180,26 @@ export interface CodelabSubmissionReview {
   manual_score_override: number | null;
   manual_comment: string | null;
   created_at: string;
+  history?: Array<Record<string, unknown>>;
+}
+
+export interface CodelabTrainerSubmission extends CodelabSubmissionReview {
+  submission_type: 'task' | 'project';
+  course_id: number;
+  course_title: string;
+  item_id: number | null;
+  item_title: string | null;
+  submission_id: number;
+  student_external_ref: string;
+  student_full_name: string;
+  group_id: number | null;
+  group_name: string | null;
+  attempt_number?: number;
+  submitted_at?: string | null;
+  reviewed_at?: string | null;
+  review_comment?: string | null;
+  is_overdue?: boolean;
+  files?: CodelabProjectFile[];
 }
 
 export interface CodelabSystemStatus {
@@ -288,6 +308,8 @@ export const codelabStudioApi = {
     api.post(`${B}/courses/${courseId}/projects/${itemId}/submissions/${submissionId}/remind`).then(() => undefined),
   listPendingReviews: (): Promise<CodelabPendingReview[]> =>
     api.get(`${B}/trainer/pending-reviews`).then((r) => r.data),
+  listTrainerSubmissions: (): Promise<CodelabTrainerSubmission[]> =>
+    api.get(`${B}/trainer/submissions`).then((r) => r.data),
   // Bearer-токен идёт заголовком (см. api/client.ts), не cookie — обычная
   // <a href="..."> ссылка на этот эндпоинт получила бы 401, поэтому качаем
   // через axios (responseType: 'blob') и триггерим сохранение сами.

@@ -56,14 +56,15 @@ const TrainerCockpitPage: React.FC = () => {
     queryFn: () => trainerCockpitApi.getSummary(today),
   });
 
-  const pendingReviewsQuery = useQuery({
-    queryKey: ['trainer-cockpit', 'pending-reviews'],
-    queryFn: () => codelabStudioApi.listPendingReviews(),
+  const submissionsQuery = useQuery({
+    queryKey: ['trainer-cockpit', 'submissions'],
+    queryFn: () => codelabStudioApi.listTrainerSubmissions(),
     staleTime: 60_000,
   });
-  const pendingReviews = pendingReviewsQuery.data || [];
-  const pendingCount = pendingReviews.filter((r) => r.status === 'submitted').length;
-  const revisionCount = pendingReviews.filter((r) => r.status === 'needs_revision').length;
+  const submissions = submissionsQuery.data || [];
+  const pendingCount = submissions.filter((r) => r.submission_type === 'project' && r.status === 'submitted').length;
+  const revisionCount = submissions.filter((r) => r.submission_type === 'project' && r.status === 'needs_revision').length;
+  const solvedTasksCount = submissions.filter((r) => r.submission_type === 'task').length;
 
   const todayLessonsQuery = useQuery({
     queryKey: ['trainer-cockpit', 'today-lessons', today],
@@ -288,10 +289,14 @@ const TrainerCockpitPage: React.FC = () => {
                 <Typography variant="h6" sx={{ mb: 2 }}>
                   Работы учеников
                 </Typography>
-                {pendingReviewsQuery.isLoading ? (
+                {submissionsQuery.isLoading ? (
                   <LinearProgress />
                 ) : (
                   <Stack spacing={1.5}>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <Typography color="text.secondary">Решённых задач:</Typography>
+                      <Typography sx={{ fontWeight: 700 }}>{solvedTasksCount}</Typography>
+                    </Stack>
                     <Stack direction="row" spacing={1} alignItems="center">
                       <Typography color="text.secondary">На проверке:</Typography>
                       <Typography sx={{ fontWeight: 700 }}>{pendingCount}</Typography>

@@ -65,6 +65,21 @@ def _trainer_student_ids(db: Session, trainer_id: int) -> set[int]:
     }
 
 
+def _trainer_student_context(db: Session, trainer_id: int) -> dict[int, dict]:
+    """Return the active group context used by the trainer submissions feed."""
+    rows = (
+        db.query(GroupStudent.student_id, Group.id, Group.name)
+        .join(Group, Group.id == GroupStudent.group_id)
+        .filter(Group.trainer_id == trainer_id, GroupStudent.left_at.is_(None))
+        .order_by(GroupStudent.student_id, Group.id)
+        .all()
+    )
+    return {
+        student_id: {"group_id": group_id, "group_name": group_name}
+        for student_id, group_id, group_name in rows
+    }
+
+
 @router.get("/students/{student_id}/progress", response_model=CodelabStudentProgress)
 async def get_student_progress(
     student_id: int,
@@ -138,14 +153,30 @@ def _notify_trainers_of_submission(db: Session, event: str, submission: CodelabW
     try:
         student_id = _student_id_from_external_ref(submission.student_external_ref)
         if not student_id:
-            logger.warning("codelab webhook: unrecognized student_external_ref %r", submission.student_external_ref)
+            logger.warning(
+                "codelab webhook: unresolved submission event=%s submission_id=%s attempt=%s external_ref=%r",
+                event, submission.id, submission.attempt_number, submission.student_external_ref,
+            )
             return
         student = db.query(Student).filter(Student.id == student_id).first()
         if not student:
+            logger.warning(
+                "codelab webhook: student not found event=%s submission_id=%s external_ref=%r student_id=%s",
+                event, submission.id, submission.student_external_ref, student_id,
+            )
             return
         trainers = _trainers_for_student(db, student_id)
         if not trainers:
+            logger.info(
+                "codelab webhook: no active trainers event=%s submission_id=%s student_id=%s",
+                event, submission.id, student_id,
+            )
             return
+
+        logger.info(
+            "codelab webhook: routing event=%s submission_id=%s attempt=%s student_id=%s trainer_ids=%s",
+            event, submission.id, submission.attempt_number, student_id, [trainer.id for trainer in trainers],
+        )
 
         is_resubmit = event == "project_resubmitted"
         portal_base = (os.getenv("PORTAL_BASE_URL") or "https://tirskix.space").rstrip("/")
@@ -167,7 +198,10 @@ def _notify_trainers_of_submission(db: Session, event: str, submission: CodelabW
                     context={"subject": subject, "message": message},
                 )
             except Exception:
-                logger.exception("codelab webhook: notify trainer %s failed", trainer.id)
+                logger.exception(
+                    "codelab webhook: notify failed event=%s submission_id=%s trainer_id=%s",
+                    event, submission.id, trainer.id,
+                )
     except Exception:
         logger.exception("codelab webhook: submission notification failed for submission %s", submission.id)
 
@@ -737,6 +771,142 @@ def _walk_project_items(items: list) -> list:
         if children:
             found.extend(_walk_project_items(children))
     return found
+
+
+def _submission_date(row: dict) -> str:
+    return str(row.get("submitted_at") or row.get("created_at") or "")
+
+
+def _latest_submission(rows: list[dict]) -> list[dict]:
+    """Collapse attempts to the latest row per student and learning item.
+
+    Codelab returns a history-shaped list for some deployments and a latest
+    attempt list for others. The trainer feed must not show duplicate cards when
+    the upstream response contains both forms.
+    """
+    latest: dict[tuple[str, object], dict] = {}
+    for row in rows:
+        if not isinstance(row, dict) or row.get("status") == "draft":
+            continue
+        external_ref = row.get("student_external_ref") or ""
+        item_key = (
+            row.get("item_id")
+            or row.get("learning_item_id")
+            or row.get("task_id")
+            or row.get("item_title")
+            or row.get("submission_id", row.get("id"))
+        )
+        key = (external_ref, item_key)
+        current = latest.get(key)
+        current_attempt = int(current.get("attempt_number") or 0) if current else -1
+        row_attempt = int(row.get("attempt_number") or 0)
+        if current is None or (row_attempt, _submission_date(row)) >= (current_attempt, _submission_date(current)):
+            latest[key] = row
+    return list(latest.values())
+
+
+def _with_submission_context(
+    row: dict,
+    *,
+    submission_type: str,
+    course: dict,
+    item: dict | None = None,
+    student_context: dict[int, dict] | None = None,
+) -> dict | None:
+    external_ref = row.get("student_external_ref") or ""
+    student_id = _student_id_from_external_ref(external_ref)
+    # An unparseable external reference cannot be safely scoped to an LMS
+    # trainer. Do not expose that work in the unified feed.
+    if student_id is None:
+        logger.warning(
+            "codelab trainer feed: skipping unresolved student_external_ref=%r submission_id=%r",
+            external_ref,
+            row.get("submission_id", row.get("id")),
+        )
+        return None
+    context = (student_context or {}).get(student_id, {})
+    result = {
+        **row,
+        "submission_type": submission_type,
+        "submission_id": row.get("submission_id", row.get("id")),
+        "course_id": course.get("id"),
+        "course_title": course.get("title"),
+        "item_id": row.get("item_id") or row.get("learning_item_id") or row.get("task_id") or (item or {}).get("id"),
+        "item_title": row.get("item_title") or (item or {}).get("title"),
+        "group_id": context.get("group_id"),
+        "group_name": context.get("group_name"),
+    }
+    return result
+
+
+@router.get("/trainer/submissions")
+async def list_trainer_submissions(
+    current_user: User = Depends(_submissions_view),
+    db: Session = Depends(get_db),
+):
+    """Unified trainer feed for ordinary tasks and manually reviewed projects.
+
+    Codelab remains the source of truth; this endpoint only joins course/item
+    context and applies the LMS active-group scope before returning rows.
+    """
+    is_trainer = auth.resolve_effective_role(current_user) == UserRole.TRAINER
+    student_context = _trainer_student_context(db, current_user.id) if is_trainer else None
+    my_student_ids = set(student_context or {})
+
+    try:
+        courses = await cl.list_courses(current_user)
+    except CodelabError as e:
+        _raise(e)
+        return
+
+    results: list[dict] = []
+    unresolved = 0
+    for course in courses:
+        course_id = course.get("id")
+        if not course_id:
+            continue
+        try:
+            task_rows = await cl.list_course_submissions(current_user, course_id)
+        except CodelabError:
+            task_rows = []
+        for row in _latest_submission(task_rows):
+            sid = _student_id_from_external_ref(row.get("student_external_ref", ""))
+            if sid is None or (is_trainer and sid not in my_student_ids):
+                unresolved += int(sid is None)
+                continue
+            item_row = _with_submission_context(
+                row, submission_type="task", course=course, student_context=student_context,
+            )
+            if item_row:
+                results.append(item_row)
+
+        try:
+            tree = await cl.get_course_tree(current_user, course_id)
+        except CodelabError:
+            continue
+        for item in _walk_project_items(_tree_roots(tree)):
+            item_id = item.get("id")
+            if not item_id:
+                continue
+            try:
+                project_rows = await cl.list_project_submissions(current_user, course_id, item_id)
+            except CodelabError:
+                continue
+            for row in _latest_submission(project_rows):
+                sid = _student_id_from_external_ref(row.get("student_external_ref", ""))
+                if sid is None or (is_trainer and sid not in my_student_ids):
+                    unresolved += int(sid is None)
+                    continue
+                item_row = _with_submission_context(
+                    row, submission_type="project", course=course, item=item, student_context=student_context,
+                )
+                if item_row:
+                    results.append(item_row)
+
+    if unresolved:
+        logger.warning("codelab trainer feed: skipped %s rows with unresolved student references", unresolved)
+    results.sort(key=_submission_date, reverse=True)
+    return results
 
 
 @router.get("/trainer/pending-reviews")

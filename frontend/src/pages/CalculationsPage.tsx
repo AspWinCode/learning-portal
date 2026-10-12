@@ -148,6 +148,7 @@ const RateField: React.FC<RateFieldProps> = ({ value, disabled, onChange, onComm
             onCommit(rateValueFromInput((e.target as HTMLInputElement).value));
           }
         }}
+        onWheel={(e) => (e.target as HTMLInputElement).blur()}
         inputProps={{ min: 0, step: 0.01 }}
         aria-label={label}
         sx={{

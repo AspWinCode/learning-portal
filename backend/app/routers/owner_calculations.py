@@ -548,13 +548,19 @@ def _compute_trainer_breakdowns(
             b.base_payment += subtotal
             if is_ind_group:
                 b.is_individual_format = True
+            # Для отображения — та же ставка, что реально применена к этому тренеру в этой
+            # группе: его персональная (если когда-либо задавалась), иначе ставка группы.
+            own_dates, own_rates = rate_lookup.get((gid, tid), ([], []))
+            display_rate_lesson, display_rate_hour = (
+                own_rates[-1] if own_dates else (g.trainer_rate, g.trainer_rate_per_hour)
+            )
             group_rows.append(
                 TrainerGroupCalculationRow(
                     group_id=gid,
                     group_name=g.name or "",
                     is_individual_format=is_ind_group,
-                    rate_per_lesson=g.trainer_rate,
-                    rate_per_hour=g.trainer_rate_per_hour,
+                    rate_per_lesson=display_rate_lesson,
+                    rate_per_hour=display_rate_hour,
                     lessons_count=lessons,
                     hours_count=hours,
                     subtotal=round(subtotal, 2),

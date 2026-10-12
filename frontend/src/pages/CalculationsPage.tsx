@@ -437,6 +437,9 @@ const CalculationsPage: React.FC = () => {
         rate_per_lesson: persisted.rate_per_lesson === undefined ? payload.rate_per_lesson : persisted.rate_per_lesson,
         rate_per_hour: persisted.rate_per_hour === undefined ? payload.rate_per_hour : persisted.rate_per_hour,
       };
+      if (!sameRatePayload(persistedPayload, payload)) {
+        throw new Error('Сервер вернул другое значение ставки');
+      }
       entry.saved = persistedPayload;
       clearRateDraft(groupId, persistedPayload);
 

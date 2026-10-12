@@ -159,6 +159,7 @@ async def update_group_rate(
     if "rate_per_hour" in payload_fields:
         group.trainer_rate_per_hour = payload.rate_per_hour
     db.commit()
+    db.refresh(group)
     log_action(
         db,
         current_user.id,

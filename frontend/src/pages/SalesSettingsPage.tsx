@@ -39,6 +39,7 @@ import Layout from '../components/Layout';
 import OwnerWorkspaceSettingsSection from '../components/ownerWorkspace/OwnerWorkspaceSettingsSection';
 import PwaSettingsSection from '../components/PwaSettingsSection';
 import StudentQuestionnairesSettingsSection from '../components/StudentQuestionnairesSettingsSection';
+import TrainerRatesSettingsSection from '../components/TrainerRatesSettingsSection';
 import { useAuth } from '../contexts/AuthContext';
 import { PersonRegistryContent } from './PersonRegistryPage';
 import { ProgramMakeupContent } from './SalesProgramMakeupPage';
@@ -212,6 +213,7 @@ const SalesSettingsPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const [settingsTab, setSettingsTab] = useState(searchParams.get('tab') || 'schools');
   const canAccessPersons = hasPermission(user, 'persons.access');
+  const canAccessTrainerRates = hasPermission(user, 'owner_calculations.access');
   const [schoolImportFile, setSchoolImportFile] = useState<File | null>(null);
   const [editingSchool, setEditingSchool] = useState<SalesSchool | null>(null);
   const [editSchoolDraft, setEditSchoolDraft] = useState<{
@@ -377,8 +379,14 @@ const SalesSettingsPage: React.FC = () => {
 
   useEffect(() => {
     const nextTab = searchParams.get('tab') || 'schools';
-    setSettingsTab(nextTab === 'persons' && !canAccessPersons ? 'schools' : nextTab);
-  }, [canAccessPersons, searchParams]);
+    if (nextTab === 'persons' && !canAccessPersons) {
+      setSettingsTab('schools');
+    } else if (nextTab === 'trainerRates' && !canAccessTrainerRates) {
+      setSettingsTab('schools');
+    } else {
+      setSettingsTab(nextTab);
+    }
+  }, [canAccessPersons, canAccessTrainerRates, searchParams]);
 
   const safeAction = async (fn: () => Promise<any>) => {
     try {
@@ -888,6 +896,7 @@ const SalesSettingsPage: React.FC = () => {
           <Tab value="b2b" label="Районы" />
           <Tab value="schoolWork" label="Работа со школами" />
           <Tab value="finance" label="Финансы" />
+          {canAccessTrainerRates ? <Tab value="trainerRates" label="Ставки тренеров" /> : null}
           <Tab value="leads" label="Лиды" />
           <Tab value="tasks" label="Задачи" />
           <Tab value="ownerWorkspace" label="Таск трекер" />
@@ -2457,6 +2466,13 @@ const SalesSettingsPage: React.FC = () => {
             </TableBody>
           </Table>
         </Paper>
+
+        {settingsTab === 'trainerRates' && canAccessTrainerRates && (
+          <Paper sx={{ p: 2 }}>
+            <Typography variant="h6" mb={1}>Ставки тренеров</Typography>
+            <TrainerRatesSettingsSection />
+          </Paper>
+        )}
 
         {settingsTab === 'ownerWorkspace' && (
           <Paper sx={{ p: 2 }}>

@@ -33,6 +33,20 @@ class GroupRateUpdate(BaseModel):
     rate_per_hour: Optional[float] = None
 
 
+class TrainerGroupRateRow(BaseModel):
+    group_id: int
+    group_name: str
+    is_individual_format: bool
+    rate_per_lesson: Optional[float] = None
+    rate_per_hour: Optional[float] = None
+
+
+class TrainerRateRow(BaseModel):
+    trainer_id: int
+    full_name: str
+    groups: List[TrainerGroupRateRow] = []
+
+
 class TrainerBonusPayload(BaseModel):
     period: str
     bonus: float

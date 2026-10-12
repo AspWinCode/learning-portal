@@ -28,7 +28,9 @@ from app.schemas.owner_calculations import (
     TrainerBonusPayload,
     TrainerCalculationRow,
     TrainerGroupCalculationRow,
+    TrainerGroupRateRow,
     TrainerPayPayload,
+    TrainerRateRow,
 )
 
 router = APIRouter()
@@ -139,6 +141,48 @@ async def get_calculations_trainers(
                 groups=b.groups,
             )
         )
+    return result
+
+
+@router.get("/owner/calculations/trainer-rates", response_model=List[TrainerRateRow])
+async def get_trainer_rates(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("owner_calculations.access")),
+):
+    """Тренеры и их активные группы со ставками — вне привязки к периоду. Для страницы настройки ставок."""
+    trainers = (
+        db.query(User)
+        .filter(User.role == UserRole.TRAINER, User.is_active.is_(True))
+        .order_by(User.full_name)
+        .all()
+    )
+    if not trainers:
+        return []
+
+    trainer_ids = [t.id for t in trainers]
+    groups = (
+        db.query(Group)
+        .filter(Group.trainer_id.in_(trainer_ids), Group.status == GroupStatus.ACTIVE)
+        .order_by(Group.name)
+        .all()
+    )
+    groups_by_trainer: Dict[int, List[Group]] = {tid: [] for tid in trainer_ids}
+    for g in groups:
+        groups_by_trainer.setdefault(g.trainer_id, []).append(g)
+
+    result = []
+    for t in trainers:
+        group_rows = [
+            TrainerGroupRateRow(
+                group_id=g.id,
+                group_name=g.name or "",
+                is_individual_format=(getattr(g, "lesson_format", None) or "group").strip().lower() == "individual",
+                rate_per_lesson=g.trainer_rate,
+                rate_per_hour=g.trainer_rate_per_hour,
+            )
+            for g in groups_by_trainer.get(t.id, [])
+        ]
+        result.append(TrainerRateRow(trainer_id=t.id, full_name=t.full_name or "", groups=group_rows))
     return result
 
 

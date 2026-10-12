@@ -3464,11 +3464,29 @@ export interface OwnerCalculationPeriod {
   date_to: string;
 }
 
+export interface TrainerGroupRateRow {
+  group_id: number;
+  group_name: string;
+  is_individual_format: boolean;
+  rate_per_lesson: number | null;
+  rate_per_hour: number | null;
+}
+
+export interface TrainerRateRow {
+  trainer_id: number;
+  full_name: string;
+  groups: TrainerGroupRateRow[];
+}
+
 export const ownerCalculationsApi = {
   getTrainers: async (period: OwnerCalculationPeriod): Promise<TrainerCalculationRow[]> => {
     const response = await api.get('/api/owner/calculations/trainers', {
       params: { date_from: period.date_from, date_to: period.date_to },
     });
+    return response.data;
+  },
+  getTrainerRates: async (): Promise<TrainerRateRow[]> => {
+    const response = await api.get('/api/owner/calculations/trainer-rates');
     return response.data;
   },
   updateGroupRate: async (

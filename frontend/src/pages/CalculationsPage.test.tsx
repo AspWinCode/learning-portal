@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import CalculationsPage from './CalculationsPage';
 import { ownerCalculationsApi } from '../services/api';
@@ -11,7 +11,6 @@ vi.mock('../components/Layout', () => ({
 vi.mock('../services/api', () => ({
   ownerCalculationsApi: {
     getTrainers: vi.fn(),
-    updateGroupRate: vi.fn(),
     addBonus: vi.fn(),
     pay: vi.fn(),
     cancelPay: vi.fn(),
@@ -52,102 +51,27 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
-  vi.useRealTimers();
 });
 
-describe('CalculationsPage group rate autosave', () => {
-  it('saves 1000 after debounce and returns 1000 from a fresh calculations request', async () => {
-    let serverRate: number | null = null;
-    vi.mocked(ownerCalculationsApi.getTrainers).mockImplementation(async () => makeRows(serverRate) as any);
-    vi.mocked(ownerCalculationsApi.updateGroupRate).mockImplementation(async (_groupId, payload) => {
-      serverRate = payload.rate_per_lesson ?? null;
-      return { ok: true };
-    });
+describe('CalculationsPage group rates', () => {
+  it('shows the rate as read-only text, with no editable input', async () => {
+    vi.mocked(ownerCalculationsApi.getTrainers).mockResolvedValue(makeRows(1000) as any);
 
     renderPage();
     await screen.findAllByText('Тестовый тренер');
     fireEvent.click(screen.getByRole('button', { name: /Ставки по группам/ }));
-    const input = screen.getAllByRole('spinbutton')[0];
 
-    fireEvent.change(input, { target: { value: '1000' } });
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 700));
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    expect(ownerCalculationsApi.updateGroupRate).toHaveBeenCalledTimes(1);
-    expect(ownerCalculationsApi.updateGroupRate).toHaveBeenCalledWith(42, {
-      rate_per_lesson: 1000,
-      rate_per_hour: null,
-    });
-    expect(serverRate).toBe(1000);
-    expect(screen.getAllByText('Сохранено').length).toBeGreaterThan(0);
+    expect(await screen.findAllByText(/1\s*000/)).not.toHaveLength(0);
+    expect(screen.queryAllByRole('spinbutton')).toHaveLength(0);
   });
 
-  it('flushes immediately on blur and does not send a duplicate after the debounce window', async () => {
-    let serverRate: number | null = 1000;
-    vi.mocked(ownerCalculationsApi.getTrainers).mockImplementation(async () => makeRows(serverRate) as any);
-    vi.mocked(ownerCalculationsApi.updateGroupRate).mockImplementation(async (_groupId, payload) => {
-      serverRate = payload.rate_per_lesson ?? null;
-      return { ok: true };
-    });
+  it('shows a dash when the group has no rate set yet', async () => {
+    vi.mocked(ownerCalculationsApi.getTrainers).mockResolvedValue(makeRows(null) as any);
 
     renderPage();
     await screen.findAllByText('Тестовый тренер');
     fireEvent.click(screen.getByRole('button', { name: /Ставки по группам/ }));
-    const input = screen.getAllByRole('spinbutton')[0];
 
-    fireEvent.change(input, { target: { value: '1200' } });
-    fireEvent.blur(input);
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      await Promise.resolve();
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    expect(ownerCalculationsApi.updateGroupRate).toHaveBeenCalledTimes(1);
-
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 700));
-      await Promise.resolve();
-    });
-    expect(ownerCalculationsApi.updateGroupRate).toHaveBeenCalledTimes(1);
-    expect(serverRate).toBe(1200);
-  });
-
-  it('persists clearing the field as NULL and returns an empty field after reload', async () => {
-    let serverRate: number | null = 1000;
-    vi.mocked(ownerCalculationsApi.getTrainers).mockImplementation(async () => makeRows(serverRate) as any);
-    vi.mocked(ownerCalculationsApi.updateGroupRate).mockImplementation(async (_groupId, payload) => {
-      serverRate = payload.rate_per_lesson ?? null;
-      return { ok: true };
-    });
-
-    renderPage();
-    await screen.findAllByText('Тестовый тренер');
-    fireEvent.click(screen.getByRole('button', { name: /Ставки по группам/ }));
-    const input = screen.getAllByRole('spinbutton')[0];
-
-    fireEvent.change(input, { target: { value: '' } });
-    fireEvent.keyDown(input, { key: 'Enter' });
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      await Promise.resolve();
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    expect(ownerCalculationsApi.updateGroupRate).toHaveBeenCalledTimes(1);
-    expect(ownerCalculationsApi.updateGroupRate).toHaveBeenCalledWith(42, {
-      rate_per_lesson: null,
-      rate_per_hour: null,
-    });
-    expect(serverRate).toBeNull();
-    expect((screen.getAllByRole('spinbutton')[0] as HTMLInputElement).value).toBe('');
+    expect(await screen.findAllByText('—')).not.toHaveLength(0);
   });
 });

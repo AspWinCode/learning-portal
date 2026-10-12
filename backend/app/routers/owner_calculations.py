@@ -167,7 +167,12 @@ async def update_group_rate(
         group_id,
         {"rate_per_lesson": group.trainer_rate, "rate_per_hour": group.trainer_rate_per_hour},
     )
-    return {"ok": True}
+    return {
+        "ok": True,
+        "group_id": group.id,
+        "rate_per_lesson": group.trainer_rate,
+        "rate_per_hour": group.trainer_rate_per_hour,
+    }
 
 
 @router.post("/owner/calculations/trainers/{trainer_id}/bonus")

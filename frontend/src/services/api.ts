@@ -3474,7 +3474,7 @@ export const ownerCalculationsApi = {
   updateGroupRate: async (
     groupId: number,
     payload: { rate_per_lesson?: number | null; rate_per_hour?: number | null }
-  ): Promise<{ ok: boolean }> => {
+  ): Promise<{ ok: boolean; group_id: number; rate_per_lesson: number | null; rate_per_hour: number | null }> => {
     const response = await api.put(`/api/owner/calculations/groups/${groupId}/rate`, payload);
     return response.data;
   },

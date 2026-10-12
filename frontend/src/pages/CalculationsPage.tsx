@@ -426,21 +426,32 @@ const CalculationsPage: React.FC = () => {
     }
 
     const payload = { ...entry.desired };
+    const revisionAtRequest = rateRevisionRef.current;
     entry.inFlight = true;
     setRateSaveStatus(groupId, 'saving');
     let requestFailed = false;
 
     try {
-      await ownerCalculationsApi.updateGroupRate(groupId, payload);
-      entry.saved = payload;
-      clearRateDraft(groupId, payload);
+      const persisted = await ownerCalculationsApi.updateGroupRate(groupId, payload);
+      const persistedPayload = {
+        rate_per_lesson: persisted.rate_per_lesson === undefined ? payload.rate_per_lesson : persisted.rate_per_lesson,
+        rate_per_hour: persisted.rate_per_hour === undefined ? payload.rate_per_hour : persisted.rate_per_hour,
+      };
+      entry.saved = persistedPayload;
+      clearRateDraft(groupId, persistedPayload);
 
       // Refresh the calculated subtotal/payment after the newest PUT. A GET
       // started for an older edit must not overwrite a newer local draft.
-      const revisionAtSave = rateRevisionRef.current;
       const data = await ownerCalculationsApi.getTrainers({ period: periodKey, date_from: dateFrom, date_to: dateTo });
-      if (mountedRef.current && rateRevisionRef.current === revisionAtSave) {
-        setRowsData(data);
+      if (mountedRef.current && rateRevisionRef.current === revisionAtRequest) {
+        setRowsData(data.map((row) => ({
+          ...row,
+          groups: row.groups.map((group) => group.group_id === groupId ? {
+            ...group,
+            rate_per_lesson: persistedPayload.rate_per_lesson,
+            rate_per_hour: persistedPayload.rate_per_hour,
+          } : group),
+        })));
       }
     } catch (err: any) {
       requestFailed = true;

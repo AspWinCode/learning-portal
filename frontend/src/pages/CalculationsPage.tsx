@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Layout from '../components/Layout';
 import {
   Alert,
@@ -91,11 +91,35 @@ type RateFieldProps = {
   value: number | null;
   disabled?: boolean;
   onChange: (value: number | null) => void;
-  onBlur: (value: number | null) => void;
+  onCommit: (value: number | null) => void;
+  saveStatus?: RateSaveStatus;
   label: string;
 };
 
-const RateField: React.FC<RateFieldProps> = ({ value, disabled, onChange, onBlur, label }) => {
+type RateSaveStatus = 'idle' | 'saving' | 'saved' | 'error';
+
+type RatePayload = {
+  rate_per_lesson: number | null;
+  rate_per_hour: number | null;
+};
+
+type RateSaveEntry = {
+  desired: RatePayload;
+  saved: RatePayload | null;
+  timer: ReturnType<typeof setTimeout> | null;
+  inFlight: boolean;
+};
+
+const sameRatePayload = (left: RatePayload | null, right: RatePayload | null) =>
+  !!left && !!right && left.rate_per_lesson === right.rate_per_lesson && left.rate_per_hour === right.rate_per_hour;
+
+const rateValueFromInput = (value: string): number | null => {
+  if (value === '') return null;
+  const parsed = Number(value);
+  return Number.isNaN(parsed) ? null : parsed;
+};
+
+const RateField: React.FC<RateFieldProps> = ({ value, disabled, onChange, onCommit, saveStatus = 'idle', label }) => {
   if (disabled) {
     return (
       <Typography variant="body2" color="text.secondary">
@@ -104,39 +128,57 @@ const RateField: React.FC<RateFieldProps> = ({ value, disabled, onChange, onBlur
     );
   }
 
+  const statusLabel = {
+    saving: 'Сохранение...',
+    saved: 'Сохранено',
+    error: 'Ошибка сохранения',
+  }[saveStatus];
+
   return (
-    <TextField
-      size="small"
-      type="number"
-      value={value ?? ''}
-      onChange={(e) => {
-        const next = e.target.value === '' ? null : Number(e.target.value);
-        onChange(Number.isNaN(next) ? null : next);
-      }}
-      onBlur={(e) => {
-        const next = e.target.value === '' ? null : Number(e.target.value);
-        if (!Number.isNaN(next)) onBlur(next);
-      }}
-      inputProps={{ min: 0, step: 0.01 }}
-      aria-label={label}
-      sx={{
-        width: { xs: '100%', sm: 132 },
-        '& .MuiOutlinedInput-root': {
-          bgcolor: '#fff',
-          borderRadius: 2,
-        },
-      }}
-    />
+    <Stack spacing={0.25}>
+      <TextField
+        size="small"
+        type="number"
+        value={value ?? ''}
+        onChange={(e) => onChange(rateValueFromInput(e.target.value))}
+        onBlur={(e) => onCommit(rateValueFromInput(e.target.value))}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            onCommit(rateValueFromInput((e.target as HTMLInputElement).value));
+          }
+        }}
+        inputProps={{ min: 0, step: 0.01 }}
+        aria-label={label}
+        sx={{
+          width: { xs: '100%', sm: 132 },
+          '& .MuiOutlinedInput-root': {
+            bgcolor: '#fff',
+            borderRadius: 2,
+          },
+        }}
+      />
+      {statusLabel && (
+        <Typography
+          variant="caption"
+          color={saveStatus === 'error' ? 'error.main' : saveStatus === 'saved' ? 'success.main' : 'text.secondary'}
+          sx={{ whiteSpace: 'nowrap' }}
+        >
+          {statusLabel}
+        </Typography>
+      )}
+    </Stack>
   );
 };
 
 type GroupRatesTableProps = {
   groups: TrainerGroupCalculationRow[];
   onChange: (groupId: number, patch: Partial<TrainerGroupCalculationRow>) => void;
-  onBlur: (groupId: number, payload: { rate_per_lesson?: number | null; rate_per_hour?: number | null }) => void;
+  onCommit: (groupId: number, payload: { rate_per_lesson?: number | null; rate_per_hour?: number | null }) => void;
+  getSaveStatus: (groupId: number) => RateSaveStatus;
 };
 
-const GroupRatesTable: React.FC<GroupRatesTableProps> = ({ groups, onChange, onBlur }) => (
+const GroupRatesTable: React.FC<GroupRatesTableProps> = ({ groups, onChange, onCommit, getSaveStatus }) => (
   <Box sx={{ px: { xs: 0, md: 2 }, py: 1.5, bgcolor: 'rgba(248, 250, 252, 0.6)' }}>
     <Typography variant="caption" color="text.secondary" sx={{ px: { xs: 1.5, md: 0 }, display: 'block', mb: 0.5 }}>
       Ставка задаётся по каждой группе отдельно — разные группы одного тренера могут стоить по-разному.
@@ -168,7 +210,8 @@ const GroupRatesTable: React.FC<GroupRatesTableProps> = ({ groups, onChange, onB
                 disabled={g.is_individual_format}
                 value={g.rate_per_lesson}
                 onChange={(value) => onChange(g.group_id, { rate_per_lesson: value })}
-                onBlur={(value) => onBlur(g.group_id, { rate_per_lesson: value, rate_per_hour: g.rate_per_hour })}
+                onCommit={(value) => onCommit(g.group_id, { rate_per_lesson: value })}
+                saveStatus={getSaveStatus(g.group_id)}
               />
             </TableCell>
             <TableCell>
@@ -177,7 +220,8 @@ const GroupRatesTable: React.FC<GroupRatesTableProps> = ({ groups, onChange, onB
                 disabled={!g.is_individual_format}
                 value={g.rate_per_hour}
                 onChange={(value) => onChange(g.group_id, { rate_per_hour: value })}
-                onBlur={(value) => onBlur(g.group_id, { rate_per_lesson: g.rate_per_lesson, rate_per_hour: value })}
+                onCommit={(value) => onCommit(g.group_id, { rate_per_hour: value })}
+                saveStatus={getSaveStatus(g.group_id)}
               />
             </TableCell>
             <TableCell align="right">
@@ -205,8 +249,23 @@ const CalculationsPage: React.FC = () => {
   const [cancelDialog, setCancelDialog] = useState<{ trainerId: number; fullName: string } | null>(null);
   const [cancelSaving, setCancelSaving] = useState(false);
   const [expandedTrainerId, setExpandedTrainerId] = useState<number | null>(null);
+  const rowsRef = useRef<TrainerCalculationRow[]>([]);
+  const rateSavesRef = useRef<Map<number, RateSaveEntry>>(new Map());
+  const rateRevisionRef = useRef(0);
+  const mountedRef = useRef(true);
+  const [rateSaveStatuses, setRateSaveStatuses] = useState<Record<number, RateSaveStatus>>({});
   const periodKey = useMemo(() => getPeriodKey(dateFrom, dateTo), [dateFrom, dateTo]);
   const periodLabel = useMemo(() => formatRange(dateFrom, dateTo), [dateFrom, dateTo]);
+
+  const setRowsData = useCallback((nextRows: TrainerCalculationRow[]) => {
+    rowsRef.current = nextRows;
+    setRows(nextRows);
+  }, []);
+
+  const setRateSaveStatus = useCallback((groupId: number, status: RateSaveStatus) => {
+    if (!mountedRef.current) return;
+    setRateSaveStatuses((previous) => ({ ...previous, [groupId]: status }));
+  }, []);
 
   const summary = useMemo(
     () => ({
@@ -233,29 +292,32 @@ const CalculationsPage: React.FC = () => {
 
   const load = useCallback(async () => {
     if (!dateFrom || !dateTo) {
-      setRows([]);
+      setRowsData([]);
       setError('Выберите дату начала и дату окончания');
       setLoading(false);
       return;
     }
     if (dateFrom > dateTo) {
-      setRows([]);
+      setRowsData([]);
       setError('Дата начала не должна быть позже даты окончания');
       setLoading(false);
       return;
     }
     setLoading(true);
     setError(null);
+    const revisionAtRequest = rateRevisionRef.current;
     try {
       const data = await ownerCalculationsApi.getTrainers({ period: periodKey, date_from: dateFrom, date_to: dateTo });
-      setRows(data);
+      if (rateRevisionRef.current === revisionAtRequest) setRowsData(data);
     } catch (err: any) {
-      setError(extractApiError(err, 'Не удалось загрузить расчёты'));
-      setRows([]);
+      if (rateRevisionRef.current === revisionAtRequest) {
+        setError(extractApiError(err, 'Не удалось загрузить расчёты'));
+        setRowsData([]);
+      }
     } finally {
       setLoading(false);
     }
-  }, [dateFrom, dateTo, periodKey]);
+  }, [dateFrom, dateTo, periodKey, setRowsData]);
 
   useEffect(() => {
     load();
@@ -306,25 +368,126 @@ const CalculationsPage: React.FC = () => {
   };
 
   const updateGroupRow = (trainerId: number, groupId: number, patch: Partial<TrainerGroupCalculationRow>) => {
-    setRows((prev) =>
-      prev.map((row) =>
-        row.trainer_id === trainerId
-          ? { ...row, groups: row.groups.map((g) => (g.group_id === groupId ? { ...g, ...patch } : g)) }
-          : row,
-      ),
+    const nextRows = rowsRef.current.map((row) =>
+      row.trainer_id === trainerId
+        ? { ...row, groups: row.groups.map((g) => (g.group_id === groupId ? { ...g, ...patch } : g)) }
+        : row,
     );
+    setRowsData(nextRows);
   };
 
-  const handleGroupRateBlur = async (
-    groupId: number,
-    payload: { rate_per_lesson?: number | null; rate_per_hour?: number | null },
-  ) => {
+  const flushGroupRate = useCallback(async (groupId: number) => {
+    const entry = rateSavesRef.current.get(groupId);
+    if (!entry || entry.inFlight) return;
+
+    if (entry.saved && sameRatePayload(entry.saved, entry.desired)) {
+      setRateSaveStatus(groupId, 'saved');
+      return;
+    }
+
+    if (entry.timer) {
+      clearTimeout(entry.timer);
+      entry.timer = null;
+    }
+
+    const payload = { ...entry.desired };
+    entry.inFlight = true;
+    setRateSaveStatus(groupId, 'saving');
+    let requestFailed = false;
+
     try {
       await ownerCalculationsApi.updateGroupRate(groupId, payload);
-      load();
+      entry.saved = payload;
+
+      // Refresh the calculated subtotal/payment after the newest PUT. A GET
+      // started for an older edit must not overwrite a newer local draft.
+      const revisionAtSave = rateRevisionRef.current;
+      const data = await ownerCalculationsApi.getTrainers({ period: periodKey, date_from: dateFrom, date_to: dateTo });
+      if (mountedRef.current && rateRevisionRef.current === revisionAtSave) {
+        setRowsData(data);
+      }
     } catch (err: any) {
-      setError(extractApiError(err, 'Не удалось сохранить ставку группы'));
+      requestFailed = true;
+      if (mountedRef.current) {
+        setRateSaveStatus(groupId, 'error');
+        setError(extractApiError(err, 'Не удалось сохранить ставку группы'));
+      }
+    } finally {
+      entry.inFlight = false;
+      if (!mountedRef.current) return;
+
+      // A newer value may have been typed while the previous PUT/GET was in
+      // flight. Never let the older response mark that newer value as saved.
+      if (!sameRatePayload(entry.saved, entry.desired)) {
+        setRateSaveStatus(groupId, 'saving');
+        void flushGroupRate(groupId);
+      } else if (!requestFailed) {
+        setRateSaveStatus(groupId, 'saved');
+      }
     }
+  }, [dateFrom, dateTo, periodKey, setRateSaveStatus, setRowsData]);
+
+  const scheduleGroupRateSave = useCallback((
+    groupId: number,
+    patch: { rate_per_lesson?: number | null; rate_per_hour?: number | null },
+    immediate = false,
+  ) => {
+    const group = rowsRef.current.flatMap((row) => row.groups).find((candidate) => candidate.group_id === groupId);
+    if (!group) return;
+
+    const existing = rateSavesRef.current.get(groupId);
+    const entry: RateSaveEntry = existing || {
+      desired: { rate_per_lesson: group.rate_per_lesson, rate_per_hour: group.rate_per_hour },
+      saved: { rate_per_lesson: group.rate_per_lesson, rate_per_hour: group.rate_per_hour },
+      timer: null,
+      inFlight: false,
+    };
+    entry.desired = {
+      rate_per_lesson: patch.rate_per_lesson === undefined ? entry.desired.rate_per_lesson : patch.rate_per_lesson,
+      rate_per_hour: patch.rate_per_hour === undefined ? entry.desired.rate_per_hour : patch.rate_per_hour,
+    };
+    rateSavesRef.current.set(groupId, entry);
+    rateRevisionRef.current += 1;
+    setRateSaveStatus(groupId, 'saving');
+
+    if (entry.timer) clearTimeout(entry.timer);
+    if (immediate) {
+      entry.timer = null;
+      void flushGroupRate(groupId);
+    } else {
+      entry.timer = setTimeout(() => {
+        entry.timer = null;
+        void flushGroupRate(groupId);
+      }, 600);
+    }
+  }, [flushGroupRate, setRateSaveStatus]);
+
+  const getRateSaveStatus = useCallback(
+    (groupId: number): RateSaveStatus => rateSaveStatuses[groupId] || 'idle',
+    [rateSaveStatuses],
+  );
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      rateSavesRef.current.forEach((entry) => {
+        if (entry.timer) clearTimeout(entry.timer);
+      });
+    };
+  }, []);
+
+  const handleGroupRateCommit = (
+    groupId: number,
+    payload: { rate_per_lesson?: number | null; rate_per_hour?: number | null },
+  ) => scheduleGroupRateSave(groupId, payload, true);
+
+  const handleGroupRateChange = (trainerId: number, groupId: number, patch: Partial<TrainerGroupCalculationRow>) => {
+    scheduleGroupRateSave(groupId, {
+      ...(patch.rate_per_lesson !== undefined ? { rate_per_lesson: patch.rate_per_lesson } : {}),
+      ...(patch.rate_per_hour !== undefined ? { rate_per_hour: patch.rate_per_hour } : {}),
+    });
+    updateGroupRow(trainerId, groupId, patch);
   };
 
   const renderActions = (row: TrainerCalculationRow) => (
@@ -595,8 +758,9 @@ const CalculationsPage: React.FC = () => {
                             <Collapse in={expandedTrainerId === row.trainer_id} unmountOnExit>
                               <GroupRatesTable
                                 groups={row.groups}
-                                onChange={(groupId, patch) => updateGroupRow(row.trainer_id, groupId, patch)}
-                                onBlur={handleGroupRateBlur}
+                                onChange={(groupId, patch) => handleGroupRateChange(row.trainer_id, groupId, patch)}
+                                onCommit={handleGroupRateCommit}
+                                getSaveStatus={getRateSaveStatus}
                               />
                             </Collapse>
                           </TableCell>
@@ -668,8 +832,9 @@ const CalculationsPage: React.FC = () => {
                           <Collapse in={expandedTrainerId === row.trainer_id} unmountOnExit>
                             <GroupRatesTable
                               groups={row.groups}
-                              onChange={(groupId, patch) => updateGroupRow(row.trainer_id, groupId, patch)}
-                              onBlur={handleGroupRateBlur}
+                              onChange={(groupId, patch) => handleGroupRateChange(row.trainer_id, groupId, patch)}
+                              onCommit={handleGroupRateCommit}
+                              getSaveStatus={getRateSaveStatus}
                             />
                           </Collapse>
                         </>

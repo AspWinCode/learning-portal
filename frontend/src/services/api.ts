@@ -3468,6 +3468,7 @@ export interface TrainerGroupRateRow {
   group_id: number;
   group_name: string;
   is_individual_format: boolean;
+  is_primary: boolean;
   rate_per_lesson: number | null;
   rate_per_hour: number | null;
 }

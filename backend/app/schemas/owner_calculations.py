@@ -37,6 +37,7 @@ class TrainerGroupRateRow(BaseModel):
     group_id: int
     group_name: str
     is_individual_format: bool
+    is_primary: bool = True
     rate_per_lesson: Optional[float] = None
     rate_per_hour: Optional[float] = None
 

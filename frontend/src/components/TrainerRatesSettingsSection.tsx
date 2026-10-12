@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Box,
+  Chip,
   CircularProgress,
   Stack,
   Table,
@@ -233,7 +234,10 @@ const TrainerRatesSettingsSection: React.FC = () => {
     <Box>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
         Ставки задаются на уровне группы и не зависят от выбранного периода в «Расчётах» — там они только
-        отображаются. Новые группы появляются здесь автоматически по мере создания.
+        отображаются. Новые группы появляются здесь автоматически по мере создания. Показаны и основные
+        группы тренера, и те, где он когда-либо подменял — ставка у них общая для всех, кто ведёт занятия
+        в этой группе. Смена ставки действует только вперёд: уже прошедшие периоды продолжают считаться
+        по той ставке, что действовала на дату урока.
       </Typography>
 
       {error && (
@@ -264,6 +268,7 @@ const TrainerRatesSettingsSection: React.FC = () => {
                   <Table size="small">
                     <TableHead>
                       <TableRow>
+                        <TableCell sx={{ width: 110 }} />
                         <TableCell>Группа</TableCell>
                         <TableCell sx={{ width: 160 }}>Ставка за урок</TableCell>
                         <TableCell sx={{ width: 160 }}>Ставка за час</TableCell>
@@ -272,6 +277,14 @@ const TrainerRatesSettingsSection: React.FC = () => {
                     <TableBody>
                       {row.groups.map((g: TrainerGroupRateRow) => (
                         <TableRow key={g.group_id}>
+                          <TableCell>
+                            <Chip
+                              size="small"
+                              label={g.is_primary ? 'Основная' : 'Подменял'}
+                              color={g.is_primary ? 'primary' : 'default'}
+                              variant={g.is_primary ? 'filled' : 'outlined'}
+                            />
+                          </TableCell>
                           <TableCell>
                             <Typography variant="body2" fontWeight={700}>
                               {g.group_name}

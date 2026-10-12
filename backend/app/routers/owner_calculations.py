@@ -1,4 +1,5 @@
 """Страница «Расчёты» для owner: тренеры, ставки (в т.ч. по группам), уроки/часы, премии, выплаты."""
+import bisect
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
 
@@ -16,6 +17,7 @@ from app.models import (
     FinanceTransactionStatus,
     Group,
     GroupStatus,
+    GroupTrainerRateHistory,
     LessonAttendance,
     LessonTrainerOverride,
     TrainerPeriodBonus,
@@ -149,7 +151,8 @@ async def get_trainer_rates(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_permission("owner_calculations.access")),
 ):
-    """Тренеры и их активные группы со ставками — вне привязки к периоду. Для страницы настройки ставок."""
+    """Тренеры и ВСЕ их активные группы со ставками — как основные, так и те, где тренер
+    когда-либо подменял. Вне привязки к периоду. Для страницы настройки ставок."""
     trainers = (
         db.query(User)
         .filter(User.role == UserRole.TRAINER, User.is_active.is_(True))
@@ -159,28 +162,54 @@ async def get_trainer_rates(
     if not trainers:
         return []
 
-    trainer_ids = [t.id for t in trainers]
-    groups = (
-        db.query(Group)
-        .filter(Group.trainer_id.in_(trainer_ids), Group.status == GroupStatus.ACTIVE)
-        .order_by(Group.name)
+    trainer_ids = {t.id for t in trainers}
+    active_groups = db.query(Group).filter(Group.status == GroupStatus.ACTIVE).all()
+    group_by_id: Dict[int, Group] = {g.id: g for g in active_groups}
+
+    # (trainer_id, group_id) -> является ли тренер основным для этой группы
+    pairs: Dict[Tuple[int, int], bool] = {}
+    for g in active_groups:
+        if g.trainer_id in trainer_ids:
+            pairs[(g.trainer_id, g.id)] = True
+
+    att_subs = (
+        db.query(LessonAttendance.trainer_id, LessonAttendance.group_id)
+        .filter(LessonAttendance.trainer_id.isnot(None))
+        .distinct()
         .all()
     )
-    groups_by_trainer: Dict[int, List[Group]] = {tid: [] for tid in trainer_ids}
-    for g in groups:
-        groups_by_trainer.setdefault(g.trainer_id, []).append(g)
+    override_subs = (
+        db.query(LessonTrainerOverride.trainer_id, LessonTrainerOverride.group_id)
+        .distinct()
+        .all()
+    )
+    for tid, gid in list(att_subs) + list(override_subs):
+        if tid not in trainer_ids:
+            continue
+        g = group_by_id.get(gid)
+        if not g or g.trainer_id == tid:
+            continue
+        pairs.setdefault((tid, gid), False)
+
+    groups_by_trainer: Dict[int, List[Tuple[Group, bool]]] = {tid: [] for tid in trainer_ids}
+    for (tid, gid), is_primary in pairs.items():
+        g = group_by_id.get(gid)
+        if g:
+            groups_by_trainer[tid].append((g, is_primary))
 
     result = []
     for t in trainers:
+        rows = sorted(groups_by_trainer.get(t.id, []), key=lambda item: (not item[1], item[0].name or ""))
         group_rows = [
             TrainerGroupRateRow(
                 group_id=g.id,
                 group_name=g.name or "",
                 is_individual_format=(getattr(g, "lesson_format", None) or "group").strip().lower() == "individual",
+                is_primary=is_primary,
                 rate_per_lesson=g.trainer_rate,
                 rate_per_hour=g.trainer_rate_per_hour,
             )
-            for g in groups_by_trainer.get(t.id, [])
+            for g, is_primary in rows
         ]
         result.append(TrainerRateRow(trainer_id=t.id, full_name=t.full_name or "", groups=group_rows))
     return result
@@ -202,6 +231,16 @@ async def update_group_rate(
         group.trainer_rate = payload.rate_per_lesson
     if "rate_per_hour" in payload_fields:
         group.trainer_rate_per_hour = payload.rate_per_hour
+    # Снапшот на сегодня — уроки ДО этой даты продолжают считаться по прежней ставке,
+    # смена ставки не меняет задним числом уже прошедшие периоды.
+    db.add(
+        GroupTrainerRateHistory(
+            group_id=group.id,
+            rate_per_lesson=group.trainer_rate,
+            rate_per_hour=group.trainer_rate_per_hour,
+            effective_from=date.today(),
+        )
+    )
     db.commit()
     db.refresh(group)
     log_action(
@@ -264,6 +303,41 @@ class _TrainerBreakdown:
         self.groups: List[TrainerGroupCalculationRow] = []
 
 
+def _build_rate_lookup(db: Session, group_ids: List[int]) -> Dict[int, Tuple[List[date], List[Tuple[float, float]]]]:
+    """group_id -> (отсортированные даты вступления в силу, [(rate_per_lesson, rate_per_hour), ...])."""
+    if not group_ids:
+        return {}
+    history = (
+        db.query(GroupTrainerRateHistory)
+        .filter(GroupTrainerRateHistory.group_id.in_(group_ids))
+        .order_by(GroupTrainerRateHistory.group_id, GroupTrainerRateHistory.effective_from, GroupTrainerRateHistory.id)
+        .all()
+    )
+    result: Dict[int, Tuple[List[date], List[Tuple[float, float]]]] = {}
+    for h in history:
+        dates, rates = result.setdefault(h.group_id, ([], []))
+        dates.append(h.effective_from)
+        rates.append((h.rate_per_lesson, h.rate_per_hour))
+    return result
+
+
+def _rate_at(
+    lookup: Dict[int, Tuple[List[date], List[Tuple[float, float]]]],
+    group_id: int,
+    lesson_date: date,
+    fallback: Tuple[Optional[float], Optional[float]],
+) -> Tuple[Optional[float], Optional[float]]:
+    """Ставка группы, действовавшая на дату урока. Если истории нет вовсе — fallback
+    (текущая ставка группы; покрывает группы, созданные до введения истории ставок)."""
+    dates, rates = lookup.get(group_id, ([], []))
+    if not dates:
+        return fallback
+    idx = bisect.bisect_right(dates, lesson_date) - 1
+    if idx < 0:
+        return (None, None)
+    return rates[idx]
+
+
 def _compute_trainer_breakdowns(
     db: Session,
     trainers: List[User],
@@ -275,6 +349,8 @@ def _compute_trainer_breakdowns(
     Ставка задаётся на уровне группы (Group.trainer_rate / trainer_rate_per_hour) —
     так разные группы одного тренера могут стоить по-разному. Группа без
     заданной ставки не приносит оплаты (subtotal = 0), пока ставку не укажут.
+    Ставка каждого урока берётся на дату самого урока (GroupTrainerRateHistory),
+    поэтому смена ставки сегодня не меняет задним числом прошедшие периоды.
     """
     trainer_ids = {t.id for t in trainers}
 
@@ -309,8 +385,8 @@ def _compute_trainer_breakdowns(
         for o in overrides
     }
 
-    # (trainer_id, group_id) -> список (is_individual, hours) по слотам
-    slots: Dict[Tuple[int, int], List[Tuple[bool, float]]] = {}
+    # (trainer_id, group_id) -> список (is_individual, hours, дата_урока) по слотам
+    slots: Dict[Tuple[int, int], List[Tuple[bool, float, date]]] = {}
     group_objects: Dict[int, Group] = {g.id: g for g in active_groups}
     seen = set()
     for att in attendances:
@@ -334,7 +410,9 @@ def _compute_trainer_breakdowns(
         if tid not in trainer_ids:
             continue
         h = _slot_duration_hours(start_t, end_t) if is_ind else 0.0
-        slots.setdefault((tid, group.id), []).append((is_ind, h))
+        slots.setdefault((tid, group.id), []).append((is_ind, h, att.lesson_date))
+
+    rate_lookup = _build_rate_lookup(db, list(group_objects.keys()))
 
     result: Dict[int, _TrainerBreakdown] = {}
     for tid in trainer_ids:
@@ -348,12 +426,20 @@ def _compute_trainer_breakdowns(
             if g is None:
                 continue
             group_slots = slots.get((tid, gid), [])
-            lessons = sum(1 for is_ind, _ in group_slots if not is_ind)
-            hours = round(sum(h for is_ind, h in group_slots if is_ind), 2)
+            fallback = (g.trainer_rate, g.trainer_rate_per_hour)
+            lessons = 0
+            hours = 0.0
+            subtotal = 0.0
+            for is_ind, h, lesson_date in group_slots:
+                rate_lesson, rate_hour = _rate_at(rate_lookup, gid, lesson_date, fallback)
+                if is_ind:
+                    hours += h
+                    subtotal += (rate_hour or 0) * h
+                else:
+                    lessons += 1
+                    subtotal += rate_lesson or 0
+            hours = round(hours, 2)
             is_ind_group = (getattr(g, "lesson_format", None) or "group").strip().lower() == "individual"
-            rate_lesson = g.trainer_rate
-            rate_hour = g.trainer_rate_per_hour
-            subtotal = (rate_lesson or 0) * lessons + (rate_hour or 0) * hours
             b.lessons_count += lessons
             b.hours_count += hours
             b.base_payment += subtotal

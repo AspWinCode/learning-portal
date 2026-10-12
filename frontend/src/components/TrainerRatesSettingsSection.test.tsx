@@ -20,6 +20,7 @@ const makeRows = (rate: number | null) => [
         group_id: 42,
         group_name: 'Тестовая группа',
         is_individual_format: false,
+        is_primary: true,
         rate_per_lesson: rate,
         rate_per_hour: null,
       },

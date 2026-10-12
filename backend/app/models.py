@@ -1657,6 +1657,22 @@ class Group(Base):
     group_students = relationship("GroupStudent", back_populates="group")
     # ╨г╨┤╨╛╨▒╨╜╨░╤П╤Б╨▓╤П╨╖╤М"╨╝╨╜╨╛╨│╨╕╨╡╨║╨╛╨╝╨╜╨╛╨│╨╕╨╝" ╨┤╨╗╤П╤Б╨╡╤А╨╕╨░╨╗╨╕╨╖╨░╤Ж╨╕╨╕╨▓
     students = relationship("Student", secondary="group_students", viewonly=True)
+
+
+class GroupTrainerRateHistory(Base):
+    """Снапшот ставки группы на дату изменения — чтобы смена ставки не меняла задним
+    числом уже посчитанные периоды. Расчёт за конкретный урок берёт последнюю запись
+    с effective_from <= дата урока."""
+    __tablename__ = "group_trainer_rate_history"
+
+    id = Column(Integer, primary_key=True, index=True)
+    group_id = Column(Integer, ForeignKey("groups.id"), nullable=False, index=True)
+    rate_per_lesson = Column(Float, nullable=True)
+    rate_per_hour = Column(Float, nullable=True)
+    effective_from = Column(Date, nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    group = relationship("Group")
     group_programs = relationship("GroupProgram", back_populates="group")
     group_schedules = relationship("GroupSchedule", back_populates="group", cascade="all, delete-orphan")
     lesson_attendances = relationship("LessonAttendance", back_populates="group", cascade="all, delete-orphan")

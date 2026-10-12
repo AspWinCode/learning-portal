@@ -188,7 +188,7 @@ export interface CodelabTrainerSubmission extends CodelabSubmissionReview {
   course_id: number;
   course_title: string;
   item_id: number | null;
-  item_title: string | null;
+  item_title: string;
   submission_id: number;
   student_external_ref: string;
   student_full_name: string;

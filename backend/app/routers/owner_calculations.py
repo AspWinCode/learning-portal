@@ -368,19 +368,18 @@ async def pay_trainer(
     # Оплата считается по факту: сумма subtotal каждой группы тренера по её ставке.
     base_payment = breakdown.base_payment
     total = base_payment + bonus
-    db.add(
-        TrainerPayout(
-            trainer_id=trainer_id,
-            period=period,
-            lessons_count=lessons_count,
-            hours_count=hours_count,
-            rate_per_lesson=None,
-            rate_per_hour=None,
-            base_payment=round(base_payment, 2),
-            bonus=round(bonus, 2),
-            total=round(total, 2),
-        )
+    payout = TrainerPayout(
+        trainer_id=trainer_id,
+        period=period,
+        lessons_count=lessons_count,
+        hours_count=hours_count,
+        rate_per_lesson=None,
+        rate_per_hour=None,
+        base_payment=round(base_payment, 2),
+        bonus=round(bonus, 2),
+        total=round(total, 2),
     )
+    db.add(payout)
 
     # Создаём запись расхода в финансовом журнале (Академия / Зарплата тренеров)
     if total > 0:
@@ -392,28 +391,29 @@ async def pay_trainer(
         )
         period_label = period if len(period) == 7 else f"{period_start.isoformat()} - {period_end.isoformat()}"
         description = f"Выплата тренеру {user.full_name} за {period_label}"
-        db.add(
-            FinanceTransaction(
-                occurred_at=datetime.now(tz=timezone.utc),
-                amount=round(total, 2),
-                direction=FinanceTransactionDirection.EXPENSE,
-                account_id=None,
-                to_account_id=None,
-                transfer_group_id=None,
-                counterparty_name=user.full_name,
-                counterparty_phone=None,
-                description_raw=description,
-                bank_source="manual",
-                bank_operation_id=None,
-                dedup_hash=None,
-                target_id=target.id if target else None,
-                article_id=article.id if article else None,
-                teacher_id=trainer_id,
-                student_id=None,
-                group_id=None,
-                status=FinanceTransactionStatus.CLASSIFIED,
-            )
+        transaction = FinanceTransaction(
+            occurred_at=datetime.now(tz=timezone.utc),
+            amount=round(total, 2),
+            direction=FinanceTransactionDirection.EXPENSE,
+            account_id=None,
+            to_account_id=None,
+            transfer_group_id=None,
+            counterparty_name=user.full_name,
+            counterparty_phone=None,
+            description_raw=description,
+            bank_source="manual",
+            bank_operation_id=None,
+            dedup_hash=None,
+            target_id=target.id if target else None,
+            article_id=article.id if article else None,
+            teacher_id=trainer_id,
+            student_id=None,
+            group_id=None,
+            status=FinanceTransactionStatus.CLASSIFIED,
         )
+        db.add(transaction)
+        db.flush()
+        payout.finance_transaction_id = transaction.id
 
     db.commit()
     log_action(
@@ -423,5 +423,56 @@ async def pay_trainer(
         "trainer_payout",
         trainer_id,
         {"period": period, "lessons_count": lessons_count, "hours_count": hours_count, "total": round(total, 2)},
+    )
+    return {"ok": True}
+
+
+@router.post("/owner/calculations/trainers/{trainer_id}/cancel-pay")
+async def cancel_pay_trainer(
+    trainer_id: int,
+    payload: TrainerPayPayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("owner_calculations.manage")),
+):
+    """Отменить выплату тренеру за период: удалить табель и связанную финансовую транзакцию. Только owner."""
+    user = db.query(User).filter(User.id == trainer_id, User.role == UserRole.TRAINER).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Trainer not found")
+    if len(payload.period) != 7 or payload.period[4] != "-":
+        if not payload.date_from or not payload.date_to:
+            raise HTTPException(status_code=400, detail="date_from/date_to are required for custom periods")
+    _period_start, _period_end, period = _resolve_period(
+        month=payload.period if len(payload.period) == 7 and payload.period[4] == "-" else None,
+        date_from=payload.date_from,
+        date_to=payload.date_to,
+    )
+
+    payout = (
+        db.query(TrainerPayout)
+        .filter(TrainerPayout.trainer_id == trainer_id, TrainerPayout.period == period)
+        .first()
+    )
+    if not payout:
+        raise HTTPException(status_code=404, detail="Выплата за этот период не найдена")
+
+    if payout.finance_transaction_id:
+        transaction = (
+            db.query(FinanceTransaction)
+            .filter(FinanceTransaction.id == payout.finance_transaction_id)
+            .first()
+        )
+        if transaction:
+            db.delete(transaction)
+
+    total = payout.total
+    db.delete(payout)
+    db.commit()
+    log_action(
+        db,
+        current_user.id,
+        "cancel_pay",
+        "trainer_payout",
+        trainer_id,
+        {"period": period, "total": total},
     )
     return {"ok": True}

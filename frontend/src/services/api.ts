@@ -3486,6 +3486,10 @@ export const ownerCalculationsApi = {
     const response = await api.post(`/api/owner/calculations/trainers/${trainerId}/pay`, period);
     return response.data;
   },
+  cancelPay: async (trainerId: number, period: OwnerCalculationPeriod): Promise<{ ok: boolean }> => {
+    const response = await api.post(`/api/owner/calculations/trainers/${trainerId}/cancel-pay`, period);
+    return response.data;
+  },
 };
 
 export const legacyOwnerWorkspaceApi = {

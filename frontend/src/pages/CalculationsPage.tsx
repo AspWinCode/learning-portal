@@ -202,6 +202,8 @@ const CalculationsPage: React.FC = () => {
   const [bonusAmount, setBonusAmount] = useState<string>('');
   const [bonusSaving, setBonusSaving] = useState(false);
   const [payingId, setPayingId] = useState<number | null>(null);
+  const [cancelDialog, setCancelDialog] = useState<{ trainerId: number; fullName: string } | null>(null);
+  const [cancelSaving, setCancelSaving] = useState(false);
   const [expandedTrainerId, setExpandedTrainerId] = useState<number | null>(null);
   const periodKey = useMemo(() => getPeriodKey(dateFrom, dateTo), [dateFrom, dateTo]);
   const periodLabel = useMemo(() => formatRange(dateFrom, dateTo), [dateFrom, dateTo]);
@@ -288,6 +290,21 @@ const CalculationsPage: React.FC = () => {
     }
   };
 
+  const handleCancelPay = async () => {
+    if (!cancelDialog) return;
+    setCancelSaving(true);
+    setError(null);
+    try {
+      await ownerCalculationsApi.cancelPay(cancelDialog.trainerId, { period: periodKey, date_from: dateFrom, date_to: dateTo });
+      setCancelDialog(null);
+      load();
+    } catch (err: any) {
+      setError(extractApiError(err, 'Не удалось отменить выплату'));
+    } finally {
+      setCancelSaving(false);
+    }
+  };
+
   const updateGroupRow = (trainerId: number, groupId: number, patch: Partial<TrainerGroupCalculationRow>) => {
     setRows((prev) =>
       prev.map((row) =>
@@ -322,7 +339,18 @@ const CalculationsPage: React.FC = () => {
         Премия
       </Button>
       {row.already_paid ? (
-        <Chip color="success" icon={<DoneAll />} label="Выплачено" variant="outlined" />
+        <Stack direction="row" spacing={1} alignItems="center">
+          <Chip color="success" icon={<DoneAll />} label="Выплачено" variant="outlined" />
+          <Button
+            size="small"
+            color="error"
+            variant="text"
+            onClick={() => setCancelDialog({ trainerId: row.trainer_id, fullName: row.full_name })}
+            sx={{ whiteSpace: 'nowrap' }}
+          >
+            Отменить
+          </Button>
+        </Stack>
       ) : (
         <Button
           size="small"
@@ -677,6 +705,24 @@ const CalculationsPage: React.FC = () => {
           <Button onClick={() => setBonusDialog(null)}>Отмена</Button>
           <Button onClick={handleAddBonus} variant="contained" disabled={bonusSaving || !bonusAmount}>
             {bonusSaving ? 'Сохранение...' : 'Добавить'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={!!cancelDialog} onClose={() => setCancelDialog(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Отменить выплату?</DialogTitle>
+        <DialogContent>
+          {cancelDialog && (
+            <Typography variant="body2" color="text.secondary">
+              Выплата тренеру «{cancelDialog.fullName}» за {periodLabel} будет удалена вместе со связанной записью в
+              финансовом журнале. Период снова станет доступен для выплаты.
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCancelDialog(null)}>Отмена</Button>
+          <Button onClick={handleCancelPay} variant="contained" color="error" disabled={cancelSaving}>
+            {cancelSaving ? 'Отмена выплаты...' : 'Отменить выплату'}
           </Button>
         </DialogActions>
       </Dialog>

@@ -1942,10 +1942,14 @@ class TrainerPayout(Base):
     base_payment = Column(Float, nullable=False, default=0)
     bonus = Column(Float, nullable=False, default=0)
     total = Column(Float, nullable=False, default=0)
+    finance_transaction_id = Column(
+        Integer, ForeignKey("finance_transactions.id", ondelete="SET NULL"), nullable=True
+    )
     paid_at = Column(DateTime(timezone=True), server_default=func.now())
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     trainer = relationship("User", foreign_keys=[trainer_id])
+    finance_transaction = relationship("FinanceTransaction", foreign_keys=[finance_transaction_id])
 
 
 class CustomLessonType(str, enum.Enum):

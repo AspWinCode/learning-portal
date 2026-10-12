@@ -1657,6 +1657,16 @@ class Group(Base):
     group_students = relationship("GroupStudent", back_populates="group")
     # ╨г╨┤╨╛╨▒╨╜╨░╤П╤Б╨▓╤П╨╖╤М"╨╝╨╜╨╛╨│╨╕╨╡╨║╨╛╨╝╨╜╨╛╨│╨╕╨╝" ╨┤╨╗╤П╤Б╨╡╤А╨╕╨░╨╗╨╕╨╖╨░╤Ж╨╕╨╕╨▓
     students = relationship("Student", secondary="group_students", viewonly=True)
+    group_programs = relationship("GroupProgram", back_populates="group")
+    group_schedules = relationship("GroupSchedule", back_populates="group", cascade="all, delete-orphan")
+    lesson_attendances = relationship("LessonAttendance", back_populates="group", cascade="all, delete-orphan")
+    # ╨г╨┤╨╛╨▒╨╜╨░╤П╤Б╨▓╤П╨╖╤М╨┤╨╗╤П╤Б╨╡╤А╨╕╨░╨╗╨╕╨╖╨░╤Ж╨╕╨╕╨╜╨░╨╖╨╜╨░╤З╨╡╨╜╨╜╤Л╤Е╨┐╤А╨╛╨│╤А╨░╨╝╨╝╨│╤А╤Г╨┐╨┐╤Л
+    lesson_cancellations = relationship("LessonCancellation", back_populates="group", cascade="all, delete-orphan")
+    lesson_trainer_overrides = relationship("LessonTrainerOverride", back_populates="group", cascade="all, delete-orphan")
+    lesson_slot_extra_policies = relationship("LessonSlotExtraPolicy", back_populates="group", cascade="all, delete-orphan")
+    group_lesson_slots = relationship("GroupLessonSlot", back_populates="group", cascade="all, delete-orphan")
+    programs = relationship("Program", secondary="group_programs", viewonly=True)
+    messenger_links = relationship("GroupMessengerLink", back_populates="group", cascade="all, delete-orphan")
 
 
 class GroupTrainerRateHistory(Base):
@@ -1673,16 +1683,6 @@ class GroupTrainerRateHistory(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     group = relationship("Group")
-    group_programs = relationship("GroupProgram", back_populates="group")
-    group_schedules = relationship("GroupSchedule", back_populates="group", cascade="all, delete-orphan")
-    lesson_attendances = relationship("LessonAttendance", back_populates="group", cascade="all, delete-orphan")
-    # ╨г╨┤╨╛╨▒╨╜╨░╤П╤Б╨▓╤П╨╖╤М╨┤╨╗╤П╤Б╨╡╤А╨╕╨░╨╗╨╕╨╖╨░╤Ж╨╕╨╕╨╜╨░╨╖╨╜╨░╤З╨╡╨╜╨╜╤Л╤Е╨┐╤А╨╛╨│╤А╨░╨╝╨╝╨│╤А╤Г╨┐╨┐╤Л
-    lesson_cancellations = relationship("LessonCancellation", back_populates="group", cascade="all, delete-orphan")
-    lesson_trainer_overrides = relationship("LessonTrainerOverride", back_populates="group", cascade="all, delete-orphan")
-    lesson_slot_extra_policies = relationship("LessonSlotExtraPolicy", back_populates="group", cascade="all, delete-orphan")
-    group_lesson_slots = relationship("GroupLessonSlot", back_populates="group", cascade="all, delete-orphan")
-    programs = relationship("Program", secondary="group_programs", viewonly=True)
-    messenger_links = relationship("GroupMessengerLink", back_populates="group", cascade="all, delete-orphan")
 
 
 class GroupStudent(Base):

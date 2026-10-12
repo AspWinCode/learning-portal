@@ -1672,17 +1672,23 @@ class Group(Base):
 class GroupTrainerRateHistory(Base):
     """Снапшот ставки группы на дату изменения — чтобы смена ставки не меняла задним
     числом уже посчитанные периоды. Расчёт за конкретный урок берёт последнюю запись
-    с effective_from <= дата урока."""
+    с effective_from <= дата урока.
+
+    trainer_id=NULL — ставка группы по умолчанию (основной тренер). Конкретный
+    trainer_id — персональное переопределение для тренера, подменяющего в этой
+    группе; не зависит от ставки основного и других подменяющих."""
     __tablename__ = "group_trainer_rate_history"
 
     id = Column(Integer, primary_key=True, index=True)
     group_id = Column(Integer, ForeignKey("groups.id"), nullable=False, index=True)
+    trainer_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     rate_per_lesson = Column(Float, nullable=True)
     rate_per_hour = Column(Float, nullable=True)
     effective_from = Column(Date, nullable=False, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     group = relationship("Group")
+    trainer = relationship("User")
 
 
 class GroupStudent(Base):

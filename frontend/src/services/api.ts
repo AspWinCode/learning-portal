@@ -3497,6 +3497,14 @@ export const ownerCalculationsApi = {
     const response = await api.put(`/api/owner/calculations/groups/${groupId}/rate`, payload);
     return response.data;
   },
+  updateGroupTrainerRate: async (
+    groupId: number,
+    trainerId: number,
+    payload: { rate_per_lesson?: number | null; rate_per_hour?: number | null }
+  ): Promise<{ ok: boolean; group_id: number; trainer_id: number; rate_per_lesson: number | null; rate_per_hour: number | null }> => {
+    const response = await api.put(`/api/owner/calculations/groups/${groupId}/trainers/${trainerId}/rate`, payload);
+    return response.data;
+  },
   addBonus: async (trainerId: number, period: string, bonus: number): Promise<{ ok: boolean }> => {
     const response = await api.post(`/api/owner/calculations/trainers/${trainerId}/bonus`, { period, bonus });
     return response.data;

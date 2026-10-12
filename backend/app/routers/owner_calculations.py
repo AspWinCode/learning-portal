@@ -191,6 +191,24 @@ async def get_trainer_rates(
             continue
         pairs.setdefault((tid, gid), False)
 
+    # Персональные ставки подменяющих тренеров (последняя запись на (group_id, trainer_id)).
+    substitute_pairs = [(tid, gid) for (tid, gid), is_primary in pairs.items() if not is_primary]
+    substitute_rates: Dict[Tuple[int, int], Tuple[Optional[float], Optional[float]]] = {}
+    if substitute_pairs:
+        sub_group_ids = {gid for _tid, gid in substitute_pairs}
+        sub_trainer_ids = {tid for tid, _gid in substitute_pairs}
+        history = (
+            db.query(GroupTrainerRateHistory)
+            .filter(
+                GroupTrainerRateHistory.group_id.in_(sub_group_ids),
+                GroupTrainerRateHistory.trainer_id.in_(sub_trainer_ids),
+            )
+            .order_by(GroupTrainerRateHistory.effective_from, GroupTrainerRateHistory.id)
+            .all()
+        )
+        for h in history:
+            substitute_rates[(h.trainer_id, h.group_id)] = (h.rate_per_lesson, h.rate_per_hour)
+
     groups_by_trainer: Dict[int, List[Tuple[Group, bool]]] = {tid: [] for tid in trainer_ids}
     for (tid, gid), is_primary in pairs.items():
         g = group_by_id.get(gid)
@@ -200,17 +218,22 @@ async def get_trainer_rates(
     result = []
     for t in trainers:
         rows = sorted(groups_by_trainer.get(t.id, []), key=lambda item: (not item[1], item[0].name or ""))
-        group_rows = [
-            TrainerGroupRateRow(
-                group_id=g.id,
-                group_name=g.name or "",
-                is_individual_format=(getattr(g, "lesson_format", None) or "group").strip().lower() == "individual",
-                is_primary=is_primary,
-                rate_per_lesson=g.trainer_rate,
-                rate_per_hour=g.trainer_rate_per_hour,
+        group_rows = []
+        for g, is_primary in rows:
+            if is_primary:
+                rate_lesson, rate_hour = g.trainer_rate, g.trainer_rate_per_hour
+            else:
+                rate_lesson, rate_hour = substitute_rates.get((t.id, g.id), (None, None))
+            group_rows.append(
+                TrainerGroupRateRow(
+                    group_id=g.id,
+                    group_name=g.name or "",
+                    is_individual_format=(getattr(g, "lesson_format", None) or "group").strip().lower() == "individual",
+                    is_primary=is_primary,
+                    rate_per_lesson=rate_lesson,
+                    rate_per_hour=rate_hour,
+                )
             )
-            for g, is_primary in rows
-        ]
         result.append(TrainerRateRow(trainer_id=t.id, full_name=t.full_name or "", groups=group_rows))
     return result
 
@@ -259,6 +282,68 @@ async def update_group_rate(
     }
 
 
+@router.put("/owner/calculations/groups/{group_id}/trainers/{trainer_id}/rate")
+async def update_group_trainer_rate(
+    group_id: int,
+    trainer_id: int,
+    payload: GroupRateUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("owner_calculations.manage")),
+):
+    """Персональная ставка для тренера, ПОДМЕНЯЮЩЕГО в этой группе — не зависит от
+    ставки основного тренера группы и от ставок других подменяющих. Только owner."""
+    group = db.query(Group).filter(Group.id == group_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    trainer = db.query(User).filter(User.id == trainer_id, User.role == UserRole.TRAINER).first()
+    if not trainer:
+        raise HTTPException(status_code=404, detail="Trainer not found")
+
+    payload_fields = getattr(payload, "model_fields_set", getattr(payload, "__fields_set__", set()))
+    last = (
+        db.query(GroupTrainerRateHistory)
+        .filter(
+            GroupTrainerRateHistory.group_id == group_id,
+            GroupTrainerRateHistory.trainer_id == trainer_id,
+        )
+        .order_by(GroupTrainerRateHistory.effective_from.desc(), GroupTrainerRateHistory.id.desc())
+        .first()
+    )
+    rate_per_lesson = last.rate_per_lesson if last else None
+    rate_per_hour = last.rate_per_hour if last else None
+    if "rate_per_lesson" in payload_fields:
+        rate_per_lesson = payload.rate_per_lesson
+    if "rate_per_hour" in payload_fields:
+        rate_per_hour = payload.rate_per_hour
+
+    # Снапшот на сегодня — как и для основной ставки, не меняет задним числом прошедшие периоды.
+    db.add(
+        GroupTrainerRateHistory(
+            group_id=group_id,
+            trainer_id=trainer_id,
+            rate_per_lesson=rate_per_lesson,
+            rate_per_hour=rate_per_hour,
+            effective_from=date.today(),
+        )
+    )
+    db.commit()
+    log_action(
+        db,
+        current_user.id,
+        "update",
+        "group_trainer_substitute_rate",
+        group_id,
+        {"trainer_id": trainer_id, "rate_per_lesson": rate_per_lesson, "rate_per_hour": rate_per_hour},
+    )
+    return {
+        "ok": True,
+        "group_id": group_id,
+        "trainer_id": trainer_id,
+        "rate_per_lesson": rate_per_lesson,
+        "rate_per_hour": rate_per_hour,
+    }
+
+
 @router.post("/owner/calculations/trainers/{trainer_id}/bonus")
 async def add_trainer_bonus(
     trainer_id: int,
@@ -303,33 +388,51 @@ class _TrainerBreakdown:
         self.groups: List[TrainerGroupCalculationRow] = []
 
 
-def _build_rate_lookup(db: Session, group_ids: List[int]) -> Dict[int, Tuple[List[date], List[Tuple[float, float]]]]:
-    """group_id -> (отсортированные даты вступления в силу, [(rate_per_lesson, rate_per_hour), ...])."""
+_RateLookup = Dict[Tuple[int, Optional[int]], Tuple[List[date], List[Tuple[Optional[float], Optional[float]]]]]
+
+
+def _build_rate_lookup(db: Session, group_ids: List[int]) -> _RateLookup:
+    """(group_id, trainer_id|None) -> (отсортированные даты вступления в силу, [(rate_per_lesson, rate_per_hour), ...]).
+
+    trainer_id=None — общая ставка группы (основной тренер); конкретный trainer_id —
+    персональное переопределение для тренера, подменяющего в этой группе."""
     if not group_ids:
         return {}
     history = (
         db.query(GroupTrainerRateHistory)
         .filter(GroupTrainerRateHistory.group_id.in_(group_ids))
-        .order_by(GroupTrainerRateHistory.group_id, GroupTrainerRateHistory.effective_from, GroupTrainerRateHistory.id)
+        .order_by(GroupTrainerRateHistory.effective_from, GroupTrainerRateHistory.id)
         .all()
     )
-    result: Dict[int, Tuple[List[date], List[Tuple[float, float]]]] = {}
+    result: _RateLookup = {}
     for h in history:
-        dates, rates = result.setdefault(h.group_id, ([], []))
+        dates, rates = result.setdefault((h.group_id, h.trainer_id), ([], []))
         dates.append(h.effective_from)
         rates.append((h.rate_per_lesson, h.rate_per_hour))
     return result
 
 
 def _rate_at(
-    lookup: Dict[int, Tuple[List[date], List[Tuple[float, float]]]],
+    lookup: _RateLookup,
     group_id: int,
+    trainer_id: int,
     lesson_date: date,
     fallback: Tuple[Optional[float], Optional[float]],
 ) -> Tuple[Optional[float], Optional[float]]:
-    """Ставка группы, действовавшая на дату урока. Если истории нет вовсе — fallback
-    (текущая ставка группы; покрывает группы, созданные до введения истории ставок)."""
-    dates, rates = lookup.get(group_id, ([], []))
+    """Ставка, действовавшая на дату урока, для конкретного тренера в конкретной группе.
+
+    1) Если у этого тренера когда-либо была персональная ставка для этой группы (он
+       подменял и ему выставили отдельную ставку) — берём последнюю запись на дату урока.
+    2) Иначе — общая ставка группы (основной тренер) на ту же дату.
+    3) Если истории нет вовсе — fallback (текущая ставка группы; покрывает группы,
+       созданные до введения истории ставок)."""
+    dates, rates = lookup.get((group_id, trainer_id), ([], []))
+    if dates:
+        idx = bisect.bisect_right(dates, lesson_date) - 1
+        if idx >= 0:
+            return rates[idx]
+
+    dates, rates = lookup.get((group_id, None), ([], []))
     if not dates:
         return fallback
     idx = bisect.bisect_right(dates, lesson_date) - 1
@@ -431,7 +534,7 @@ def _compute_trainer_breakdowns(
             hours = 0.0
             subtotal = 0.0
             for is_ind, h, lesson_date in group_slots:
-                rate_lesson, rate_hour = _rate_at(rate_lookup, gid, lesson_date, fallback)
+                rate_lesson, rate_hour = _rate_at(rate_lookup, gid, tid, lesson_date, fallback)
                 if is_ind:
                     hours += h
                     subtotal += (rate_hour or 0) * h

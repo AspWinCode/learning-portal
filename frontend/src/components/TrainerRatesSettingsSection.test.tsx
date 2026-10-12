@@ -8,6 +8,7 @@ vi.mock('../services/api', () => ({
   ownerCalculationsApi: {
     getTrainerRates: vi.fn(),
     updateGroupRate: vi.fn(),
+    updateGroupTrainerRate: vi.fn(),
   },
 }));
 
@@ -108,5 +109,51 @@ describe('TrainerRatesSettingsSection', () => {
 
     expect(input.value).toBe('500');
     expect(ownerCalculationsApi.updateGroupRate).not.toHaveBeenCalled();
+  });
+
+  it('saves a substitute trainer rate independently via the per-trainer endpoint, without touching the primary', async () => {
+    const rows = [
+      {
+        trainer_id: 1,
+        full_name: 'Основной тренер',
+        groups: [
+          { group_id: 42, group_name: 'Группа', is_individual_format: false, is_primary: true, rate_per_lesson: 1200, rate_per_hour: null },
+        ],
+      },
+      {
+        trainer_id: 2,
+        full_name: 'Подменяющий тренер',
+        groups: [
+          { group_id: 42, group_name: 'Группа', is_individual_format: false, is_primary: false, rate_per_lesson: null, rate_per_hour: null },
+        ],
+      },
+    ];
+    vi.mocked(ownerCalculationsApi.getTrainerRates).mockResolvedValue(rows as any);
+    vi.mocked(ownerCalculationsApi.updateGroupTrainerRate).mockResolvedValue({
+      ok: true, group_id: 42, trainer_id: 2, rate_per_lesson: 800, rate_per_hour: null,
+    });
+
+    renderSection();
+    await screen.findByText('Основной тренер');
+    await screen.findByText('Подменяющий тренер');
+    const inputs = screen.getAllByRole('spinbutton');
+    // Первое поле — ставка основного (1200), второе — ставка подменяющего (пусто).
+    const substituteInput = inputs[1];
+
+    fireEvent.change(substituteInput, { target: { value: '800' } });
+    fireEvent.blur(substituteInput);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(ownerCalculationsApi.updateGroupTrainerRate).toHaveBeenCalledWith(42, 2, {
+      rate_per_lesson: 800,
+      rate_per_hour: null,
+    });
+    expect(ownerCalculationsApi.updateGroupRate).not.toHaveBeenCalled();
+    expect((inputs[0] as HTMLInputElement).value).toBe('1200');
   });
 });

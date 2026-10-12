@@ -46,9 +46,10 @@ type RateFieldProps = {
   onCommit: (value: number | null) => void;
   saveStatus?: RateSaveStatus;
   label: string;
+  placeholder?: string;
 };
 
-const RateField: React.FC<RateFieldProps> = ({ value, disabled, onCommit, saveStatus = 'idle', label }) => {
+const RateField: React.FC<RateFieldProps> = ({ value, disabled, onCommit, saveStatus = 'idle', label, placeholder }) => {
   const [text, setText] = useState(value === null || value === undefined ? '' : String(value));
 
   useEffect(() => {
@@ -86,6 +87,7 @@ const RateField: React.FC<RateFieldProps> = ({ value, disabled, onCommit, saveSt
         }}
         onWheel={(e) => (e.target as HTMLInputElement).blur()}
         inputProps={{ min: 0, step: 0.01 }}
+        placeholder={placeholder}
         aria-label={label}
         sx={{
           width: { xs: '100%', sm: 132 },
@@ -105,23 +107,25 @@ const RateField: React.FC<RateFieldProps> = ({ value, disabled, onCommit, saveSt
   );
 };
 
+const rateKey = (trainerId: number, groupId: number) => `${trainerId}:${groupId}`;
+
 const TrainerRatesSettingsSection: React.FC = () => {
   const [rows, setRows] = useState<TrainerRateRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const rowsRef = useRef<TrainerRateRow[]>([]);
-  const rateSavesRef = useRef<Map<number, RateSaveEntry>>(new Map());
+  const rateSavesRef = useRef<Map<string, RateSaveEntry>>(new Map());
   const mountedRef = useRef(true);
-  const [rateSaveStatuses, setRateSaveStatuses] = useState<Record<number, RateSaveStatus>>({});
+  const [rateSaveStatuses, setRateSaveStatuses] = useState<Record<string, RateSaveStatus>>({});
 
   const setRowsData = useCallback((next: TrainerRateRow[]) => {
     rowsRef.current = next;
     setRows(next);
   }, []);
 
-  const setRateSaveStatus = useCallback((groupId: number, status: RateSaveStatus) => {
+  const setRateSaveStatus = useCallback((key: string, status: RateSaveStatus) => {
     if (!mountedRef.current) return;
-    setRateSaveStatuses((prev) => ({ ...prev, [groupId]: status }));
+    setRateSaveStatuses((prev) => ({ ...prev, [key]: status }));
   }, []);
 
   const load = useCallback(async () => {
@@ -148,22 +152,25 @@ const TrainerRatesSettingsSection: React.FC = () => {
     };
   }, [load]);
 
-  const flushGroupRate = useCallback(async (groupId: number) => {
-    const entry = rateSavesRef.current.get(groupId);
+  const flushGroupRate = useCallback(async (trainerId: number, groupId: number, isPrimary: boolean) => {
+    const key = rateKey(trainerId, groupId);
+    const entry = rateSavesRef.current.get(key);
     if (!entry || entry.inFlight) return;
 
     if (entry.saved && sameRatePayload(entry.saved, entry.desired)) {
-      setRateSaveStatus(groupId, 'saved');
+      setRateSaveStatus(key, 'saved');
       return;
     }
 
     const payload = { ...entry.desired };
     entry.inFlight = true;
-    setRateSaveStatus(groupId, 'saving');
+    setRateSaveStatus(key, 'saving');
     let requestFailed = false;
 
     try {
-      const persisted = await ownerCalculationsApi.updateGroupRate(groupId, payload);
+      const persisted = isPrimary
+        ? await ownerCalculationsApi.updateGroupRate(groupId, payload)
+        : await ownerCalculationsApi.updateGroupTrainerRate(groupId, trainerId, payload);
       const persistedPayload = {
         rate_per_lesson: persisted.rate_per_lesson === undefined ? payload.rate_per_lesson : persisted.rate_per_lesson,
         rate_per_hour: persisted.rate_per_hour === undefined ? payload.rate_per_hour : persisted.rate_per_hour,
@@ -175,20 +182,24 @@ const TrainerRatesSettingsSection: React.FC = () => {
 
       if (mountedRef.current) {
         setRowsData(
-          rowsRef.current.map((row) => ({
-            ...row,
-            groups: row.groups.map((g) =>
-              g.group_id === groupId
-                ? { ...g, rate_per_lesson: persistedPayload.rate_per_lesson, rate_per_hour: persistedPayload.rate_per_hour }
-                : g,
-            ),
-          })),
+          rowsRef.current.map((row) =>
+            row.trainer_id === trainerId
+              ? {
+                  ...row,
+                  groups: row.groups.map((g) =>
+                    g.group_id === groupId
+                      ? { ...g, rate_per_lesson: persistedPayload.rate_per_lesson, rate_per_hour: persistedPayload.rate_per_hour }
+                      : g,
+                  ),
+                }
+              : row,
+          ),
         );
       }
     } catch (err: any) {
       requestFailed = true;
       if (mountedRef.current) {
-        setRateSaveStatus(groupId, 'error');
+        setRateSaveStatus(key, 'error');
         setError(extractApiError(err, 'Не удалось сохранить ставку группы'));
       }
     } finally {
@@ -196,19 +207,26 @@ const TrainerRatesSettingsSection: React.FC = () => {
       if (!mountedRef.current) return;
 
       if (!sameRatePayload(entry.saved, entry.desired)) {
-        setRateSaveStatus(groupId, 'saving');
-        void flushGroupRate(groupId);
+        setRateSaveStatus(key, 'saving');
+        void flushGroupRate(trainerId, groupId, isPrimary);
       } else if (!requestFailed) {
-        setRateSaveStatus(groupId, 'saved');
+        setRateSaveStatus(key, 'saved');
       }
     }
   }, [setRateSaveStatus, setRowsData]);
 
-  const handleCommit = (groupId: number, patch: { rate_per_lesson?: number | null; rate_per_hour?: number | null }) => {
-    const group = rowsRef.current.flatMap((row) => row.groups).find((candidate) => candidate.group_id === groupId);
+  const handleCommit = (
+    trainerId: number,
+    groupId: number,
+    isPrimary: boolean,
+    patch: { rate_per_lesson?: number | null; rate_per_hour?: number | null },
+  ) => {
+    const row = rowsRef.current.find((candidate) => candidate.trainer_id === trainerId);
+    const group = row?.groups.find((candidate) => candidate.group_id === groupId);
     if (!group) return;
 
-    const existing = rateSavesRef.current.get(groupId);
+    const key = rateKey(trainerId, groupId);
+    const existing = rateSavesRef.current.get(key);
     const entry: RateSaveEntry = existing || {
       desired: { rate_per_lesson: group.rate_per_lesson, rate_per_hour: group.rate_per_hour },
       saved: { rate_per_lesson: group.rate_per_lesson, rate_per_hour: group.rate_per_hour },
@@ -219,25 +237,27 @@ const TrainerRatesSettingsSection: React.FC = () => {
       rate_per_lesson: patch.rate_per_lesson === undefined ? entry.desired.rate_per_lesson : patch.rate_per_lesson,
       rate_per_hour: patch.rate_per_hour === undefined ? entry.desired.rate_per_hour : patch.rate_per_hour,
     };
-    rateSavesRef.current.set(groupId, entry);
-    setRateSaveStatus(groupId, 'saving');
+    rateSavesRef.current.set(key, entry);
+    setRateSaveStatus(key, 'saving');
     if (entry.timer) {
       clearTimeout(entry.timer);
       entry.timer = null;
     }
-    void flushGroupRate(groupId);
+    void flushGroupRate(trainerId, groupId, isPrimary);
   };
 
-  const getRateSaveStatus = (groupId: number): RateSaveStatus => rateSaveStatuses[groupId] || 'idle';
+  const getRateSaveStatus = (trainerId: number, groupId: number): RateSaveStatus =>
+    rateSaveStatuses[rateKey(trainerId, groupId)] || 'idle';
 
   return (
     <Box>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
         Ставки задаются на уровне группы и не зависят от выбранного периода в «Расчётах» — там они только
         отображаются. Новые группы появляются здесь автоматически по мере создания. Показаны и основные
-        группы тренера, и те, где он когда-либо подменял — ставка у них общая для всех, кто ведёт занятия
-        в этой группе. Смена ставки действует только вперёд: уже прошедшие периоды продолжают считаться
-        по той ставке, что действовала на дату урока.
+        группы тренера, и те, где он когда-либо подменял — у подменяющего можно задать свою ставку,
+        независимую от основного. Пока она не задана, подмены считаются по ставке основного тренера
+        группы (как и раньше). Смена ставки действует только вперёд: уже прошедшие периоды продолжают
+        считаться по той ставке, что действовала на дату урока.
       </Typography>
 
       {error && (
@@ -293,40 +313,26 @@ const TrainerRatesSettingsSection: React.FC = () => {
                               {g.is_individual_format ? 'Индивидуальный формат' : 'Групповой формат'}
                             </Typography>
                           </TableCell>
-                          {g.is_primary ? (
-                            <>
-                              <TableCell>
-                                <RateField
-                                  label={`Ставка за урок — ${g.group_name}`}
-                                  disabled={g.is_individual_format}
-                                  value={g.rate_per_lesson}
-                                  onCommit={(value) => handleCommit(g.group_id, { rate_per_lesson: value })}
-                                  saveStatus={getRateSaveStatus(g.group_id)}
-                                />
-                              </TableCell>
-                              <TableCell>
-                                <RateField
-                                  label={`Ставка за час — ${g.group_name}`}
-                                  disabled={!g.is_individual_format}
-                                  value={g.rate_per_hour}
-                                  onCommit={(value) => handleCommit(g.group_id, { rate_per_hour: value })}
-                                  saveStatus={getRateSaveStatus(g.group_id)}
-                                />
-                              </TableCell>
-                            </>
-                          ) : (
-                            <TableCell colSpan={2}>
-                              <Typography variant="body2">
-                                {g.is_individual_format
-                                  ? (g.rate_per_hour ?? '—')
-                                  : (g.rate_per_lesson ?? '—')}
-                                {' '}₽{g.is_individual_format ? '/час' : '/урок'}
-                              </Typography>
-                              <Typography variant="caption" color="text.secondary">
-                                Ставка общая для группы — менять можно только там, где она основная
-                              </Typography>
-                            </TableCell>
-                          )}
+                          <TableCell>
+                            <RateField
+                              label={`Ставка за урок — ${g.group_name}${g.is_primary ? '' : ' (подмена)'}`}
+                              disabled={g.is_individual_format}
+                              value={g.rate_per_lesson}
+                              onCommit={(value) => handleCommit(row.trainer_id, g.group_id, g.is_primary, { rate_per_lesson: value })}
+                              saveStatus={getRateSaveStatus(row.trainer_id, g.group_id)}
+                              placeholder={g.is_primary ? undefined : 'как у основного'}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <RateField
+                              label={`Ставка за час — ${g.group_name}${g.is_primary ? '' : ' (подмена)'}`}
+                              disabled={!g.is_individual_format}
+                              value={g.rate_per_hour}
+                              onCommit={(value) => handleCommit(row.trainer_id, g.group_id, g.is_primary, { rate_per_hour: value })}
+                              saveStatus={getRateSaveStatus(row.trainer_id, g.group_id)}
+                              placeholder={g.is_primary ? undefined : 'как у основного'}
+                            />
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>

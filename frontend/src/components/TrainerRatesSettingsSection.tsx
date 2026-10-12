@@ -293,24 +293,40 @@ const TrainerRatesSettingsSection: React.FC = () => {
                               {g.is_individual_format ? 'Индивидуальный формат' : 'Групповой формат'}
                             </Typography>
                           </TableCell>
-                          <TableCell>
-                            <RateField
-                              label={`Ставка за урок — ${g.group_name}`}
-                              disabled={g.is_individual_format}
-                              value={g.rate_per_lesson}
-                              onCommit={(value) => handleCommit(g.group_id, { rate_per_lesson: value })}
-                              saveStatus={getRateSaveStatus(g.group_id)}
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <RateField
-                              label={`Ставка за час — ${g.group_name}`}
-                              disabled={!g.is_individual_format}
-                              value={g.rate_per_hour}
-                              onCommit={(value) => handleCommit(g.group_id, { rate_per_hour: value })}
-                              saveStatus={getRateSaveStatus(g.group_id)}
-                            />
-                          </TableCell>
+                          {g.is_primary ? (
+                            <>
+                              <TableCell>
+                                <RateField
+                                  label={`Ставка за урок — ${g.group_name}`}
+                                  disabled={g.is_individual_format}
+                                  value={g.rate_per_lesson}
+                                  onCommit={(value) => handleCommit(g.group_id, { rate_per_lesson: value })}
+                                  saveStatus={getRateSaveStatus(g.group_id)}
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <RateField
+                                  label={`Ставка за час — ${g.group_name}`}
+                                  disabled={!g.is_individual_format}
+                                  value={g.rate_per_hour}
+                                  onCommit={(value) => handleCommit(g.group_id, { rate_per_hour: value })}
+                                  saveStatus={getRateSaveStatus(g.group_id)}
+                                />
+                              </TableCell>
+                            </>
+                          ) : (
+                            <TableCell colSpan={2}>
+                              <Typography variant="body2">
+                                {g.is_individual_format
+                                  ? (g.rate_per_hour ?? '—')
+                                  : (g.rate_per_lesson ?? '—')}
+                                {' '}₽{g.is_individual_format ? '/час' : '/урок'}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                Ставка общая для группы — менять можно только там, где она основная
+                              </Typography>
+                            </TableCell>
+                          )}
                         </TableRow>
                       ))}
                     </TableBody>

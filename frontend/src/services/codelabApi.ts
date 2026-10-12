@@ -307,9 +307,9 @@ export const codelabStudioApi = {
   remindProjectSubmission: (courseId: number, itemId: number, submissionId: number): Promise<void> =>
     api.post(`${B}/courses/${courseId}/projects/${itemId}/submissions/${submissionId}/remind`).then(() => undefined),
   listPendingReviews: (): Promise<CodelabPendingReview[]> =>
-    api.get(`${B}/trainer/pending-reviews`).then((r) => r.data),
+    api.get('/codelab/trainer/pending-reviews').then((r) => r.data),
   listTrainerSubmissions: (): Promise<CodelabTrainerSubmission[]> =>
-    api.get(`${B}/trainer/submissions`).then((r) => r.data),
+    api.get('/codelab/trainer/submissions').then((r) => r.data),
   // Bearer-токен идёт заголовком (см. api/client.ts), не cookie — обычная
   // <a href="..."> ссылка на этот эндпоинт получила бы 401, поэтому качаем
   // через axios (responseType: 'blob') и триггерим сохранение сами.

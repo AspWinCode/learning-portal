@@ -110,41 +110,6 @@ type RateSaveEntry = {
   inFlight: boolean;
 };
 
-const RATE_DRAFT_STORAGE_KEY = 'owner-calculations-rate-drafts-v1';
-
-const readRateDrafts = (): Record<string, RatePayload> => {
-  try {
-    const raw = localStorage.getItem(RATE_DRAFT_STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as Record<string, RatePayload>;
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  } catch {
-    return {};
-  }
-};
-
-const writeRateDraft = (groupId: number, payload: RatePayload) => {
-  try {
-    const drafts = readRateDrafts();
-    drafts[String(groupId)] = payload;
-    localStorage.setItem(RATE_DRAFT_STORAGE_KEY, JSON.stringify(drafts));
-  } catch {
-    // localStorage may be unavailable in private browsing; the in-memory
-    // debounce/queue still protects the normal editing flow.
-  }
-};
-
-const clearRateDraft = (groupId: number, payload: RatePayload) => {
-  try {
-    const drafts = readRateDrafts();
-    if (!sameRatePayload(drafts[String(groupId)] || null, payload)) return;
-    delete drafts[String(groupId)];
-    localStorage.setItem(RATE_DRAFT_STORAGE_KEY, JSON.stringify(drafts));
-  } catch {
-    // Best effort only.
-  }
-};
-
 const sameRatePayload = (left: RatePayload | null, right: RatePayload | null) =>
   !!left && !!right && left.rate_per_lesson === right.rate_per_lesson && left.rate_per_hour === right.rate_per_hour;
 
@@ -441,7 +406,6 @@ const CalculationsPage: React.FC = () => {
         throw new Error('Сервер вернул другое значение ставки');
       }
       entry.saved = persistedPayload;
-      clearRateDraft(groupId, persistedPayload);
 
       // Refresh the calculated subtotal/payment after the newest PUT. A GET
       // started for an older edit must not overwrite a newer local draft.
@@ -496,7 +460,6 @@ const CalculationsPage: React.FC = () => {
       rate_per_lesson: patch.rate_per_lesson === undefined ? entry.desired.rate_per_lesson : patch.rate_per_lesson,
       rate_per_hour: patch.rate_per_hour === undefined ? entry.desired.rate_per_hour : patch.rate_per_hour,
     };
-    writeRateDraft(groupId, entry.desired);
     rateSavesRef.current.set(groupId, entry);
     rateRevisionRef.current += 1;
     setRateSaveStatus(groupId, 'saving');
@@ -527,30 +490,6 @@ const CalculationsPage: React.FC = () => {
       });
     };
   }, []);
-
-  const restoredRateDraftsRef = useRef(false);
-  useEffect(() => {
-    if (loading || restoredRateDraftsRef.current || !rows.length) return;
-    const drafts = readRateDrafts();
-    const pending = Object.entries(drafts).filter(([groupId]) =>
-      rows.some((row) => row.groups.some((group) => group.group_id === Number(groupId))),
-    );
-    if (!pending.length) {
-      restoredRateDraftsRef.current = true;
-      return;
-    }
-
-    restoredRateDraftsRef.current = true;
-    const nextRows = rows.map((row) => ({
-      ...row,
-      groups: row.groups.map((group) => {
-        const draft = drafts[String(group.group_id)];
-        return draft ? { ...group, ...draft } : group;
-      }),
-    }));
-    setRowsData(nextRows);
-    pending.forEach(([groupId, draft]) => scheduleGroupRateSave(Number(groupId), draft, true));
-  }, [loading, rows, scheduleGroupRateSave, setRowsData]);
 
   const handleGroupRateCommit = (
     groupId: number,

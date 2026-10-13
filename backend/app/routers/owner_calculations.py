@@ -426,6 +426,7 @@ def _rate_at(
     trainer_id: int,
     lesson_date: date,
     fallback: Tuple[Optional[float], Optional[float]],
+    current_month_start: date,
 ) -> Tuple[Optional[float], Optional[float]]:
     """Ставка, действовавшая на дату урока, для конкретного тренера в конкретной группе.
 
@@ -433,8 +434,24 @@ def _rate_at(
        подменял и ему выставили отдельную ставку) — берём последнюю запись на дату урока.
     2) Иначе — общая ставка группы (основной тренер) на ту же дату.
     3) Если истории нет вовсе — fallback (текущая ставка группы; покрывает группы,
-       созданные до введения истории ставок)."""
+       созданные до введения истории ставок).
+
+    Для уроков текущего месяца последняя ставка считается ставкой всего
+    открытого месяца, включая даты до её изменения."""
     dates, rates = lookup.get((group_id, trainer_id), ([], []))
+    # The current month is still open.  Its current rate applies to the whole
+    # month, including lessons that happened before the rate was edited.  This
+    # also repairs old snapshots written with effective_from set to the day of
+    # the edit, without requiring the owner to save the same value again.
+    is_current_month = (
+        lesson_date >= current_month_start
+        and lesson_date.month == current_month_start.month
+        and lesson_date.year == current_month_start.year
+    )
+    if is_current_month:
+        if rates:
+            return rates[-1]
+        return fallback
     if dates:
         idx = bisect.bisect_right(dates, lesson_date) - 1
         if idx >= 0:
@@ -513,17 +530,19 @@ def _compute_trainer_breakdowns(
         seen.add(key)
         fmt = (getattr(group, "lesson_format", None) or "group").strip().lower()
         is_ind = fmt == "individual"
-        # Исторический тренер слота:
-        # 1) Если в LessonAttendance зафиксирован trainer_id — используем его.
-        # 2) Иначе — подмена по LessonTrainerOverride.
-        # 3) Фолбэк — текущий trainer_id у группы (для старых данных без trainer_id).
-        tid = getattr(att, "trainer_id", None) or override_map.get(key, group.trainer_id)
+        # Явная подмена слота имеет приоритет: старые записи посещаемости могут
+        # содержать trainer_id основного тренера и не должны скрывать замену.
+        # 1) подмена по LessonTrainerOverride;
+        # 2) зафиксированный фактический тренер посещаемости;
+        # 3) текущий тренер группы для старых данных без trainer_id.
+        tid = override_map.get(key) or getattr(att, "trainer_id", None) or group.trainer_id
         if tid not in trainer_ids:
             continue
         h = _slot_duration_hours(start_t, end_t) if is_ind else 0.0
         slots.setdefault((tid, group.id), []).append((is_ind, h, att.lesson_date))
 
     rate_lookup = _build_rate_lookup(db, list(group_objects.keys()))
+    current_month_start = date.today().replace(day=1)
 
     result: Dict[int, _TrainerBreakdown] = {}
     for tid in trainer_ids:
@@ -542,7 +561,9 @@ def _compute_trainer_breakdowns(
             hours = 0.0
             subtotal = 0.0
             for is_ind, h, lesson_date in group_slots:
-                rate_lesson, rate_hour = _rate_at(rate_lookup, gid, tid, lesson_date, fallback)
+                rate_lesson, rate_hour = _rate_at(
+                    rate_lookup, gid, tid, lesson_date, fallback, current_month_start
+                )
                 if is_ind:
                     hours += h
                     subtotal += (rate_hour or 0) * h

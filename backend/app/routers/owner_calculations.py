@@ -38,6 +38,14 @@ from app.schemas.owner_calculations import (
 router = APIRouter()
 
 
+def _rate_effective_from(today: date) -> date:
+    """Новая ставка действует на весь текущий (ещё не закрытый) месяц, не только
+    «с сегодня» — чтобы урок, прошедший ранее в этом же месяце, тоже посчитался
+    по новой ставке. Прошлые, уже завершённые месяцы при этом не трогает: для них
+    остаётся в силе более ранняя запись истории."""
+    return today.replace(day=1)
+
+
 def _time_eq(a: Optional[time], b: Optional[time]) -> bool:
     if a is None and b is None:
         return True
@@ -254,14 +262,14 @@ async def update_group_rate(
         group.trainer_rate = payload.rate_per_lesson
     if "rate_per_hour" in payload_fields:
         group.trainer_rate_per_hour = payload.rate_per_hour
-    # Снапшот на сегодня — уроки ДО этой даты продолжают считаться по прежней ставке,
-    # смена ставки не меняет задним числом уже прошедшие периоды.
+    # Новая ставка действует на весь текущий месяц (и позже), прошлые завершённые
+    # месяцы остаются при прежней ставке — смена не меняет их задним числом.
     db.add(
         GroupTrainerRateHistory(
             group_id=group.id,
             rate_per_lesson=group.trainer_rate,
             rate_per_hour=group.trainer_rate_per_hour,
-            effective_from=date.today(),
+            effective_from=_rate_effective_from(date.today()),
         )
     )
     db.commit()
@@ -316,14 +324,14 @@ async def update_group_trainer_rate(
     if "rate_per_hour" in payload_fields:
         rate_per_hour = payload.rate_per_hour
 
-    # Снапшот на сегодня — как и для основной ставки, не меняет задним числом прошедшие периоды.
+    # Действует на весь текущий месяц, как и основная ставка — см. _rate_effective_from.
     db.add(
         GroupTrainerRateHistory(
             group_id=group_id,
             trainer_id=trainer_id,
             rate_per_lesson=rate_per_lesson,
             rate_per_hour=rate_per_hour,
-            effective_from=date.today(),
+            effective_from=_rate_effective_from(date.today()),
         )
     )
     db.commit()

@@ -1142,6 +1142,11 @@ export const groupsApi = {
   removeStudent: async (groupId: number, studentId: number): Promise<void> => {
     await api.delete(`/api/groups/${groupId}/students/${studentId}`);
   },
+  transferStudent: async (groupId: number, studentId: number, targetGroupId: number): Promise<void> => {
+    await api.post(`/api/groups/${groupId}/students/${studentId}/transfer`, {
+      target_group_id: targetGroupId,
+    });
+  },
   updateStudent: async (groupId: number, studentId: number, data: { custom_duration_minutes?: number | null; schedule_ids?: number[] }): Promise<void> => {
     await api.patch(`/api/groups/${groupId}/students/${studentId}`, data);
   },

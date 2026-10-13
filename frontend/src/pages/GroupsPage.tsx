@@ -54,6 +54,9 @@ const GroupsPage: React.FC = () => {
   const [scheduleEditStudentId, setScheduleEditStudentId] = useState<number | null>(null);
   const [scheduleEditIds, setScheduleEditIds] = useState<number[]>([]);
   const [studentToAddId, setStudentToAddId] = useState('');
+  const [transferStudent, setTransferStudent] = useState<Student | null>(null);
+  const [transferTargetGroupId, setTransferTargetGroupId] = useState('');
+  const [transferSaving, setTransferSaving] = useState(false);
   const [newSchedule, setNewSchedule] = useState({ day_of_week: 1, start_time: '09:00', end_time: '11:00' });
   const [scheduleDraftDirty, setScheduleDraftDirty] = useState(false);
   const [error, setError] = useState('');
@@ -304,6 +307,34 @@ const GroupsPage: React.FC = () => {
       loadGroups();
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Ошибка удаления ученика из группы');
+    }
+  };
+
+  const openStudentTransfer = (student: Student) => {
+    setTransferStudent(student);
+    setTransferTargetGroupId('');
+  };
+
+  const closeStudentTransfer = () => {
+    if (transferSaving) return;
+    setTransferStudent(null);
+    setTransferTargetGroupId('');
+  };
+
+  const handleTransferStudent = async () => {
+    if (!selectedGroup || !transferStudent || !transferTargetGroupId) return;
+    setTransferSaving(true);
+    try {
+      await groupsApi.transferStudent(selectedGroup.id, transferStudent.id, Number(transferTargetGroupId));
+      const fullGroup = await groupsApi.getById(selectedGroup.id);
+      setGroupDetails(fullGroup);
+      setTransferStudent(null);
+      setTransferTargetGroupId('');
+      await loadGroups();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Ошибка перевода ученика в другую группу');
+    } finally {
+      setTransferSaving(false);
     }
   };
 
@@ -990,6 +1021,9 @@ const GroupsPage: React.FC = () => {
                         <Button size="small" onClick={() => openDurationEdit(s.id)}>
                           Длительность
                         </Button>
+                        <Button size="small" onClick={() => openStudentTransfer(s)}>
+                          Перевести
+                        </Button>
                         <Button
                           size="small"
                           color="error"
@@ -1009,6 +1043,52 @@ const GroupsPage: React.FC = () => {
           </DialogActions>
         </Dialog>
       )}
+
+      <Dialog open={!!transferStudent} onClose={closeStudentTransfer} maxWidth="xs" fullWidth>
+        <DialogTitle>Перевести ученика</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 0.5 }}>
+            {transferStudent?.full_name}
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Ученик перестанет появляться в новых занятиях группы «{selectedGroup?.name}» и будет добавлен в выбранную
+            группу. Прошлые посещения и история обучения сохранятся.
+          </Typography>
+          <FormControl fullWidth>
+            <InputLabel>Новая группа</InputLabel>
+            <Select
+              value={transferTargetGroupId}
+              label="Новая группа"
+              onChange={(e) => setTransferTargetGroupId(e.target.value)}
+            >
+              {groups
+                .filter(
+                  (group) =>
+                    group.status === 'active' &&
+                    group.id !== selectedGroup?.id &&
+                    !group.students?.some((student) => student.id === transferStudent?.id),
+                )
+                .map((group) => (
+                  <MenuItem key={group.id} value={String(group.id)}>
+                    {group.name}
+                  </MenuItem>
+                ))}
+            </Select>
+          </FormControl>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeStudentTransfer} disabled={transferSaving}>
+            Отмена
+          </Button>
+          <Button
+            onClick={handleTransferStudent}
+            variant="contained"
+            disabled={!transferTargetGroupId || transferSaving}
+          >
+            {transferSaving ? 'Перевод...' : 'Перевести'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Диалог индивидуальной длительности занятия ученика в группе */}
       <Dialog open={durationEditStudentId != null} onClose={() => setDurationEditStudentId(null)} maxWidth="xs" fullWidth>

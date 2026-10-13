@@ -26,6 +26,7 @@ from app.models import (
 from app.database import get_db
 from app.routers import groups as groups_router
 from app.routers import programs as programs_router
+from app.schemas.groups import GroupStudentTransfer
 
 
 # ---------------------------------------------------------------------------
@@ -240,6 +241,7 @@ class TestAddStudentToGroup:
         new_sps = [obj for obj in db.added if isinstance(obj, StudentProgram)]
         assert len(new_sps) == 0
 
+
     def test_returns_404_if_group_not_found(self, client: TestClient, monkeypatch):
         db = FakeGroupsDB(group=None, student=_make_student(2))
         app.dependency_overrides[get_db] = lambda: db
@@ -300,6 +302,63 @@ class TestAddStudentToGroup:
 
         new_sps = [obj for obj in db.added if isinstance(obj, StudentProgram)]
         assert len(new_sps) == 0
+
+
+class TestTransferStudentToGroup:
+
+    @pytest.mark.asyncio
+    async def test_closes_old_membership_and_creates_new_one_without_deleting_history(self, monkeypatch):
+        source_group = _make_group(1)
+        target_group = _make_group(3)
+        student = _make_student(2)
+        source_membership = SimpleNamespace(group_id=1, student_id=2, left_at=None)
+
+        class TransferDB:
+            def __init__(self):
+                self.groups = iter([source_group, target_group])
+                self.memberships = iter([source_membership, None])
+                self.added = []
+                self.committed = False
+
+            def query(self, model):
+                from app.models import Group, Student
+
+                if model is Group:
+                    return FakeQuery(next(self.groups))
+                if model is Student:
+                    return FakeQuery(student)
+                if model is GroupStudent:
+                    return FakeQuery(next(self.memberships))
+                return FakeQuery(None)
+
+            def add(self, obj):
+                self.added.append(obj)
+
+            def commit(self):
+                self.committed = True
+
+        db = TransferDB()
+        activities = []
+        monkeypatch.setattr(groups_router, "log_student_activity", lambda *a, **kw: activities.append(kw))
+        monkeypatch.setattr(groups_router, "log_action", lambda *a, **kw: None)
+
+        result = await groups_router.transfer_student_to_group(
+            group_id=1,
+            student_id=2,
+            payload=GroupStudentTransfer(target_group_id=3),
+            db=db,
+            current_user=_admin_user(),
+        )
+
+        new_membership = next(obj for obj in db.added if isinstance(obj, GroupStudent))
+        assert source_membership.left_at is not None
+        assert new_membership.group_id == 3
+        assert new_membership.student_id == 2
+        assert new_membership.created_at == source_membership.left_at
+        assert result["source_group_id"] == 1
+        assert result["target_group_id"] == 3
+        assert activities[0]["activity_type"] == "group_transferred"
+        assert db.committed is True
 
 
 # ---------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-from datetime import date, time as dt_time, datetime
+from datetime import date, time as dt_time, datetime, timezone
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi_cache.decorator import cache
@@ -11,6 +11,7 @@ from app.schemas.groups import (
     GroupListResponse,
     GroupResponse,
     GroupStudentInfo,
+    GroupStudentTransfer,
     GroupStudentUpdate,
     GroupUpdate,
     GroupScheduleResponse,
@@ -25,6 +26,28 @@ from app.services.student_card_period import release_students_from_archived_grou
 from app.student_display import get_students_display_names
 
 router = APIRouter()
+
+
+def _assign_group_programs_to_student(db: Session, group: Group, student_id: int) -> None:
+    """Назначить ученику активные программы группы без создания дублей."""
+    from app.models import StudentProgram, StudentProgramLinkStatus
+
+    for program in (group.programs or []):
+        if program.status != ProgramStatus.ACTIVE:
+            continue
+        existing_link = db.query(StudentProgram).filter(
+            StudentProgram.student_id == student_id,
+            StudentProgram.program_id == program.id,
+        ).first()
+        if existing_link:
+            if existing_link.status == StudentProgramLinkStatus.ARCHIVED:
+                existing_link.status = StudentProgramLinkStatus.ACTIVE
+        else:
+            db.add(StudentProgram(
+                student_id=student_id,
+                program_id=program.id,
+                status=StudentProgramLinkStatus.ACTIVE,
+            ))
 
 
 def _parse_time(v) -> dt_time:
@@ -505,22 +528,7 @@ async def add_student_to_group(
     db.add(group_student)
     db.flush()
 
-    from app.models import StudentProgram, StudentProgramLinkStatus
-    for program in (group.programs or []):
-        if program.status == ProgramStatus.ACTIVE:
-            existing_link = db.query(StudentProgram).filter(
-                StudentProgram.student_id == student_id,
-                StudentProgram.program_id == program.id,
-            ).first()
-            if existing_link:
-                if existing_link.status == StudentProgramLinkStatus.ARCHIVED:
-                    existing_link.status = StudentProgramLinkStatus.ACTIVE
-            else:
-                db.add(StudentProgram(
-                    student_id=student_id,
-                    program_id=program.id,
-                    status=StudentProgramLinkStatus.ACTIVE,
-                ))
+    _assign_group_programs_to_student(db, group, student_id)
 
     log_student_activity(
         db,
@@ -535,6 +543,88 @@ async def add_student_to_group(
 
     log_action(db, current_user.id, "add_student", "group", group_id, {"student_id": student_id})
     return {"message": "Student added to group"}
+
+
+@router.post("/{group_id}/students/{student_id}/transfer")
+async def transfer_student_to_group(
+    group_id: int,
+    student_id: int,
+    payload: GroupStudentTransfer,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("groups.manage_roster")),
+):
+    """Бесшовно перевести ученика: закрыть текущее членство и создать новое.
+
+    Старое GroupStudent и все LessonAttendance сохраняются, поэтому история
+    обучения и посещений в исходной группе не меняется.
+    """
+    if payload.target_group_id == group_id:
+        raise HTTPException(status_code=400, detail="Source and target groups must be different")
+
+    source_group = db.query(Group).filter(Group.id == group_id).first()
+    target_group = db.query(Group).filter(Group.id == payload.target_group_id).first()
+    student = db.query(Student).filter(Student.id == student_id).first()
+    if not source_group or not target_group or not student:
+        raise HTTPException(status_code=404, detail="Group or student not found")
+    if student.status != StudentStatus.ACTIVE:
+        raise HTTPException(status_code=400, detail="Student is not active")
+    if target_group.status != GroupStatus.ACTIVE:
+        raise HTTPException(status_code=400, detail="Target group is not active")
+
+    source_membership = db.query(GroupStudent).filter(
+        GroupStudent.group_id == group_id,
+        GroupStudent.student_id == student_id,
+        GroupStudent.left_at.is_(None),
+    ).first()
+    if not source_membership:
+        raise HTTPException(status_code=404, detail="Student not in source group")
+
+    target_membership = db.query(GroupStudent).filter(
+        GroupStudent.group_id == payload.target_group_id,
+        GroupStudent.student_id == student_id,
+        GroupStudent.left_at.is_(None),
+    ).first()
+    if target_membership:
+        raise HTTPException(status_code=400, detail="Student already in target group")
+
+    transferred_at = datetime.now(timezone.utc)
+    source_membership.left_at = transferred_at
+    db.add(GroupStudent(
+        group_id=payload.target_group_id,
+        student_id=student_id,
+        created_at=transferred_at,
+    ))
+    _assign_group_programs_to_student(db, target_group, student_id)
+
+    log_student_activity(
+        db,
+        student_id=student_id,
+        activity_type="group_transferred",
+        title="Переведён в другую группу",
+        description=f"{source_group.name} → {target_group.name}",
+        created_by=current_user.id,
+        payload_json={
+            "source_group_id": source_group.id,
+            "source_group_name": source_group.name,
+            "target_group_id": target_group.id,
+            "target_group_name": target_group.name,
+            "transferred_at": transferred_at.isoformat(),
+        },
+    )
+    db.commit()
+
+    log_action(db, current_user.id, "transfer_student", "group", group_id, {
+        "student_id": student_id,
+        "source_group_id": group_id,
+        "target_group_id": payload.target_group_id,
+    })
+    return {
+        "message": "Student transferred",
+        "student_id": student_id,
+        "source_group_id": group_id,
+        "target_group_id": payload.target_group_id,
+        "transferred_at": transferred_at,
+    }
 
 
 @router.patch("/{group_id}/students/{student_id}")

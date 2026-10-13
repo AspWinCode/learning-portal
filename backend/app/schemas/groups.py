@@ -59,6 +59,10 @@ class GroupStudentUpdate(BaseModel):
     schedule_ids: Optional[List[int]] = None
 
 
+class GroupStudentTransfer(BaseModel):
+    target_group_id: int
+
+
 class GroupStudentInfo(BaseModel):
     student_id: int
     custom_duration_minutes: Optional[int] = None

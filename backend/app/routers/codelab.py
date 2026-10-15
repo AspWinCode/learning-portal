@@ -3,6 +3,7 @@ import hmac
 import json
 import logging
 import os
+from typing import Dict, List
 
 from fastapi import APIRouter, Depends, File as FastAPIFile, HTTPException, Request, Response, UploadFile, status
 from sqlalchemy.orm import Session
@@ -27,6 +28,7 @@ from app.schemas.codelab import (
     CodelabCourseUpdate,
     CodelabCourseWebhook,
     CodelabGradeIn,
+    CodelabItemsReorderIn,
     CodelabProjectCommentIn,
     CodelabProjectReviewIn,
     CodelabStudentProgress,
@@ -421,6 +423,72 @@ async def admin_delete_item(item_id: int, current_user: User = Depends(_manage))
 async def admin_archive_item(item_id: int, payload: dict, current_user: User = Depends(_manage)):
     try:
         return await cl.archive_item(current_user, item_id, bool(payload.get("archived")))
+    except CodelabError as e:
+        _raise(e)
+
+
+@router.put("/admin/courses/{course_id}/items/reorder")
+async def admin_reorder_items(
+    course_id: int, payload: CodelabItemsReorderIn,
+    current_user: User = Depends(_manage), db: Session = Depends(get_db),
+):
+    """Переставить siblings (одного parent_id) внутри курса. Codelab не даёт
+    batch/transactional эндпоинта для этого — шлём PUT .../items/{id} с новым
+    position по одному элементу за раз (best-effort, без настоящего rollback
+    при обрыве на середине — см. обсуждение в задаче). parent_id не меняется:
+    cross-parent move не поддерживается."""
+    try:
+        tree = await cl.get_course_tree(current_user, course_id)
+    except CodelabError as e:
+        _raise(e)
+        return
+
+    by_id: Dict[int, dict] = {}
+
+    def _walk(nodes):
+        for n in nodes:
+            by_id[n["id"]] = n
+            _walk(n.get("children") or [])
+
+    _walk(tree)
+
+    item_ids = payload.item_ids
+    if len(item_ids) != len(set(item_ids)):
+        raise HTTPException(status_code=400, detail="item_ids содержит дубликаты")
+
+    missing = [i for i in item_ids if i not in by_id]
+    if missing:
+        raise HTTPException(status_code=404, detail=f"Элементы не найдены в этом курсе: {missing}")
+
+    for item_id in item_ids:
+        if by_id[item_id].get("parent_id") != payload.parent_id:
+            raise HTTPException(status_code=400, detail=f"Элемент {item_id} не принадлежит указанному parent_id")
+
+    siblings = {n["id"] for n in by_id.values() if n.get("parent_id") == payload.parent_id}
+    if siblings != set(item_ids):
+        raise HTTPException(status_code=400, detail="item_ids должен содержать ровно всех siblings этого parent_id, не подмножество")
+
+    updated_ids: List[int] = []
+    for position, item_id in enumerate(item_ids):
+        if by_id[item_id].get("position") == position:
+            continue
+        try:
+            await cl.update_item(current_user, item_id, {"position": position})
+        except CodelabError as e:
+            raise HTTPException(
+                status_code=e.status_code if e.status_code < 500 else 502,
+                detail={
+                    "message": e.detail if e.status_code < 500 else f"Codelab недоступен: {e.detail}",
+                    "updated_item_ids": updated_ids,
+                    "failed_item_id": item_id,
+                },
+            )
+        updated_ids.append(item_id)
+
+    log_action(db, current_user.id, "reorder", "codelab_item", course_id, {"parent_id": payload.parent_id, "item_ids": item_ids})
+
+    try:
+        return await cl.get_course_tree(current_user, course_id)
     except CodelabError as e:
         _raise(e)
 

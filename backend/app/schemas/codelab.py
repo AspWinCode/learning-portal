@@ -90,6 +90,11 @@ class CodelabGradeIn(BaseModel):
     comment: str
 
 
+class CodelabItemsReorderIn(BaseModel):
+    parent_id: Optional[int] = None
+    item_ids: List[int]
+
+
 # ─── Проект с ручной проверкой (файлы ученика) ─────────────────────────────────
 
 

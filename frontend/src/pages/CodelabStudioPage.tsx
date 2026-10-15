@@ -4,7 +4,13 @@ import {
   DialogTitle, Divider, FormControlLabel, IconButton, List, ListItemText, Menu, MenuItem, Paper, Select,
   Snackbar, Stack, Tab, Table, TableBody, TableCell, TableHead, TableRow, Tabs, TextField, Typography,
 } from '@mui/material';
-import { Delete as DeleteIcon, MoreVert as MoreVertIcon, Publish as PublishIcon, UnpublishedOutlined as UnpublishIcon } from '@mui/icons-material';
+import {
+  Delete as DeleteIcon, DragIndicator as DragIndicatorIcon, MoreVert as MoreVertIcon,
+  Publish as PublishIcon, UnpublishedOutlined as UnpublishIcon,
+} from '@mui/icons-material';
+import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
+import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import Layout from '../components/Layout';
 import NotesEditor from '../components/NotesEditor';
 import { useAuth } from '../contexts/AuthContext';
@@ -39,6 +45,25 @@ function findNode(nodes: CodelabLearningItem[], id: number): CodelabLearningItem
   return null;
 }
 
+// Переставляет siblings одного parent_id (null — корень курса) в порядке
+// orderedIds, не трогая остальное дерево — для optimistic update локального
+// state сразу после drag/move, до ответа backend (см. reorderSiblings).
+function reorderChildrenOf(
+  nodes: CodelabLearningItem[], parentId: number | null, orderedIds: number[],
+): CodelabLearningItem[] {
+  if (parentId === null) {
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    return orderedIds.map((id, i) => ({ ...(byId.get(id) as CodelabLearningItem), position: i }));
+  }
+  return nodes.map((n) => {
+    if (n.id === parentId) {
+      const byId = new Map(n.children.map((c) => [c.id, c]));
+      return { ...n, children: orderedIds.map((id, i) => ({ ...(byId.get(id) as CodelabLearningItem), position: i })) };
+    }
+    return { ...n, children: reorderChildrenOf(n.children, parentId, orderedIds) };
+  });
+}
+
 // Codelab-прокси отдаёт причину ошибки в response.data.detail (например,
 // "Request failed with status code 404" — это generic axios e.message, а не
 // то, что реально ответил Codelab); показываем detail, если он есть.
@@ -46,28 +71,106 @@ function errMsg(e: any): string {
   return e?.response?.data?.detail || e?.message || 'Неизвестная ошибка';
 }
 
-/** Узел дерева курса — рекурсивный, с меню действий (добавить дочерний
- * узел/материал/задачу, редактировать, архивировать, удалить). Иерархия
- * жёсткая (Модуль → Подмодуль → Тема → Подтема, app/services/tree_rules.py
- * в Codelab) — дочерний структурный уровень для узла вычисляется таблицей
- * CODELAB_CHILD_STRUCTURAL_TYPE; контент (материал/задача) можно добавить
- * на любом структурном уровне, но не под самим материалом/задачей. */
-function TreeItemRow({ item, depth, onAddChild, onEdit, onArchive, onDelete }: {
-  item: CodelabLearningItem;
+/** Список siblings одного parent_id (null — корень курса) — своя пара
+ * DndContext/SortableContext на каждый уровень дерева, т.к. drag разрешён
+ * только внутри одного родителя (cross-parent move — отдельная будущая
+ * задача, см. CodelabStudioPage audit). */
+function SiblingsList({ items, depth, parentId, canManage, onReorder, onAddChild, onEdit, onArchive, onDelete }: {
+  items: CodelabLearningItem[];
   depth: number;
+  parentId: number | null;
+  canManage: boolean;
+  onReorder: (parentId: number | null, orderedIds: number[]) => void;
   onAddChild: (parentId: number, type: string) => void;
   onEdit: (item: CodelabLearningItem) => void;
   onArchive: (item: CodelabLearningItem) => void;
   onDelete: (item: CodelabLearningItem) => void;
 }) {
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+  const ids = items.map((i) => i.id);
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = ids.indexOf(active.id as number);
+    const newIndex = ids.indexOf(over.id as number);
+    if (oldIndex < 0 || newIndex < 0) return;
+    onReorder(parentId, arrayMove(ids, oldIndex, newIndex));
+  };
+
+  const moveBy = (index: number, delta: number) => {
+    const newIndex = index + delta;
+    if (newIndex < 0 || newIndex >= ids.length) return;
+    onReorder(parentId, arrayMove(ids, index, newIndex));
+  };
+
+  return (
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <SortableContext items={ids} strategy={verticalListSortingStrategy}>
+        {items.map((item, idx) => (
+          <TreeItemRow
+            key={item.id}
+            item={item}
+            depth={depth}
+            canManage={canManage}
+            isFirst={idx === 0}
+            isLast={idx === items.length - 1}
+            onMoveUp={() => moveBy(idx, -1)}
+            onMoveDown={() => moveBy(idx, 1)}
+            onReorder={onReorder}
+            onAddChild={onAddChild}
+            onEdit={onEdit}
+            onArchive={onArchive}
+            onDelete={onDelete}
+          />
+        ))}
+      </SortableContext>
+    </DndContext>
+  );
+}
+
+/** Узел дерева курса — рекурсивный, с меню действий (добавить дочерний
+ * узел/материал/задачу, редактировать, переместить выше/ниже, архивировать,
+ * удалить). Иерархия жёсткая (Модуль → Подмодуль → Тема → Подтема,
+ * app/services/tree_rules.py в Codelab) — дочерний структурный уровень для
+ * узла вычисляется таблицей CODELAB_CHILD_STRUCTURAL_TYPE; контент
+ * (материал/задача) можно добавить на любом структурном уровне, но не под
+ * самим материалом/задачей. Drag — только за хэндл слева (не за всю строку,
+ * иначе конфликтует с кликом по строке, который открывает редактирование). */
+function TreeItemRow({ item, depth, canManage, isFirst, isLast, onAddChild, onEdit, onArchive, onDelete, onMoveUp, onMoveDown, onReorder }: {
+  item: CodelabLearningItem;
+  depth: number;
+  canManage: boolean;
+  isFirst: boolean;
+  isLast: boolean;
+  onAddChild: (parentId: number, type: string) => void;
+  onEdit: (item: CodelabLearningItem) => void;
+  onArchive: (item: CodelabLearningItem) => void;
+  onDelete: (item: CodelabLearningItem) => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  onReorder: (parentId: number | null, orderedIds: number[]) => void;
+}) {
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   const isStructural = STRUCTURAL_TYPE_SET.has(item.type);
   const childStructType = isStructural ? CODELAB_CHILD_STRUCTURAL_TYPE[item.type as CodelabStructuralType] : null;
   const close = () => setAnchorEl(null);
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id, disabled: !canManage });
 
   return (
-    <Box sx={{ borderBottom: '1px solid', borderColor: 'divider', '&:last-child': { borderBottom: 0 } }}>
+    <Box
+      ref={setNodeRef}
+      sx={{
+        borderBottom: '1px solid', borderColor: 'divider', '&:last-child': { borderBottom: 0 },
+        transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1, bgcolor: 'background.paper',
+      }}
+    >
       <Stack direction="row" alignItems="center" spacing={1} sx={{ pl: 1.5 + depth * 3, pr: 1, py: 1, opacity: item.is_archived ? 0.5 : 1 }}>
+        {canManage && (
+          <Box {...attributes} {...listeners} sx={{ display: 'flex', cursor: 'grab', color: 'text.secondary', touchAction: 'none' }}>
+            <DragIndicatorIcon fontSize="small" />
+          </Box>
+        )}
         <Stack
           direction="row" alignItems="center" spacing={1}
           onClick={() => onEdit(item)}
@@ -100,13 +203,23 @@ function TreeItemRow({ item, depth, onAddChild, onEdit, onArchive, onDelete }: {
           {isStructural && <MenuItem onClick={() => { onAddChild(item.id, 'project'); close(); }}>+ Проект</MenuItem>}
           {isStructural && <Divider />}
           <MenuItem onClick={() => { onEdit(item); close(); }}>Редактировать</MenuItem>
+          {canManage && <MenuItem disabled={isFirst} onClick={() => { onMoveUp(); close(); }}>Переместить выше</MenuItem>}
+          {canManage && <MenuItem disabled={isLast} onClick={() => { onMoveDown(); close(); }}>Переместить ниже</MenuItem>}
           <MenuItem onClick={() => { onArchive(item); close(); }}>{item.is_archived ? 'Разархивировать' : 'Архивировать'}</MenuItem>
           <MenuItem onClick={() => { onDelete(item); close(); }} sx={{ color: 'error.main' }}>Удалить</MenuItem>
         </Menu>
       </Stack>
-      {item.children.map((child) => (
-        <TreeItemRow key={child.id} item={child} depth={depth + 1} onAddChild={onAddChild} onEdit={onEdit} onArchive={onArchive} onDelete={onDelete} />
-      ))}
+      <SiblingsList
+        items={item.children}
+        depth={depth + 1}
+        parentId={item.id}
+        canManage={canManage}
+        onReorder={onReorder}
+        onAddChild={onAddChild}
+        onEdit={onEdit}
+        onArchive={onArchive}
+        onDelete={onDelete}
+      />
     </Box>
   );
 }
@@ -156,6 +269,8 @@ interface NodeDialogState {
 }
 
 function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
+  const { user } = useAuth();
+  const canManage = hasPermission(user, 'codelab.manage');
   const [courses, setCourses] = useState<CodelabCourse[]>([]);
   const [selected, setSelected] = useState<CodelabCourse | null>(null);
   const [tree, setTree] = useState<CodelabLearningItem[]>([]);
@@ -392,6 +507,24 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
     }
   };
 
+  // Optimistic reorder: сразу переставляем локальный tree, зовём backend
+  // (атомарность не гарантирована — Codelab не даёт batch-эндпоинта, backend
+  // шлёт PUT по одному item, см. audit в задаче), при ошибке откатываем на
+  // снимок до drag и показываем Snackbar. При успехе backend возвращает
+  // актуальное дерево — используем его вместо отдельного refresh().
+  const reorderSiblings = async (parentId: number | null, orderedIds: number[]) => {
+    if (!selected) return;
+    const prevTree = tree;
+    setTree((t) => reorderChildrenOf(t, parentId, orderedIds));
+    try {
+      const updated = await api.reorderItems(selected.id, parentId, orderedIds);
+      setTree(updated);
+    } catch (e: any) {
+      setTree(prevTree);
+      onToast({ msg: errMsg(e), err: true });
+    }
+  };
+
   const toggleArchive = async (item: CodelabLearningItem) => {
     try {
       await api.archiveItem(item.id, !item.is_archived);
@@ -607,13 +740,14 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
 
             {loading ? <CircularProgress size={24} /> : (
               <Paper variant="outlined">
-                {tree.map((item) => (
-                  <TreeItemRow
-                    key={item.id}
-                    item={item} depth={0}
-                    onAddChild={openCreate} onEdit={openEdit} onArchive={toggleArchive} onDelete={setDeleteTarget}
-                  />
-                ))}
+                <SiblingsList
+                  items={tree}
+                  depth={0}
+                  parentId={null}
+                  canManage={canManage}
+                  onReorder={reorderSiblings}
+                  onAddChild={openCreate} onEdit={openEdit} onArchive={toggleArchive} onDelete={setDeleteTarget}
+                />
                 {tree.length === 0 && <Typography variant="caption" color="text.secondary" sx={{ p: 2, display: 'block' }}>В черновике пока пусто.</Typography>}
               </Paper>
             )}

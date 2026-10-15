@@ -280,6 +280,8 @@ export const codelabStudioApi = {
   archiveItem: (itemId: number, archived: boolean): Promise<CodelabLearningItem> =>
     api.put(`${B}/items/${itemId}/archive`, { archived }).then((r) => r.data),
   getTree: (courseId: number): Promise<CodelabLearningItem[]> => api.get(`${B}/courses/${courseId}/tree`).then((r) => r.data),
+  reorderItems: (courseId: number, parentId: number | null, itemIds: number[]): Promise<CodelabLearningItem[]> =>
+    api.put(`${B}/courses/${courseId}/items/reorder`, { parent_id: parentId, item_ids: itemIds }).then((r) => r.data),
   publishCourse: (courseId: number): Promise<CodelabCourse> => api.post(`${B}/courses/${courseId}/publish`).then((r) => r.data),
   unpublishCourse: (courseId: number): Promise<CodelabCourse> => api.post(`${B}/courses/${courseId}/unpublish`).then((r) => r.data),
 

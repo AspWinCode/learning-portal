@@ -18,6 +18,7 @@ import {
 } from '@mui/material';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import LogoutIcon from '@mui/icons-material/Logout';
+import InstallMobileIcon from '@mui/icons-material/InstallMobile';
 import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
 import MilitaryTechIcon from '@mui/icons-material/MilitaryTech';
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
@@ -27,6 +28,8 @@ import TaskAltIcon from '@mui/icons-material/TaskAlt';
 import StarIcon from '@mui/icons-material/Star';
 import { studentPortalApi, StudentPortalProfile, UpcomingLesson, StudentGrade } from '../services/studentPortalApi';
 import { CourseCatalogItemOut } from '../types';
+import { usePwaInstall } from '../hooks/usePwaInstall';
+import { useManifestOverride } from '../hooks/useManifestOverride';
 
 const DAY_NAMES = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
 const MONTH_NAMES = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
@@ -67,6 +70,8 @@ const StudentPortalCabinetPage: React.FC = () => {
   const [pwError, setPwError] = useState<string | null>(null);
   const [pwSuccess, setPwSuccess] = useState(false);
   const navigate = useNavigate();
+  useManifestOverride('/manifest-student.webmanifest');
+  const { canInstall, promptInstall, isInstalled } = usePwaInstall();
 
   useEffect(() => {
     if (!studentPortalApi.getToken()) { navigate('/student-portal/login', { replace: true }); return; }
@@ -189,6 +194,16 @@ const StudentPortalCabinetPage: React.FC = () => {
 
           {/* Actions */}
           <Stack direction="row" gap={1} sx={{ flexShrink: 0 }}>
+            {!isInstalled && canInstall && (
+              <IconButton
+                onClick={promptInstall}
+                size="small"
+                sx={{ color: 'rgba(255,255,255,0.6)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', '&:hover': { color: '#fff', borderColor: 'rgba(255,255,255,0.3)', bgcolor: 'rgba(255,255,255,0.08)' } }}
+                title="Установить приложение"
+              >
+                <InstallMobileIcon fontSize="small" />
+              </IconButton>
+            )}
             <IconButton
               onClick={handlePwOpen}
               size="small"

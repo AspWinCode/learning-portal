@@ -4609,6 +4609,12 @@ class SmmChannelConfig(Base):
     channel = Column(String(32), nullable=False)
     secret_encrypted = Column(Text, nullable=True)
     is_enabled = Column(Boolean, nullable=False, default=True)
+    # configured (secret_encrypted заполнен) != verified (реальный API-чек прошёл).
+    # UI не должен показывать "подключён", пока verified не True — см.
+    # services/smm_projects/channels.verify_channel().
+    verified = Column(Boolean, nullable=False, default=False)
+    verification_error = Column(Text, nullable=True)
+    verified_at = Column(DateTime(timezone=True), nullable=True)
     created_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

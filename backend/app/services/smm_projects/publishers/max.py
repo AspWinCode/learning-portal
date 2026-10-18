@@ -5,7 +5,16 @@ from typing import Dict, Optional
 
 import httpx
 
-from .base import PublicationContext, Publisher, PublisherResult
+from .base import PublicationContext, Publisher, PublisherResult, VerifyResult
+
+# Понятные тексты ошибок MAX API по HTTP-статусу — без них UI показывал
+# "подключён" даже когда токен недействителен или бот не имеет доступа к чату.
+_STATUS_ERRORS = {
+    401: "Недействительный токен MAX",
+    403: "Бот не имеет доступа к чату",
+    404: "Чат MAX не найден",
+    429: "Превышен лимит MAX API",
+}
 
 
 class MaxPublisher(Publisher):
@@ -22,6 +31,43 @@ class MaxPublisher(Publisher):
         resolved = config or self._env_config(project_code)
         return bool(resolved and resolved.get("token") and resolved.get("chat_id"))
 
+    def _error_for(self, response: httpx.Response) -> Optional[str]:
+        if response.status_code < 400:
+            return None
+        known = _STATUS_ERRORS.get(response.status_code)
+        if known:
+            return known
+        try:
+            body = response.json()
+        except ValueError:
+            body = None
+        if isinstance(body, dict):
+            detail = body.get("message") or body.get("error")
+            if detail:
+                return f"MAX API: {detail}"
+        return f"MAX API вернул ошибку {response.status_code}: {(response.text or '').strip()[:300]}"
+
+    async def verify(self, project_code: str, config: Optional[Dict[str, str]] = None) -> VerifyResult:
+        resolved = config or self._env_config(project_code)
+        if not resolved or not resolved.get("token") or not resolved.get("chat_id"):
+            return VerifyResult(ok=False, error="MAX не настроен: отсутствует токен или chat_id")
+        headers = {"Authorization": resolved["token"]}
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.get(f"{self.API}/chats/{resolved['chat_id']}", headers=headers)
+        except httpx.RequestError as exc:
+            return VerifyResult(ok=False, error=f"MAX API недоступен: {exc}")
+        error = self._error_for(response)
+        if error:
+            return VerifyResult(ok=False, error=error)
+        try:
+            data = response.json()
+        except ValueError:
+            return VerifyResult(ok=False, error="MAX API вернул некорректный JSON")
+        chat_id = str(data.get("chat_id") or resolved["chat_id"])
+        chat_title = data.get("title")
+        return VerifyResult(ok=True, detail={"chat_id": chat_id, "chat_title": chat_title})
+
     async def publish(self, context: PublicationContext) -> PublisherResult:
         config = context.config or self._env_config(context.project_code)
         if config is None:
@@ -31,6 +77,9 @@ class MaxPublisher(Publisher):
             attachments = []
             if context.asset_bytes:
                 upload = await client.post(f"{self.API}/uploads?type=image", headers=headers)
+                upload_error = self._error_for(upload)
+                if upload_error:
+                    raise ValueError(upload_error)
                 upload_data = upload.json()
                 upload_url = upload_data.get("url")
                 if not upload_url:
@@ -40,6 +89,9 @@ class MaxPublisher(Publisher):
                     headers=headers,
                     files={"data": (context.asset_filename, context.asset_bytes, "image/png")},
                 )
+                uploaded_error = self._error_for(uploaded)
+                if uploaded_error:
+                    raise ValueError(uploaded_error)
                 uploaded_data = uploaded.json()
                 token = ((uploaded_data.get("photos") or {}).get("photoIds") or {}).get("token")
                 if not token:
@@ -53,7 +105,13 @@ class MaxPublisher(Publisher):
                 headers=headers,
                 json={"text": context.text, "attachments": attachments},
             )
+        message_error = self._error_for(response)
+        if message_error:
+            raise ValueError(message_error)
+        try:
             data = response.json()
+        except ValueError as exc:
+            raise ValueError("MAX API вернул некорректный JSON") from exc
         if data.get("code") or data.get("error"):
             raise ValueError(str(data.get("message") or data.get("error") or data))
         message = data.get("message") or data

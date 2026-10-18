@@ -8,6 +8,7 @@ Passwords vault (app.services.password_vault_crypto) — реиспользуе�
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
@@ -58,6 +59,11 @@ def set_channel_config(db: Session, project: SmmProject, user, channel: str, con
         db.add(row)
     row.secret_encrypted = encrypt_password(json.dumps(config))
     row.is_enabled = True
+    # Новые секреты ещё не проверены реальным API-чеком — не наследуем
+    # verified=True от предыдущих значений полей.
+    row.verified = False
+    row.verification_error = None
+    row.verified_at = None
     db.commit()
     db.refresh(row)
     return row
@@ -78,5 +84,42 @@ def is_configured(db: Session, project: SmmProject, channel: str) -> bool:
     return publisher.is_configured(project.code, config)
 
 
+def channel_status(db: Session, project: SmmProject, channel: str) -> Dict[str, Any]:
+    row = _row(db, project, channel)
+    configured = is_configured(db, project, channel)
+    return {
+        "channel": channel,
+        "configured": configured,
+        "verified": bool(configured and row is not None and row.verified),
+        "verification_error": row.verification_error if row is not None else None,
+        "verified_at": row.verified_at if row is not None else None,
+    }
+
+
 def list_channel_statuses(db: Session, project: SmmProject) -> List[Dict[str, Any]]:
-    return [{"channel": ch, "configured": is_configured(db, project, ch)} for ch in SUPPORTED_CHANNELS]
+    return [channel_status(db, project, ch) for ch in SUPPORTED_CHANNELS]
+
+
+async def verify_channel(db: Session, project: SmmProject, channel: str) -> Dict[str, Any]:
+    """Реальный API-чек (не маскируем «подключён», пока это не прошло — см.
+    MaxPublisher.verify()). Токен никогда не возвращается наружу."""
+    if channel not in SUPPORTED_CHANNELS:
+        raise ValueError(f"Канал «{channel}» не поддерживается. Доступны: {', '.join(SUPPORTED_CHANNELS)}")
+    publisher = PUBLISHERS[channel]
+    row = _row(db, project, channel)
+    config = get_channel_config(db, project, channel)
+    if row is None or config is None:
+        return {"channel": channel, "configured": False, "verified": False, "error": "Канал не настроен"}
+
+    result = await publisher.verify(project.code, config)
+    row.verified = result.ok
+    row.verification_error = None if result.ok else (result.error or "Проверка не удалась")
+    row.verified_at = datetime.now(timezone.utc)
+    db.commit()
+
+    response: Dict[str, Any] = {"channel": channel, "configured": True, "verified": result.ok}
+    if result.ok:
+        response.update(result.detail or {})
+    else:
+        response["error"] = row.verification_error
+    return response

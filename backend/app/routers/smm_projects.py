@@ -22,6 +22,7 @@ from app.schemas.smm_projects import (
     BrandContextFieldOut,
     ChannelConfigSet,
     ChannelStatusOut,
+    ChannelVerifyOut,
     ContentList,
     ContentOut,
     ContentPlanCreate,
@@ -180,6 +181,25 @@ def set_channel(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     log_action(db, current_user.id, "update", "smm_channel_config", None, {"project": code, "channel": channel})
     return ChannelStatusOut(channel=channel, configured=channels_svc.is_configured(db, project, channel))
+
+
+@router.post("/projects/{code}/channels/{channel}/verify", response_model=ChannelVerifyOut)
+async def verify_channel(
+    code: str,
+    channel: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("smm_projects.manage_channels")),
+):
+    project = _get_accessible_project(db, code, current_user)
+    try:
+        result = await channels_svc.verify_channel(db, project, channel)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    log_action(
+        db, current_user.id, "verify", "smm_channel_config", None,
+        {"project": code, "channel": channel, "verified": result.get("verified")},
+    )
+    return result
 
 
 @router.delete("/projects/{code}/channels/{channel}", status_code=status.HTTP_204_NO_CONTENT)

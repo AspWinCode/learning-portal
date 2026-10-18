@@ -10,6 +10,7 @@ scheduled), который дальше публикует периодичес�
 работает сама»)."""
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import Dict, Iterable, List, Optional
 
@@ -22,6 +23,8 @@ from app.services.smm_projects.publishers.base import PublicationContext, Publis
 
 SUPPORTED_CHANNELS = channels_svc.SUPPORTED_CHANNELS
 PUBLISHERS = channels_svc.PUBLISHERS
+
+logger = logging.getLogger(__name__)
 
 
 def is_channel_configured(db: Session, project: SmmProject, channel: str) -> bool:
@@ -155,6 +158,7 @@ async def process_publication(db: Session, publication_id: int) -> Optional[SmmP
     row = db.query(SmmPublication).filter(SmmPublication.id == publication_id).first()
     project = db.query(SmmProject).filter(SmmProject.id == row.project_id).first()
     asset = db.query(SmmContentAsset).filter(SmmContentAsset.id == row.asset_id, SmmContentAsset.content_id == row.content_id).first() if row.asset_id else None
+    status_before = row.status
     try:
         result = await _deliver(db, project, row, asset)
         row.status, row.external_id, row.external_url, row.published_at, row.last_error = (
@@ -169,6 +173,18 @@ async def process_publication(db: Session, publication_id: int) -> Optional[SmmP
         external_id=row.external_id, external_url=row.external_url, error=error, published_by_id=row.approved_by_id,
     ))
     db.commit()
+    logger.info(
+        "smm_publication processed",
+        extra={
+            "publication_id": row.id,
+            "project_code": getattr(project, "code", None),
+            "channel": row.channel,
+            "status_before": status_before,
+            "status_after": row.status,
+            "external_id": row.external_id,
+            "error": error,
+        },
+    )
     return row
 
 

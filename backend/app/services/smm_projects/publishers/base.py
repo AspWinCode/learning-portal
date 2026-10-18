@@ -24,6 +24,13 @@ class PublisherResult:
     external_url: Optional[str] = None
 
 
+@dataclass
+class VerifyResult:
+    ok: bool
+    error: Optional[str] = None
+    detail: Optional[Dict[str, Optional[str]]] = None
+
+
 class Publisher:
     channel: str
 
@@ -32,3 +39,12 @@ class Publisher:
 
     async def publish(self, context: PublicationContext) -> PublisherResult:
         raise NotImplementedError
+
+    async def verify(self, project_code: str, config: Optional[Dict[str, str]] = None) -> VerifyResult:
+        """Реальный API-чек токена/назначения. База даёт оптимистичную
+        проверку (просто configured) для каналов, которые её ещё не
+        реализовали — переопределяется там, где есть дешёвый read-only
+        endpoint (см. MaxPublisher)."""
+        if not self.is_configured(project_code, config):
+            return VerifyResult(ok=False, error="Канал не настроен: не заполнены обязательные поля")
+        return VerifyResult(ok=True)

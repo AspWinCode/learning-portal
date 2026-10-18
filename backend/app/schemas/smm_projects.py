@@ -109,6 +109,18 @@ class ChannelConfigSet(BaseModel):
 class ChannelStatusOut(BaseModel):
     channel: str
     configured: bool
+    verified: bool = False
+    verification_error: Optional[str] = None
+    verified_at: Optional[datetime] = None
+
+
+class ChannelVerifyOut(BaseModel):
+    channel: str
+    configured: bool
+    verified: bool
+    error: Optional[str] = None
+    chat_id: Optional[str] = None
+    chat_title: Optional[str] = None
 
 
 # ─── Templates ──────────────────────────────────────────────────────────────

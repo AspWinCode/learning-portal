@@ -45,6 +45,7 @@ def run_smm_due_publications() -> None:
         if not ids:
             return
         from app.background_tasks import task_smm_publication
+        logger.info("smm_due_publications: dispatching %d publication(s): %s", len(ids), ids)
         for publication_id in ids:
             task_smm_publication.send(publication_id)
 

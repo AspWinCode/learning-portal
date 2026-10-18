@@ -226,6 +226,19 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
     await reload();
   };
 
+  // Немедленная публикация исполняется фоновой задачей (dramatiq), поэтому
+  // ответ publish-bundle приходит со status=approved, когда работа ещё не
+  // началась — опрашиваем публикации, пока они не дойдут до success/error,
+  // иначе UI выглядит так, будто "ничего не произошло".
+  const pollUntilSettled = async (id: number, pendingIds: number[]) => {
+    for (let attempt = 0; attempt < 15 && pendingIds.length; attempt += 1) {
+      await new Promise((r) => setTimeout(r, 1500));
+      const rows = await smm.listPublications(id);
+      setPublications((r) => ({ ...r, [id]: rows }));
+      pendingIds = rows.filter((row) => !['success', 'error', 'cancelled'].includes(row.status)).map((row) => row.id);
+    }
+  };
+
   const runPublish = async (id: number) => {
     const channels = selectedChannels[id] || [];
     if (!channels.length) return;
@@ -238,6 +251,8 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
         scheduleAt[id] ? new Date(scheduleAt[id]).toISOString() : null
       );
       setPublications((r) => ({ ...r, [id]: rows }));
+      const pendingIds = rows.filter((row) => !['success', 'error', 'cancelled'].includes(row.status)).map((row) => row.id);
+      if (pendingIds.length) await pollUntilSettled(id, pendingIds);
     } catch (e) {
       setError(extractApiError(e, 'Ошибка'));
     } finally {
@@ -346,9 +361,9 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
                 sx={{ minWidth: 210 }}
               >
                 {publishChannels.map((ch) => (
-                  <MenuItem key={ch.channel} value={ch.channel} disabled={!ch.configured}>
+                  <MenuItem key={ch.channel} value={ch.channel} disabled={!ch.verified}>
                     {ch.channel}
-                    {!ch.configured ? ' (не настроен)' : ''}
+                    {!ch.configured ? ' (не настроен)' : !ch.verified ? ' (не проверен)' : ''}
                   </MenuItem>
                 ))}
               </Select>
@@ -373,12 +388,22 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
           )}
           {publications[item.id]?.length > 0 && (
             <Stack spacing={0.5} sx={{ mt: 1 }}>
-              {publications[item.id].map((p) => (
-                <Alert key={p.id} severity={p.status === 'success' ? 'success' : p.status === 'error' ? 'error' : 'info'}>
-                  {p.channel}: {p.status}
-                  {p.external_url ? ` — ${p.external_url}` : ''}
-                </Alert>
-              ))}
+              {publications[item.id].map((p) => {
+                const label =
+                  p.status === 'success'
+                    ? `${p.channel}: Опубликовано ✓`
+                    : p.status === 'error'
+                    ? `${p.channel}: Ошибка — ${p.last_error || 'см. детали'}`
+                    : p.status === 'scheduled'
+                    ? `${p.channel}: Запланировано`
+                    : `${p.channel}: Публикация…`;
+                return (
+                  <Alert key={p.id} severity={p.status === 'success' ? 'success' : p.status === 'error' ? 'error' : 'info'}>
+                    {label}
+                    {p.external_url ? ` — ${p.external_url}` : ''}
+                  </Alert>
+                );
+              })}
             </Stack>
           )}
         </Paper>
@@ -483,8 +508,29 @@ const ChannelsTab: React.FC<{ projectCode: string; canManage: boolean }> = ({ pr
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
+  const [verifying, setVerifying] = useState<string | null>(null);
 
   const reload = () => smm.listChannels(projectCode).then(setStatuses).catch(() => setStatuses([]));
+
+  const verify = async (channel: string) => {
+    setVerifying(channel);
+    setError(null);
+    setSaved(null);
+    try {
+      const result = await smm.verifyChannel(projectCode, channel);
+      setSaved(
+        result.verified
+          ? `MAX проверен: чат «${result.chat_title || result.chat_id || ''}» доступен`
+          : null
+      );
+      if (!result.verified) setError(result.error || 'Ошибка подключения');
+      await reload();
+    } catch (e) {
+      setError(extractApiError(e, 'Ошибка проверки'));
+    } finally {
+      setVerifying(null);
+    }
+  };
 
   useEffect(() => {
     reload();
@@ -526,15 +572,30 @@ const ChannelsTab: React.FC<{ projectCode: string; canManage: boolean }> = ({ pr
       {saved && <Alert severity="success">{saved}</Alert>}
       {ALL_CHANNELS.map((channel) => {
         const status = statuses.find((s) => s.channel === channel);
+        const badge = !status?.configured
+          ? { color: 'default' as const, label: 'не настроен' }
+          : status.verified
+          ? { color: 'success' as const, label: '✓ Подключён и проверен' }
+          : { color: 'warning' as const, label: '⚠ Настроен, но не проверен' };
         return (
           <Paper key={channel} variant="outlined" sx={{ p: 2 }}>
             <Stack direction="row" justifyContent="space-between" alignItems="center">
               <Typography variant="subtitle1">{channel}</Typography>
-              <Chip size="small" color={status?.configured ? 'success' : 'default'} label={status?.configured ? 'настроен' : 'не настроен'} />
+              <Chip size="small" color={badge.color} label={badge.label} />
             </Stack>
+            {status?.configured && status.verification_error && (
+              <Alert severity="error" sx={{ mt: 1 }}>
+                ✕ Ошибка подключения: {status.verification_error}
+              </Alert>
+            )}
             {canManage && editing !== channel && (
               <Button size="small" sx={{ mt: 1 }} onClick={() => startEdit(channel)}>
                 {status?.configured ? 'Изменить' : 'Настроить'}
+              </Button>
+            )}
+            {canManage && status?.configured && editing !== channel && (
+              <Button size="small" sx={{ mt: 1, ml: 1 }} disabled={verifying === channel} onClick={() => verify(channel)}>
+                {verifying === channel ? 'Проверяем…' : 'Проверить подключение'}
               </Button>
             )}
             {canManage && status?.configured && editing !== channel && (

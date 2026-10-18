@@ -97,6 +97,18 @@ export const reindexKnowledge = (code: string): Promise<{ indexed: number; backe
 export interface ChannelStatus {
   channel: string;
   configured: boolean;
+  verified: boolean;
+  verification_error: string | null;
+  verified_at: string | null;
+}
+
+export interface ChannelVerifyResult {
+  channel: string;
+  configured: boolean;
+  verified: boolean;
+  error?: string | null;
+  chat_id?: string | null;
+  chat_title?: string | null;
 }
 
 export const CHANNEL_FIELD_SPECS: Record<string, { key: string; label: string }[]> = {
@@ -127,6 +139,9 @@ export const setChannelConfig = (code: string, channel: string, config: Record<s
 
 export const removeChannel = (code: string, channel: string): Promise<void> =>
   api.delete(`${BASE}/projects/${code}/channels/${channel}`);
+
+export const verifyChannel = (code: string, channel: string): Promise<ChannelVerifyResult> =>
+  api.post(`${BASE}/projects/${code}/channels/${channel}/verify`).then((r) => r.data);
 
 // ─── Templates ────────────────────────────────────────────────────────────
 

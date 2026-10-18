@@ -109,6 +109,7 @@ export interface ChannelVerifyResult {
   error?: string | null;
   chat_id?: string | null;
   chat_title?: string | null;
+  feed_url?: string | null;
 }
 
 export const CHANNEL_FIELD_SPECS: Record<string, { key: string; label: string }[]> = {
@@ -129,7 +130,11 @@ export const CHANNEL_FIELD_SPECS: Record<string, { key: string; label: string }[
     { key: 'token', label: 'Access token' },
     { key: 'chat_id', label: 'Chat ID' },
   ],
+  // У Дзена нет API — полей для заполнения нет, см. publishers/zen.py.
+  zen: [],
 };
+
+export const ALL_CHANNELS = ['vk', 'telegram', 'instagram', 'max', 'zen'];
 
 export const listChannels = (code: string): Promise<ChannelStatus[]> =>
   api.get(`${BASE}/projects/${code}/channels`).then((r) => r.data);
@@ -275,88 +280,49 @@ export interface EventPackResult {
 export const createEventPack = (code: string, eventData: Record<string, unknown>): Promise<EventPackResult> =>
   api.post(`${BASE}/projects/${code}/event-pack`, { event_data: eventData }).then((r) => r.data);
 
-// ─── Content plan + периодичность ────────────────────────────────────────
+// ─── Compose (вставил текст → выбрал каналы/проект → опубликовал) ──────────
 
-export type ContentPlanItemStatus = 'pending' | 'generating' | 'ready' | 'publishing' | 'published' | 'error' | 'skipped' | 'cancelled';
-
-export interface ContentPlanItem {
+export interface PublicationWithProject {
   id: number;
-  plan_id: number;
-  scheduled_at: string | null;
-  channel: string | null;
-  content_type: string | null;
-  title: string;
-  brief: string | null;
-  generated_content_id: number | null;
-  status: ContentPlanItemStatus;
-  last_error: string | null;
-}
-
-export interface Periodicity {
-  unit: 'day' | 'week';
-  times: number;
-  channels: string[];
-  auto_publish: boolean;
-  lookahead_days: number;
-  goals?: string;
-  brief?: string;
-}
-
-export interface ContentPlan {
-  id: number;
+  content_id: number;
   project_id: number;
-  name: string;
-  date_from: string | null;
-  date_to: string | null;
-  periodicity: Periodicity | null;
-  is_active: boolean;
-  last_generated_at: string | null;
-  created_by_id: number | null;
+  project_code: string;
+  channel: string;
+  asset_id: number | null;
+  asset_url: string | null;
+  text_snapshot: string;
+  status: string;
+  scheduled_at: string | null;
+  approved_by_id: number | null;
+  approved_at: string | null;
+  started_at: string | null;
+  published_at: string | null;
+  external_id: string | null;
+  external_url: string | null;
+  attempt_count: number;
+  last_error: string | null;
   created_at: string | null;
-  items: ContentPlanItem[];
+  updated_at: string | null;
 }
 
-export const listContentPlans = (code: string): Promise<ContentPlan[]> =>
-  api.get(`${BASE}/projects/${code}/content-plans`).then((r) => r.data);
+export const composeAndPublish = (payload: {
+  projectCode: string;
+  text: string;
+  channels: string[];
+  publishAt?: string | null;
+  image?: File | Blob | null;
+}): Promise<PublicationWithProject[]> => {
+  const form = new FormData();
+  form.append('project_code', payload.projectCode);
+  form.append('text', payload.text);
+  form.append('channels', payload.channels.join(','));
+  if (payload.publishAt) form.append('publish_at', payload.publishAt);
+  if (payload.image) form.append('image', payload.image, (payload.image as File).name || 'image.png');
+  return api.post(`${BASE}/compose`, form, { headers: { 'Content-Type': 'multipart/form-data' } }).then((r) => r.data);
+};
 
-export const createContentPlan = (
-  code: string,
-  payload: { name: string; date_from?: string; date_to?: string; periodicity?: Periodicity }
-): Promise<ContentPlan> => api.post(`${BASE}/projects/${code}/content-plans`, payload).then((r) => r.data);
-
-export const getContentPlan = (code: string, planId: number): Promise<ContentPlan> =>
-  api.get(`${BASE}/projects/${code}/content-plans/${planId}`).then((r) => r.data);
-
-export const updateContentPlan = (
-  code: string,
-  planId: number,
-  payload: Partial<{ name: string; date_from: string; date_to: string; periodicity: Periodicity; is_active: boolean }>
-): Promise<ContentPlan> => api.patch(`${BASE}/projects/${code}/content-plans/${planId}`, payload).then((r) => r.data);
-
-export const runContentPlanNow = (code: string, planId: number): Promise<{ items_created: number }> =>
-  api.post(`${BASE}/projects/${code}/content-plans/${planId}/run-now`).then((r) => r.data);
-
-export const generateContentPlanItems = (
-  code: string,
-  planId: number,
-  payload: { count: number; channels: string[]; goals?: string; important_events?: string }
-): Promise<ContentPlanItem[]> =>
-  api.post(`${BASE}/projects/${code}/content-plans/${planId}/generate-items`, payload).then((r) => r.data);
-
-export const updateContentPlanItem = (
-  itemId: number,
-  payload: Partial<{
-    title: string;
-    scheduled_at: string;
-    channel: string;
-    content_type: string;
-    brief: string;
-    status: ContentPlanItemStatus;
-    generated_content_id: number;
-  }>
-): Promise<ContentPlanItem> => api.patch(`${BASE}/content-plan-items/${itemId}`, payload).then((r) => r.data);
-
-export const deleteContentPlanItem = (itemId: number): Promise<void> => api.delete(`${BASE}/content-plan-items/${itemId}`);
+export const listMyPublications = (state: 'scheduled' | 'sent', projectCode?: string): Promise<PublicationWithProject[]> =>
+  api.get(`${BASE}/publications`, { params: { state, project_code: projectCode || undefined } }).then((r) => r.data);
 
 // ─── Assets / image generation ────────────────────────────────────────────
 

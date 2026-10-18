@@ -52,20 +52,6 @@ def run_smm_due_publications() -> None:
     _run_db_job("smm_due_publications", _job)
 
 
-def run_smm_plan_generation() -> None:
-    """Периодически подкладывает новые пункты в активные контент-планы с
-    заданной периодичностью (см. services.smm_projects.content_plan) и сразу
-    материализует их — это тот самый автопилот, который пользователь
-    включает настройкой периодичности плана, без клика на каждую публикацию."""
-    import asyncio
-    from app.services.smm_projects.content_plan import run_due_plans
-
-    def _job(db):
-        asyncio.run(run_due_plans(db))
-
-    _run_db_job("smm_plan_generation", _job)
-
-
 def run_tochka_auto_import() -> None:
     try:
         from app.services.tochka_client import is_configured

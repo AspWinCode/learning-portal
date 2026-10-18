@@ -1,21 +1,22 @@
 """SMM-проекты — автопостинг в соцсети, отдельный модуль от AI Studio.
 
 Project — независимая сущность (не привязана к AiWorkspace/направлениям AI
-Studio). Поток: создать проект → загрузить контекст (знания/бренд-профиль) →
-настроить каналы публикации → собрать контент-план → включить периодичность
-→ дальше система генерирует и публикует материалы автоматически (approve
-публикации/плана — явное действие человека, которое включает автоматизацию;
-сама доставка в канал идёт по расписанию без дополнительного клика —
-см. services/smm_projects/publishing.py и content_plan.py).
-"""
+Studio). Поток: создать проект → подключить каналы публикации → вставить
+готовый текст/картинку → опубликовать сейчас или отложенно. Доставка в
+канал — через SmmPublication (approve — явное действие человека, которое
+включает публикацию; для отложенных постов дальше идёт без дополнительного
+клика, см. services/smm_projects/publishing.py)."""
+import os
+from datetime import datetime
 from typing import List, Optional
+from xml.sax.saxutils import escape as xml_escape
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app import auth
 from app.database import get_db
-from app.models import SmmContent, SmmContentPlan, SmmContentPlanItem, SmmKnowledgeItem, SmmProject, User
+from app.models import SmmContent, SmmContentAsset, SmmContentStatus, SmmKnowledgeItem, SmmProject, SmmPublication, User
 from app.routers.action_log import log_action
 from app.schemas.smm_projects import (
     AssetOut,
@@ -25,13 +26,6 @@ from app.schemas.smm_projects import (
     ChannelVerifyOut,
     ContentList,
     ContentOut,
-    ContentPlanCreate,
-    ContentPlanGenerateRequest,
-    ContentPlanItemCreate,
-    ContentPlanItemOut,
-    ContentPlanItemUpdate,
-    ContentPlanOut,
-    ContentPlanUpdate,
     ContentUpdate,
     EventPackRequest,
     EventPackResult,
@@ -45,12 +39,12 @@ from app.schemas.smm_projects import (
     ProjectOut,
     ProjectUpdate,
     PublicationOut,
+    PublicationWithProjectOut,
     PublishBundleRequest,
     PublishLogOut,
     PublishRequest,
     ReindexResult,
     RenderImageRequest,
-    RunPlanResult,
     SelectAssetRequest,
     TemplateOut,
     TransformRequest,
@@ -59,11 +53,11 @@ from app.schemas.smm_projects import (
 from app.services.smm_projects import access as access_svc
 from app.services.smm_projects import assets as assets_svc
 from app.services.smm_projects import channels as channels_svc
-from app.services.smm_projects import content_plan as content_plan_svc
 from app.services.smm_projects import generation
 from app.services.smm_projects import knowledge as knowledge_svc
 from app.services.smm_projects import projects as projects_svc
 from app.services.smm_projects import publishing as publishing_svc
+from app.services.smm_projects import storage as storage_svc
 from app.services.smm_projects import templates as templates_svc
 
 router = APIRouter()
@@ -432,156 +426,6 @@ async def create_event_pack(
     return EventPackResult(group_key=items[0].group_key, items=items)
 
 
-# ─── Content plan (+ периодичность) ──────────────────────────────────────
-
-def _get_plan_or_404(db: Session, project: SmmProject, plan_id: int) -> SmmContentPlan:
-    plan = content_plan_svc.get_plan(db, project, plan_id)
-    if plan is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Контент-план не найден")
-    return plan
-
-
-@router.get("/projects/{code}/content-plans", response_model=List[ContentPlanOut])
-def list_content_plans(
-    code: str,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("smm_projects.access")),
-):
-    project = _get_accessible_project(db, code, current_user)
-    return content_plan_svc.list_plans(db, project)
-
-
-@router.post("/projects/{code}/content-plans", response_model=ContentPlanOut, status_code=status.HTTP_201_CREATED)
-def create_content_plan(
-    code: str,
-    payload: ContentPlanCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("smm_projects.generate")),
-):
-    project = _get_accessible_project(db, code, current_user)
-    periodicity = payload.periodicity.model_dump() if payload.periodicity else None
-    plan = content_plan_svc.create_plan(
-        db, project, current_user, name=payload.name, date_from=payload.date_from, date_to=payload.date_to,
-        periodicity=periodicity,
-    )
-    log_action(db, current_user.id, "create", "smm_content_plan", plan.id, {"project": code, "periodicity": bool(periodicity)})
-    return plan
-
-
-@router.get("/projects/{code}/content-plans/{plan_id}", response_model=ContentPlanOut)
-def get_content_plan(
-    code: str,
-    plan_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("smm_projects.access")),
-):
-    project = _get_accessible_project(db, code, current_user)
-    return _get_plan_or_404(db, project, plan_id)
-
-
-@router.patch("/projects/{code}/content-plans/{plan_id}", response_model=ContentPlanOut)
-def update_content_plan(
-    code: str,
-    plan_id: int,
-    payload: ContentPlanUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("smm_projects.generate")),
-):
-    project = _get_accessible_project(db, code, current_user)
-    plan = _get_plan_or_404(db, project, plan_id)
-    updates = payload.model_dump(exclude_unset=True)
-    if "periodicity" in updates and updates["periodicity"] is not None:
-        updates["periodicity"] = payload.periodicity.model_dump()
-    updated = content_plan_svc.update_plan(db, plan, updates)
-    log_action(db, current_user.id, "update", "smm_content_plan", plan.id, {"project": code})
-    return updated
-
-
-@router.post("/projects/{code}/content-plans/{plan_id}/run-now", response_model=RunPlanResult)
-async def run_content_plan_now(
-    code: str,
-    plan_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("smm_projects.generate")),
-):
-    """Немедленно прогнать периодичность плана (не дожидаясь фоновой задачи) —
-    полезно сразу после настройки, чтобы увидеть результат."""
-    project = _get_accessible_project(db, code, current_user)
-    plan = _get_plan_or_404(db, project, plan_id)
-    created = await content_plan_svc.ensure_plan_scheduled(db, current_user, project, plan)
-    log_action(db, current_user.id, "run", "smm_content_plan", plan.id, {"project": code, "items_created": len(created)})
-    return RunPlanResult(items_created=len(created))
-
-
-@router.post("/projects/{code}/content-plans/{plan_id}/items", response_model=ContentPlanItemOut, status_code=status.HTTP_201_CREATED)
-def add_content_plan_item(
-    code: str,
-    plan_id: int,
-    payload: ContentPlanItemCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("smm_projects.generate")),
-):
-    project = _get_accessible_project(db, code, current_user)
-    plan = _get_plan_or_404(db, project, plan_id)
-    return content_plan_svc.add_item(db, plan, payload.model_dump())
-
-
-@router.post("/projects/{code}/content-plans/{plan_id}/generate-items", response_model=List[ContentPlanItemOut])
-async def generate_content_plan_items(
-    code: str,
-    plan_id: int,
-    payload: ContentPlanGenerateRequest,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("smm_projects.generate")),
-):
-    project = _get_accessible_project(db, code, current_user)
-    plan = _get_plan_or_404(db, project, plan_id)
-    try:
-        items = await content_plan_svc.generate_items(
-            db, current_user, project=project, plan=plan, count=payload.count, channels=payload.channels,
-            goals=payload.goals, important_events=payload.important_events,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
-    log_action(db, current_user.id, "create", "smm_content_plan_items", plan.id, {"project": code, "count": len(items)})
-    return items
-
-
-@router.patch("/content-plan-items/{item_id}", response_model=ContentPlanItemOut)
-def update_content_plan_item(
-    item_id: int,
-    payload: ContentPlanItemUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("smm_projects.manage_content")),
-):
-    item = db.query(SmmContentPlanItem).filter(SmmContentPlanItem.id == item_id).first()
-    if item is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Пункт плана не найден")
-    plan = db.query(SmmContentPlan).filter(SmmContentPlan.id == item.plan_id).first()
-    project = db.query(SmmProject).filter(SmmProject.id == plan.project_id).first()
-    access_svc.ensure_project_access(db, current_user, project)
-    try:
-        updated = content_plan_svc.update_item(db, item, payload.model_dump(exclude_unset=True))
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
-    return updated
-
-
-@router.delete("/content-plan-items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_content_plan_item(
-    item_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(auth.require_permission("smm_projects.manage_content")),
-):
-    item = db.query(SmmContentPlanItem).filter(SmmContentPlanItem.id == item_id).first()
-    if item is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Пункт плана не найден")
-    plan = db.query(SmmContentPlan).filter(SmmContentPlan.id == item.plan_id).first()
-    project = db.query(SmmProject).filter(SmmProject.id == plan.project_id).first()
-    access_svc.ensure_project_access(db, current_user, project)
-    content_plan_svc.delete_item(db, item)
-
-
 # ─── Assets ──────────────────────────────────────────────────────────────
 
 @router.post("/content/{content_id}/render-image", response_model=AssetOut)
@@ -725,6 +569,179 @@ def cancel_publication(
     db.commit()
     log_action(db, current_user.id, "cancel_schedule", "smm_publication", row.id, {"content_id": row.content_id})
     return row
+
+
+# ─── Compose (вставил текст → выбрал каналы/проект → опубликовал) ──────────
+
+@router.post("/compose", response_model=List[PublicationWithProjectOut], status_code=status.HTTP_202_ACCEPTED)
+async def compose_and_publish(
+    project_code: str = Form(...),
+    text: str = Form(...),
+    channels: str = Form(..., description="Каналы через запятую, напр. vk,telegram,max"),
+    publish_at: Optional[str] = Form(None, description="ISO datetime или пусто — тогда публикуется сразу"),
+    image: Optional[UploadFile] = File(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("smm_projects.publish")),
+):
+    """Единая точка входа для вкладки «Новые»: один пост (текст + опциональная
+    картинка) сразу на несколько каналов и, опционально, на отложенное время —
+    без промежуточного «черновика», approve здесь происходит нажатием кнопки."""
+    project = _get_accessible_project(db, project_code, current_user)
+    text = (text or "").strip()
+    if not text:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Вставьте текст поста")
+    channel_list = [c.strip().lower() for c in channels.split(",") if c.strip()]
+    if not channel_list:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Выберите хотя бы один канал")
+
+    publish_dt = None
+    if publish_at:
+        try:
+            publish_dt = datetime.fromisoformat(publish_at)
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Некорректная дата отложенной публикации")
+
+    content = SmmContent(
+        project_id=project.id, output_text=text, status=SmmContentStatus.APPROVED.value,
+        created_by_id=current_user.id, title=text.splitlines()[0][:256] if text else None,
+    )
+    db.add(content)
+    db.commit()
+    db.refresh(content)
+
+    asset_id = None
+    if image is not None and image.filename:
+        data = await image.read()
+        if data:
+            ext = (image.filename.rsplit(".", 1)[-1] if "." in image.filename else "png").lower()[:8]
+            storage_key = storage_svc.save_bytes(data, f"content_{content.id}.{ext}")
+            asset = SmmContentAsset(
+                content_id=content.id, asset_type="image", storage_key=storage_key, is_selected=True,
+                meta={"content_type": image.content_type or "application/octet-stream"},
+                created_by_id=current_user.id,
+            )
+            db.add(asset)
+            db.commit()
+            db.refresh(asset)
+            asset.url = f"/api/v1/smm-projects/assets/{asset.id}/file"
+            content.selected_asset_id = asset.id
+            db.commit()
+            asset_id = asset.id
+
+    items = [{"channel": ch, "content_id": content.id, "asset_id": asset_id} for ch in channel_list]
+    try:
+        rows = publishing_svc.create_publications(db, current_user, project=project, items=items, publish_at=publish_dt)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+
+    from app.background_tasks import task_smm_publication
+    for row in rows:
+        if row.status == "approved":
+            task_smm_publication.send(row.id)
+
+    log_action(
+        db, current_user.id, "publish", "smm_publication_bundle", content.id,
+        {"project": project_code, "count": len(rows), "scheduled": bool(publish_dt), "has_image": asset_id is not None},
+    )
+    return _attach_project_and_asset(db, rows)
+
+
+def _attach_project_and_asset(db: Session, rows: List[SmmPublication]) -> List[SmmPublication]:
+    if not rows:
+        return []
+    project_codes = {p.id: p.code for p in db.query(SmmProject).filter(SmmProject.id.in_({r.project_id for r in rows})).all()}
+    asset_ids = {r.asset_id for r in rows if r.asset_id}
+    asset_urls = {a.id: a.url for a in db.query(SmmContentAsset).filter(SmmContentAsset.id.in_(asset_ids)).all()} if asset_ids else {}
+    for row in rows:
+        row.project_code = project_codes.get(row.project_id, "")
+        row.asset_url = asset_urls.get(row.asset_id) if row.asset_id else None
+    return rows
+
+
+@router.get("/publications", response_model=List[PublicationWithProjectOut])
+def list_my_publications(
+    state: str = Query("scheduled", pattern="^(scheduled|sent)$"),
+    project_code: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("smm_projects.access")),
+):
+    """«Запланированные» (approved/scheduled/publishing) и «Отправленные»
+    (success/error/cancelled) — один список публикаций сразу по всем
+    доступным пользователю проектам, с опциональным фильтром по проекту."""
+    if project_code:
+        projects = [_get_accessible_project(db, project_code, current_user)]
+    else:
+        projects = [p for p in projects_svc.list_projects(db) if access_svc.can_access_project(db, current_user, p)]
+    project_ids = [p.id for p in projects]
+    if not project_ids:
+        return []
+    statuses = ("approved", "scheduled", "publishing") if state == "scheduled" else ("success", "error", "cancelled")
+    rows = (
+        db.query(SmmPublication)
+        .filter(SmmPublication.project_id.in_(project_ids), SmmPublication.status.in_(statuses))
+        .order_by(SmmPublication.scheduled_at.is_(None), SmmPublication.scheduled_at, SmmPublication.created_at.desc())
+        .limit(200)
+        .all()
+    )
+    return _attach_project_and_asset(db, rows)
+
+
+@router.get("/assets/{asset_id}/file")
+def get_asset_file(asset_id: int, db: Session = Depends(get_db)):
+    # Без auth-зависимости намеренно: <img src> не прикладывает Bearer-токен
+    # (он в Authorization-заголовке через axios, не в cookie), а эти картинки
+    # и так создаются для публикации в соцсетях — тот же уровень раскрытия,
+    # что и публичный RSS-фид Дзена чуть ниже.
+    asset = db.query(SmmContentAsset).filter(SmmContentAsset.id == asset_id).first()
+    if asset is None or not asset.storage_key:
+        raise HTTPException(status_code=404, detail="Файл не найден")
+    data = storage_svc.read_bytes(asset.storage_key)
+    if data is None:
+        raise HTTPException(status_code=404, detail="Файл не найден")
+    content_type = (asset.meta or {}).get("content_type") if isinstance(asset.meta, dict) else None
+    return Response(content=data, media_type=content_type or "application/octet-stream")
+
+
+# ─── Дзен: публичный RSS-фид (без API публикации — см. publishers/zen.py) ──
+
+@router.get("/public/projects/{code}/zen-feed.xml")
+def zen_feed(code: str, db: Session = Depends(get_db)):
+    project = projects_svc.get_by_code(db, code)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Проект не найден")
+    rows = (
+        db.query(SmmPublication)
+        .filter(SmmPublication.project_id == project.id, SmmPublication.channel == "zen", SmmPublication.status == "success")
+        .order_by(SmmPublication.published_at.desc())
+        .limit(50)
+        .all()
+    )
+    brand = project.brand_context if isinstance(project.brand_context, dict) else {}
+    site_link = xml_escape((brand.get("links") or "").split(";")[0].strip() or f"https://{(os.getenv('DOMAIN') or '').strip()}")
+    items = []
+    for row in rows:
+        title = (row.text_snapshot or "").strip().splitlines()[0][:200] if row.text_snapshot else f"Публикация #{row.id}"
+        pub_date = (row.published_at or row.created_at)
+        pub_date_rfc822 = pub_date.strftime("%a, %d %b %Y %H:%M:%S +0000") if pub_date else ""
+        items.append(
+            "<item>"
+            f"<title>{xml_escape(title)}</title>"
+            f"<link>{site_link}</link>"
+            f"<guid isPermaLink=\"false\">smm-publication-{row.id}</guid>"
+            f"<pubDate>{pub_date_rfc822}</pubDate>"
+            f"<description>{xml_escape(row.text_snapshot or '')}</description>"
+            "</item>"
+        )
+    xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<rss version="2.0"><channel>'
+        f"<title>{xml_escape(project.name)}</title>"
+        f"<link>{site_link}</link>"
+        f"<description>Автоматический фид {xml_escape(project.name)} для импорта в Дзен</description>"
+        + "".join(items) +
+        "</channel></rss>"
+    )
+    return Response(content=xml, media_type="application/rss+xml; charset=utf-8")
 
 
 @router.get("/content/{content_id}/publish-logs", response_model=List[PublishLogOut])

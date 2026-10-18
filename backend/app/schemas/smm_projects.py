@@ -1,6 +1,6 @@
 """Pydantic-схемы SMM-проектов (app/routers/smm_projects.py) — автопостинг:
-проект, база знаний, каналы публикации, шаблоны, генерация, контент-план
-с периодичностью, визуалы, публикация."""
+проект, база знаний, каналы публикации, шаблоны, генерация, визуалы,
+публикация (вставил текст → выбрал каналы/проект → опубликовал)."""
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
@@ -121,6 +121,7 @@ class ChannelVerifyOut(BaseModel):
     error: Optional[str] = None
     chat_id: Optional[str] = None
     chat_title: Optional[str] = None
+    feed_url: Optional[str] = None
 
 
 # ─── Templates ──────────────────────────────────────────────────────────────
@@ -196,91 +197,6 @@ class VariantRequest(BaseModel):
     channel: str = Field(..., min_length=1, max_length=32)
 
 
-# ─── Content plan ───────────────────────────────────────────────────────────
-
-class PeriodicityIn(BaseModel):
-    unit: str = Field("week", pattern="^(day|week)$")
-    times: int = Field(..., ge=1, le=14)
-    channels: List[str] = Field(default_factory=list)
-    auto_publish: bool = True
-    lookahead_days: int = Field(14, ge=1, le=60)
-    goals: Optional[str] = None
-    brief: Optional[str] = None
-
-
-class ContentPlanCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=256)
-    date_from: Optional[date] = None
-    date_to: Optional[date] = None
-    periodicity: Optional[PeriodicityIn] = None
-
-
-class ContentPlanUpdate(BaseModel):
-    name: Optional[str] = None
-    date_from: Optional[date] = None
-    date_to: Optional[date] = None
-    periodicity: Optional[PeriodicityIn] = None
-    is_active: Optional[bool] = None
-
-
-class ContentPlanItemOut(BaseModel):
-    id: int
-    plan_id: int
-    scheduled_at: Optional[datetime]
-    channel: Optional[str]
-    content_type: Optional[str]
-    title: str
-    brief: Optional[str]
-    generated_content_id: Optional[int]
-    status: str
-    last_error: Optional[str]
-
-    model_config = _ORM
-
-
-class ContentPlanOut(BaseModel):
-    id: int
-    project_id: int
-    name: str
-    date_from: Optional[date]
-    date_to: Optional[date]
-    periodicity: Optional[Dict[str, Any]]
-    is_active: bool
-    last_generated_at: Optional[datetime]
-    created_by_id: Optional[int]
-    created_at: Optional[datetime]
-    items: List[ContentPlanItemOut] = Field(default_factory=list)
-
-    model_config = _ORM
-
-
-class ContentPlanItemCreate(BaseModel):
-    title: str = Field(..., min_length=1, max_length=256)
-    scheduled_at: Optional[datetime] = None
-    channel: Optional[str] = None
-    content_type: Optional[str] = None
-    brief: Optional[str] = None
-
-
-class ContentPlanItemUpdate(BaseModel):
-    title: Optional[str] = Field(None, min_length=1, max_length=256)
-    scheduled_at: Optional[datetime] = None
-    channel: Optional[str] = None
-    content_type: Optional[str] = None
-    brief: Optional[str] = None
-    status: Optional[str] = None
-    generated_content_id: Optional[int] = None
-
-
-class ContentPlanGenerateRequest(BaseModel):
-    count: int = Field(10, ge=1, le=60)
-    channels: List[str] = Field(default_factory=list)
-    goals: Optional[str] = None
-    important_events: Optional[str] = None
-
-
-class RunPlanResult(BaseModel):
-    items_created: int
 
 
 # ─── Event pack ─────────────────────────────────────────────────────────────
@@ -369,5 +285,15 @@ class PublishLogOut(BaseModel):
     external_url: Optional[str]
     error: Optional[str]
     created_at: Optional[datetime]
+
+
+# ─── Compose (вставил текст → выбрал каналы/проект → опубликовал) ──────────
+
+class PublicationWithProjectOut(PublicationOut):
+    """PublicationOut + то, что нужно виджету в «Запланированные»/«Отправленные»
+    при списке публикаций сразу по нескольким проектам: код проекта и превью
+    картинки (join по asset_id делается в роутере, не в ORM-relationship)."""
+    project_code: str
+    asset_url: Optional[str] = None
 
     model_config = _ORM

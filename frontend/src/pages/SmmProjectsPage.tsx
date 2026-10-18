@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -500,7 +500,7 @@ const KnowledgeTab: React.FC<{ projectCode: string; canManage: boolean }> = ({ p
 
 // ─── Каналы публикации (куда постить) ──────────────────────────────────────
 
-const ALL_CHANNELS = ['vk', 'telegram', 'instagram', 'max'];
+const ALL_CHANNELS = smm.ALL_CHANNELS;
 
 const ChannelsTab: React.FC<{ projectCode: string; canManage: boolean }> = ({ projectCode, canManage }) => {
   const [statuses, setStatuses] = useState<smm.ChannelStatus[] | null>(null);
@@ -518,11 +518,10 @@ const ChannelsTab: React.FC<{ projectCode: string; canManage: boolean }> = ({ pr
     setSaved(null);
     try {
       const result = await smm.verifyChannel(projectCode, channel);
-      setSaved(
-        result.verified
-          ? `MAX проверен: чат «${result.chat_title || result.chat_id || ''}» доступен`
-          : null
-      );
+      if (result.verified) {
+        const detail = result.chat_title || result.chat_id || result.feed_url || '';
+        setSaved(`«${channel}» проверен и подключён${detail ? `: ${detail}` : ''}`);
+      }
       if (!result.verified) setError(result.error || 'Ошибка подключения');
       await reload();
     } catch (e) {
@@ -634,7 +633,7 @@ const ChannelsTab: React.FC<{ projectCode: string; canManage: boolean }> = ({ pr
 
 // ─── Настройки проекта: бренд-профиль ──────────────────────────────────────
 
-const SettingsTab: React.FC<{ projectCode: string; canManage: boolean }> = ({ projectCode, canManage }) => {
+const LegacyBrandSettingsTab: React.FC<{ projectCode: string; canManage: boolean }> = ({ projectCode, canManage }) => {
   const [project, setProject] = useState<smm.Project | null>(null);
   const [fields, setFields] = useState<smm.BrandContextField[]>([]);
   const [brand, setBrand] = useState<Record<string, string>>({});
@@ -772,280 +771,6 @@ const EventPackTab: React.FC<{ projectCode: string; canGenerate: boolean; onGene
   );
 };
 
-// ─── Контент-план + периодичность (автопилот) ──────────────────────────────
-
-const PLAN_ITEM_STATUS_COLOR: Record<string, 'default' | 'warning' | 'info' | 'success' | 'error'> = {
-  pending: 'default',
-  generating: 'info',
-  ready: 'info',
-  publishing: 'warning',
-  published: 'success',
-  error: 'error',
-  skipped: 'default',
-  cancelled: 'default',
-};
-
-const ContentPlanTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage: boolean }> = ({
-  projectCode,
-  canGenerate,
-  canManage,
-}) => {
-  const [plans, setPlans] = useState<smm.ContentPlan[] | null>(null);
-  const [activePlan, setActivePlan] = useState<smm.ContentPlan | null>(null);
-  const [newPlanName, setNewPlanName] = useState('');
-  const [enablePeriodicity, setEnablePeriodicity] = useState(false);
-  const [unit, setUnit] = useState<'day' | 'week'>('week');
-  const [times, setTimes] = useState(3);
-  const [periodicityChannels, setPeriodicityChannels] = useState<string[]>(['vk']);
-  const [autoPublish, setAutoPublish] = useState(true);
-  const [lookaheadDays, setLookaheadDays] = useState(14);
-  const [genCount, setGenCount] = useState(10);
-  const [genChannels, setGenChannels] = useState('vk,telegram');
-  const [genGoals, setGenGoals] = useState('');
-  const [genEvents, setGenEvents] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [runResult, setRunResult] = useState<string | null>(null);
-
-  const reloadPlans = () => smm.listContentPlans(projectCode).then(setPlans).catch(() => setPlans([]));
-
-  useEffect(() => {
-    reloadPlans();
-    setActivePlan(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectCode]);
-
-  const openPlan = (plan: smm.ContentPlan) => {
-    smm.getContentPlan(projectCode, plan.id).then(setActivePlan).catch(() => undefined);
-  };
-
-  const createPlan = async () => {
-    if (!newPlanName.trim()) return;
-    setError(null);
-    try {
-      const plan = await smm.createContentPlan(projectCode, {
-        name: newPlanName.trim(),
-        periodicity: enablePeriodicity
-          ? { unit, times, channels: periodicityChannels, auto_publish: autoPublish, lookahead_days: lookaheadDays }
-          : undefined,
-      });
-      setNewPlanName('');
-      await reloadPlans();
-      openPlan(plan);
-    } catch (e) {
-      setError(extractApiError(e, 'Ошибка'));
-    }
-  };
-
-  const runNow = async () => {
-    if (!activePlan) return;
-    setLoading(true);
-    setRunResult(null);
-    try {
-      const result = await smm.runContentPlanNow(projectCode, activePlan.id);
-      setRunResult(`Создано пунктов: ${result.items_created}`);
-      const refreshed = await smm.getContentPlan(projectCode, activePlan.id);
-      setActivePlan(refreshed);
-    } catch (e) {
-      setError(extractApiError(e, 'Ошибка'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const generateItems = async () => {
-    if (!activePlan) return;
-    setLoading(true);
-    setError(null);
-    try {
-      await smm.generateContentPlanItems(projectCode, activePlan.id, {
-        count: genCount,
-        channels: genChannels.split(',').map((c) => c.trim()).filter(Boolean),
-        goals: genGoals || undefined,
-        important_events: genEvents || undefined,
-      });
-      const refreshed = await smm.getContentPlan(projectCode, activePlan.id);
-      setActivePlan(refreshed);
-    } catch (e) {
-      setError(extractApiError(e, 'Ошибка'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const removeItem = async (itemId: number) => {
-    if (!activePlan) return;
-    await smm.deleteContentPlanItem(itemId);
-    const refreshed = await smm.getContentPlan(projectCode, activePlan.id);
-    setActivePlan(refreshed);
-  };
-
-  if (activePlan) {
-    return (
-      <Stack spacing={2}>
-        <Stack direction="row" alignItems="center" justifyContent="space-between">
-          <Typography variant="h6">{activePlan.name}</Typography>
-          <Button size="small" onClick={() => setActivePlan(null)}>
-            ← к списку планов
-          </Button>
-        </Stack>
-        {activePlan.periodicity ? (
-          <Alert severity="success">
-            Автопилот включён: {activePlan.periodicity.times}× в {activePlan.periodicity.unit === 'week' ? 'неделю' : 'день'}, каналы:{' '}
-            {activePlan.periodicity.channels.join(', ')}
-            {activePlan.periodicity.auto_publish ? ' — публикует автоматически.' : ' — только готовит черновики.'}
-            {activePlan.last_generated_at && <> Последний запуск: {new Date(activePlan.last_generated_at).toLocaleString()}.</>}
-          </Alert>
-        ) : (
-          <Alert severity="info">Периодичность не задана — план работает только вручную.</Alert>
-        )}
-        {canGenerate && activePlan.periodicity && (
-          <Button size="small" variant="outlined" onClick={runNow} disabled={loading} sx={{ alignSelf: 'flex-start' }}>
-            {loading ? 'Выполняется…' : 'Прогнать сейчас'}
-          </Button>
-        )}
-        {runResult && <Alert severity="success">{runResult}</Alert>}
-        {canGenerate && (
-          <Paper variant="outlined" sx={{ p: 2 }}>
-            <Stack spacing={1} sx={{ maxWidth: 480 }}>
-              <Typography variant="subtitle2">Заполнить план идеями вручную (AI-ассистент)</Typography>
-              <TextField
-                size="small"
-                type="number"
-                label="Количество публикаций"
-                value={genCount}
-                onChange={(e) => setGenCount(Number(e.target.value) || 1)}
-              />
-              <TextField size="small" label="Каналы (через запятую)" value={genChannels} onChange={(e) => setGenChannels(e.target.value)} />
-              <TextField size="small" label="Цели" value={genGoals} onChange={(e) => setGenGoals(e.target.value)} />
-              <TextField size="small" label="Важные события в периоде" value={genEvents} onChange={(e) => setGenEvents(e.target.value)} />
-              {error && <Alert severity="error">{error}</Alert>}
-              <Button variant="contained" onClick={generateItems} disabled={loading}>
-                {loading ? 'Генерация…' : 'Сгенерировать пункты плана'}
-              </Button>
-            </Stack>
-          </Paper>
-        )}
-        {activePlan.items.length === 0 && <Alert severity="info">В плане пока нет пунктов.</Alert>}
-        {activePlan.items.map((item) => (
-          <Paper key={item.id} variant="outlined" sx={{ p: 2 }}>
-            <Stack direction="row" justifyContent="space-between" alignItems="flex-start" flexWrap="wrap" gap={1}>
-              <Stack direction="row" spacing={1} alignItems="center">
-                <Typography variant="subtitle2">{item.title}</Typography>
-                {item.channel && <Chip size="small" variant="outlined" label={item.channel} />}
-                {item.scheduled_at && <Chip size="small" variant="outlined" label={new Date(item.scheduled_at).toLocaleString()} />}
-              </Stack>
-              <Chip size="small" label={item.status} color={PLAN_ITEM_STATUS_COLOR[item.status] || 'default'} />
-            </Stack>
-            {item.brief && (
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                {item.brief}
-              </Typography>
-            )}
-            {item.last_error && <Alert severity="error" sx={{ mt: 1 }}>{item.last_error}</Alert>}
-            {canManage && (
-              <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
-                <Button size="small" color="error" onClick={() => removeItem(item.id)}>
-                  Удалить
-                </Button>
-              </Stack>
-            )}
-          </Paper>
-        ))}
-      </Stack>
-    );
-  }
-
-  return (
-    <Stack spacing={2}>
-      {canGenerate && (
-        <Paper variant="outlined" sx={{ p: 2 }}>
-          <Stack spacing={1.5} sx={{ maxWidth: 480 }}>
-            <TextField size="small" label="Название плана" value={newPlanName} onChange={(e) => setNewPlanName(e.target.value)} fullWidth />
-            <FormControlLabel
-              control={<Switch checked={enablePeriodicity} onChange={(e) => setEnablePeriodicity(e.target.checked)} />}
-              label="Включить автопилот (периодичность)"
-            />
-            {enablePeriodicity && (
-              <Stack spacing={1} sx={{ pl: 1, borderLeft: '2px solid', borderColor: 'divider' }}>
-                <Typography variant="caption" color="text.secondary">
-                  Система сама будет создавать и публиковать материалы по этому расписанию — без дополнительного клика на каждый пост.
-                </Typography>
-                <Stack direction="row" spacing={1}>
-                  <TextField
-                    size="small"
-                    type="number"
-                    label="Раз"
-                    value={times}
-                    onChange={(e) => setTimes(Number(e.target.value) || 1)}
-                    sx={{ width: 90 }}
-                  />
-                  <FormControl size="small" sx={{ minWidth: 120 }}>
-                    <InputLabel id="periodicity-unit">За период</InputLabel>
-                    <Select labelId="periodicity-unit" label="За период" value={unit} onChange={(e) => setUnit(e.target.value as 'day' | 'week')}>
-                      <MenuItem value="day">День</MenuItem>
-                      <MenuItem value="week">Неделю</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Stack>
-                <Select
-                  multiple
-                  size="small"
-                  value={periodicityChannels}
-                  onChange={(e) =>
-                    setPeriodicityChannels(typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value)
-                  }
-                  renderValue={(selected) => (selected as string[]).join(', ') || 'Каналы'}
-                >
-                  {ALL_CHANNELS.map((ch) => (
-                    <MenuItem key={ch} value={ch}>
-                      <Checkbox checked={periodicityChannels.includes(ch)} size="small" />
-                      {ch}
-                    </MenuItem>
-                  ))}
-                </Select>
-                <TextField
-                  size="small"
-                  type="number"
-                  label="Горизонт планирования, дней"
-                  value={lookaheadDays}
-                  onChange={(e) => setLookaheadDays(Number(e.target.value) || 7)}
-                />
-                <FormControlLabel
-                  control={<Switch checked={autoPublish} onChange={(e) => setAutoPublish(e.target.checked)} />}
-                  label="Публиковать автоматически (а не только готовить черновики)"
-                />
-              </Stack>
-            )}
-            {error && <Alert severity="error">{error}</Alert>}
-            <Button variant="contained" onClick={createPlan} disabled={!newPlanName.trim()}>
-              Создать план
-            </Button>
-          </Stack>
-        </Paper>
-      )}
-      {!plans && <CircularProgress size={24} />}
-      {plans && plans.length === 0 && <Alert severity="info">Пока нет контент-планов.</Alert>}
-      <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
-        {plans?.map((plan) => (
-          <Card key={plan.id} sx={{ width: 240 }}>
-            <CardActionArea onClick={() => openPlan(plan)}>
-              <CardContent>
-                <Typography variant="subtitle1">{plan.name}</Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {plan.periodicity ? `Автопилот: ${plan.periodicity.times}×/${plan.periodicity.unit === 'week' ? 'нед' : 'день'}` : 'Ручной план'}
-                  {' · '}
-                  {plan.items.length} пункт(ов)
-                </Typography>
-              </CardContent>
-            </CardActionArea>
-          </Card>
-        ))}
-      </Stack>
-    </Stack>
-  );
-};
-
 // ─── Проект: вкладки ─────────────────────────────────────────────────────
 
 const ProjectWorkspaceView: React.FC<{ projectCode: string }> = ({ projectCode }) => {
@@ -1065,10 +790,9 @@ const ProjectWorkspaceView: React.FC<{ projectCode: string }> = ({ projectCode }
       { label: 'Новый материал', node: <NewContentTab projectCode={projectCode} canGenerate={canGenerate} onGenerated={() => setReloadKey((k) => k + 1)} /> },
       { label: 'Черновики', node: <DraftsTab projectCode={projectCode} canGenerate={canGenerate} canManage={canManageContent} canPublish={canPublish} reloadKey={reloadKey} /> },
       { label: 'Пакет по событию', node: <EventPackTab projectCode={projectCode} canGenerate={canGenerate} onGenerated={() => setReloadKey((k) => k + 1)} /> },
-      { label: 'Контент-план', node: <ContentPlanTab projectCode={projectCode} canGenerate={canGenerate} canManage={canManageContent} /> },
       { label: 'База знаний', node: <KnowledgeTab projectCode={projectCode} canManage={canManageKnowledge} /> },
       { label: 'Каналы', node: <ChannelsTab projectCode={projectCode} canManage={canManageChannels} /> },
-      { label: 'Настройки', node: <SettingsTab projectCode={projectCode} canManage={canManageProject} /> },
+      { label: 'Настройки', node: <LegacyBrandSettingsTab projectCode={projectCode} canManage={canManageProject} /> },
     ],
     [projectCode, canGenerate, canManageContent, canManageKnowledge, canManageProject, canManageChannels, canPublish, reloadKey]
   );
@@ -1086,9 +810,9 @@ const ProjectWorkspaceView: React.FC<{ projectCode: string }> = ({ projectCode }
   );
 };
 
-// ─── Список проектов ────────────────────────────────────────────────────────
+// ─── Список проектов (старый UI, скрыт — см. ComposeTab/ProjectSettingsTab) ─
 
-const SmmProjectsPage: React.FC = () => {
+const LegacyProjectsListPage: React.FC = () => {
   const { user } = useAuth();
   const [projects, setProjects] = useState<smm.ProjectListItem[] | null>(null);
   const [activeCode, setActiveCode] = useState<string | null>(null);
@@ -1161,6 +885,467 @@ const SmmProjectsPage: React.FC = () => {
           </Stack>
         )}
         {activeCode && <ProjectWorkspaceView projectCode={activeCode} />}
+      </Box>
+    </Layout>
+  );
+};
+
+// ─── Новые: вставил текст (+картинку) → выбрал каналы/проект → опубликовал ──
+
+const ComposeTab: React.FC<{ onPublished: () => void }> = ({ onPublished }) => {
+  const [projects, setProjects] = useState<smm.ProjectListItem[]>([]);
+  const [projectCode, setProjectCode] = useState('');
+  const [text, setText] = useState('');
+  const [image, setImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [channelStatuses, setChannelStatuses] = useState<smm.ChannelStatus[]>([]);
+  const [selectedChannels, setSelectedChannels] = useState<string[]>([]);
+  const [scheduled, setScheduled] = useState(false);
+  const [scheduleAt, setScheduleAt] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<smm.PublicationWithProject[] | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    smm
+      .listProjects()
+      .then((list) => {
+        setProjects(list);
+        setProjectCode((prev) => prev || list[0]?.code || '');
+      })
+      .catch(() => setProjects([]));
+  }, []);
+
+  useEffect(() => {
+    if (!projectCode) {
+      setChannelStatuses([]);
+      return;
+    }
+    smm.listChannels(projectCode).then(setChannelStatuses).catch(() => setChannelStatuses([]));
+    setSelectedChannels([]);
+  }, [projectCode]);
+
+  useEffect(() => {
+    if (!image) {
+      setImagePreview(null);
+      return undefined;
+    }
+    const url = URL.createObjectURL(image);
+    setImagePreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [image]);
+
+  // Вставка картинки по Ctrl+V прямо в то же окно, что и текст — если в
+  // буфере есть image/*, перехватываем; иначе даём браузеру вставить текст
+  // в textarea как обычно.
+  const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i += 1) {
+      const item = items[i];
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) {
+          setImage(file);
+          e.preventDefault();
+        }
+        return;
+      }
+    }
+  };
+
+  const toggleChannel = (channel: string) => {
+    setSelectedChannels((prev) => (prev.includes(channel) ? prev.filter((c) => c !== channel) : [...prev, channel]));
+  };
+
+  const submit = async () => {
+    if (!text.trim() || !projectCode || !selectedChannels.length) return;
+    if (scheduled && !scheduleAt) return;
+    setBusy(true);
+    setError(null);
+    setResult(null);
+    try {
+      const rows = await smm.composeAndPublish({
+        projectCode,
+        text: text.trim(),
+        channels: selectedChannels,
+        publishAt: scheduled && scheduleAt ? new Date(scheduleAt).toISOString() : null,
+        image,
+      });
+      setResult(rows);
+      setText('');
+      setImage(null);
+      setSelectedChannels([]);
+      setScheduled(false);
+      setScheduleAt('');
+      onPublished();
+    } catch (e) {
+      setError(extractApiError(e, 'Ошибка публикации'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Stack spacing={2} sx={{ maxWidth: 720 }}>
+      <Box onPaste={handlePaste} sx={{ border: '1px dashed', borderColor: 'divider', borderRadius: 1, p: 1 }}>
+        <TextField
+          multiline
+          minRows={8}
+          fullWidth
+          placeholder="Вставьте текст поста (Ctrl+V) — картинку можно вставить сюда же"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+        />
+      </Box>
+
+      <Stack direction="row" spacing={1} alignItems="center">
+        <Button size="small" onClick={() => fileInputRef.current?.click()}>
+          + картинка
+        </Button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          hidden
+          onChange={(e) => setImage(e.target.files?.[0] || null)}
+        />
+        {image && (
+          <Button size="small" color="error" onClick={() => setImage(null)}>
+            Убрать картинку
+          </Button>
+        )}
+      </Stack>
+      {imagePreview && <Box component="img" src={imagePreview} alt="превью" sx={{ maxWidth: 280, maxHeight: 280, borderRadius: 1 }} />}
+
+      <FormControl size="small" fullWidth>
+        <InputLabel id="compose-project">Проект</InputLabel>
+        <Select labelId="compose-project" label="Проект" value={projectCode} onChange={(e) => setProjectCode(e.target.value)}>
+          {projects.map((p) => (
+            <MenuItem key={p.code} value={p.code}>
+              {p.name}
+            </MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+
+      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap alignItems="center">
+        <Typography variant="body2" color="text.secondary">
+          Каналы:
+        </Typography>
+        {channelStatuses.map((ch) => (
+          <Chip
+            key={ch.channel}
+            label={ch.channel + (!ch.verified ? ' (не проверен)' : '')}
+            clickable={ch.verified}
+            disabled={!ch.verified}
+            color={selectedChannels.includes(ch.channel) ? 'secondary' : 'default'}
+            variant={selectedChannels.includes(ch.channel) ? 'filled' : 'outlined'}
+            onClick={() => ch.verified && toggleChannel(ch.channel)}
+          />
+        ))}
+        {!channelStatuses.length && projectCode && (
+          <Typography variant="body2" color="text.secondary">
+            Нет настроенных каналов — настройте их во вкладке «Настройки».
+          </Typography>
+        )}
+      </Stack>
+
+      <FormControlLabel
+        control={<Switch checked={scheduled} onChange={(e) => setScheduled(e.target.checked)} />}
+        label="Отложенная публикация"
+      />
+      {scheduled && (
+        <TextField
+          size="small"
+          type="datetime-local"
+          label="Дата и время"
+          value={scheduleAt}
+          onChange={(e) => setScheduleAt(e.target.value)}
+          InputLabelProps={{ shrink: true }}
+          sx={{ maxWidth: 260 }}
+        />
+      )}
+
+      {error && <Alert severity="error">{error}</Alert>}
+      {result && (
+        <Alert severity="success">
+          Отправлено в {result.length} канал(ов) — см. вкладку «{scheduled ? 'Запланированные' : 'Отправленные'}».
+        </Alert>
+      )}
+
+      <Button
+        variant="contained"
+        color="secondary"
+        disabled={busy || !text.trim() || !projectCode || !selectedChannels.length || (scheduled && !scheduleAt)}
+        onClick={submit}
+      >
+        {busy ? 'Публикуем…' : 'Запустить в работу'}
+      </Button>
+    </Stack>
+  );
+};
+
+// ─── Запланированные / Отправленные ─────────────────────────────────────────
+
+const PUBLICATION_STATUS_LABEL: Record<string, string> = {
+  approved: 'Готовится к публикации',
+  scheduled: 'Запланировано',
+  publishing: 'Публикуется…',
+  success: 'Опубликовано',
+  error: 'Ошибка',
+  cancelled: 'Отменено',
+};
+
+const PUBLICATION_STATUS_COLOR: Record<string, 'default' | 'warning' | 'info' | 'success' | 'error'> = {
+  approved: 'info',
+  scheduled: 'info',
+  publishing: 'warning',
+  success: 'success',
+  error: 'error',
+  cancelled: 'default',
+};
+
+const PublicationsListTab: React.FC<{ state: 'scheduled' | 'sent'; reloadKey: number }> = ({ state, reloadKey }) => {
+  const [projects, setProjects] = useState<smm.ProjectListItem[]>([]);
+  const [projectFilter, setProjectFilter] = useState('');
+  const [items, setItems] = useState<smm.PublicationWithProject[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<number | null>(null);
+
+  useEffect(() => {
+    smm.listProjects().then(setProjects).catch(() => setProjects([]));
+  }, []);
+
+  const reload = () => {
+    smm
+      .listMyPublications(state, projectFilter || undefined)
+      .then(setItems)
+      .catch((e) => setError(extractApiError(e, 'Ошибка')));
+  };
+
+  useEffect(() => {
+    reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state, projectFilter, reloadKey]);
+
+  const cancel = async (id: number) => {
+    setBusyId(id);
+    try {
+      await smm.cancelPublication(id);
+      reload();
+    } catch (e) {
+      setError(extractApiError(e, 'Ошибка'));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const retry = async (id: number) => {
+    setBusyId(id);
+    try {
+      await smm.retryPublication(id);
+      reload();
+    } catch (e) {
+      setError(extractApiError(e, 'Ошибка'));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  return (
+    <Stack spacing={2}>
+      <FormControl size="small" sx={{ maxWidth: 260 }}>
+        <InputLabel id="pub-project-filter">Проект</InputLabel>
+        <Select
+          labelId="pub-project-filter"
+          label="Проект"
+          value={projectFilter}
+          onChange={(e) => setProjectFilter(e.target.value)}
+          displayEmpty
+        >
+          <MenuItem value="">Все проекты</MenuItem>
+          {projects.map((p) => (
+            <MenuItem key={p.code} value={p.code}>
+              {p.name}
+            </MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+      {error && <Alert severity="error">{error}</Alert>}
+      {!items && <CircularProgress size={24} />}
+      {items && items.length === 0 && (
+        <Alert severity="info">{state === 'scheduled' ? 'Нет запланированных публикаций.' : 'Пока ничего не отправлено.'}</Alert>
+      )}
+      <Stack spacing={1.5}>
+        {items?.map((p) => (
+          <Paper key={p.id} variant="outlined" sx={{ p: 2 }}>
+            <Stack direction="row" justifyContent="space-between" alignItems="flex-start" flexWrap="wrap" gap={1}>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Chip size="small" label={p.project_code} />
+                <Chip size="small" variant="outlined" label={p.channel} />
+                <Chip size="small" color={PUBLICATION_STATUS_COLOR[p.status] || 'default'} label={PUBLICATION_STATUS_LABEL[p.status] || p.status} />
+              </Stack>
+              <Typography variant="caption" color="text.secondary">
+                {p.scheduled_at
+                  ? new Date(p.scheduled_at).toLocaleString('ru-RU')
+                  : p.published_at
+                  ? new Date(p.published_at).toLocaleString('ru-RU')
+                  : ''}
+              </Typography>
+            </Stack>
+            {p.asset_url && <Box component="img" src={p.asset_url} alt="" sx={{ maxWidth: 160, maxHeight: 160, borderRadius: 1, mt: 1 }} />}
+            <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', mt: 1 }}>
+              {p.text_snapshot}
+            </Typography>
+            {p.status === 'error' && p.last_error && (
+              <Alert severity="error" sx={{ mt: 1 }}>
+                {p.last_error}
+              </Alert>
+            )}
+            {p.external_url && (
+              <Typography variant="body2" sx={{ mt: 1 }}>
+                <a href={p.external_url} target="_blank" rel="noreferrer">
+                  {p.external_url}
+                </a>
+              </Typography>
+            )}
+            <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+              {['approved', 'scheduled'].includes(p.status) && (
+                <Button size="small" color="error" disabled={busyId === p.id} onClick={() => cancel(p.id)}>
+                  Отменить
+                </Button>
+              )}
+              {p.status === 'error' && (
+                <Button size="small" disabled={busyId === p.id} onClick={() => retry(p.id)}>
+                  Повторить
+                </Button>
+              )}
+            </Stack>
+          </Paper>
+        ))}
+      </Stack>
+    </Stack>
+  );
+};
+
+// ─── Настройки: проекты + подключение каналов ──────────────────────────────
+
+const ProjectSettingsTab: React.FC = () => {
+  const { user } = useAuth();
+  const canManageProject = hasPermission(user, 'smm_projects.manage_project');
+  const canManageChannels = hasPermission(user, 'smm_projects.manage_channels');
+  const [projects, setProjects] = useState<smm.ProjectListItem[] | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [newName, setNewName] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  const reload = () =>
+    smm
+      .listProjects()
+      .then((list) => {
+        setProjects(list);
+        setSelected((prev) => prev || list[0]?.code || null);
+      })
+      .catch(() => setProjects([]));
+
+  useEffect(() => {
+    reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const create = async () => {
+    if (!newName.trim()) return;
+    setError(null);
+    try {
+      const project = await smm.createProject({ name: newName.trim() });
+      setNewName('');
+      await reload();
+      setSelected(project.code);
+    } catch (e) {
+      setError(extractApiError(e, 'Ошибка'));
+    }
+  };
+
+  return (
+    <Stack spacing={2}>
+      {canManageProject && (
+        <Paper variant="outlined" sx={{ p: 2 }}>
+          <Typography variant="subtitle2" sx={{ mb: 1 }}>
+            Новый проект
+          </Typography>
+          <Stack direction="row" spacing={1}>
+            <TextField size="small" label="Название проекта" value={newName} onChange={(e) => setNewName(e.target.value)} fullWidth />
+            <Button variant="contained" onClick={create} disabled={!newName.trim()}>
+              Создать
+            </Button>
+          </Stack>
+          {error && (
+            <Alert severity="error" sx={{ mt: 1 }}>
+              {error}
+            </Alert>
+          )}
+        </Paper>
+      )}
+
+      {!projects && <CircularProgress size={24} />}
+      {projects && projects.length === 0 && <Alert severity="info">Пока нет ни одного проекта.</Alert>}
+
+      {projects && projects.length > 0 && (
+        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+          {projects.map((p) => (
+            <Chip
+              key={p.code}
+              label={p.name}
+              color={selected === p.code ? 'secondary' : 'default'}
+              variant={selected === p.code ? 'filled' : 'outlined'}
+              onClick={() => setSelected(p.code)}
+            />
+          ))}
+        </Stack>
+      )}
+
+      {selected && (
+        <Paper variant="outlined" sx={{ p: 2 }}>
+          <Typography variant="subtitle2" sx={{ mb: 1 }}>
+            Каналы проекта «{projects?.find((p) => p.code === selected)?.name}»
+          </Typography>
+          <ChannelsTab projectCode={selected} canManage={canManageChannels} />
+        </Paper>
+      )}
+    </Stack>
+  );
+};
+
+// ─── Главная страница: 4 вкладки ────────────────────────────────────────────
+
+const SmmProjectsPage: React.FC = () => {
+  const [tab, setTab] = useState(0);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  const tabs = [
+    { label: 'Новые', node: <ComposeTab onPublished={() => setReloadKey((k) => k + 1)} /> },
+    { label: 'Запланированные', node: <PublicationsListTab state="scheduled" reloadKey={reloadKey} /> },
+    { label: 'Отправленные', node: <PublicationsListTab state="sent" reloadKey={reloadKey} /> },
+    { label: 'Настройки', node: <ProjectSettingsTab /> },
+  ];
+
+  return (
+    <Layout>
+      <Box sx={{ p: 3, maxWidth: 1100, mx: 'auto' }}>
+        <Typography variant="h5" sx={{ mb: 2 }}>
+          SMM-проекты
+        </Typography>
+        <Paper variant="outlined">
+          <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons="auto">
+            {tabs.map((t) => (
+              <Tab key={t.label} label={t.label} />
+            ))}
+          </Tabs>
+          <Divider />
+          <Box sx={{ p: 2 }}>{tabs[tab].node}</Box>
+        </Paper>
       </Box>
     </Layout>
   );

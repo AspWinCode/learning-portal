@@ -154,6 +154,28 @@ async def test_verify_channel_marks_row_with_error_on_failure(monkeypatch):
     assert row.verification_error == "Бот не имеет доступа к чату"
 
 
+def test_zen_channel_requires_no_fields(monkeypatch):
+    # У Дзена нет API и, соответственно, токена (см. publishers/zen.py) —
+    # включение канала не должно требовать заполнения никаких полей.
+    db = _FakeDB()
+    monkeypatch.setattr(channels, "_row", lambda db, project, channel: db.rows.get((project.id, channel)))
+    project = _project()
+    row = channels.set_channel_config(db, project, object(), "zen", {})
+    assert row.is_enabled is True
+    assert channels.is_configured(db, project, "zen") is True
+
+
+@pytest.mark.asyncio
+async def test_zen_verify_always_succeeds_once_enabled(monkeypatch):
+    db = _FakeDB()
+    monkeypatch.setattr(channels, "_row", lambda db, project, channel: db.rows.get((project.id, channel)))
+    project = _project()
+    channels.set_channel_config(db, project, object(), "zen", {})
+    result = await channels.verify_channel(db, project, "zen")
+    assert result["verified"] is True
+    assert "feed_url" in result
+
+
 def test_set_channel_config_resets_previous_verification(monkeypatch):
     db = _FakeDB()
     monkeypatch.setattr(channels, "_row", lambda db, project, channel: db.rows.get((project.id, channel)))

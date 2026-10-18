@@ -19,15 +19,22 @@ from app.services.smm_projects.publishers.instagram import InstagramPublisher
 from app.services.smm_projects.publishers.max import MaxPublisher
 from app.services.smm_projects.publishers.telegram import TelegramPublisher
 from app.services.smm_projects.publishers.vk import VkPublisher
+from app.services.smm_projects.publishers.zen import ZenPublisher
 
-SUPPORTED_CHANNELS = ("vk", "telegram", "instagram", "max")
-PUBLISHERS = {"vk": VkPublisher(), "telegram": TelegramPublisher(), "instagram": InstagramPublisher(), "max": MaxPublisher()}
+SUPPORTED_CHANNELS = ("vk", "telegram", "instagram", "max", "zen")
+PUBLISHERS = {
+    "vk": VkPublisher(), "telegram": TelegramPublisher(), "instagram": InstagramPublisher(),
+    "max": MaxPublisher(), "zen": ZenPublisher(),
+}
 
 REQUIRED_FIELDS: Dict[str, List[str]] = {
     "vk": ["token", "group_id"],
     "telegram": ["token", "chat_id"],
     "instagram": ["token", "account_id"],
     "max": ["token", "chat_id"],
+    # У Дзена нет API и, соответственно, токена — включение канала ничего
+    # не требует вводить, см. publishers/zen.py.
+    "zen": [],
 }
 
 

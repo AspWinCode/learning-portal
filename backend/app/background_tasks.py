@@ -26,7 +26,6 @@ from app.background_jobs import (
     run_transcription,
     run_smm_publication,
     run_smm_due_publications,
-    run_smm_plan_generation,
 )
 from app.services.email_broadcast_service import send_broadcast as _send_broadcast
 
@@ -139,11 +138,6 @@ def task_smm_publication(publication_id: int) -> None:
 @dramatiq.actor(queue_name="periodic")
 def task_smm_due_publications() -> None:
     run_smm_due_publications()
-
-
-@dramatiq.actor(queue_name="periodic")
-def task_smm_plan_generation() -> None:
-    run_smm_plan_generation()
 
 
 @dramatiq.actor(queue_name="delivery", max_retries=0)

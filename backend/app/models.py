@@ -4637,7 +4637,6 @@ class SmmContent(Base):
     id = Column(Integer, primary_key=True, index=True)
     project_id = Column(Integer, ForeignKey("smm_projects.id", ondelete="CASCADE"), nullable=False, index=True)
     template_id = Column(Integer, ForeignKey("smm_content_templates.id", ondelete="SET NULL"), nullable=True, index=True)
-    plan_item_id = Column(Integer, ForeignKey("smm_content_plan_items.id", ondelete="SET NULL"), nullable=True, index=True)
     parent_content_id = Column(Integer, ForeignKey("smm_content.id", ondelete="SET NULL"), nullable=True, index=True)
     created_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     title = Column(String(256), nullable=True)
@@ -4673,59 +4672,6 @@ class SmmContentAsset(Base):
     is_selected = Column(Boolean, nullable=False, default=False, index=True)
     created_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-
-class SmmContentPlan(Base):
-    """Контент-план проекта. periodicity задаёт автоматическую каденцию
-    генерации (см. services.smm_projects.content_plan): {"unit": "day"|"week",
-    "times": int, "channels": [...], "auto_publish": bool}. Если periodicity
-    не задана — план работает только вручную (add_item/generate_items)."""
-
-    __tablename__ = "smm_content_plans"
-
-    id = Column(Integer, primary_key=True, index=True)
-    project_id = Column(Integer, ForeignKey("smm_projects.id", ondelete="CASCADE"), nullable=False, index=True)
-    name = Column(String(256), nullable=False)
-    date_from = Column(Date, nullable=True)
-    date_to = Column(Date, nullable=True)
-    periodicity = Column(JSON, nullable=True)
-    is_active = Column(Boolean, nullable=False, default=True, index=True)
-    last_generated_at = Column(DateTime(timezone=True), nullable=True)
-    created_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-    items = relationship(
-        "SmmContentPlanItem", back_populates="plan", cascade="all, delete-orphan", order_by="SmmContentPlanItem.scheduled_at"
-    )
-
-
-class SmmContentPlanItemStatus(str, enum.Enum):
-    PENDING = "pending"
-    GENERATING = "generating"
-    READY = "ready"
-    PUBLISHING = "publishing"
-    PUBLISHED = "published"
-    ERROR = "error"
-    SKIPPED = "skipped"
-    CANCELLED = "cancelled"
-
-
-class SmmContentPlanItem(Base):
-    __tablename__ = "smm_content_plan_items"
-
-    id = Column(Integer, primary_key=True, index=True)
-    plan_id = Column(Integer, ForeignKey("smm_content_plans.id", ondelete="CASCADE"), nullable=False, index=True)
-    scheduled_at = Column(DateTime(timezone=True), nullable=True, index=True)
-    channel = Column(String(32), nullable=True)
-    content_type = Column(String(64), nullable=True)
-    title = Column(String(256), nullable=False)
-    brief = Column(Text, nullable=True)
-    generated_content_id = Column(Integer, ForeignKey("smm_content.id", ondelete="SET NULL"), nullable=True)
-    status = Column(String(16), nullable=False, default=SmmContentPlanItemStatus.PENDING.value, index=True)
-    last_error = Column(Text, nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-    plan = relationship("SmmContentPlan", back_populates="items")
 
 
 class SmmPublicationStatus(str, enum.Enum):

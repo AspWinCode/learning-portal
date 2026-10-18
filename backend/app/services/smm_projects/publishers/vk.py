@@ -5,15 +5,33 @@ from typing import Dict, Optional
 
 import httpx
 
-from .base import PublicationContext, Publisher, PublisherResult
+from .base import PublicationContext, Publisher, PublisherResult, VerifyResult
 
 VK_API = "https://api.vk.com/method"
 VK_API_VERSION = "5.199"
+
+# https://dev.vk.com/ru/reference/errors — коды, которые реально встречаются
+# при неверном токене/group_id сообщества.
+_VK_ERROR_MESSAGES = {
+    5: "Недействительный токен VK",
+    15: "Токен не имеет доступа к этому сообществу",
+    27: "Это токен пользователя, а не сообщества",
+    100: "Сообщество не найдено: неверный ID",
+    113: "Сообщество не найдено: неверный ID",
+}
 
 
 def _env(name: str) -> Optional[str]:
     value = os.getenv(name)
     return value.strip() if value and value.strip() else None
+
+
+def _vk_error(data: Dict) -> Optional[str]:
+    err = data.get("error")
+    if not err:
+        return None
+    code = err.get("error_code")
+    return _VK_ERROR_MESSAGES.get(code) or f"VK API: {err.get('error_msg') or 'неизвестная ошибка'}"
 
 
 class VkPublisher(Publisher):
@@ -28,6 +46,47 @@ class VkPublisher(Publisher):
     def is_configured(self, project_code: str, config: Optional[Dict[str, str]] = None) -> bool:
         resolved = config or self._env_config(project_code)
         return bool(resolved and resolved.get("token") and resolved.get("group_id"))
+
+    async def verify(self, project_code: str, config: Optional[Dict[str, str]] = None) -> VerifyResult:
+        resolved = config or self._env_config(project_code)
+        if not resolved or not resolved.get("token") or not resolved.get("group_id"):
+            return VerifyResult(ok=False, error="VK не настроен: отсутствует токен или ID сообщества")
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                group_resp = await client.get(
+                    f"{VK_API}/groups.getById",
+                    params={"group_id": resolved["group_id"], "access_token": resolved["token"], "v": VK_API_VERSION},
+                )
+                group_data = group_resp.json()
+                error = _vk_error(group_data)
+                if error:
+                    return VerifyResult(ok=False, error=error)
+
+                # Группа существует и токен её видит — но публиковать можно,
+                # только если у токена реально есть право "wall", а не просто
+                # чтение; без этого wall.post упадёт уже в момент публикации.
+                perms_resp = await client.get(
+                    f"{VK_API}/groups.getTokenPermissions",
+                    params={"access_token": resolved["token"], "v": VK_API_VERSION},
+                )
+                perms_data = perms_resp.json()
+        except httpx.RequestError as exc:
+            return VerifyResult(ok=False, error=f"VK API недоступен: {exc}")
+        except ValueError:
+            return VerifyResult(ok=False, error="VK API вернул некорректный JSON")
+
+        error = _vk_error(perms_data)
+        if error:
+            return VerifyResult(ok=False, error=error)
+        permissions = {p.get("name") for p in ((perms_data.get("response") or {}).get("permissions") or [])}
+        if "wall" not in permissions:
+            return VerifyResult(ok=False, error="У токена нет права «wall» — публикация на стене сообщества запрещена")
+
+        groups = (group_data.get("response") or {})
+        group_list = groups.get("groups") if isinstance(groups, dict) else groups
+        group = (group_list or [{}])[0]
+        name = group.get("name") or f"id{resolved['group_id']}"
+        return VerifyResult(ok=True, detail={"chat_id": str(group.get("id") or resolved["group_id"]), "chat_title": name})
 
     async def publish(self, context: PublicationContext) -> PublisherResult:
         config = context.config or self._env_config(context.project_code)

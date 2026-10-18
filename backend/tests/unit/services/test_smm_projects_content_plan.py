@@ -132,3 +132,64 @@ async def test_ensure_plan_scheduled_respects_max_items_cap(monkeypatch):
     monkeypatch.setattr(content_plan, "_materialize_item", _noop_materialize)
     created = await content_plan.ensure_plan_scheduled(_FakeDB(), object(), _project(), plan)
     assert len(created) == content_plan.MAX_ITEMS_PER_RUN
+
+
+def test_parse_time_of_day_valid():
+    assert content_plan._parse_time_of_day("10:00") == (10, 0)
+
+
+def test_parse_time_of_day_defaults_on_garbage():
+    assert content_plan._parse_time_of_day("не время") == (10, 0)
+    assert content_plan._parse_time_of_day(None) == (10, 0)
+
+
+def test_msk_to_utc_subtracts_three_hours():
+    from datetime import date
+
+    result = content_plan._msk_to_utc(date(2026, 10, 21), 10, 0)
+    assert result == datetime(2026, 10, 21, 7, 0, tzinfo=timezone.utc)
+
+
+@pytest.mark.asyncio
+async def test_ensure_plan_scheduled_burst_mode_groups_all_channels_same_time(monkeypatch):
+    # Явный запрос пользователя: все каналы публикуются ОДНОВРЕМЕННО, раз в
+    # N дней, в заданное время по МСК — не по одному каналу за раз.
+    # lookahead/cadence намеренно с запасом, чтобы гарантировать хотя бы 2
+    # burst'а независимо от времени суток, в которое выполняется тест.
+    plan = _plan(periodicity={
+        "mode": "burst", "cadence_days": 3, "time_of_day": "10:00",
+        "channels": ["vk", "telegram", "instagram", "max"], "lookahead_days": 10, "auto_publish": False,
+    })
+
+    async def _noop_materialize(db, user, *, project, item, auto_publish):
+        item.status = SmmContentPlanItemStatus.READY.value
+
+    monkeypatch.setattr(content_plan, "_materialize_item", _noop_materialize)
+
+    db = _FakeDB()
+    created = await content_plan.ensure_plan_scheduled(db, object(), _project(), plan)
+
+    assert len(created) >= 8  # минимум 2 burst'а x 4 канала на 10-дневном горизонте с cadence 3 дня
+    assert len(created) % 4 == 0
+    assert [item.channel for item in created[:4]] == ["vk", "telegram", "instagram", "max"]
+    # все 4 канала одного burst'а — одна и та же метка времени (10:00 МСК = 07:00 UTC)
+    first_burst_times = {item.scheduled_at for item in created[:4]}
+    assert len(first_burst_times) == 1
+    assert list(first_burst_times)[0].hour == 7
+    second_burst_times = {item.scheduled_at for item in created[4:8]}
+    assert len(second_burst_times) == 1
+    assert list(second_burst_times)[0] - list(first_burst_times)[0] == timedelta(days=3)
+
+
+@pytest.mark.asyncio
+async def test_ensure_plan_scheduled_burst_mode_without_times_still_runs(monkeypatch):
+    # В rotate-режиме отсутствие "times" — noop; в burst-режиме "times" не
+    # нужен вовсе (используется cadence_days), поэтому burst не должен
+    # требовать periodicity.times для срабатывания.
+    async def _noop_materialize(db, user, *, project, item, auto_publish):
+        pass
+
+    monkeypatch.setattr(content_plan, "_materialize_item", _noop_materialize)
+    plan = _plan(periodicity={"mode": "burst", "cadence_days": 3, "channels": ["vk"], "lookahead_days": 5})
+    created = await content_plan.ensure_plan_scheduled(_FakeDB(), object(), _project(), plan)
+    assert len(created) >= 1

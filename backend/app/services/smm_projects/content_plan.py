@@ -177,6 +177,26 @@ def _cadence_interval(periodicity: Dict[str, Any]) -> timedelta:
     return span / times
 
 
+# Россия не переходит на летнее/зимнее время с 2014 года — фиксированный UTC+3
+# без учёта DST достаточен для времени публикации по МСК.
+_MSK_OFFSET = timedelta(hours=3)
+
+
+def _parse_time_of_day(value: Optional[str]) -> tuple[int, int]:
+    raw = str(value or "10:00").strip()
+    try:
+        hh, mm = raw.split(":")[:2]
+        hour, minute = int(hh), int(mm)
+    except (ValueError, IndexError):
+        hour, minute = 10, 0
+    return max(0, min(hour, 23)), max(0, min(minute, 59))
+
+
+def _msk_to_utc(day: date, hour: int, minute: int) -> datetime:
+    local = datetime(day.year, day.month, day.day, hour, minute, tzinfo=timezone.utc) - _MSK_OFFSET
+    return local
+
+
 async def _materialize_item(
     db: Session, user, *, project: SmmProject, item: SmmContentPlanItem, auto_publish: bool,
 ) -> None:
@@ -242,15 +262,22 @@ async def _materialize_item(
 async def ensure_plan_scheduled(db: Session, user, project: SmmProject, plan: SmmContentPlan) -> List[SmmContentPlanItem]:
     """Подкладывает новые пункты плана на горизонт планирования по заданной
     periodicity и сразу материализует их (генерация + постановка в очередь
-    публикации). Вызывается периодической задачей — см. background_jobs."""
+    публикации). Вызывается периодической задачей — см. background_jobs.
+
+    Два режима periodicity:
+    - rotate (по умолчанию, обратная совместимость): "unit"+"times" — посты
+      по очереди, один канал за раз, через равный интервал.
+    - burst ("mode": "burst", "cadence_days": N, "time_of_day": "HH:MM" по
+      МСК): все каналы публикуются ОДНОВРЕМЕННО, раз в N дней, в заданное
+      время — раз пользователь просил «разом на всех площадках в 10:00»."""
     periodicity = plan.periodicity or {}
-    if not plan.is_active or not periodicity.get("times"):
+    burst = periodicity.get("mode") == "burst"
+    if not plan.is_active or not (periodicity.get("times") or burst):
         return []
 
     channels = [c for c in (periodicity.get("channels") or []) if c] or ["vk"]
     lookahead_days = int(periodicity.get("lookahead_days") or 14)
     auto_publish = bool(periodicity.get("auto_publish", True))
-    interval = _cadence_interval(periodicity)
 
     now = datetime.now(timezone.utc)
     horizon = now + timedelta(days=lookahead_days)
@@ -261,23 +288,47 @@ async def ensure_plan_scheduled(db: Session, user, project: SmmProject, plan: Sm
         .order_by(SmmContentPlanItem.scheduled_at.desc())
         .first()
     )
-    next_time = (last_item.scheduled_at + interval) if last_item and last_item.scheduled_at else now + interval
 
     created: List[SmmContentPlanItem] = []
-    i = 0
-    while next_time <= horizon and i < MAX_ITEMS_PER_RUN:
-        channel = channels[i % len(channels)]
-        item = SmmContentPlanItem(
-            plan_id=plan.id, scheduled_at=next_time, channel=channel,
-            content_type=periodicity.get("goal") or "регулярная публикация",
-            title=f"Автопост {next_time.date().isoformat()} ({channel})",
-            brief=periodicity.get("brief") or periodicity.get("goals"),
-            status=SmmContentPlanItemStatus.PENDING.value,
-        )
-        db.add(item)
-        created.append(item)
-        next_time += interval
-        i += 1
+
+    if burst:
+        cadence = timedelta(days=max(int(periodicity.get("cadence_days") or 3), 1))
+        hour, minute = _parse_time_of_day(periodicity.get("time_of_day"))
+        if last_item and last_item.scheduled_at:
+            next_day = (last_item.scheduled_at + cadence).date()
+        else:
+            next_day = now.date() + timedelta(days=1)
+        next_time = _msk_to_utc(next_day, hour, minute)
+        while next_time <= horizon and len(created) + len(channels) <= MAX_ITEMS_PER_RUN:
+            for channel in channels:
+                item = SmmContentPlanItem(
+                    plan_id=plan.id, scheduled_at=next_time, channel=channel,
+                    content_type=periodicity.get("goal") or "регулярная публикация",
+                    title=f"Автопост {next_time.date().isoformat()} ({channel})",
+                    brief=periodicity.get("brief") or periodicity.get("goals"),
+                    status=SmmContentPlanItemStatus.PENDING.value,
+                )
+                db.add(item)
+                created.append(item)
+            next_day += cadence
+            next_time = _msk_to_utc(next_day, hour, minute)
+    else:
+        interval = _cadence_interval(periodicity)
+        next_time = (last_item.scheduled_at + interval) if last_item and last_item.scheduled_at else now + interval
+        i = 0
+        while next_time <= horizon and i < MAX_ITEMS_PER_RUN:
+            channel = channels[i % len(channels)]
+            item = SmmContentPlanItem(
+                plan_id=plan.id, scheduled_at=next_time, channel=channel,
+                content_type=periodicity.get("goal") or "регулярная публикация",
+                title=f"Автопост {next_time.date().isoformat()} ({channel})",
+                brief=periodicity.get("brief") or periodicity.get("goals"),
+                status=SmmContentPlanItemStatus.PENDING.value,
+            )
+            db.add(item)
+            created.append(item)
+            next_time += interval
+            i += 1
 
     if not created:
         return []

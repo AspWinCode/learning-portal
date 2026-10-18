@@ -192,11 +192,25 @@ async def _materialize_item(
     item.status = SmmContentPlanItemStatus.GENERATING.value
     db.commit()
 
-    input_data = {
+    # prompt_template.format(**input_data) требует значение под КАЖДЫЙ {placeholder}
+    # схемы шаблона — если автопилот знает только часть полей (topic/platform/goal),
+    # формат падает KeyError на первом отсутствующем ключе ("не хватает поля
+    # «audience»"). Предзаполняем все поля схемы пустой строкой (prompt_builder
+    # сам подставит "—" для пустых), затем перекрываем тем, что знаем реально.
+    schema_fields = (template.input_schema_json or {}).get("fields", [])
+    input_data: Dict[str, Any] = {f["key"]: "" for f in schema_fields if f.get("key")}
+    input_data.update({
         "topic": item.brief or item.title,
         "platform": item.channel or "universal",
         "goal": item.content_type or "регулярная публикация",
-    }
+    })
+    brand = project.brand_context or {}
+    if "audience" in input_data and not input_data["audience"]:
+        input_data["audience"] = brand.get("target_audience") or ""
+    if "cta" in input_data and not input_data["cta"]:
+        input_data["cta"] = brand.get("cta") or ""
+    if "length" in input_data and not input_data["length"]:
+        input_data["length"] = "средний"
     try:
         content = await generation.generate(db, user, project=project, template=template, input_data=input_data, auto_generated=True)
     except ValueError as exc:

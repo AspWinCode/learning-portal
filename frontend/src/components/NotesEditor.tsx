@@ -257,6 +257,12 @@ const NotesEditor: React.FC<NotesEditorProps> = ({
   executeItemRef.current = executeItem;
 
   const editor = useEditor({
+    // React.StrictMode (index.tsx) double-инициализирует эффекты в dev —
+    // без этого флага Tiptap успевает примонтировать ProseMirror-view сразу
+    // при создании редактора, и при повторном StrictMode-мониторе получаем
+    // "Failed to execute 'removeChild' on 'Node'" (второй инстанс чистит DOM
+    // первого). immediatelyRender: false откладывает первый рендер до эффекта.
+    immediatelyRender: false,
     extensions: [
       StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
       Placeholder.configure({ placeholder }),

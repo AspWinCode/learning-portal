@@ -1,4 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useEditor, EditorContent } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+import Placeholder from '@tiptap/extension-placeholder';
 import {
   Alert,
   Box,
@@ -892,10 +895,62 @@ const LegacyProjectsListPage: React.FC = () => {
 
 // ─── Новые: вставил текст (+картинку) → выбрал каналы/проект → опубликовал ──
 
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// Вставленный из AI-чата/заметок текст часто уже содержит markdown
+// (**жирный**, *курсив*) — без этого он ложился бы в редактор сырыми
+// звёздочками. Конвертируем в HTML, чтобы Tiptap распознал реальные marks.
+function markdownToHtml(text: string): string {
+  return text
+    .split(/\n{2,}/)
+    .map((block) => {
+      let html = escapeHtml(block)
+        .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/__(.+?)__/g, '<strong>$1</strong>')
+        .replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '<em>$1</em>')
+        .replace(/(?<!_)_([^_\n]+)_(?!_)/g, '<em>$1</em>')
+        .replace(/\n/g, '<br>');
+      return `<p>${html || '<br>'}</p>`;
+    })
+    .join('');
+}
+
+// Обратная сериализация: реальная жирность/курсив из ProseMirror-документа
+// обратно в markdown-текст — именно это уходит в публикацию (площадки сами
+// текст, а не rich-doc).
+function serializeInline(node: any): string {
+  if (node.type === 'text') {
+    let value: string = node.text || '';
+    const marks = new Set((node.marks || []).map((m: any) => m.type));
+    if (marks.has('bold') && marks.has('italic')) value = `***${value}***`;
+    else if (marks.has('bold')) value = `**${value}**`;
+    else if (marks.has('italic')) value = `*${value}*`;
+    return value;
+  }
+  if (node.type === 'hardBreak') return '\n';
+  return (node.content || []).map(serializeInline).join('');
+}
+
+function editorDocToText(doc: any): string {
+  if (!doc?.content) return '';
+  const blocks = doc.content.map((node: any) => {
+    if (node.type === 'bulletList' || node.type === 'orderedList') {
+      return (node.content || [])
+        .map((li: any) => `• ${(li.content || []).map(serializeInline).join('')}`)
+        .join('\n');
+    }
+    return serializeInline(node);
+  });
+  return blocks.join('\n\n').trim();
+}
+
 const ComposeTab: React.FC<{ onPublished: () => void }> = ({ onPublished }) => {
   const [projects, setProjects] = useState<smm.ProjectListItem[]>([]);
   const [projectCode, setProjectCode] = useState('');
-  const [text, setText] = useState('');
+  const [isEmpty, setIsEmpty] = useState(true);
   const [image, setImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [channelStatuses, setChannelStatuses] = useState<smm.ChannelStatus[]>([]);
@@ -936,31 +991,53 @@ const ComposeTab: React.FC<{ onPublished: () => void }> = ({ onPublished }) => {
     return () => URL.revokeObjectURL(url);
   }, [image]);
 
-  // Вставка картинки по Ctrl+V прямо в то же окно, что и текст — если в
-  // буфере есть image/*, перехватываем; иначе даём браузеру вставить текст
-  // в textarea как обычно.
-  const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
-    const items = e.clipboardData?.items;
-    if (!items) return;
-    for (let i = 0; i < items.length; i += 1) {
-      const item = items[i];
-      if (item.type.startsWith('image/')) {
-        const file = item.getAsFile();
-        if (file) {
-          setImage(file);
-          e.preventDefault();
+  const editor = useEditor({
+    immediatelyRender: false,
+    extensions: [
+      StarterKit.configure({ heading: false, blockquote: false, codeBlock: false, horizontalRule: false }),
+      Placeholder.configure({ placeholder: 'Вставьте текст поста (Ctrl+V) — картинку можно вставить сюда же' }),
+    ],
+    onUpdate: ({ editor: ed }) => setIsEmpty(ed.isEmpty),
+    editorProps: {
+      attributes: { class: 'compose-editor' },
+      // Вставка по Ctrl+V прямо в то же окно, что и текст: если в буфере
+      // есть image/* — перехватываем как картинку поста; если текст — сами
+      // прогоняем через markdownToHtml, чтобы **жирный** лёг жирным, а не
+      // сырыми звёздочками (дефолтная вставка Tiptap кладёт голый текст).
+      handlePaste: (_view, event) => {
+        const items = event.clipboardData?.items;
+        if (items) {
+          for (let i = 0; i < items.length; i += 1) {
+            const item = items[i];
+            if (item.type.startsWith('image/')) {
+              const file = item.getAsFile();
+              if (file) {
+                setImage(file);
+                event.preventDefault();
+                return true;
+              }
+            }
+          }
         }
-        return;
-      }
-    }
-  };
+        const pasted = event.clipboardData?.getData('text/plain');
+        if (pasted) {
+          editor?.chain().focus().insertContent(markdownToHtml(pasted)).run();
+          event.preventDefault();
+          return true;
+        }
+        return false;
+      },
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const toggleChannel = (channel: string) => {
     setSelectedChannels((prev) => (prev.includes(channel) ? prev.filter((c) => c !== channel) : [...prev, channel]));
   };
 
   const submit = async () => {
-    if (!text.trim() || !projectCode || !selectedChannels.length) return;
+    const text = editor ? editorDocToText(editor.getJSON()) : '';
+    if (!text || !projectCode || !selectedChannels.length) return;
     if (scheduled && !scheduleAt) return;
     setBusy(true);
     setError(null);
@@ -968,13 +1045,14 @@ const ComposeTab: React.FC<{ onPublished: () => void }> = ({ onPublished }) => {
     try {
       const rows = await smm.composeAndPublish({
         projectCode,
-        text: text.trim(),
+        text,
         channels: selectedChannels,
         publishAt: scheduled && scheduleAt ? new Date(scheduleAt).toISOString() : null,
         image,
       });
       setResult(rows);
-      setText('');
+      editor?.commands.clearContent(true);
+      setIsEmpty(true);
       setImage(null);
       setSelectedChannels([]);
       setScheduled(false);
@@ -989,15 +1067,24 @@ const ComposeTab: React.FC<{ onPublished: () => void }> = ({ onPublished }) => {
 
   return (
     <Stack spacing={2} sx={{ maxWidth: 720 }}>
-      <Box onPaste={handlePaste} sx={{ border: '1px dashed', borderColor: 'divider', borderRadius: 1, p: 1 }}>
-        <TextField
-          multiline
-          minRows={8}
-          fullWidth
-          placeholder="Вставьте текст поста (Ctrl+V) — картинку можно вставить сюда же"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-        />
+      <Box
+        sx={{
+          border: '1px dashed',
+          borderColor: 'divider',
+          borderRadius: 1,
+          p: 1.5,
+          '& .compose-editor': { minHeight: 160, outline: 'none' },
+          '& .compose-editor p': { margin: 0, marginBottom: '0.5em' },
+          '& .ProseMirror p.is-editor-empty:first-of-type::before': {
+            content: 'attr(data-placeholder)',
+            color: 'text.disabled',
+            float: 'left',
+            height: 0,
+            pointerEvents: 'none',
+          },
+        }}
+      >
+        <EditorContent editor={editor} />
       </Box>
 
       <Stack direction="row" spacing={1} alignItems="center">
@@ -1078,7 +1165,7 @@ const ComposeTab: React.FC<{ onPublished: () => void }> = ({ onPublished }) => {
       <Button
         variant="contained"
         color="secondary"
-        disabled={busy || !text.trim() || !projectCode || !selectedChannels.length || (scheduled && !scheduleAt)}
+        disabled={busy || isEmpty || !projectCode || !selectedChannels.length || (scheduled && !scheduleAt)}
         onClick={submit}
       >
         {busy ? 'Публикуем…' : 'Запустить в работу'}

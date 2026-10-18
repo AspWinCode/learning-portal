@@ -35,6 +35,10 @@ compose() { docker compose "$@" >>"$LOG" 2>&1; }
 
 run_migrations() {
   log "migrations: alembic upgrade head"
+  # migrator делит образ с backend (ghcr.io/.../learning-portal-backend:latest);
+  # `run` его не пересобирает сам — без явного build он едет на теге с
+  # ПРЕДЫДУЩЕГО цикла, и новые миграции применяются с опозданием на деплой.
+  compose build migrator
   compose run --rm migrator
 }
 

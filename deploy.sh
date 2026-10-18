@@ -22,6 +22,10 @@ git pull --ff-only origin main
 
 echo "[deploy] Bringing up db/redis and running migrations..."
 docker compose up -d --build db redis
+# migrator делит образ с backend (ghcr.io/.../learning-portal-backend:latest),
+# но `run` его не пересобирает — без явного build он молча едет на теге с
+# ПРЕДЫДУЩЕГО деплоя и новые миграции применяются на цикл позже.
+docker compose build migrator
 docker compose run --rm migrator
 
 echo "[deploy] Building and restarting Docker services..."

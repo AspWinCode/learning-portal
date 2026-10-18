@@ -108,7 +108,7 @@ def main() -> int:
             commands = [
                 ("revision", f"cd {repo_dir} && git rev-parse --short HEAD"),
                 ("git status", f"cd {repo_dir} && git status --short"),
-                ("migrations", locked(repo_dir, "docker compose up -d db redis && docker compose run --rm migrator")),
+                ("migrations", locked(repo_dir, "docker compose up -d db redis && docker compose build migrator && docker compose run --rm migrator")),
                 ("docker compose up", locked(repo_dir, "docker compose up -d --build --force-recreate --remove-orphans backend app_worker app_scheduler app_delivery_worker web")),
                 ("fix renamed containers", locked(repo_dir, FIX_RENAMED_CONTAINERS)),
                 ("compose ps", f"cd {repo_dir} && docker compose ps"),
@@ -137,7 +137,7 @@ def main() -> int:
                 ("hard reset", f"cd {repo_dir} && git checkout main && git reset --hard origin/main"),
                 ("clean untracked", f"cd {repo_dir} && git clean -fd"),
                 ("restore server config", f"cd {repo_dir} && git checkout stash@{{0}} -- docker-compose.yml frontend/Caddyfile"),
-                ("db/redis + migrations", locked(repo_dir, "docker compose up -d --build db redis && docker compose run --rm migrator")),
+                ("db/redis + migrations", locked(repo_dir, "docker compose up -d --build db redis && docker compose build migrator && docker compose run --rm migrator")),
                 ("docker compose up", locked(repo_dir, "docker compose up -d --build --remove-orphans")),
                 ("fix renamed containers", locked(repo_dir, FIX_RENAMED_CONTAINERS)),
                 ("revision", f"cd {repo_dir} && git rev-parse --short HEAD"),
@@ -149,7 +149,7 @@ def main() -> int:
             commands = [
                 ("git status", f"cd {repo_dir} && git status --short"),
                 ("git pull", f"cd {repo_dir} && git fetch origin main && git checkout main && git pull --ff-only origin main"),
-                ("db/redis + migrations", locked(repo_dir, "docker compose up -d --build db redis && docker compose run --rm migrator")),
+                ("db/redis + migrations", locked(repo_dir, "docker compose up -d --build db redis && docker compose build migrator && docker compose run --rm migrator")),
                 ("docker compose up", locked(repo_dir, "docker compose up -d --build --remove-orphans")),
                 ("fix renamed containers", locked(repo_dir, FIX_RENAMED_CONTAINERS)),
                 ("revision", f"cd {repo_dir} && git rev-parse --short HEAD"),

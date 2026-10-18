@@ -108,10 +108,13 @@ def _parse_plan_items(raw: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 scheduled_at = datetime.strptime(raw_date.strip()[:10], "%Y-%m-%d").replace(tzinfo=timezone.utc)
             except ValueError:
                 scheduled_at = None
+        content_type = str(row.get("goal") or row.get("content_type") or "").strip()
         parsed.append({
             "scheduled_at": scheduled_at,
             "channel": row.get("channel"),
-            "content_type": row.get("goal") or row.get("content_type"),
+            # content_type — String(64); AI иногда пишет развёрнутую цель вместо
+            # короткой категории, усечение — защита от StringDataRightTruncation.
+            "content_type": content_type[:64] or None,
             "title": str(row.get("topic") or row.get("title")).strip()[:256],
             "brief": row.get("brief") or row.get("тезис"),
         })
@@ -133,9 +136,17 @@ async def generate_items(
     knowledge_hits = await knowledge_svc.search(db, project, f"{goals or ''} {important_events or ''}".strip())
     system_prompt = prompt_builder.build_system_prompt(project, None, knowledge_hits)
     system_prompt += (
-        "\n\nВерни ТОЛЬКО JSON без markdown: "
+        "\n\nЭто план-брейншторм ТЕМ, а не готовые посты. Верни ТОЛЬКО JSON без markdown, "
+        "строго по схеме: "
         '{"items":[{"date":"YYYY-MM-DD","channel":"vk|telegram|instagram|max",'
         '"topic":"...","goal":"...","brief":"..."}]}. '
+        "В каждом пункте — ровно один объект на ОДНУ публикацию в ОДНОМ канале (не группируй "
+        "несколько каналов внутри одного пункта и не добавляй вложенные объекты по каналам). "
+        "topic — заголовок темы, не более 12 слов. goal — короткая категория поста "
+        "(2-4 слова, например «анонс регистрации», «обучающий разбор», «вовлечение», "
+        "«итоги недели»), НЕ разворачивай её в предложение. brief — краткий тезис/бриф для "
+        "автора поста, не более 30 слов. НЕ пиши готовый текст поста, не используй эмодзи и "
+        "переносы строк внутри полей — это бриф для дальнейшей генерации, а не финальный контент. "
         "Если точная дата неизвестна — распредели равномерно по периоду."
     )
     period = f"{plan.date_from.isoformat() if plan.date_from else '—'} — {plan.date_to.isoformat() if plan.date_to else '—'}"
@@ -145,9 +156,12 @@ async def generate_items(
         f"Цели: {goals or '—'}. Важные события в периоде: {important_events or '—'}."
     )
 
+    # max_tokens с запасом: даже если модель проигнорирует лимит длины полей,
+    # count*4 полей по ~60 токенов на компактный пункт плана должно хватать
+    # с кратным запасом, чтобы обрезка JSON на середине ответа не повторилась.
     result = await ai_gateway.complete_text(
         feature=f"smm_projects:{project.code}:content_plan", system=system_prompt, prompt=user_prompt,
-        json_mode=True, temperature=0.5, max_tokens=1800, user_id=getattr(user, "id", None),
+        json_mode=True, temperature=0.5, max_tokens=max(1800, count * 220), user_id=getattr(user, "id", None),
     )
     if not result.ok or not result.text:
         raise ValueError(result.error or "AI не вернул ответ")

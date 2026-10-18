@@ -101,6 +101,19 @@ async def test_verify_not_configured_without_calling_api(publisher):
 
 @pytest.mark.asyncio
 async def test_publish_text_success_returns_external_message_id(monkeypatch, publisher):
+    # Реальная форма ответа MAX API: id сообщения лежит в message.body.mid,
+    # а не message.message_id/message.id (проверено живым вызовом API).
+    monkeypatch.setattr(
+        "httpx.AsyncClient",
+        _client_factory([_FakeResponse(200, {"message": {"body": {"mid": "mid.abc123", "seq": 1, "text": "Привет"}}})]),
+    )
+    context = PublicationContext(project_code="kodarena", channel="max", text="Привет", config={"token": "t", "chat_id": "1"})
+    result = await publisher.publish(context)
+    assert result.external_id == "mid.abc123"
+
+
+@pytest.mark.asyncio
+async def test_publish_falls_back_to_message_id_field(monkeypatch, publisher):
     monkeypatch.setattr(
         "httpx.AsyncClient",
         _client_factory([_FakeResponse(200, {"message": {"message_id": "mid-1"}})]),

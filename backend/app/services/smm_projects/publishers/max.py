@@ -115,4 +115,9 @@ class MaxPublisher(Publisher):
         if data.get("code") or data.get("error"):
             raise ValueError(str(data.get("message") or data.get("error") or data))
         message = data.get("message") or data
-        return PublisherResult(str(message.get("message_id") or message.get("id") or ""), None)
+        # Реальный ID сообщения лежит в message.body.mid (подтверждено живым
+        # ответом MAX API), а не message.message_id/message.id — со старым
+        # полем external_id молча оставался пустой строкой при status=success.
+        body = message.get("body") if isinstance(message, dict) else None
+        message_id = (body or {}).get("mid") or message.get("message_id") or message.get("id") or ""
+        return PublisherResult(str(message_id), None)

@@ -12,6 +12,7 @@ const LegoPaymentsPage: React.FC = () => {
   const [summary, setSummary] = useState<{ revenue_this_month: number; summary: LegoDebtSummary } | null>(null);
   const [studentId, setStudentId] = useState('');
   const [amount, setAmount] = useState('');
+  const [paymentDate, setPaymentDate] = useState('');
   const [comment, setComment] = useState('');
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -38,11 +39,13 @@ const LegoPaymentsPage: React.FC = () => {
     try {
       const res = await registerPayment(Number(studentId), {
         amount: Number(amount),
+        payment_date: paymentDate || undefined,
         comment: comment || undefined,
         idempotency_key: payKey.current,
       });
       setMessage(res.created ? 'Оплата зарегистрирована' : 'Оплата уже была зарегистрирована');
       setAmount('');
+      setPaymentDate('');
       setComment('');
       payKey.current = newPayKey();
       load();
@@ -71,6 +74,15 @@ const LegoPaymentsPage: React.FC = () => {
             {students.map((s) => <option key={s.id} value={s.id}>{s.full_name}</option>)}
           </TextField>
           <TextField size="small" type="number" label="Сумма, ₽" value={amount} onChange={(e) => setAmount(e.target.value)} required />
+          <TextField
+            size="small"
+            type="date"
+            label="Дата оплаты"
+            value={paymentDate}
+            onChange={(e) => setPaymentDate(e.target.value)}
+            InputLabelProps={{ shrink: true }}
+            helperText="Пусто — сегодня"
+          />
           <TextField size="small" label="Комментарий" value={comment} onChange={(e) => setComment(e.target.value)} />
           <Button type="submit" variant="contained" disabled={!studentId || !amount || saving}>Провести оплату</Button>
         </Stack>

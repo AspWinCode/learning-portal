@@ -108,11 +108,15 @@ class MaxPublisher(Publisher):
                 if not token:
                     raise ValueError("MAX не вернул media token")
                 attachments.append({"type": "image", "payload": {"token": token}})
+            # Без format MAX шлёт текст буквально — **bold** приходит в чат
+            # с самими звёздочками. Подтверждено живым вызовом: с
+            # format="markdown" MAX сам разбирает **/* и возвращает markup
+            # (strong/emphasized), а не просто эхо текста без изменений.
             response = await client.post(
                 f"{self.API}/messages",
                 params={"chat_id": config["chat_id"]},
                 headers=headers,
-                json={"text": context.text, "attachments": attachments},
+                json={"text": context.text, "attachments": attachments, "format": "markdown"},
             )
         message_error = self._error_for(response)
         if message_error:

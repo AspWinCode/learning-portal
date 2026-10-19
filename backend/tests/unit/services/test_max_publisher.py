@@ -15,8 +15,9 @@ class _FakeResponse:
 
 
 class _FakeAsyncClient:
-    def __init__(self, responses):
+    def __init__(self, responses, calls=None):
         self._responses = list(responses)
+        self.calls = calls if calls is not None else []
 
     async def __aenter__(self):
         return self
@@ -25,15 +26,17 @@ class _FakeAsyncClient:
         return False
 
     async def get(self, url, **kwargs):
+        self.calls.append((url, kwargs))
         return self._responses.pop(0)
 
     async def post(self, url, **kwargs):
+        self.calls.append((url, kwargs))
         return self._responses.pop(0)
 
 
-def _client_factory(responses):
+def _client_factory(responses, calls=None):
     def _factory(*a, **k):
-        return _FakeAsyncClient(responses)
+        return _FakeAsyncClient(responses, calls=calls)
 
     return _factory
 
@@ -132,6 +135,22 @@ async def test_publish_with_image_extracts_token_from_real_photos_shape(monkeypa
     )
     result = await publisher.publish(context)
     assert result.external_id == "mid.withimage"
+
+
+@pytest.mark.asyncio
+async def test_publish_sends_markdown_format_so_max_renders_bold(monkeypatch, publisher):
+    # Без format MAX отдаёт текст буквально — **bold** приходит со
+    # звёздочками. Подтверждено живым вызовом: с format="markdown" MAX сам
+    # разбирает разметку (возвращает markup: strong/emphasized).
+    calls = []
+    monkeypatch.setattr(
+        "httpx.AsyncClient",
+        _client_factory([_FakeResponse(200, {"message": {"body": {"mid": "mid.1"}}})], calls=calls),
+    )
+    context = PublicationContext(project_code="kodarena", channel="max", text="**жирный**", config={"token": "t", "chat_id": "1"})
+    await publisher.publish(context)
+    _, kwargs = calls[-1]
+    assert kwargs["json"]["format"] == "markdown"
 
 
 @pytest.mark.asyncio

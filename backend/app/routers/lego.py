@@ -844,7 +844,9 @@ def add_group_member(
     )
     if active:
         raise HTTPException(status_code=409, detail="Ребёнок уже в этой группе")
-    db.add(LegoGroupStudent(lego_group_id=group.id, lego_student_id=student.id, joined_at=date.today()))
+    # В группе числится с даты заполнения анкеты (start_date), а не с даты,
+    # когда администратор фактически добавил ребёнка в группу.
+    db.add(LegoGroupStudent(lego_group_id=group.id, lego_student_id=student.id, joined_at=student.start_date or date.today()))
     db.commit()
     log_action(db, current_user.id, "lego_group_member_add", "lego_group", group.id, {"student_id": student.id})
     return {"group_id": group.id, "student_id": student.id}

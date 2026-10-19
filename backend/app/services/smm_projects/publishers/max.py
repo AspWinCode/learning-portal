@@ -93,7 +93,16 @@ class MaxPublisher(Publisher):
                 if uploaded_error:
                     raise ValueError(uploaded_error)
                 uploaded_data = uploaded.json()
-                token = ((uploaded_data.get("photos") or {}).get("photoIds") or {}).get("token")
+                # Реальный ответ MAX: {"photos": {"0": {"token": "..."}}} — ключ
+                # под "photos" это числовой индекс фото, а не "photoIds" (так
+                # предполагал старый код и из-за этого падал на любой картинке).
+                # Подтверждено живым вызовом /uploads?type=image.
+                token = None
+                photos = uploaded_data.get("photos")
+                if isinstance(photos, dict) and photos:
+                    first_photo = next(iter(photos.values()))
+                    if isinstance(first_photo, dict):
+                        token = first_photo.get("token")
                 if not token:
                     token = uploaded_data.get("token")
                 if not token:

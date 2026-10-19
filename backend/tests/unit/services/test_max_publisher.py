@@ -113,6 +113,28 @@ async def test_publish_text_success_returns_external_message_id(monkeypatch, pub
 
 
 @pytest.mark.asyncio
+async def test_publish_with_image_extracts_token_from_real_photos_shape(monkeypatch, publisher):
+    # Реальный ответ MAX на /uploads?type=image: {"photos": {"0": {"token": "..."}}}
+    # — числовой индекс, а не "photoIds" (проверено живым вызовом API; на
+    # старой форме парсинга падало с "MAX не вернул media token" на каждой
+    # публикации с картинкой).
+    monkeypatch.setattr(
+        "httpx.AsyncClient",
+        _client_factory([
+            _FakeResponse(200, {"url": "https://iu.oneme.ru/uploadImage?r=token"}),
+            _FakeResponse(200, {"photos": {"0": {"token": "media-token-xyz"}}}),
+            _FakeResponse(200, {"message": {"body": {"mid": "mid.withimage", "seq": 1}}}),
+        ]),
+    )
+    context = PublicationContext(
+        project_code="kodarena", channel="max", text="Пост с картинкой",
+        asset_bytes=b"fake-png-bytes", config={"token": "t", "chat_id": "1"},
+    )
+    result = await publisher.publish(context)
+    assert result.external_id == "mid.withimage"
+
+
+@pytest.mark.asyncio
 async def test_publish_falls_back_to_message_id_field(monkeypatch, publisher):
     monkeypatch.setattr(
         "httpx.AsyncClient",

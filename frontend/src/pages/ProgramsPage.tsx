@@ -452,7 +452,14 @@ const ProgramsPage: React.FC = () => {
 
       <Box sx={{ mt: 2 }}>
         {buildFamilies().length === 0 ? (
-          <EmptyState title="Программы не найдены" description="Создайте первую программу, чтобы она появилась в списке." />
+          <EmptyState
+            title="Программы не найдены"
+            description={
+              canManagePrograms
+                ? 'Создайте первую программу, чтобы она появилась в списке.'
+                : 'Программы появятся здесь, когда ребёнка зачислят в учебную программу.'
+            }
+          />
         ) : buildFamilies().map((family) => (
           <Accordion key={family.rootId} sx={{ mb: 1 }}>
             <AccordionSummary expandIcon={<ExpandMore />}>

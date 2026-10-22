@@ -630,7 +630,9 @@ const GradesPage: React.FC = () => {
 
         {groupedHistory.length === 0 ? (
           <Typography variant="body2" color="text.secondary">
-            Выберите ученика, чтобы увидеть историю (или оставьте “Все ученики”, если вы админ).
+            {isAdminLike
+              ? 'Выберите ученика, чтобы увидеть историю (или оставьте “Все ученики”).'
+              : 'Выберите ученика, чтобы увидеть историю оценок.'}
           </Typography>
         ) : (
           <Box>

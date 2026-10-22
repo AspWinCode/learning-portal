@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Paper, Stack, Table, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from '@mui/material';
+import { Alert, Button, IconButton, Paper, Stack, Table, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from '@mui/material';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import { LegoShell } from './LegoShell';
-import { formatDate, formatMoney, getPaymentSummary, LegoDebtSummary, listPayments, listStudents, LegoStudent, registerPayment } from './legoApi';
+import { deletePayment, formatDate, formatMoney, getPaymentSummary, LegoDebtSummary, listPayments, listStudents, LegoStudent, registerPayment } from './legoApi';
 
 const newPayKey = () => `lego-pay-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
@@ -56,6 +57,19 @@ const LegoPaymentsPage: React.FC = () => {
     }
   };
 
+  const onDelete = async (id: number, studentName: string, amountValue: number) => {
+    if (!window.confirm(`Удалить оплату ${formatMoney(amountValue)} (${studentName})?`)) return;
+    setError(null);
+    setMessage(null);
+    try {
+      await deletePayment(id);
+      setMessage('Оплата удалена');
+      load();
+    } catch {
+      setError('Не удалось удалить оплату');
+    }
+  };
+
   return (
     <LegoShell title="Оплаты">
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
@@ -97,6 +111,7 @@ const LegoPaymentsPage: React.FC = () => {
               <TableCell align="right">Сумма</TableCell>
               <TableCell>Оплачено до</TableCell>
               <TableCell>Проводка</TableCell>
+              <TableCell />
             </TableRow>
           </TableHead>
           <TableBody>
@@ -107,10 +122,15 @@ const LegoPaymentsPage: React.FC = () => {
                 <TableCell align="right">{formatMoney(p.amount)}</TableCell>
                 <TableCell>{formatDate(p.paid_until)}</TableCell>
                 <TableCell>{p.finance_transaction_id ? `#${p.finance_transaction_id}` : '—'}</TableCell>
+                <TableCell align="right">
+                  <IconButton size="small" onClick={() => onDelete(p.id, p.student_name, p.amount)} aria-label="Удалить оплату">
+                    <DeleteOutlineIcon fontSize="small" />
+                  </IconButton>
+                </TableCell>
               </TableRow>
             ))}
             {payments.length === 0 && (
-              <TableRow><TableCell colSpan={5}><Typography color="text.secondary">Оплат пока нет</Typography></TableCell></TableRow>
+              <TableRow><TableCell colSpan={6}><Typography color="text.secondary">Оплат пока нет</Typography></TableCell></TableRow>
             )}
           </TableBody>
         </Table>

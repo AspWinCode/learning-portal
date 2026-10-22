@@ -189,6 +189,8 @@ export const listPayments = (): Promise<
   { id: number; student_id: number; student_name: string; amount: number; payment_date: string; paid_until: string | null; finance_transaction_id: number | null }[]
 > => api.get(`${BASE}/payments`).then((r) => r.data);
 
+export const deletePayment = (id: number): Promise<void> => api.delete(`${BASE}/payments/${id}`).then(() => undefined);
+
 export const getDebts = (filter: string): Promise<{ summary: LegoDebtSummary; rows: LegoDebtRow[]; money_visible: boolean }> =>
   api.get(`${BASE}/debts`, { params: { filter } }).then((r) => r.data);
 

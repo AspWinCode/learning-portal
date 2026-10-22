@@ -673,6 +673,27 @@ def register_payment(
     }
 
 
+@router.delete("/payments/{payment_id}", status_code=204)
+def delete_payment(
+    payment_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    _require(current_user, "lego.payments_manage")
+    payment = db.query(LegoPayment).filter(LegoPayment.id == payment_id).first()
+    if payment is None:
+        raise HTTPException(status_code=404, detail="Платёж не найден")
+    log_action(
+        db,
+        current_user.id,
+        "lego_payment_delete",
+        "lego_payment",
+        payment.id,
+        {"student_id": payment.student_id, "amount": float(payment.amount), "finance_transaction_id": payment.finance_transaction_id},
+    )
+    lego_service.delete_payment(db, payment)
+
+
 @router.get("/payments")
 def list_payments(
     limit: int = Query(100, ge=1, le=500),

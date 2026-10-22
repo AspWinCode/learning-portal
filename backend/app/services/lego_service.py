@@ -158,6 +158,40 @@ def register_payment(
         raise
 
 
+def delete_payment(db: Session, payment: LegoPayment) -> None:
+    """
+    Удаляет ошибочно проведённый платёж: платёж, его проводку и пересчитывает
+    paid_until/next_payment_date ребёнка по оставшимся месячным оплатам (если это была
+    оплата месячного тарифа, а не разового мастер-класса).
+    """
+    student = (
+        db.query(LegoStudent)
+        .filter(LegoStudent.id == payment.student_id)
+        .with_for_update()
+        .one()
+    )
+    tx = payment.finance_transaction
+    is_monthly = payment.event_id is None
+
+    db.delete(payment)
+    db.flush()
+
+    if tx is not None:
+        db.delete(tx)
+
+    if is_monthly:
+        last = (
+            db.query(LegoPayment)
+            .filter(LegoPayment.student_id == student.id, LegoPayment.event_id.is_(None))
+            .order_by(LegoPayment.period_end.desc(), LegoPayment.id.desc())
+            .first()
+        )
+        student.paid_until = last.paid_until if last else None
+        student.next_payment_date = (student.paid_until + timedelta(days=1)) if student.paid_until else None
+
+    db.commit()
+
+
 # ── Филиалы ──────────────────────────────────────────────────────────────────
 
 def default_branch(db: Session) -> LegoBranch:

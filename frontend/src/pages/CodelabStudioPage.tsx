@@ -305,6 +305,8 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
   const [quizQuestions, setQuizQuestions] = useState<CodelabQuizQuestion[]>([
     { text: '', options: [{ text: '', correct: false }, { text: '', correct: false }] },
   ]);
+  const [quizImportOpen, setQuizImportOpen] = useState(false);
+  const [quizImportText, setQuizImportText] = useState('');
 
   // Проект (type=project): содержимое — те же rich-text инструкции, что у
   // материала (nodeContent), плюс необязательный срок сдачи.
@@ -351,6 +353,8 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
     setTaskTests([{ input: '', expected: '', is_hidden: false }]);
     setSnapSteps([{ title: '', content: '' }]);
     setQuizQuestions([{ text: '', options: [{ text: '', correct: false }, { text: '', correct: false }] }]);
+    setQuizImportOpen(false);
+    setQuizImportText('');
     setProjectDueAt('');
   };
 
@@ -408,6 +412,47 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
     setQuizQuestions((prev) => prev.map((q, idx) => (idx === qi ? { ...q, options: q.options.map((o, j) => (j === oi ? { ...o, text } : o)) } : q)));
   const toggleOptionCorrect = (qi: number, oi: number) =>
     setQuizQuestions((prev) => prev.map((q, idx) => (idx === qi ? { ...q, options: q.options.map((o, j) => (j === oi ? { ...o, correct: !o.correct } : o)) } : q)));
+
+  // Импорт вопросов из вставленного текста: вопросы разделены пустой строкой,
+  // внутри вопроса первая строка — текст вопроса, следующие — варианты;
+  // правильный вариант помечается [x], (x) или * в начале строки.
+  const parseQuizImportText = (raw: string): CodelabQuizQuestion[] => {
+    const blocks = raw.split(/\r?\n\s*\r?\n/).map((b) => b.trim()).filter(Boolean);
+    const questions: CodelabQuizQuestion[] = [];
+    for (const block of blocks) {
+      const lines = block.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+      if (lines.length < 2) continue;
+      const [questionLine, ...optionLines] = lines;
+      const text = questionLine.replace(/^(?:вопрос\s*)?\d+[.):]\s*/i, '');
+      const options = optionLines.map((line) => {
+        const m = /^(\[[ xXхХ]?\]|\([xXхХ ]?\)|[*+-])\s*/.exec(line);
+        let correct = false;
+        let cleaned = line;
+        if (m) {
+          correct = /[xXхХ*]/.test(m[0]);
+          cleaned = line.slice(m[0].length).trim();
+        }
+        return { text: cleaned, correct };
+      });
+      if (options.length >= 2) questions.push({ text, options });
+    }
+    return questions;
+  };
+
+  const applyQuizImport = () => {
+    const parsed = parseQuizImportText(quizImportText);
+    if (parsed.length === 0) {
+      onToast({ msg: 'Не удалось распознать ни одного вопроса — проверьте формат', err: true });
+      return;
+    }
+    setQuizQuestions((prev) => {
+      const existing = prev.filter((q) => q.text.trim() || q.options.some((o) => o.text.trim()));
+      return [...existing, ...parsed];
+    });
+    setQuizImportOpen(false);
+    setQuizImportText('');
+    onToast({ msg: `Добавлено вопросов: ${parsed.length}` });
+  };
 
   const siblingCount = (parentId: number | null): number => {
     const siblings = parentId === null ? tree : findNode(tree, parentId)?.children ?? [];
@@ -918,7 +963,10 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
 
           <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
             <Typography variant="subtitle2">Вопросы</Typography>
-            <Button size="small" onClick={addQuestionRow}>+ Добавить вопрос</Button>
+            <Stack direction="row" spacing={1}>
+              <Button size="small" onClick={() => setQuizImportOpen(true)}>Импорт из текста</Button>
+              <Button size="small" onClick={addQuestionRow}>+ Добавить вопрос</Button>
+            </Stack>
           </Stack>
           <Stack spacing={2}>
             {quizQuestions.map((q, qi) => (
@@ -960,6 +1008,39 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
           <Button variant="contained" disabled={!nodeTitle.trim()} onClick={saveNode}>
             {nodeDialog?.editing ? 'Сохранить' : 'Добавить'}
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={quizImportOpen} onClose={() => setQuizImportOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>Импорт вопросов из текста</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Вопросы разделяйте пустой строкой. Первая строка блока — текст вопроса, следующие —
+            варианты ответа, по одному на строке. Правильный вариант отметьте в начале строки
+            символом <code>[x]</code> или <code>*</code>. Импортированные вопросы добавятся к уже
+            заполненным в форме.
+          </Typography>
+          <Paper variant="outlined" sx={{ p: 1.5, mb: 2, bgcolor: 'action.hover' }}>
+            <Typography variant="caption" component="pre" sx={{ m: 0, whiteSpace: 'pre-wrap', fontFamily: 'monospace' }}>
+{`Сколько будет 2 + 2?
+[ ] 3
+[x] 4
+[ ] 5
+
+Какие из чисел чётные?
+[x] 2
+[ ] 3
+[x] 4`}
+            </Typography>
+          </Paper>
+          <TextField
+            autoFocus fullWidth multiline minRows={10} placeholder="Вставьте сюда текст вопросов…"
+            value={quizImportText} onChange={(e) => setQuizImportText(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setQuizImportOpen(false)}>Отмена</Button>
+          <Button variant="contained" disabled={!quizImportText.trim()} onClick={applyQuizImport}>Импортировать</Button>
         </DialogActions>
       </Dialog>
 

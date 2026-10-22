@@ -4256,7 +4256,7 @@ export const transcriptionApi = {
     form.append('file', file);
     const response = await api.post('/transcription/items', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
-      timeout: 120000,
+      timeout: 600000,
     });
     return response.data;
   },

@@ -90,6 +90,7 @@ DEFAULT_ROLE_PERMISSIONS: Dict[str, Set[str]] = {
     UserRole.PARENT.value: {
         "programs.access",
         "groups.access",
+        "students.access",
         "grades.access",
         "characteristics.access",
         "student_accounts.access",

@@ -680,20 +680,12 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
         ) : (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 0 }}>
             {logoUrl ? (
-              <Box component="img" src={logoUrl} alt="Логотип" sx={{ width: 30, height: 30, borderRadius: 1.5, objectFit: 'contain', flexShrink: 0 }} />
+              <Box component="img" src={logoUrl} alt="Логотип" sx={{ width: 36, height: 36, borderRadius: 1.5, objectFit: 'contain', flexShrink: 0 }} />
             ) : (
-              <Box sx={{ width: 30, height: 30, borderRadius: 1.5, flexShrink: 0, background: 'linear-gradient(135deg, #7F23CC 0%, #AB67E5 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15 }}>
+              <Box sx={{ width: 36, height: 36, borderRadius: 1.5, flexShrink: 0, background: 'linear-gradient(135deg, #7F23CC 0%, #AB67E5 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>
                 🎓
               </Box>
             )}
-            <Box sx={{ minWidth: 0 }}>
-              <Typography noWrap sx={{ fontWeight: 700, fontSize: '0.82rem', color: SIDEBAR_TEXT, letterSpacing: -0.1, lineHeight: 1.3 }}>
-                Learning Portal
-              </Typography>
-              <Typography noWrap sx={{ fontSize: '0.67rem', color: SIDEBAR_TEXT_DIM, lineHeight: 1.2 }}>
-                Управление обучением
-              </Typography>
-            </Box>
           </Box>
         )}
       </Toolbar>

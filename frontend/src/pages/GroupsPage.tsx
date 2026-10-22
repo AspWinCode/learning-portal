@@ -395,7 +395,7 @@ const GroupsPage: React.FC = () => {
     }
   };
 
-  const groupColumns = [
+  const baseGroupColumns = [
     { key: 'name', header: 'Название', render: (group: Group) => group.name },
     {
       key: 'direction',
@@ -416,6 +416,10 @@ const GroupsPage: React.FC = () => {
               .join(', ')
           : '-',
     },
+  ];
+
+  const groupColumns = effectiveRole === 'parent' ? baseGroupColumns : [
+    ...baseGroupColumns,
     {
       key: 'duration',
       header: 'Длительность',

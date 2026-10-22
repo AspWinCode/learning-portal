@@ -116,6 +116,13 @@ const GradesPage: React.FC = () => {
     }
   }, []);
 
+  useEffect(() => {
+    if (effectiveRole === 'parent' && students.length > 0 && !historyStudentId) {
+      handleHistoryStudentChange(students[0].id.toString());
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveRole, students]);
+
   const loadGrades = async (params?: any) => {
     try {
       const data = await gradesApi.getAll(params);
@@ -368,7 +375,7 @@ const GradesPage: React.FC = () => {
       const historyGrades = await gradesApi.getAll({ student_id: sid });
       setGrades(historyGrades);
 
-      if (historyGrades.length === 0) {
+      if (historyGrades.length === 0 && effectiveRole !== 'parent') {
         setInfo('По выбранному ученику пока нет оценок.');
       }
 
@@ -544,7 +551,7 @@ const GradesPage: React.FC = () => {
           История оценок
         </Typography>
 
-        {(isAdminLike || effectiveRole === 'trainer' || effectiveRole === 'parent') && (
+        {(isAdminLike || effectiveRole === 'trainer' || (effectiveRole === 'parent' && students.length > 1)) && (
           <FormControl size="small" sx={{ minWidth: 320, mb: 2 }}>
             <InputLabel>Ученик</InputLabel>
             <Select
@@ -630,7 +637,9 @@ const GradesPage: React.FC = () => {
 
         {groupedHistory.length === 0 ? (
           <Typography variant="body2" color="text.secondary">
-            {isAdminLike
+            {effectiveRole === 'parent'
+              ? 'Оценок пока нет.'
+              : isAdminLike
               ? 'Выберите ученика, чтобы увидеть историю (или оставьте “Все ученики”).'
               : 'Выберите ученика, чтобы увидеть историю оценок.'}
           </Typography>

@@ -27,8 +27,9 @@ import {
   Chip,
   Stack,
   TextField,
+  Tooltip,
 } from '@mui/material';
-import { ExpandMore as ExpandMoreIcon } from '@mui/icons-material';
+import { ExpandMore as ExpandMoreIcon, NotificationsActive as NotificationsActiveIcon, NotificationsOff as NotificationsOffIcon } from '@mui/icons-material';
 import {
   LineChart,
   Line,
@@ -373,45 +374,41 @@ const ParentDashboardPage: React.FC = () => {
     return acc;
   }, {});
 
+  const webPushOn = !!webPushStatus?.subscription_count;
+
   return (
     <Layout>
       <NpsSurveyPrompt />
-      <Typography variant="h4" gutterBottom>
-        Дашборд родителя
-      </Typography>
-      <Stack spacing={2} sx={{ mb: 3 }}>
-        {error ? (
-          <Alert severity="error" onClose={() => setError('')}>
-            {error}
-          </Alert>
-        ) : null}
-        <Paper sx={{ p: 2 }}>
-          <Stack
-            direction={{ xs: 'column', md: 'row' }}
-            spacing={2}
-            alignItems={{ md: 'center' }}
-            justifyContent="space-between"
-          >
-            <Box>
-              <Typography variant="h6">Web push по характеристикам</Typography>
-              <Typography variant="body2" color="text.secondary">
-                Уведомление придёт в браузер, когда будет опубликована новая характеристика.
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                Статус: {webPushStatus?.subscription_count ? 'подключено' : 'не подключено'} • permission: {webPushPermission}
-              </Typography>
-            </Box>
-            <Box display="flex" gap={1} flexWrap="wrap">
-              <Button variant="contained" onClick={handleEnableWebPush} disabled={!webPushStatus?.configured || webPushBusy}>
-                Включить web push
-              </Button>
-              <Button variant="outlined" onClick={handleDisableWebPush} disabled={!webPushStatus?.subscription_count || webPushBusy}>
-                Отключить
-              </Button>
-            </Box>
-          </Stack>
-        </Paper>
-      </Stack>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+        <Typography variant="h4">Дашборд родителя</Typography>
+        <Tooltip
+          title={
+            webPushOn
+              ? 'Уведомления о новых характеристиках включены. Нажмите, чтобы отключить.'
+              : webPushStatus?.configured
+              ? 'Получать уведомление в браузер, когда появится новая характеристика'
+              : 'Web push пока не настроен на сервере'
+          }
+        >
+          <span>
+            <Chip
+              size="small"
+              icon={webPushOn ? <NotificationsActiveIcon fontSize="small" /> : <NotificationsOffIcon fontSize="small" />}
+              label={webPushBusy ? 'Подождите…' : webPushOn ? 'Уведомления включены' : 'Уведомления выключены'}
+              color={webPushOn ? 'success' : 'default'}
+              variant={webPushOn ? 'filled' : 'outlined'}
+              onClick={webPushOn ? handleDisableWebPush : handleEnableWebPush}
+              disabled={webPushBusy || (!webPushOn && !webPushStatus?.configured)}
+              sx={{ cursor: 'pointer' }}
+            />
+          </span>
+        </Tooltip>
+      </Box>
+      {error ? (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
+          {error}
+        </Alert>
+      ) : null}
       <Grid container spacing={3}>
         {students.map((student) => (
           <Grid item xs={12} md={6} key={student.id}>

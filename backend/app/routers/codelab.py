@@ -904,7 +904,11 @@ def _with_submission_context(
         "submission_id": row.get("submission_id", row.get("id")),
         "course_id": course.get("id"),
         "course_title": course.get("title"),
-        "item_id": row.get("item_id") or row.get("learning_item_id") or row.get("task_id") or (item or {}).get("id"),
+        # Для задач (submission_type="task") Codelab отдаёт только
+        # problem_revision_id (SubmissionReviewOut) — не совпадает с id узла
+        # дерева курса, но именно его принимает GET /admin/tasks/{id}, которым
+        # тренер смотрит задачу целиком (TrainerSubmissionsPage).
+        "item_id": row.get("item_id") or row.get("learning_item_id") or row.get("task_id") or row.get("problem_revision_id") or (item or {}).get("id"),
         "item_title": row.get("item_title") or (item or {}).get("title"),
         "group_id": context.get("group_id"),
         "group_name": context.get("group_name"),

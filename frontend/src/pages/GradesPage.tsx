@@ -287,7 +287,10 @@ const GradesPage: React.FC = () => {
     try {
       await gradesApi.update(editGrade.id, {
         grade: g,
-        comment: editComment.trim() || undefined,
+        // Пустая строка, а не undefined — иначе поле не попадёт в тело
+        // запроса и backend (GradeUpdate.dict(exclude_unset=True)) посчитает
+        // его непереданным и оставит старый комментарий при попытке его стереть.
+        comment: editComment.trim(),
         date: new Date(`${editDate}T00:00:00`).toISOString(),
       } as any);
       setEditGrade(null);

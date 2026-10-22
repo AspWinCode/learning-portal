@@ -412,7 +412,12 @@ const NotesEditor: React.FC<NotesEditorProps> = ({
       <GlobalStyles styles={EDITOR_STYLES} />
 
       {/* ── Bubble menu on selection ── */}
-      <BubbleMenu editor={editor} tippyOptions={{ duration: 100 }} shouldShow={(props: any) => { const { from, to } = props.state.selection; return from !== to; }}>
+      {/* appendTo: 'parent' — иначе tippy.js монтирует попап в document.body
+          мимо React-дерева, и при закрытии диалога (unmount редактора) во
+          время видимого BubbleMenu React и tippy наперегонки чистят DOM,
+          падая с "Failed to execute 'removeChild': ... not a child of this
+          node" (известный баг tiptap+tippy при unmount с открытым меню). */}
+      <BubbleMenu editor={editor} tippyOptions={{ duration: 100, appendTo: 'parent' }} shouldShow={(props: any) => { const { from, to } = props.state.selection; return from !== to; }}>
         <Paper elevation={4} sx={{ display: 'flex', alignItems: 'center', px: 0.5, py: 0.25, borderRadius: 1.5, gap: 0.25 }}>
           {btn('Жирный', editor.isActive('bold'), () => editor.chain().focus().toggleBold().run(), <FormatBoldIcon fontSize="small" />)}
           {btn('Курсив', editor.isActive('italic'), () => editor.chain().focus().toggleItalic().run(), <FormatItalicIcon fontSize="small" />)}

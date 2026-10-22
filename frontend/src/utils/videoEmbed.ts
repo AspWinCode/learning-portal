@@ -14,7 +14,11 @@ export interface ResolvedVideoEmbed {
 
 const YOUTUBE_ID_RE = /^[A-Za-z0-9_-]{6,20}$/;
 const RUTUBE_ID_RE = /^[a-f0-9]{20,40}$/i;
-const VK_IDS_RE = /video(-?\d+)_(\d+)/;
+// Третий сегмент (access_key/hash) — VK требует его в video_ext.php для
+// видео, которые не полностью публичны (большинство личных загрузок),
+// иначе эмбед отдаёт "видео недоступно" вместо плеера. Берём из ссылки,
+// если он там есть (vk.com/video-123_456_abcdef0123...), а не додумываем.
+const VK_IDS_RE = /video(-?\d+)_(\d+)(?:_([0-9a-z]+))?/i;
 
 function stripWww(host: string): string {
   return host.replace(/^www\./, '').toLowerCase();
@@ -56,16 +60,19 @@ function resolveVk(url: URL): ResolvedVideoEmbed | null {
   if (url.pathname === '/video_ext.php') {
     const oid = url.searchParams.get('oid') || '';
     const id = url.searchParams.get('id') || '';
+    const hash = url.searchParams.get('hash') || '';
     if (/^-?\d+$/.test(oid) && /^\d+$/.test(id)) {
-      return { provider: 'vk', embedUrl: `https://vk.com/video_ext.php?oid=${oid}&id=${id}` };
+      const hashParam = /^[0-9a-z]+$/i.test(hash) ? `&hash=${hash}` : '';
+      return { provider: 'vk', embedUrl: `https://vk.com/video_ext.php?oid=${oid}&id=${id}${hashParam}` };
     }
     return null;
   }
 
   const match = url.pathname.match(VK_IDS_RE) || url.href.match(VK_IDS_RE);
   if (!match) return null;
-  const [, oid, id] = match;
-  return { provider: 'vk', embedUrl: `https://vk.com/video_ext.php?oid=${oid}&id=${id}` };
+  const [, oid, id, hash] = match;
+  const hashParam = hash ? `&hash=${hash}` : '';
+  return { provider: 'vk', embedUrl: `https://vk.com/video_ext.php?oid=${oid}&id=${id}${hashParam}` };
 }
 
 export function resolveVideoEmbed(rawUrl: string): ResolvedVideoEmbed | null {

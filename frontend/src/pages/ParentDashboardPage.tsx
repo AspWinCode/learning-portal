@@ -27,7 +27,7 @@ import {
   Chip,
   Stack,
   TextField,
-  Tooltip,
+  Tooltip as MuiTooltip,
 } from '@mui/material';
 import { ExpandMore as ExpandMoreIcon, NotificationsActive as NotificationsActiveIcon, NotificationsOff as NotificationsOffIcon } from '@mui/icons-material';
 import {
@@ -381,7 +381,7 @@ const ParentDashboardPage: React.FC = () => {
       <NpsSurveyPrompt />
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1, mb: 2 }}>
         <Typography variant="h4">Дашборд родителя</Typography>
-        <Tooltip
+        <MuiTooltip
           title={
             webPushOn
               ? 'Уведомления о новых характеристиках включены. Нажмите, чтобы отключить.'
@@ -402,7 +402,7 @@ const ParentDashboardPage: React.FC = () => {
               sx={{ cursor: 'pointer' }}
             />
           </span>
-        </Tooltip>
+        </MuiTooltip>
       </Box>
       {error ? (
         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>

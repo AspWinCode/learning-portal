@@ -21,8 +21,14 @@ import {
   TableRow,
   Paper,
   Alert,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Stack,
 } from '@mui/material';
-import { ExpandMore as ExpandMoreIcon } from '@mui/icons-material';
+import { ExpandMore as ExpandMoreIcon, Edit as EditIcon } from '@mui/icons-material';
 import { gradesApi, studentsApi, programsApi } from '../services/api';
 import { Grade, Student, Program } from '../types';
 import { useAuth } from '../contexts/AuthContext';
@@ -94,6 +100,10 @@ const GradesPage: React.FC = () => {
   const [historyProgram, setHistoryProgram] = useState<Program | null>(null);
   const [groupedHistory, setGroupedHistory] = useState<GroupedGrades>([]);
   const [historyProgress, setHistoryProgress] = useState<any>(null);
+  const [editGrade, setEditGrade] = useState<Grade | null>(null);
+  const [editGradeValue, setEditGradeValue] = useState<string>('');
+  const [editComment, setEditComment] = useState<string>('');
+  const [editDate, setEditDate] = useState<string>('');
   const { user } = useAuth();
   const effectiveRole = getEffectiveRole(user);
   const isAdminLike = effectiveRole === 'admin' || effectiveRole === 'owner';
@@ -238,11 +248,57 @@ const GradesPage: React.FC = () => {
       setInfo('Оценка сохранена');
       setTopicId('');
       setComment('');
-      await loadGrades();
+      // Если в "Истории оценок" сейчас открыт конкретный ученик — не затирать
+      // его историю полным списком оценок всех учеников.
+      if (historyStudentId) {
+        await handleHistoryStudentChange(historyStudentId);
+      } else {
+        await loadGrades();
+      }
       // обновить доступные темы
       await handleStudentSelect(studentId);
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Ошибка сохранения оценки');
+    }
+  };
+
+  const canEditGrade = (g: Grade) => canManageGrades && !!user && g.trainer_id === user.id;
+
+  const openEditGrade = (g: Grade) => {
+    setEditGrade(g);
+    setEditGradeValue(String(g.grade));
+    setEditComment(g.comment || '');
+    setEditDate(new Date(g.date).toISOString().slice(0, 10));
+    setError('');
+    setInfo('');
+  };
+
+  const handleSaveEditGrade = async () => {
+    if (!editGrade) return;
+    const g = parseFloat(editGradeValue);
+    if (Number.isNaN(g) || g < 0 || g > 5) {
+      setError('Оценка должна быть числом от 0 до 5');
+      return;
+    }
+    if (!editDate) {
+      setError('Укажите дату');
+      return;
+    }
+    try {
+      await gradesApi.update(editGrade.id, {
+        grade: g,
+        comment: editComment.trim() || undefined,
+        date: new Date(`${editDate}T00:00:00`).toISOString(),
+      } as any);
+      setEditGrade(null);
+      setInfo('Оценка обновлена');
+      if (historyStudentId) {
+        await handleHistoryStudentChange(historyStudentId);
+      } else {
+        await loadGrades();
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Ошибка обновления оценки');
     }
   };
 
@@ -294,7 +350,13 @@ const GradesPage: React.FC = () => {
 
     // Админ может выбрать "Все"
     if (!newId) {
-      await loadGrades();
+      try {
+        const allGrades = await gradesApi.getAll();
+        setGrades(allGrades);
+        setGroupedHistory(buildGroupedHistory(null, allGrades));
+      } catch (err: any) {
+        setError(err.response?.data?.detail || 'Ошибка загрузки истории оценок');
+      }
       return;
     }
 
@@ -332,9 +394,14 @@ const GradesPage: React.FC = () => {
     if (!historyStudentId || !historyProgram) return null;
     if (!grades || grades.length === 0) return null;
 
-    // берем последнюю оценку по теме (если вдруг их несколько)
+    // берем последнюю оценку по теме (если вдруг их несколько), только для
+    // выбранного в "Истории оценок" ученика — иначе при подгрузке общего
+    // списка (например, после простановки оценки другому ученику) сюда
+    // попадут чужие оценки с тем же topic_id.
+    const sid = Number(historyStudentId);
     const latestByTopic = new Map<number, Grade>();
     for (const g of grades) {
+      if (g.student_id !== sid) continue;
       const prev = latestByTopic.get(g.topic_id);
       if (!prev) {
         latestByTopic.set(g.topic_id, g);
@@ -390,12 +457,13 @@ const GradesPage: React.FC = () => {
             Поставить оценку
           </Typography>
           <FilterPanel>
-            <FormControl size="small" sx={{ minWidth: 260 }}>
+            <FormControl size="small" sx={{ width: 260, flex: '0 0 auto' }}>
               <InputLabel>Ученик</InputLabel>
               <Select
                 value={studentId}
                 label="Ученик"
                 onChange={(e) => handleStudentSelect(e.target.value)}
+                sx={{ '& .MuiSelect-select': { textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' } }}
               >
                 <MenuItem value="">
                   <em>Не выбран</em>
@@ -408,13 +476,14 @@ const GradesPage: React.FC = () => {
               </Select>
             </FormControl>
 
-            <FormControl size="small" sx={{ minWidth: 320 }}>
+            <FormControl size="small" sx={{ width: 320, flex: '0 0 auto' }}>
               <InputLabel>Тема</InputLabel>
               <Select
                 value={topicId}
                 label="Тема"
                 onChange={(e) => setTopicId(e.target.value)}
                 disabled={!studentId || availableTopics.length === 0}
+                sx={{ '& .MuiSelect-select': { textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' } }}
               >
                 <MenuItem value="">
                   <em>Не выбрана</em>
@@ -579,6 +648,7 @@ const GradesPage: React.FC = () => {
                           <TableCell>Оценка</TableCell>
                           <TableCell>Комментарий</TableCell>
                           <TableCell>Дата</TableCell>
+                          <TableCell align="right" />
                         </TableRow>
                       </TableHead>
                       <TableBody>
@@ -588,6 +658,13 @@ const GradesPage: React.FC = () => {
                             <TableCell>{g.grade}</TableCell>
                             <TableCell>{g.comment || '-'}</TableCell>
                             <TableCell>{new Date(g.date).toLocaleDateString('ru-RU')}</TableCell>
+                            <TableCell align="right">
+                              {canEditGrade(g) && (
+                                <IconButton size="small" onClick={() => openEditGrade(g)} title="Редактировать оценку">
+                                  <EditIcon fontSize="small" />
+                                </IconButton>
+                              )}
+                            </TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
@@ -599,6 +676,40 @@ const GradesPage: React.FC = () => {
           </Box>
         )}
       </Paper>
+
+      <Dialog open={!!editGrade} onClose={() => setEditGrade(null)} fullWidth maxWidth="xs">
+        <DialogTitle>Редактировать оценку</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField
+              label="Оценка (0–5)"
+              value={editGradeValue}
+              onChange={(e) => setEditGradeValue(e.target.value)}
+              fullWidth
+            />
+            <TextField
+              label="Дата"
+              type="date"
+              value={editDate}
+              onChange={(e) => setEditDate(e.target.value)}
+              fullWidth
+              InputLabelProps={{ shrink: true }}
+            />
+            <TextField
+              label="Комментарий"
+              value={editComment}
+              onChange={(e) => setEditComment(e.target.value)}
+              fullWidth
+              multiline
+              minRows={2}
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditGrade(null)}>Отмена</Button>
+          <Button variant="contained" onClick={handleSaveEditGrade}>Сохранить</Button>
+        </DialogActions>
+      </Dialog>
     </Layout>
   );
 };

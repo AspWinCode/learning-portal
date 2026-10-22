@@ -378,7 +378,12 @@ async def admin_create_task(course_id: int, payload: dict, current_user: User = 
 
 
 @router.get("/admin/tasks/{task_id}")
-async def admin_get_task(task_id: int, current_user: User = Depends(_manage)):
+async def admin_get_task(task_id: int, current_user: User = Depends(_submissions_view)):
+    """Read-only: отдаёт задачу целиком, включая скрытые тесты. Доступно не
+    только методисту (codelab.manage), но и тренеру (submissions.access/
+    codelab.access) — тренеру нужно видеть задачу полностью при разборе
+    посылки ученика (Codelab сам ограничивает это ролью teacher/methodist/admin,
+    см. lms_admin.get_task)."""
     try:
         return await cl.get_task(current_user, task_id)
     except CodelabError as e:

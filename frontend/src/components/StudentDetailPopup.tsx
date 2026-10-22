@@ -264,6 +264,9 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
     setPixelforgeDetail(null);
     setPixelforgeDetailOpen(false);
     setPixelforgeDetailError(null);
+    setCodelabDetail(null);
+    setCodelabDetailOpen(false);
+    setCodelabDetailError(null);
     const promises: Promise<any>[] = [
       studentsApi.getById(studentId),
       studentsApi.getAttendances(studentId),

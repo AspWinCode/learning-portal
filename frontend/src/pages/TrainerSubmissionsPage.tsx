@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert, Box, Button, Chip, Dialog, DialogContent, DialogTitle, LinearProgress,
@@ -7,7 +7,7 @@ import {
 } from '@mui/material';
 import Layout from '../components/Layout';
 import { PROJECT_STATUS_LABEL, ProjectReviewDialog, Toast } from './CodelabStudioPage';
-import { codelabStudioApi, CodelabTrainerSubmission } from '../services/codelabApi';
+import { codelabStudioApi, CodelabTask, CodelabTrainerSubmission } from '../services/codelabApi';
 import { extractApiError } from '../utils/extractApiError';
 
 type FilterTab = 'queue' | 'tasks' | 'projects' | 'needs_revision' | 'accepted' | 'all';
@@ -19,6 +19,24 @@ const formatDate = (value?: string | null) => (value ? new Date(value).toLocaleS
 const isAcceptedTask = (row: CodelabTrainerSubmission) => ['accepted', 'ok', 'passed', 'solved'].includes(String(row.verdict || row.status).toLowerCase());
 
 function TaskSubmissionDialog({ row, onClose }: { row: CodelabTrainerSubmission; onClose: () => void }) {
+  // Тренеру нужно видеть задачу целиком — со всеми тестами, включая скрытые
+  // (обычному ученику они не показываются), чтобы разобрать, почему решение
+  // не прошло. Грузим отдельно, т.к. CodelabTrainerSubmission не содержит
+  // условие/тесты задачи — только посылку ученика.
+  const [task, setTask] = useState<CodelabTask | null>(null);
+  const [taskError, setTaskError] = useState<string | null>(null);
+  const [taskOpen, setTaskOpen] = useState(false);
+
+  useEffect(() => {
+    setTask(null);
+    setTaskError(null);
+    setTaskOpen(false);
+    if (row.item_id == null) return;
+    codelabStudioApi.getTask(row.item_id)
+      .then(setTask)
+      .catch((err) => setTaskError(extractApiError(err, 'Не удалось загрузить условие задачи')));
+  }, [row.item_id]);
+
   return (
     <Dialog open onClose={onClose} fullWidth maxWidth="md">
       <DialogTitle>{row.item_title || 'Задача'} — {row.student_full_name}</DialogTitle>
@@ -35,6 +53,42 @@ function TaskSubmissionDialog({ row, onClose }: { row: CodelabTrainerSubmission;
             <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontFamily: 'ui-monospace, monospace' }}>{row.code || 'Код не передан Codelab.'}</pre>
           </Paper>
           {row.history?.length ? <Box><Typography variant="subtitle2" sx={{ mb: 1 }}>История попыток</Typography>{row.history.map((attempt, index) => <Typography key={index} variant="body2" color="text.secondary">{JSON.stringify(attempt)}</Typography>)}</Box> : null}
+
+          {taskError && <Alert severity="warning">{taskError}</Alert>}
+          {task && (
+            <Box>
+              <Button size="small" onClick={() => setTaskOpen((v) => !v)}>
+                {taskOpen ? 'Скрыть условие задачи' : 'Показать условие задачи (со скрытыми тестами)'}
+              </Button>
+              {taskOpen && (
+                <Box sx={{ mt: 1.5 }}>
+                  <Typography variant="subtitle2" sx={{ mb: 1 }}>{task.title}</Typography>
+                  <Box className="preview" sx={{ mb: 1.5 }} dangerouslySetInnerHTML={{ __html: task.statement || '' }} />
+                  {(task.input_format || task.output_format) && (
+                    <Stack direction="row" spacing={3} sx={{ mb: 1.5 }}>
+                      {task.input_format && <Typography variant="body2" color="text.secondary">Ввод: {task.input_format}</Typography>}
+                      {task.output_format && <Typography variant="body2" color="text.secondary">Вывод: {task.output_format}</Typography>}
+                    </Stack>
+                  )}
+                  <Typography variant="subtitle2" sx={{ mb: 1 }}>Тесты ({task.tests.length})</Typography>
+                  <Stack spacing={1}>
+                    {task.tests.map((t, i) => (
+                      <Paper key={i} variant="outlined" sx={{ p: 1.5 }}>
+                        <Stack direction="row" spacing={1} sx={{ mb: 0.5 }}>
+                          <Chip size="small" label={`Тест ${i + 1}`} />
+                          {t.is_hidden && <Chip size="small" color="secondary" label="Скрытый" />}
+                        </Stack>
+                        <Stack direction="row" spacing={2}>
+                          <Box component="pre" sx={{ flex: 1, m: 0, fontSize: '0.8125rem', whiteSpace: 'pre-wrap' }}>{t.input}</Box>
+                          <Box component="pre" sx={{ flex: 1, m: 0, fontSize: '0.8125rem', whiteSpace: 'pre-wrap' }}>{t.expected}</Box>
+                        </Stack>
+                      </Paper>
+                    ))}
+                  </Stack>
+                </Box>
+              )}
+            </Box>
+          )}
         </Stack>
       </DialogContent>
     </Dialog>

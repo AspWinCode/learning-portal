@@ -12,11 +12,8 @@ from app import auth
 from app.models import (
     AbsenceFollowUp,
     Group,
-    GroupProgram,
     GroupSchedule,
-    ProgramMakeupCompatibility,
     Student,
-    StudentProgram,
     Task,
     TaskStatus,
     TaskStudent,
@@ -81,37 +78,23 @@ def list_makeup_suggestions_for_absence(
     *,
     days_ahead: int = 30,
 ) -> List[MakeupSuggestionItem]:
-    student_id = absence.student_id
     today = date.today()
     end_date = today + timedelta(days=days_ahead)
-    student_programs = db.query(StudentProgram).filter(
-        StudentProgram.student_id == student_id,
-        StudentProgram.status == "active",
-    ).all()
-    source_program_ids = [sp.program_id for sp in student_programs if sp.program_id]
-    if not source_program_ids:
-        group_prog = db.query(GroupProgram).filter(GroupProgram.group_id == absence.group_id).first()
-        if group_prog:
-            source_program_ids = [group_prog.program_id]
-    allowed_target_ids = set()
-    for pid in source_program_ids:
-        compats = db.query(ProgramMakeupCompatibility).filter(
-            ProgramMakeupCompatibility.source_program_id == pid,
-        ).all()
-        for compat in compats:
-            allowed_target_ids.add(compat.target_program_id)
-    if not allowed_target_ids and source_program_ids:
-        allowed_target_ids = set(source_program_ids)
-    group_ids = list(
-        {
-            row[0]
-            for row in db.query(GroupProgram.group_id).filter(
-                GroupProgram.program_id.in_(allowed_target_ids),
-            ).distinct().all()
-        }
-    ) if allowed_target_ids else []
-    groups_active = db.query(Group).filter(Group.id.in_(group_ids), Group.status == "active").all() if group_ids else []
-    groups_active = [group for group in groups_active if "индивид" not in (group.name or "").lower()]
+    # Отработка не привязана к совместимости программ — предлагаем любую
+    # активную групповую (не индивидуальную) группу, включая исходную группу
+    # ученика (другой день той же группы — валидный вариант отработки).
+    # См. также suggest_makeups() в routers/sales_makeups.py — та же логика,
+    # раньше использовалась таблица GroupProgram/ProgramMakeupCompatibility,
+    # но на проде обе таблицы пустые, из-за чего подбор не находил вариантов.
+    groups_active = (
+        db.query(Group)
+        .filter(Group.status == "active")
+        .all()
+    )
+    groups_active = [
+        group for group in groups_active
+        if (getattr(group, "lesson_format", None) or "group").strip().lower() != "individual"
+    ]
     group_ids = [group.id for group in groups_active]
     slots = []
     for sched in db.query(GroupSchedule).filter(GroupSchedule.group_id.in_(group_ids)).all():
@@ -129,12 +112,11 @@ def list_makeup_suggestions_for_absence(
         group = next((item for item in groups_active if item.id == group_id), None) or db.query(Group).filter(Group.id == group_id).first()
         if not group:
             continue
-        group_program = db.query(GroupProgram).filter(GroupProgram.group_id == group_id).first()
         result.append(
             MakeupSuggestionItem(
                 group_id=group_id,
                 group_name=group.name,
-                program_name=group_program.program.name if group_program and group_program.program else None,
+                program_name=getattr(group, "direction", None),
                 lesson_date=lesson_date,
                 day_of_week=lesson_date.weekday(),
                 start_time=start_time.strftime("%H:%M") if start_time else None,

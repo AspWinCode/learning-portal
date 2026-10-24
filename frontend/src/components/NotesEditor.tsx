@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useEditor, EditorContent, BubbleMenu } from '@tiptap/react';
+import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import TaskList from '@tiptap/extension-task-list';
@@ -411,24 +411,22 @@ const NotesEditor: React.FC<NotesEditorProps> = ({
     <>
       <GlobalStyles styles={EDITOR_STYLES} />
 
-      {/* ── Bubble menu on selection ── */}
-      {/* appendTo: 'parent' — иначе tippy.js монтирует попап в document.body
-          мимо React-дерева, и при закрытии диалога (unmount редактора) во
-          время видимого BubbleMenu React и tippy наперегонки чистят DOM,
-          падая с "Failed to execute 'removeChild': ... not a child of this
-          node" (известный баг tiptap+tippy при unmount с открытым меню). */}
-      <BubbleMenu editor={editor} tippyOptions={{ duration: 100, appendTo: 'parent' }} shouldShow={(props: any) => { const { from, to } = props.state.selection; return from !== to; }}>
-        <Paper elevation={4} sx={{ display: 'flex', alignItems: 'center', px: 0.5, py: 0.25, borderRadius: 1.5, gap: 0.25 }}>
-          {btn('Жирный', editor.isActive('bold'), () => editor.chain().focus().toggleBold().run(), <FormatBoldIcon fontSize="small" />)}
-          {btn('Курсив', editor.isActive('italic'), () => editor.chain().focus().toggleItalic().run(), <FormatItalicIcon fontSize="small" />)}
-          {btn('Подчёркнутый', editor.isActive('underline'), () => editor.chain().focus().toggleUnderline().run(), <FormatUnderlinedIcon fontSize="small" />)}
-          {btn('Маркер', editor.isActive('highlight'), () => editor.chain().focus().toggleHighlight().run(), <HighlightIcon fontSize="small" />)}
-          <Divider orientation="vertical" flexItem sx={{ mx: 0.25 }} />
-          {btn('Код', editor.isActive('code'), () => editor.chain().focus().toggleCode().run(), <CodeIcon fontSize="small" />)}
-          {btn('Цитата', editor.isActive('blockquote'), () => editor.chain().focus().toggleBlockquote().run(), <FormatQuoteIcon fontSize="small" />)}
-          {btn('Ссылка', editor.isActive('link'), handleInsertLink, <LinkIcon fontSize="small" />)}
-        </Paper>
-      </BubbleMenu>
+      {/* Всплывающее меню форматирования при выделении текста убрано совсем
+          (было на tiptap/tippy.js BubbleMenu) — подтверждено воспроизведением:
+          выделить текст → закрыть диалог (Сохранить/Отмена) крашит всё
+          приложение с "Failed to execute 'removeChild': ... not a child of
+          this node". Причина — tippy.js вставляет свой popup императивно
+          мимо React, а React размонтирует редактор СИНХРОННО при закрытии
+          диалога; tiptap же уничтожает editor (и вместе с ним tippy-инстанс
+          BubbleMenu) ОТЛОЖЕННО через setTimeout(…,1) (EditorInstanceManager.
+          scheduleDestroy в @tiptap/react) — React и ещё не выполнившийся
+          tippy наперегонки чистят один и тот же DOM. Ни appendTo:'parent',
+          ни принудительный синхронный editor.destroy() в cleanup-эффекте
+          проблему не снимают (оба варианта проверены на реальном краше) —
+          в tiptap v2 нет версии BubbleMenu без tippy.js (floating-ui
+          появился только в v3, апгрейд сюда не входит). Все те же кнопки
+          форматирования уже есть в фиксированной панели инструментов выше —
+          функциональность не теряется, теряется только всплывающая копия. */}
 
       {/* ── Slash command popup ── */}
       {slashMenu && filteredItems.length > 0 && (

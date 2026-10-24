@@ -154,48 +154,6 @@ interface LayoutProps {
   children: React.ReactNode;
 }
 
-const pageTitleVariants = new Set(['h1', 'h2', 'h3', 'h4', 'h5']);
-
-const normalizeTitle = (value: string) => value.replace(/\s+/g, ' ').trim().toLowerCase();
-
-const getPlainText = (node: React.ReactNode): string => {
-  if (typeof node === 'string' || typeof node === 'number') return String(node);
-  if (Array.isArray(node)) return node.map(getPlainText).join('');
-  if (React.isValidElement<{ children?: React.ReactNode }>(node)) return getPlainText(node.props.children);
-  return '';
-};
-
-const removeDuplicateContentTitle = (
-  node: React.ReactNode,
-  appBarTitle: string,
-  removed: { current: boolean },
-  depth = 0,
-): React.ReactNode => {
-  if (removed.current || !node) return node;
-
-  if (Array.isArray(node)) {
-    return node.map((child) => removeDuplicateContentTitle(child, appBarTitle, removed, depth));
-  }
-
-  if (!React.isValidElement<{ children?: React.ReactNode; variant?: string }>(node)) return node;
-
-  const variant = node.props.variant;
-  const titleMatches =
-    typeof variant === 'string' &&
-    pageTitleVariants.has(variant) &&
-    normalizeTitle(getPlainText(node.props.children)) === normalizeTitle(appBarTitle);
-
-  if (titleMatches) {
-    removed.current = true;
-    return null;
-  }
-
-  if (depth >= 3 || !node.props.children) return node;
-
-  const nextChildren = removeDuplicateContentTitle(node.props.children, appBarTitle, removed, depth + 1);
-  return nextChildren === node.props.children ? node : React.cloneElement(node, undefined, nextChildren);
-};
-
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
@@ -595,11 +553,20 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
     (location.pathname.startsWith('/travel') ? 'Путешествия' : null) ??
     'Портал управления обучением';
 
-  // Группируем видимые пункты меню
-  const contentChildren = React.useMemo(() => {
-    if (isPwaNavigation) return children;
-    return removeDuplicateContentTitle(children, appBarPageTitle, { current: false });
-  }, [appBarPageTitle, children, isPwaNavigation]);
+  // Раньше здесь был removeDuplicateContentTitle — рекурсивно клонировал и
+  // переупаковывал чужое поддерево children (страницы), чтобы спрятать
+  // заголовок, дублирующий appBarPageTitle. React.cloneElement с НОВЫМ
+  // массивом на каждом уровне (через .map()) ломает инвариант ключей для
+  // статических JSX-детей (видно по предупреждению "Each child in a list
+  // should have a unique key prop" на Tabs/Box внутри CodelabStudioPage) —
+  // React теряет привязку fiber↔DOM-узел для таких детей, и при следующем
+  // изменении этого поддерева (открыть/закрыть диалог, переключить вкладку)
+  // падает с "Failed to execute 'removeChild': ... not a child of this
+  // node". Подтверждено: ошибка воспроизводится на /codelab именно после
+  // действия, не сразу при открытии. Дублирующийся заголовок страницы —
+  // чисто косметическая проблема; крашащее приложение — нет, так что просто
+  // рендерим children как есть.
+  const contentChildren = children;
 
   // Секции навбара для дополнительных ролей пользователя
   const extraRoleSections = React.useMemo(() => {

@@ -554,7 +554,12 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
   };
 
   const formatMoney = (value: number) =>
-    new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(value || 0);
+    new Intl.NumberFormat('ru-RU', {
+      style: 'currency',
+      currency: 'RUB',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(Number.isFinite(value) ? value : 0);
 
   const getPaymentAbonement = (): Abonement | undefined => {
     const abonementId = studentCard?.abonement_id ?? student?.abonement_id;
@@ -1202,7 +1207,7 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
                             <Box>
                               <Typography variant="subtitle2">{acc.name}</Typography>
                               <Typography variant="h6" color={acc.balance < 0 ? 'error' : 'text.primary'}>
-                                {acc.balance ?? 0} ₽
+                                {formatMoney(acc.balance ?? 0)}
                               </Typography>
                             </Box>
                             {canManageAccounts && (
@@ -1911,7 +1916,7 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
           <Stack spacing={2} sx={{ pt: 1 }}>
             {paymentError && <Alert severity="error" onClose={() => setPaymentError(null)}>{paymentError}</Alert>}
             <Typography variant="body2" color="text.secondary">
-              Счёт: <strong>{paymentDialog?.account.name}</strong> · Баланс: {paymentDialog?.account.balance ?? 0} ₽
+              Счёт: <strong>{paymentDialog?.account.name}</strong> · Баланс: {formatMoney(paymentDialog?.account.balance ?? 0)}
             </Typography>
             <Stack spacing={1}>
               <TextField

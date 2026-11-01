@@ -178,7 +178,9 @@ def _first_n_slots_per_group_in_month(
                     if (gid, d, sched.start_time, sched.end_time) not in cancelled_set:
                         slots_in_month.append((d, sched.start_time, sched.end_time))
         slots_in_month.sort(key=lambda x: (x[0], x[1]))
-        n = len(slots_in_month) if gid in individual_group_ids else min(LESSONS_PER_MONTH, len(slots_in_month))
+        # Октябрь 2026: показываем все занятия расписания, без лимита 8 в месяц.
+        unlimited_month = (year, month) == (2026, 10)
+        n = len(slots_in_month) if gid in individual_group_ids or unlimited_month else min(LESSONS_PER_MONTH, len(slots_in_month))
         for i, (d, st, et) in enumerate(slots_in_month[:n]):
             allowed.add((gid, d, st, et))
             index_map[(gid, d, st, et)] = i + 1

@@ -23,7 +23,7 @@ import {
 } from '../services/codelabApi';
 
 const CONTENT_TYPE_LABEL: Record<string, string> = {
-  theory: 'Материал', task: 'Задача', snap_task: 'Snap!', gdevelop_task: 'GDevelop', turtle_task: 'Черепашка', quiz: 'Тест', project: 'Проект',
+  theory: 'Материал', task: 'Задача', oge_task: 'Задание ОГЭ', snap_task: 'Snap!', gdevelop_task: 'GDevelop', turtle_task: 'Черепашка', quiz: 'Тест', project: 'Проект',
 };
 
 // snap_task, gdevelop_task и turtle_task устроены одинаково (шаги слева,
@@ -199,6 +199,7 @@ function TreeItemRow({ item, depth, canManage, isFirst, isLast, onAddChild, onEd
           {isStructural && <MenuItem onClick={() => { onAddChild(item.id, 'snap_task'); close(); }}>+ Snap-задание</MenuItem>}
           {isStructural && <MenuItem onClick={() => { onAddChild(item.id, 'gdevelop_task'); close(); }}>+ GDevelop-задание</MenuItem>}
           {isStructural && <MenuItem onClick={() => { onAddChild(item.id, 'turtle_task'); close(); }}>+ Задание Черепашка</MenuItem>}
+          {isStructural && <MenuItem onClick={() => { onAddChild(item.id, 'oge_task'); close(); }}>+ Задание ОГЭ</MenuItem>}
           {isStructural && <MenuItem onClick={() => { onAddChild(item.id, 'quiz'); close(); }}>+ Тест</MenuItem>}
           {isStructural && <MenuItem onClick={() => { onAddChild(item.id, 'project'); close(); }}>+ Проект</MenuItem>}
           {isStructural && <Divider />}
@@ -280,6 +281,7 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
   const [nodeDialog, setNodeDialog] = useState<NodeDialogState | null>(null);
   const [nodeTitle, setNodeTitle] = useState('');
   const [nodeContent, setNodeContent] = useState('');
+  const [ogeAnswer, setOgeAnswer] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<CodelabLearningItem | null>(null);
   const [showArchivedCourses, setShowArchivedCourses] = useState(false);
   const [courseMenuAnchor, setCourseMenuAnchor] = useState<{ el: HTMLElement; course: CodelabCourse } | null>(null);
@@ -347,6 +349,7 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
     setNodeDialog({ parentId, type });
     setNodeTitle('');
     setNodeContent('');
+    setOgeAnswer('');
     setTaskStatement('');
     setTaskInputFormat('');
     setTaskOutputFormat('');
@@ -362,6 +365,7 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
     setNodeDialog({ parentId: item.parent_id, type: item.type, editing: item });
     setNodeTitle(item.title);
     setNodeContent(item.content || '');
+    setOgeAnswer(item.oge_answer?.answer || '');
     if (item.type === 'task' && item.problem_revision_id) {
       setTaskLoading(true);
       api.getTask(item.problem_revision_id)
@@ -517,6 +521,18 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
             parent_id: nodeDialog.parentId, position: siblingCount(nodeDialog.parentId),
           });
           onToast({ msg: 'Тест добавлен' });
+        }
+      } else if (nodeDialog.type === 'oge_task') {
+        const patch = { title: nodeTitle, content: nodeContent, oge_answer: ogeAnswer.trim() };
+        if (nodeDialog.editing) {
+          await api.updateItem(nodeDialog.editing.id, patch);
+          onToast({ msg: 'Задание ОГЭ обновлено' });
+        } else {
+          await api.createItem(selected.id, {
+            type: 'oge_task', ...patch,
+            parent_id: nodeDialog.parentId, position: siblingCount(nodeDialog.parentId),
+          });
+          onToast({ msg: 'Задание ОГЭ добавлено' });
         }
       } else if (nodeDialog.type === 'project') {
         const patch = { title: nodeTitle, content: nodeContent, due_at: projectDueAt || null };
@@ -812,7 +828,7 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
       </Dialog>
 
       <Dialog
-        open={!!nodeDialog && nodeDialog.type !== 'task' && nodeDialog.type !== 'snap_task' && nodeDialog.type !== 'gdevelop_task' && nodeDialog.type !== 'turtle_task' && nodeDialog.type !== 'quiz'}
+        open={!!nodeDialog && nodeDialog.type !== 'task' && nodeDialog.type !== 'snap_task' && nodeDialog.type !== 'gdevelop_task' && nodeDialog.type !== 'turtle_task' && nodeDialog.type !== 'quiz' && nodeDialog.type !== 'oge_task'}
         onClose={() => setNodeDialog(null)} fullWidth
         maxWidth={nodeDialog?.type === 'theory' || nodeDialog?.type === 'project' ? 'md' : 'sm'}
       >
@@ -841,6 +857,34 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
         <DialogActions>
           <Button onClick={() => setNodeDialog(null)}>Отмена</Button>
           <Button variant="contained" disabled={!nodeTitle.trim()} onClick={saveNode}>{nodeDialog?.editing ? 'Сохранить' : 'Добавить'}</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={nodeDialog?.type === 'oge_task'} onClose={() => setNodeDialog(null)} fullWidth maxWidth="md">
+        <DialogTitle>{nodeDialog?.editing ? 'Редактирование задания ОГЭ' : 'Новое задание ОГЭ'}</DialogTitle>
+        <DialogContent>
+          <TextField autoFocus fullWidth label="Название" value={nodeTitle} onChange={(e) => setNodeTitle(e.target.value)} sx={{ mt: 1, mb: 2 }} />
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Ученик увидит условие и поле для короткого числового ответа.
+          </Typography>
+          <NotesEditor
+            value={nodeContent}
+            onChange={setNodeContent}
+            placeholder="Условие задания ОГЭ — форматирование, изображения, формулы…"
+            onUploadImage={async (file) => (await api.uploadFile(file)).url}
+          />
+          <TextField
+            fullWidth required label="Правильный ответ" value={ogeAnswer}
+            onChange={(e) => setOgeAnswer(e.target.value)}
+            helperText="Ответ хранится на сервере и не показывается ученику. Можно использовать точку или запятую."
+            sx={{ mt: 2 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setNodeDialog(null)}>Отмена</Button>
+          <Button variant="contained" disabled={!nodeTitle.trim() || !nodeContent.trim() || !ogeAnswer.trim()} onClick={saveNode}>
+            {nodeDialog?.editing ? 'Сохранить' : 'Добавить'}
+          </Button>
         </DialogActions>
       </Dialog>
 

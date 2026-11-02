@@ -91,6 +91,7 @@ export interface CodelabLearningItem {
   is_archived: boolean;
   steps: CodelabSnapStep[] | null;
   quiz_questions: CodelabQuizQuestion[] | null;
+  oge_answer?: { answer: string } | null;
   due_at: string | null; // только для type="project" — срок сдачи
   children: CodelabLearningItem[];
 }

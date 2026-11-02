@@ -75,6 +75,12 @@ def get_payment_status_list(
         lessons = count_lessons_since_period_start(db, card.student_id, card.learning_period_start)
         attended = count_attended_since_period_start(db, card.student_id, card.learning_period_start)
 
+        # В разделе «Долги и оплаты» показываем только тех, у кого уже есть
+        # хотя бы один урок в текущем периоде. Одна лишь дата следующей оплаты
+        # не означает, что у ученика появилась задолженность.
+        if lessons == 0:
+            continue
+
         if not has_payments:
             st = "unpaid"
         elif next_pay < today:

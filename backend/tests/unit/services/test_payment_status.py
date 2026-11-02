@@ -101,6 +101,22 @@ def test_get_payment_status_list_unpaid(mock_name, mock_pay):
     assert result[0]["status"] == "unpaid"
 
 
+@patch("app.services.payment_status.count_lessons_since_period_start", return_value=0)
+@patch("app.services.payment_status._has_payments", return_value=True)
+@patch("app.services.payment_status.get_student_display_name", return_value="Student")
+def test_get_payment_status_list_excludes_period_without_lessons(mock_name, mock_pay, mock_lessons):
+    today = date(2025, 3, 1)
+    card = _make_card(1, today - timedelta(days=1))
+    student = _make_student(1)
+    db = MagicMock()
+    db.query.return_value.filter.return_value.all.return_value = [card]
+    db.query.return_value.filter.return_value.first.return_value = student
+
+    result = get_payment_status_list(db, today=today)
+
+    assert result == []
+
+
 @patch("app.services.payment_status._has_payments", return_value=True)
 @patch("app.services.payment_status.get_student_display_name", return_value="Student")
 def test_get_payment_status_list_archived_student_excluded(mock_name, mock_pay):

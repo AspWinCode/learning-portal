@@ -1043,7 +1043,14 @@ const OwnerWorkspacePage: React.FC = () => {
   const [workZones, setWorkZones] = useState<OwnerWorkspaceWorkZone[]>(() => {
     try {
       const raw = localStorage.getItem('owner_workspace_work_zones');
-      return raw ? JSON.parse(raw) : [];
+      const stored = raw ? JSON.parse(raw) : [];
+      const palette = ['#2563EB', '#16A34A', '#EA580C', '#9333EA', '#DB2777', '#0891B2', '#CA8A04'];
+      return Array.isArray(stored)
+        ? stored.map((zone: OwnerWorkspaceWorkZone, index: number) => ({
+            ...zone,
+            color: !zone.color || zone.color === '#4F46E5' ? palette[index % palette.length] : zone.color,
+          }))
+        : [];
     } catch { return []; }
   });
   const [zoneClock, setZoneClock] = useState(() => Date.now());

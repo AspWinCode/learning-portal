@@ -274,6 +274,30 @@ class OpSetConditionalFormat(BaseModel):
     rules: List[ConditionalFormatRule] = Field(default_factory=list, max_length=20)
 
 
+class DirectoryOption(BaseModel):
+    value: str = Field(..., min_length=1, max_length=255)
+    label: str = Field(..., min_length=1, max_length=255)
+
+
+class OpSetDirectory(BaseModel):
+    type: Literal["set_directory"] = "set_directory"
+    column_id: int
+    row_ids: Optional[List[int]] = Field(None, max_length=5000)
+    directory: Optional[dict] = None
+
+    @field_validator("directory")
+    @classmethod
+    def _validate_directory(cls, value):
+        if value is None:
+            return value
+        if not isinstance(value, dict) or not value.get("id") or not value.get("label"):
+            raise ValueError("Некорректный справочник")
+        options = value.get("options")
+        if not isinstance(options, list) or len(options) > 500:
+            raise ValueError("Некорректный список значений справочника")
+        return {"id": str(value["id"]), "label": str(value["label"]), "options": [DirectoryOption.model_validate(item).model_dump() for item in options]}
+
+
 class OpSortRows(BaseModel):
     type: Literal["sort_rows"] = "sort_rows"
     column_id: int
@@ -332,6 +356,7 @@ SpreadsheetOperation = Annotated[
         OpSetSmartLink,
         OpFormatRange,
         OpSetConditionalFormat,
+        OpSetDirectory,
         OpSortRows,
         OpPasteRange,
     ],

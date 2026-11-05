@@ -346,7 +346,7 @@ class OperationExecutor:
             .first()
         )
         inverse = self._cell_inverse(row, column, existing)
-        self._write_cell(row, column, op.get("value"), formula=None)
+        self._write_cell(row, column, op.get("value"), formula=None, metadata=(existing.cell_metadata if existing else None))
         return inverse
 
     def _op_set_formula(self, op: dict) -> dict:
@@ -366,7 +366,7 @@ class OperationExecutor:
         # computed_value для формульной ячейки считает FormulaEngine.recalculate_sheet(),
         # которую apply_batch/undo_last вызывают сразу после применения этой операции
         # (set_formula входит в _VALUE_AFFECTING_OPS) — здесь только сохраняем текст формулы.
-        self._write_cell(row, column, None, formula=op["formula"])
+        self._write_cell(row, column, None, formula=op["formula"], metadata=(existing.cell_metadata if existing else None))
         return inverse
 
     def _op_set_smart_link(self, op: dict) -> dict:
@@ -638,6 +638,58 @@ class OperationExecutor:
         column.config = config
         self.db.flush()
         return {"type": "set_conditional_format", "column_id": column.id, "rules": prev_rules}
+
+    def _op_set_directory(self, op: dict) -> dict:
+        column = self.db.get(SmartTableColumn, op["column_id"])
+        if column is None or column.sheet_id != self.sheet.id:
+            raise OperationError("column_id не найден на этом листе")
+        row_ids = op.get("row_ids")
+        if row_ids is not None:
+            rows = self.db.query(SmartTableRow).filter(
+                SmartTableRow.sheet_id == self.sheet.id, SmartTableRow.id.in_(row_ids)
+            ).all()
+            if len(rows) != len(set(row_ids)):
+                raise OperationError("Одна или несколько строк не найдены на этом листе")
+            previous_cells = []
+            for row in rows:
+                cell = self._get_or_create_cell(row, column)
+                previous_cells.append({"row_id": row.id, "metadata": dict(cell.cell_metadata or {})})
+                metadata = dict(cell.cell_metadata or {})
+                if op.get("directory") is None:
+                    metadata.pop("directory", None)
+                else:
+                    metadata["directory"] = op["directory"]
+                cell.cell_metadata = metadata
+                self._sync_snapshot(row, column, cell)
+            self.db.flush()
+            return {"type": "_restore_directory_cells", "column_id": column.id, "cells": previous_cells}
+        config = dict(column.config or {})
+        previous = config.get("directory")
+        if op.get("directory") is None:
+            config.pop("directory", None)
+        else:
+            config["directory"] = op["directory"]
+        column.config = config
+        if op.get("directory") is not None:
+            column.type = "select"
+        self.db.flush()
+        return {"type": "set_directory", "column_id": column.id, "directory": previous}
+
+    def _op__restore_directory_cells(self, op: dict) -> dict:
+        column = self.db.get(SmartTableColumn, op["column_id"])
+        if column is None or column.sheet_id != self.sheet.id:
+            raise OperationError("column_id не найден на этом листе")
+        inverse = []
+        for entry in op["cells"]:
+            row = self.db.get(SmartTableRow, entry["row_id"])
+            if row is None or row.sheet_id != self.sheet.id:
+                continue
+            cell = self._get_or_create_cell(row, column)
+            inverse.append({"row_id": row.id, "metadata": dict(cell.cell_metadata or {})})
+            cell.cell_metadata = dict(entry.get("metadata") or {})
+            self._sync_snapshot(row, column, cell)
+        self.db.flush()
+        return {"type": "_restore_directory_cells", "column_id": column.id, "cells": inverse}
 
     # ── sort (Phase 2) ───────────────────────────────────────────
 

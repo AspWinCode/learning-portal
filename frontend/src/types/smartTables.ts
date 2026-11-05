@@ -79,6 +79,11 @@ export interface ConditionalFormatRule {
 
 export interface ColumnConfig {
   conditional_formats?: ConditionalFormatRule[];
+  directory?: {
+    id: string;
+    label: string;
+    options: Array<{ value: string; label: string }>;
+  };
   [key: string]: unknown;
 }
 
@@ -133,6 +138,7 @@ export type SpreadsheetOperation =
   | { type: 'set_smart_link'; row_id: number; column_id: number; label: string; target: SmartLinkTarget }
   | { type: 'format_range'; row_ids: number[]; column_ids: number[]; formatting: CellFormatting }
   | { type: 'set_conditional_format'; column_id: number; rules: ConditionalFormatRule[] }
+  | { type: 'set_directory'; column_id: number; row_ids?: number[]; directory: { id: string; label: string; options: Array<{ value: string; label: string }> } | null }
   | { type: 'sort_rows'; column_id: number; direction: 'asc' | 'desc' }
   | { type: 'paste_range'; anchor_row_id: number; anchor_column_id: number; cells: PasteCell[][] };
 

@@ -20,6 +20,7 @@ import RuleIcon from '@mui/icons-material/Rule';
 import LinkIcon from '@mui/icons-material/Link';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import DriveFileRenameOutlineIcon from '@mui/icons-material/DriveFileRenameOutline';
+import ListAltIcon from '@mui/icons-material/ListAlt';
 import type {
   CellFormatting, CellSnapshot, CellValue, ColumnOut, ConditionOperator, ConditionalFormatRule, PasteCell, RowOut,
   SmartLinkMetadata, SmartLinkTarget, TextAlign,
@@ -62,6 +63,7 @@ interface GridProps {
   onResizeRow: (rowId: number, height: number) => void;
   onFormatRange: (rowIds: number[], columnIds: number[], formatting: CellFormatting) => void;
   onSetConditionalFormat: (columnId: number, rules: ConditionalFormatRule[]) => void;
+  onSetDirectory: (columnIds: number[], directory: { id: string; label: string; options: Array<{ value: string; label: string }> } | null, rowIds?: number[]) => void;
   onSortColumn: (columnId: number, direction: 'asc' | 'desc') => void;
   onPasteRange: (anchorRowId: number, anchorColumnId: number, cells: PasteCell[][]) => void;
   focusTarget?: ActiveCell | null;
@@ -155,7 +157,7 @@ function measureTextWidth(text: string, font = '13px Arial'): number {
 
 const Grid: React.FC<GridProps> = ({
   columns, rows, onSetCell, onSetFormula, onInsertRow, onDeleteRow, onInsertColumn, onDeleteColumn, onRenameColumn,
-  onResizeColumn, onResizeRow, onFormatRange, onSetConditionalFormat, onSortColumn, onPasteRange,
+  onResizeColumn, onResizeRow, onFormatRange, onSetConditionalFormat, onSetDirectory, onSortColumn, onPasteRange,
   focusTarget = null, onOpenSmartLink, onEditSmartLink, onClearSmartLink, expanded = false, readOnly = false,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -185,6 +187,15 @@ const Grid: React.FC<GridProps> = ({
   const [filters, setFilters] = useState<Record<number, string>>({});
   const [colorMenu, setColorMenu] = useState<{ anchor: HTMLElement; mode: 'bg' | 'text' } | null>(null);
   const [pasteError, setPasteError] = useState<string | null>(null);
+  const [directoryDialog, setDirectoryDialog] = useState<{ rowIds: number[]; columnIds: number[]; columnScope: boolean } | null>(null);
+  const [directoryId, setDirectoryId] = useState('');
+
+  const directories = useMemo(() => [
+    { id: 'cities', label: 'Города', options: ['Москва', 'Санкт-Петербург', 'Новосибирск', 'Екатеринбург', 'Казань', 'Красноярск', 'Иркутск', 'Владивосток', 'Томск', 'Другой город'].map((value) => ({ value, label: value })) },
+    { id: 'schools', label: 'Школы', options: ['Школа № 1', 'Школа № 2', 'Лицей', 'Гимназия'].map((value) => ({ value, label: value })) },
+    { id: 'classes', label: 'Классы', options: ['1 класс', '2 класс', '3 класс', '4 класс', '5 класс', '6 класс', '7 класс', '8 класс', '9 класс', '10 класс', '11 класс'].map((value) => ({ value, label: value })) },
+    { id: 'statuses', label: 'Статусы', options: ['Новый', 'В работе', 'Подтверждено', 'Завершено'].map((value) => ({ value, label: value })) },
+  ], []);
 
   const active = focus;
 
@@ -361,6 +372,22 @@ const Grid: React.FC<GridProps> = ({
     const columnIds = sortedColumns.slice(selectionBounds.colFrom, selectionBounds.colTo + 1).map((c) => c.id);
     return { rowIds, columnIds };
   }, [selectionBounds, filteredRows, sortedColumns]);
+
+  const openDirectoryDialog = useCallback((scope?: { rowIds: number[]; columnIds: number[]; columnScope?: boolean }) => {
+    if (readOnly) return;
+    const selected = scope ?? selectedIds();
+    if (!selected.rowIds.length || !selected.columnIds.length) return;
+    setDirectoryDialog({ ...selected, columnScope: scope?.columnScope ?? false });
+    setDirectoryId('');
+  }, [readOnly, selectedIds]);
+
+  const applyDirectory = useCallback(() => {
+    if (!directoryDialog || !directoryId) return;
+    const directory = directories.find((item) => item.id === directoryId);
+    if (!directory) return;
+    onSetDirectory(directoryDialog.columnIds, directory, directoryDialog.columnScope ? undefined : directoryDialog.rowIds);
+    setDirectoryDialog(null);
+  }, [directoryDialog, directoryId, directories, onSetDirectory]);
 
   const selectColumn = useCallback((columnId: number, extend: boolean) => {
     if (!filteredRows.length) return;
@@ -785,6 +812,9 @@ const Grid: React.FC<GridProps> = ({
                   const snapshot = row.cells[String(col.id)];
                   const smartLink = smartLinkOf(snapshot);
                   const value = snapshot?.value;
+                  const cellDirectory = snapshot?.metadata && typeof snapshot.metadata === 'object'
+                    && 'directory' in snapshot.metadata ? snapshot.metadata.directory : undefined;
+                  const directory = (cellDirectory as typeof col.config.directory | undefined) ?? col.config?.directory;
                   const selected = isSelected(idx, colIdx);
                   const rules = col.config?.conditional_formats;
                   const { backgroundColor, ...restStyle } = cellStyleOf(value, snapshot?.formatting, rules);
@@ -799,8 +829,11 @@ const Grid: React.FC<GridProps> = ({
                       onMouseEnter={() => onCellMouseEnter(row, col)}
                       onContextMenu={(e) => {
                         e.preventDefault();
-                        setAnchor({ rowId: row.id, columnId: col.id });
-                        setFocus({ rowId: row.id, columnId: col.id });
+                        const inSelection = isSelected(idx, colIdx);
+                        if (!inSelection) {
+                          setAnchor({ rowId: row.id, columnId: col.id });
+                          setFocus({ rowId: row.id, columnId: col.id });
+                        }
                         setCellMenu({ anchor: e.currentTarget, rowId: row.id, columnId: col.id });
                       }}
                       onDoubleClick={() => {
@@ -821,7 +854,26 @@ const Grid: React.FC<GridProps> = ({
                         overflow: 'hidden', userSelect: isEditing ? 'text' : 'none', ...restStyle,
                       }}
                     >
-                      {isEditing ? (
+                      {directory && !isEditing && !smartLink ? (
+                        <Select
+                          size="small"
+                          variant="standard"
+                          fullWidth
+                          value={value === null || value === undefined ? '' : String(value)}
+                          displayEmpty
+                          disabled={readOnly}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => onSetCell(row.id, col.id, e.target.value)}
+                          inputProps={{ 'aria-label': `Выбор значения: ${col.name}` }}
+                          sx={{ fontSize: 13 }}
+                        >
+                          <MenuItem value=""><em>Не выбрано</em></MenuItem>
+                          {directory.options.map((option) => (
+                            <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
+                          ))}
+                        </Select>
+                      ) : isEditing ? (
                         <TextField
                           autoFocus
                           variant="standard"
@@ -914,6 +966,13 @@ const Grid: React.FC<GridProps> = ({
         <MenuItem onClick={() => { if (colMenu) openConditionalFormat(colMenu.columnId); setColMenu(null); }}>
           <RuleIcon fontSize="small" sx={{ mr: 1 }} /> Условное форматирование…
         </MenuItem>
+        <Divider />
+        <MenuItem onClick={() => {
+          if (colMenu) openDirectoryDialog({ rowIds: filteredRows.map((row) => row.id), columnIds: [colMenu.columnId], columnScope: true });
+          setColMenu(null);
+        }}>
+          <ListAltIcon fontSize="small" sx={{ mr: 1 }} /> Заполнение из справочника…
+        </MenuItem>
       </Menu>
 
       <Menu open={!!rowMenu} anchorEl={rowMenu?.anchor} onClose={() => setRowMenu(null)}>
@@ -925,6 +984,13 @@ const Grid: React.FC<GridProps> = ({
         </MenuItem>
         <MenuItem onClick={() => { if (rowMenu) onDeleteRow(rowMenu.rowId); setRowMenu(null); }}>
           <DeleteIcon fontSize="small" sx={{ mr: 1 }} /> Удалить строку
+        </MenuItem>
+        <Divider />
+        <MenuItem onClick={() => {
+          if (rowMenu) openDirectoryDialog({ rowIds: [rowMenu.rowId], columnIds: sortedColumns.map((column) => column.id) });
+          setRowMenu(null);
+        }}>
+          <ListAltIcon fontSize="small" sx={{ mr: 1 }} /> Заполнение из справочника…
         </MenuItem>
       </Menu>
 
@@ -956,9 +1022,32 @@ const Grid: React.FC<GridProps> = ({
                 Копировать адрес
               </MenuItem>
             ),
+            !readOnly && (
+              <MenuItem key="directory" onClick={() => { openDirectoryDialog(); setCellMenu(null); }}>
+                <ListAltIcon fontSize="small" sx={{ mr: 1 }} /> Заполнение из справочника…
+              </MenuItem>
+            ),
           ];
         })()}
       </Menu>
+
+      <Dialog open={!!directoryDialog} onClose={() => setDirectoryDialog(null)} fullWidth maxWidth="xs">
+        <DialogTitle>Заполнение из справочника</DialogTitle>
+        <DialogContent>
+          <Select
+            autoFocus fullWidth displayEmpty value={directoryId}
+            onChange={(event) => setDirectoryId(event.target.value)}
+            sx={{ mt: 1 }}
+          >
+            <MenuItem value=""><em>Выберите справочник</em></MenuItem>
+            {directories.map((directory) => <MenuItem key={directory.id} value={directory.id}>{directory.label}</MenuItem>)}
+          </Select>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDirectoryDialog(null)}>Отмена</Button>
+          <Button variant="contained" disabled={!directoryId} onClick={applyDirectory}>Применить</Button>
+        </DialogActions>
+      </Dialog>
 
       <Menu open={!!colorMenu} anchorEl={colorMenu?.anchor} onClose={() => setColorMenu(null)}>
         <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 0.5, p: 1 }}>

@@ -482,6 +482,13 @@ const WorkbookView: React.FC<WorkbookViewProps> = ({
             withOps([{ type: 'format_range', row_ids: rowIds, column_ids: columnIds, formatting }])}
           onSetConditionalFormat={(columnId, rules) =>
             withOps([{ type: 'set_conditional_format', column_id: columnId, rules }])}
+          onSetDirectory={(columnIds, directory, rowIds) =>
+            withOps(columnIds.map((columnId) => ({
+              type: 'set_directory' as const,
+              column_id: columnId,
+              ...(rowIds ? { row_ids: rowIds } : {}),
+              directory,
+            })))}
           onSortColumn={(columnId, direction) => withOps([{ type: 'sort_rows', column_id: columnId, direction }])}
           onPasteRange={(anchorRowId, anchorColumnId, cells) =>
             withOps([{ type: 'paste_range', anchor_row_id: anchorRowId, anchor_column_id: anchorColumnId, cells }])}

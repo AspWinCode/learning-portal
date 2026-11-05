@@ -84,19 +84,24 @@ export const smartTablesApi = {
     api.post(`${BASE}/sheets/${sheetId}/ai/command`, { prompt }).then(r => r.data),
 
   listDirectoryOptions: async (directoryId: string): Promise<DirectoryOption[]> => {
-    if (directoryId !== 'schools') return [];
+    if (!['schools', 'contacts'].includes(directoryId)) return [];
     const options: DirectoryOption[] = [];
     const pageSize = 500;
     for (let offset = 0; ; offset += pageSize) {
-      const response = await api.get('/api/sales/schools', {
+      const response = await api.get(directoryId === 'schools' ? '/api/sales/schools' : '/api/sales/schools/contacts', {
         params: { active_only: true, limit: pageSize, offset },
       });
-      const schools = response.data as Array<{ name: string; city?: string | null }>;
-      options.push(...schools.filter((school) => school.name).map((school) => ({
-        value: school.name,
-        label: school.city ? `${school.name} — ${school.city}` : school.name,
-      })));
-      if (schools.length < pageSize) break;
+      const items = response.data as Array<{ name?: string; city?: string | null; full_name?: string; phone?: string | null; email?: string | null }>;
+      options.push(...items.filter((item) => directoryId === 'schools' ? item.name : item.full_name).map((item) => {
+        if (directoryId === 'schools') {
+          const value = item.name as string;
+          return { value, label: item.city ? `${value} — ${item.city}` : value };
+        }
+        const value = item.full_name as string;
+        const details = [item.phone, item.email].filter(Boolean).join(', ');
+        return { value, label: details ? `${value} — ${details}` : value };
+      }));
+      if (items.length < pageSize) break;
     }
     return options;
   },

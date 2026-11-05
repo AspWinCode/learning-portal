@@ -950,6 +950,32 @@ async def delete_sales_school(
 
 # ── School contacts ────────────────────────────────────────────────────────────
 
+@router.get("/schools/contacts", response_model=List[SalesSchoolContactResponse])
+async def list_all_sales_school_contacts(
+    active_only: bool = True,
+    search: Optional[str] = Query(default=None),
+    limit: int = Query(default=500, le=500),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("sales.access")),
+):
+    """Полный справочник контактов школ для поиска в умных таблицах."""
+    query = (
+        db.query(SalesSchoolContact)
+        .join(SalesSchool, SalesSchool.id == SalesSchoolContact.school_id)
+        .order_by(SalesSchoolContact.full_name.asc())
+    )
+    if active_only:
+        query = query.filter(SalesSchool.is_active.is_(True))
+    if search and search.strip():
+        term = f"%{search.strip()}%"
+        query = query.filter(
+            cast(SalesSchoolContact.full_name, Text).ilike(term)
+            | cast(SalesSchoolContact.phone, Text).ilike(term)
+            | cast(SalesSchoolContact.email, Text).ilike(term)
+        )
+    return query.offset(offset).limit(limit).all()
+
 def _build_ow_comment(phone_extra: Optional[str], note: Optional[str]) -> Optional[str]:
     parts = []
     if phone_extra:

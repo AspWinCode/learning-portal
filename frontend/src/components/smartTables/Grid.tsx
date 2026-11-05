@@ -201,6 +201,7 @@ const Grid: React.FC<GridProps> = ({
   const directories = useMemo(() => [
     { id: 'cities', label: 'Города', options: ['Москва', 'Санкт-Петербург', 'Новосибирск', 'Екатеринбург', 'Казань', 'Красноярск', 'Иркутск', 'Владивосток', 'Томск', 'Другой город'].map((value) => ({ value, label: value })) },
     { id: 'schools', label: 'Школы', options: ['Школа № 1', 'Школа № 2', 'Лицей', 'Гимназия'].map((value) => ({ value, label: value })) },
+    { id: 'contacts', label: 'Контакты', options: ['Иван Иванов', 'Мария Петрова'].map((value) => ({ value, label: value })) },
     { id: 'classes', label: 'Классы', options: ['1 класс', '2 класс', '3 класс', '4 класс', '5 класс', '6 класс', '7 класс', '8 класс', '9 класс', '10 класс', '11 класс'].map((value) => ({ value, label: value })) },
     { id: 'statuses', label: 'Статусы', options: ['Новый', 'В работе', 'Подтверждено', 'Завершено'].map((value) => ({ value, label: value })) },
   ], []);

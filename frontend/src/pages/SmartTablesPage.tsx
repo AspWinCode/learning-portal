@@ -143,6 +143,7 @@ interface GridTaskSelection {
   scope: 'cell' | 'range' | 'row' | 'column';
   label: string;
   contact?: string;
+  rowIds: number[];
 }
 
 const GridTaskDialog: React.FC<{
@@ -508,6 +509,15 @@ const WorkbookView: React.FC<WorkbookViewProps> = ({
       contact_id: contactId,
       deadline_at: payload.deadline ? new Date(payload.deadline).toISOString() : null,
     });
+    const taskColumn = detail?.columns.find((column) => column.name.trim().toLowerCase() === 'задачи');
+    if (taskColumn && taskSelection?.rowIds.length) {
+      await withOps(taskSelection.rowIds.map((rowId) => ({
+        type: 'set_cell' as const,
+        row_id: rowId,
+        column_id: taskColumn.id,
+        value: payload.title,
+      })));
+    }
     setError('');
   };
 

@@ -78,7 +78,7 @@ interface GridProps {
   onEditSmartLink: (rowId: number, columnId: number, snapshot?: CellSnapshot) => void;
   onClearSmartLink: (rowId: number, columnId: number) => void;
   onOpenMaxChat: (phone: string) => void;
-  onCreateTask?: (selection: { scope: 'cell' | 'range' | 'row' | 'column'; label: string; contact?: string }) => void;
+  onCreateTask?: (selection: { scope: 'cell' | 'range' | 'row' | 'column'; label: string; contact?: string; rowIds: number[] }) => void;
   expanded?: boolean;
   readOnly?: boolean;
 }
@@ -1047,7 +1047,7 @@ const Grid: React.FC<GridProps> = ({
         {!readOnly && onCreateTask && (
           <MenuItem onClick={() => {
             const column = sortedColumns.find((item) => item.id === colMenu?.columnId);
-            if (column) onCreateTask({ scope: 'column', label: `Столбец «${column.name}»` });
+            if (column) onCreateTask({ scope: 'column', label: `Столбец «${column.name}»`, rowIds: filteredRows.map((row) => row.id) });
             setColMenu(null);
           }}>
             <TaskAltIcon fontSize="small" sx={{ mr: 1 }} /> Добавить задачу…
@@ -1138,7 +1138,7 @@ const Grid: React.FC<GridProps> = ({
             const row = rows.find((item) => item.id === rowMenu?.rowId);
             const phoneColumn = columns.find((item) => item.type === 'phone');
             const contact = phoneColumn && row ? displayOf(row.cells[String(phoneColumn.id)]?.value).trim() : '';
-            onCreateTask({ scope: 'row', label: `Строка №${row ? rows.indexOf(row) + 1 : ''}`, contact: contact || undefined });
+            onCreateTask({ scope: 'row', label: `Строка №${row ? rows.indexOf(row) + 1 : ''}`, contact: contact || undefined, rowIds: row ? [row.id] : [] });
             setRowMenu(null);
           }}>
             <TaskAltIcon fontSize="small" sx={{ mr: 1 }} /> Добавить задачу…
@@ -1188,6 +1188,7 @@ const Grid: React.FC<GridProps> = ({
                   scope: selected.rowIds.length * selected.columnIds.length > 1 ? 'range' : 'cell',
                   label: selected.rowIds.length * selected.columnIds.length > 1 ? 'Выбранный диапазон' : `Ячейка «${column?.name || ''}»`,
                   contact: phoneValue || undefined,
+                  rowIds: selected.rowIds.length ? selected.rowIds : [cellMenu.rowId],
                 });
                 setCellMenu(null);
               }}>

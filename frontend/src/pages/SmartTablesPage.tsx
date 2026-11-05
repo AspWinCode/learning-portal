@@ -11,6 +11,7 @@ import UploadFileIcon from '@mui/icons-material/UploadFile';
 import DownloadIcon from '@mui/icons-material/Download';
 import SendIcon from '@mui/icons-material/Send';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
+import RefreshIcon from '@mui/icons-material/Refresh';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -398,7 +399,7 @@ const WorkbookView: React.FC<WorkbookViewProps> = ({
 
   useEffect(() => {
     if (!maxChat) return undefined;
-    const timer = window.setInterval(() => { loadMaxChat(maxChat.phone, true); }, 10000);
+    const timer = window.setInterval(() => { loadMaxChat(maxChat.phone, true); }, 5000);
     return () => window.clearInterval(timer);
   }, [loadMaxChat, maxChat?.phone]);
 
@@ -583,7 +584,14 @@ const WorkbookView: React.FC<WorkbookViewProps> = ({
       />
 
       <Dialog open={!!maxChat} onClose={() => setMaxChat(null)} fullWidth maxWidth="sm">
-        <DialogTitle>Переписка в MAX</DialogTitle>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pr: 1 }}>
+          Переписка в MAX
+          <Tooltip title="Обновить переписку">
+            <IconButton size="small" onClick={() => maxChat && loadMaxChat(maxChat.phone)} disabled={maxChatLoading}>
+              <RefreshIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>{maxChat?.phone}</Typography>
           <Box sx={{ height: 360, overflowY: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 1.5, bgcolor: 'grey.50' }}>
@@ -592,7 +600,10 @@ const WorkbookView: React.FC<WorkbookViewProps> = ({
             ) : maxChat?.messages.length ? (
               maxChat.messages.map((message) => (
                 <Box key={message.id} sx={{ display: 'flex', justifyContent: message.direction === 'outgoing' ? 'flex-end' : 'flex-start', mb: 1 }}>
-                  <Box sx={{ maxWidth: '78%', px: 1.5, py: 1, borderRadius: 2, bgcolor: message.direction === 'outgoing' ? '#e8def8' : '#ffffff', border: '1px solid', borderColor: message.direction === 'outgoing' ? '#c5a9eb' : '#d9d9d9' }}>
+                  <Box sx={{ maxWidth: '78%', px: 1.5, py: 1, borderRadius: 2, bgcolor: message.direction === 'outgoing' ? '#e8def8' : '#e6f4ff', border: '1px solid', borderColor: message.direction === 'outgoing' ? '#b48be5' : '#8cc8ef' }}>
+                    <Typography variant="caption" sx={{ display: 'block', fontWeight: 600, color: message.direction === 'outgoing' ? '#6a1b9a' : '#0277bd', mb: 0.25 }}>
+                      {message.direction === 'outgoing' ? 'Вы' : (message.sender || 'Собеседник')}
+                    </Typography>
                     <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{message.text}</Typography>
                     {message.media_url && message.media_type?.includes('image') && (
                       <Box component="img" src={message.media_url} alt={message.file_name || 'Изображение'} sx={{ display: 'block', maxWidth: '100%', maxHeight: 180, borderRadius: 1, mt: 1 }} />

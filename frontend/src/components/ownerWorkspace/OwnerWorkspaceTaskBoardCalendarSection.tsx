@@ -4,14 +4,22 @@ import {
   Card,
   CardContent,
   Chip,
+  Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   IconButton,
+  MenuItem,
   Stack,
+  TextField,
   ToggleButton,
   ToggleButtonGroup,
   Typography,
 } from '@mui/material';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import AddIcon from '@mui/icons-material/Add';
 import {
   eachDayOfInterval,
   endOfDay,
@@ -26,7 +34,7 @@ import {
 } from 'date-fns';
 import { ru } from 'date-fns/locale';
 
-import type { OwnerWorkspaceTask } from '../../types';
+import type { OwnerWorkspaceTask, OwnerWorkspaceWorkZone } from '../../types';
 
 type OwnerWorkspaceTaskStatus = 'new' | 'in_progress' | 'waiting' | 'completed' | 'cancelled';
 
@@ -48,6 +56,8 @@ type OwnerWorkspaceTaskBoardCalendarSectionProps = {
   tasksByDeadlineDay: Map<string, OwnerWorkspaceTask[]>;
   onOpenTask: (task: OwnerWorkspaceTask) => void | Promise<void>;
   weekdaysShort: string[];
+  zones: OwnerWorkspaceWorkZone[];
+  onZonesChange: (zones: OwnerWorkspaceWorkZone[]) => void;
 };
 
 function isTaskOverdue(task: OwnerWorkspaceTask): boolean {
@@ -67,8 +77,49 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
   tasksByDeadlineDay,
   onOpenTask,
   weekdaysShort,
+  zones,
+  onZonesChange,
 }: OwnerWorkspaceTaskBoardCalendarSectionProps) {
   const [calendarMode, setCalendarMode] = React.useState<'day' | 'week' | 'month'>('month');
+  const [zoneDialogOpen, setZoneDialogOpen] = React.useState(false);
+  const [zoneName, setZoneName] = React.useState('');
+  const [zoneWeekday, setZoneWeekday] = React.useState('0');
+  const [zoneStart, setZoneStart] = React.useState('09:00');
+  const [zoneEnd, setZoneEnd] = React.useState('13:00');
+  const [selectedZone, setSelectedZone] = React.useState('');
+  const activeZone = React.useMemo(() => {
+    const now = new Date();
+    const weekday = (now.getDay() + 6) % 7;
+    const minutes = now.getHours() * 60 + now.getMinutes();
+    return zones.find((zone) => {
+      if (zone.weekday !== weekday) return false;
+      const [sh, sm] = zone.start_time.split(':').map(Number);
+      const [eh, em] = zone.end_time.split(':').map(Number);
+      return minutes >= sh * 60 + sm && minutes < eh * 60 + em;
+    }) || null;
+  }, [zones]);
+  const visibleZone = selectedZone ? zones.find((zone) => zone.name === selectedZone) : activeZone;
+  const filteredTasks = visibleZone
+    ? tasks.filter((task) => (task.tags || []).includes(`zone:${visibleZone.name}`))
+    : tasks;
+  const filteredTasksByDay = React.useMemo(() => {
+    if (!visibleZone) return tasksByDeadlineDay;
+    const map = new Map<string, OwnerWorkspaceTask[]>();
+    filteredTasks.forEach((task) => {
+      if (!task.deadline_at) return;
+      const key = format(new Date(task.deadline_at), 'yyyy-MM-dd');
+      map.set(key, [...(map.get(key) || []), task]);
+    });
+    return map;
+  }, [filteredTasks, tasksByDeadlineDay, visibleZone]);
+  const addZone = () => {
+    const name = zoneName.trim();
+    if (!name || !zoneStart || !zoneEnd) return;
+    onZonesChange([...zones, { id: `${Date.now()}`, name, color: '#4F46E5', weekday: Number(zoneWeekday), start_time: zoneStart, end_time: zoneEnd }]);
+    setSelectedZone(name);
+    setZoneName('');
+    setZoneDialogOpen(false);
+  };
 
   if (taskViewMode === 'kanban') {
     return (
@@ -150,6 +201,7 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
           </IconButton>
           <Stack direction="row" spacing={1} alignItems="center" justifyContent="center" flexWrap="wrap" useFlexGap>
             <Typography variant="h6">{calendarTitle}</Typography>
+            {visibleZone && <Chip size="small" color="primary" label={`Зона: ${visibleZone.name}`} />}
             <ToggleButtonGroup
               size="small"
               exclusive
@@ -168,6 +220,13 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
             <ChevronRightIcon />
           </IconButton>
         </Stack>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 1.5 }} alignItems={{ sm: 'center' }}>
+          <TextField select size="small" label="Показывать задачи зоны" value={selectedZone} onChange={(e) => setSelectedZone(e.target.value)} sx={{ minWidth: 240 }}>
+            <MenuItem value="">{activeZone ? `Текущая: ${activeZone.name}` : 'Все зоны'}</MenuItem>
+            {zones.map((zone) => <MenuItem key={zone.id} value={zone.name}>{zone.name} · {weekdaysShort[zone.weekday]} {zone.start_time}–{zone.end_time}</MenuItem>)}
+          </TextField>
+          <Button size="small" startIcon={<AddIcon />} variant="outlined" onClick={() => setZoneDialogOpen(true)}>Добавить зону</Button>
+        </Stack>
         <Box
           sx={{
             display: 'grid',
@@ -182,7 +241,7 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
           ))}
           {visibleDays.map((day) => {
             const key = format(day, 'yyyy-MM-dd');
-            const dayTasks = tasksByDeadlineDay.get(key) || [];
+            const dayTasks = filteredTasksByDay.get(key) || [];
             const inMonth = calendarMode === 'month' ? isSameMonth(day, calendarMonth) : true;
             return (
               <Box
@@ -226,6 +285,23 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
           })}
         </Box>
       </CardContent>
+      <Dialog open={zoneDialogOpen} onClose={() => setZoneDialogOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Новая зона работы</DialogTitle>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
+          <TextField autoFocus size="small" label="Название зоны" placeholder="Продажи" value={zoneName} onChange={(e) => setZoneName(e.target.value)} />
+          <TextField select size="small" label="День недели" value={zoneWeekday} onChange={(e) => setZoneWeekday(e.target.value)}>
+            {weekdaysShort.map((day, index) => <MenuItem key={day} value={String(index)}>{day}</MenuItem>)}
+          </TextField>
+          <Stack direction="row" spacing={1}>
+            <TextField type="time" size="small" label="С" value={zoneStart} onChange={(e) => setZoneStart(e.target.value)} InputLabelProps={{ shrink: true }} fullWidth />
+            <TextField type="time" size="small" label="До" value={zoneEnd} onChange={(e) => setZoneEnd(e.target.value)} InputLabelProps={{ shrink: true }} fullWidth />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setZoneDialogOpen(false)}>Отмена</Button>
+          <Button variant="contained" onClick={addZone} disabled={!zoneName.trim()}>Создать</Button>
+        </DialogActions>
+      </Dialog>
     </Card>
   );
 }

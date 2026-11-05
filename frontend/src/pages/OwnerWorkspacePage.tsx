@@ -96,6 +96,7 @@ import type {
   OwnerWorkspaceTaskStatusCounts,
   OwnerWorkspaceTasksAnalyticsOverview,
   OwnerWorkspaceWebPushStatus,
+  OwnerWorkspaceWorkZone,
   User,
 } from '../types';
 import { extractApiError } from '../utils/extractApiError';
@@ -1039,6 +1040,40 @@ const OwnerWorkspacePage: React.FC = () => {
     ]
   );
   const [calendarMonth, setCalendarMonth] = useState(() => startOfMonth(new Date()));
+  const [workZones, setWorkZones] = useState<OwnerWorkspaceWorkZone[]>(() => {
+    try {
+      const raw = localStorage.getItem('owner_workspace_work_zones');
+      return raw ? JSON.parse(raw) : [];
+    } catch { return []; }
+  });
+  const [zoneClock, setZoneClock] = useState(() => Date.now());
+  useEffect(() => {
+    localStorage.setItem('owner_workspace_work_zones', JSON.stringify(workZones));
+  }, [workZones]);
+  useEffect(() => {
+    const timer = window.setInterval(() => setZoneClock(Date.now()), 30000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const currentWorkZone = useMemo(() => {
+    const now = new Date(zoneClock);
+    const weekday = (now.getDay() + 6) % 7;
+    const minutes = now.getHours() * 60 + now.getMinutes();
+    return workZones.find((zone) => {
+      if (zone.weekday !== weekday) return false;
+      const [sh, sm] = zone.start_time.split(':').map(Number);
+      const [eh, em] = zone.end_time.split(':').map(Number);
+      return minutes >= sh * 60 + sm && minutes < eh * 60 + em;
+    }) || null;
+  }, [workZones, zoneClock]);
+  const currentZoneRemaining = useMemo(() => {
+    if (!currentWorkZone) return null;
+    const now = new Date(zoneClock);
+    const [eh, em] = currentWorkZone.end_time.split(':').map(Number);
+    const end = new Date(now);
+    end.setHours(eh, em, 0, 0);
+    const total = Math.max(0, end.getTime() - now.getTime());
+    return `${Math.floor(total / 3600000)} ч ${Math.floor((total % 3600000) / 60000)} мин`;
+  }, [currentWorkZone, zoneClock]);
   const [selectedTaskIds, setSelectedTaskIds] = useState<number[]>([]);
   const [bulkStatus, setBulkStatus] = useState<string>('');
   const [bulkAssigneeMode, setBulkAssigneeMode] = useState<'skip' | 'set' | 'clear'>('skip');
@@ -2527,6 +2562,7 @@ const OwnerWorkspacePage: React.FC = () => {
   };
 
   const handleCreateTaskDialog = async (payload: TaskCreatePayload) => {
+    const zoneTag = payload.zone ? `zone:${payload.zone}` : null;
     await ownerWorkspaceApi.createTask({
       title: payload.title,
       description: payload.description || null,
@@ -2538,7 +2574,7 @@ const OwnerWorkspacePage: React.FC = () => {
       project_id: createTaskDialogProjectId,
       contact_id: createTaskDialogContactId,
       watcher_ids: payload.watcher_ids,
-      tags: payload.tags,
+      tags: [...(payload.tags || []).filter((tag) => !tag.startsWith('zone:')), ...(zoneTag ? [zoneTag] : [])],
       checklist: payload.checklist,
       effort_hours: payload.effort_hours ?? null,
       effort_minutes: payload.effort_minutes ?? null,
@@ -5243,6 +5279,27 @@ const OwnerWorkspacePage: React.FC = () => {
 
   return (
     <Layout>
+      {currentWorkZone && currentZoneRemaining && (
+        <Box
+          sx={{
+            position: 'fixed',
+            top: { xs: 10, md: 18 },
+            right: { xs: 10, md: 24 },
+            zIndex: 1300,
+            px: 1.75,
+            py: 1,
+            borderRadius: 2,
+            bgcolor: '#111827',
+            color: 'white',
+            boxShadow: '0 12px 28px rgba(15,23,42,.24)',
+            border: '1px solid rgba(255,255,255,.16)',
+          }}
+        >
+          <Typography variant="caption" sx={{ display: 'block', opacity: 0.72, lineHeight: 1.1 }}>Текущая зона</Typography>
+          <Typography variant="subtitle2" sx={{ fontWeight: 800, lineHeight: 1.3 }}>{currentWorkZone.name}</Typography>
+          <Typography variant="caption" sx={{ color: '#A7F3D0', fontWeight: 700 }}>Осталось {currentZoneRemaining}</Typography>
+        </Box>
+      )}
       <Box
         sx={{
           '--task-ink': '#111827',
@@ -6572,6 +6629,8 @@ const OwnerWorkspacePage: React.FC = () => {
                 tasksByDeadlineDay={tasksByDeadlineDay}
                 onOpenTask={openTaskDialog}
                 weekdaysShort={WEEKDAYS_SHORT}
+                zones={workZones}
+                onZonesChange={setWorkZones}
               />
             </Suspense>
           )}
@@ -8950,6 +9009,7 @@ const OwnerWorkspacePage: React.FC = () => {
         onClose={() => { setCreateTaskDialogOpen(false); setCreateTaskDialogProjectId(null); setCreateTaskDialogContactId(null); }}
         onSubmit={handleCreateTaskDialog}
         users={userOptions}
+        availableZones={Array.from(new Set(workZones.map((zone) => zone.name)))}
         projectName={
           createTaskDialogProjectId
             ? projects.find((p) => p.id === createTaskDialogProjectId)?.name

@@ -73,6 +73,7 @@ export interface TaskCreatePayload {
   effort_hours?: number | null;
   effort_minutes?: number | null;
   reminder_at?: string | null;
+  zone?: string | null;
   repeat?: {
     enabled: boolean;
     frequency?: string;
@@ -92,6 +93,7 @@ interface Props {
   users?: User[];
   defaultProjectId?: number | null;
   availableTags?: string[];
+  availableZones?: string[];
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -155,12 +157,14 @@ export function OwnerWorkspaceTaskCreateDialog({
   projectName,
   users = [],
   availableTags = [],
+  availableZones = [],
 }: Props) {
   // Form state
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [taskStatus, setTaskStatus] = useState<TaskStatus>('new');
   const [priority, setPriority] = useState<Priority>('medium');
+  const [zone, setZone] = useState('');
   const [deadline, setDeadline] = useState('');
   const [assigneeId, setAssigneeId] = useState<number | null>(null);
   const [watcherIds, setWatcherIds] = useState<number[]>([]);
@@ -218,6 +222,7 @@ export function OwnerWorkspaceTaskCreateDialog({
   useEffect(() => {
     if (!open) {
       setTitle(''); setDescription(''); setTaskStatus('new'); setPriority('medium');
+      setZone('');
       setStartDate(''); setDeadline(''); setAssigneeId(null); setWatcherIds([]); setTags([]); setTagInput('');
       setReminderPreset(''); setReminderCustom('');
       setChecklist([]); setChecklistOpen(false); setNewCheckItem('');
@@ -335,6 +340,7 @@ export function OwnerWorkspaceTaskCreateDialog({
         description: description.trim() || undefined,
         status: taskStatus,
         priority,
+        zone: zone || null,
         start_at: startDate ? new Date(startDate + 'T' + (startTime || '00:00')).toISOString() : null,
         deadline_at: deadline ? new Date(deadline + 'T' + (deadlineTime || '00:00')).toISOString() : null,
         assignee_id: assigneeId,
@@ -585,6 +591,20 @@ export function OwnerWorkspaceTaskCreateDialog({
               </Box>
             </Stack>
           </Stack>
+
+          {/* Work zone */}
+          <TextField
+            select
+            size="small"
+            label="Зона работы"
+            value={zone}
+            onChange={(e) => setZone(e.target.value)}
+            helperText={availableZones.length ? 'Задача будет показана в календаре этой зоны' : 'Сначала создайте зону в календаре'}
+            sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+          >
+            <MenuItem value="">Без зоны</MenuItem>
+            {availableZones.map((item) => <MenuItem key={item} value={item}>{item}</MenuItem>)}
+          </TextField>
 
           {/* Assignee */}
           {users.length > 0 && (

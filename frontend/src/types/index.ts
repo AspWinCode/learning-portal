@@ -1926,6 +1926,16 @@ export interface OwnerWorkspaceTask {
   updated_at?: string | null;
 }
 
+/** Рабочая зона задачи и её расписание в календаре. */
+export interface OwnerWorkspaceWorkZone {
+  id: string;
+  name: string;
+  color: string;
+  weekday: number;
+  start_time: string;
+  end_time: string;
+}
+
 export type OwnerWorkspaceMeetingStatus = 'planned' | 'completed' | 'cancelled' | string;
 export type OwnerWorkspaceMeetingType = 'online' | 'offline';
 export type OwnerWorkspaceMeetingRecurrence = 'none' | 'daily' | 'weekly' | 'monthly';

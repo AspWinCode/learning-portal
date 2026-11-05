@@ -219,6 +219,7 @@ const Grid: React.FC<GridProps> = ({
 
   const sortedColumns = columns;
   const columnWidthOf = useCallback((column: ColumnOut) => columnPreview[column.id] ?? column.width, [columnPreview]);
+  const gridWidth = ROW_HEADER_WIDTH + sortedColumns.reduce((sum, column) => sum + columnWidthOf(column), 0) + 40;
   const rowHeightOf = useCallback((row: RowOut) => rowPreview[row.id] ?? row.height, [rowPreview]);
   const filteredRows = useMemo(() => {
     const activeFilters = Object.entries(filters).filter(([, v]) => v.trim() !== '');
@@ -726,7 +727,7 @@ const Grid: React.FC<GridProps> = ({
 
       {/* header row */}
       <Box sx={{ overflow: 'hidden', bgcolor: 'grey.100', borderBottom: '1px solid', borderColor: 'divider' }}>
-        <Box sx={{ display: 'flex', width: 'max-content', transform: `translateX(-${scrollLeft}px)` }}>
+        <Box sx={{ display: 'flex', width: 'max-content', minWidth: gridWidth, transform: `translateX(-${scrollLeft}px)` }}>
           <Box sx={{ width: ROW_HEADER_WIDTH, flexShrink: 0 }} />
           {sortedColumns.map((col) => (
           <Box
@@ -741,7 +742,7 @@ const Grid: React.FC<GridProps> = ({
             sx={{
               width: columnWidthOf(col), flexShrink: 0, display: 'flex', alignItems: 'center',
               justifyContent: 'space-between', px: 1, py: 0.5, fontWeight: 600, fontSize: 13,
-              borderRight: '1px solid', borderColor: 'divider', position: 'relative', cursor: 'default',
+              borderRight: '1px solid #e0e0e0', position: 'relative', cursor: 'default',
               bgcolor: selectionBounds && sortedColumns.indexOf(col) >= selectionBounds.colFrom && sortedColumns.indexOf(col) <= selectionBounds.colTo
                 ? 'rgba(25, 118, 210, 0.12)'
                 : undefined,
@@ -785,10 +786,10 @@ const Grid: React.FC<GridProps> = ({
       {/* filter row */}
       {filtersOpen && (
         <Box sx={{ overflow: 'hidden', bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider' }}>
-          <Box sx={{ display: 'flex', width: 'max-content', transform: `translateX(-${scrollLeft}px)` }}>
+          <Box sx={{ display: 'flex', width: 'max-content', minWidth: gridWidth, transform: `translateX(-${scrollLeft}px)` }}>
             <Box sx={{ width: ROW_HEADER_WIDTH, flexShrink: 0 }} />
             {sortedColumns.map((col) => (
-            <Box key={col.id} sx={{ width: columnWidthOf(col), flexShrink: 0, px: 0.5, py: 0.5, borderRight: '1px solid', borderColor: 'divider' }}>
+            <Box key={col.id} sx={{ width: columnWidthOf(col), flexShrink: 0, px: 0.5, py: 0.5, borderRight: '1px solid #e0e0e0' }}>
               <TextField
                 size="small" variant="standard" placeholder="Фильтр…" fullWidth
                 value={filters[col.id] ?? ''}
@@ -821,14 +822,14 @@ const Grid: React.FC<GridProps> = ({
                 key={row.id}
                 sx={{
                   position: 'absolute', top, left: 0, right: 0, height: rowHeightOf(row),
-                  display: 'flex', borderBottom: '1px solid', borderColor: 'divider',
+                  display: 'flex', minWidth: gridWidth, borderBottom: '1px solid #e0e0e0',
                 }}
               >
                 <Box
                   sx={{
                     width: ROW_HEADER_WIDTH, flexShrink: 0, display: 'flex', alignItems: 'center',
                     justifyContent: 'center', fontSize: 12, color: 'text.secondary', bgcolor: 'grey.50',
-                    cursor: 'default', position: 'relative',
+                    cursor: 'default', position: 'relative', borderRight: '1px solid #e0e0e0',
                     ...(selectionBounds && idx >= selectionBounds.rowFrom && idx <= selectionBounds.rowTo
                       ? { bgcolor: 'rgba(25, 118, 210, 0.12)', color: 'primary.main', fontWeight: 600 }
                       : {}),
@@ -904,7 +905,7 @@ const Grid: React.FC<GridProps> = ({
                       onKeyDown={(e) => onCellKeyDown(e, row, col)}
                       sx={{
                         width: columnWidthOf(col), flexShrink: 0, px: 1, display: 'flex', alignItems: 'center',
-                        fontSize: 13, borderRight: '1px solid', borderColor: 'divider',
+                        fontSize: 13, borderRight: '1px solid #e0e0e0',
                         outline: isActive ? '2px solid' : 'none',
                         outlineColor: highlightCell?.rowId === row.id && highlightCell?.columnId === col.id ? 'warning.main' : 'primary.main',
                         boxShadow: highlightCell?.rowId === row.id && highlightCell?.columnId === col.id

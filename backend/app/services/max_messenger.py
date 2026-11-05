@@ -52,6 +52,10 @@ def _get_greenapi_token() -> str:
     return (os.getenv("GREEN_API_TOKEN") or "").strip()
 
 
+def _get_greenapi_media_url() -> str:
+    return (os.getenv("GREEN_API_MEDIA_URL") or "https://media.green-api.com").strip().rstrip("/")
+
+
 def _is_greenapi_configured() -> bool:
     return bool(_get_greenapi_base_url() and _get_greenapi_id_instance() and _get_greenapi_token())
 
@@ -117,6 +121,54 @@ def send_message_greenapi(chat_id: str, text: str) -> Tuple[bool, Optional[str],
     return False, None, f"GREEN-API: {resp.status_code} — {err_text[:200]}"
 
 
+def send_file_greenapi(
+    chat_id: str,
+    filename: str,
+    content: bytes,
+    content_type: Optional[str],
+    caption: str = "",
+) -> Tuple[bool, Optional[str], Optional[str]]:
+    """Отправить файл в MAX через multipart SendFileByUpload."""
+    base_url = _get_greenapi_media_url()
+    id_instance = _get_greenapi_id_instance()
+    token = _get_greenapi_token()
+    if not base_url or not id_instance or not token:
+        return False, None, "GREEN-API не настроен"
+    url = f"{base_url}/waInstance{id_instance}/sendFileByUpload/{token}"
+    try:
+        resp = requests.post(
+            url,
+            data={"chatId": chat_id, "fileName": filename, "caption": caption[:4000]},
+            files={"file": (filename, content, content_type or "application/octet-stream")},
+            timeout=120,
+        )
+        data = resp.json() if resp.content else {}
+    except (requests.RequestException, ValueError) as exc:
+        logger.warning("max_greenapi: file send failed chat_id=%s: %s", chat_id, exc)
+        return False, None, "Не удалось отправить файл в MAX"
+    if resp.status_code == 200 and isinstance(data, dict):
+        message_id = data.get("idMessage")
+        logger.info("max_greenapi_file_sent: chat_id=%s idMessage=%s", chat_id, message_id)
+        return True, str(message_id) if message_id else None, None
+    err_text = resp.text or resp.reason or str(resp.status_code)
+    return False, None, f"GREEN-API: {resp.status_code} — {err_text[:200]}"
+
+
+def send_file_personal(
+    phone: str,
+    filename: str,
+    content: bytes,
+    content_type: Optional[str],
+    caption: str = "",
+) -> Tuple[bool, Optional[str], Optional[str]]:
+    if not _is_greenapi_configured():
+        return False, None, "Отправка файлов доступна только через GREEN-API"
+    found, chat_id, error = resolve_max_chat_id_greenapi(phone)
+    if not found or not chat_id:
+        return False, None, error or "Пользователь не найден в MAX"
+    return send_file_greenapi(chat_id, filename, content, content_type, caption)
+
+
 def resolve_max_chat_id_greenapi(phone: str) -> Tuple[bool, Optional[str], Optional[str]]:
     """Получить постоянный MAX chatId по номеру через GREEN-API CheckAccount."""
     base_url = _get_greenapi_base_url()
@@ -170,6 +222,10 @@ def get_chat_history_greenapi(phone: str, count: int = 100) -> Tuple[bool, list,
             text = item["extendedTextMessage"].get("text")
         if not text:
             text = item.get("caption") or ("Вложение" if item.get("typeMessage") else "")
+        media_type = str(item.get("typeMessage") or "")
+        media_url = item.get("downloadUrl") or item.get("urlFile")
+        if media_url and not text:
+            text = item.get("fileName") or "Вложение"
         if not text:
             continue
         messages.append({
@@ -178,6 +234,10 @@ def get_chat_history_greenapi(phone: str, count: int = 100) -> Tuple[bool, list,
             "direction": "outgoing" if item.get("type") == "outgoing" else "incoming",
             "timestamp": item.get("timestamp"),
             "sender": item.get("senderName") or item.get("senderContactName"),
+            "status": item.get("statusMessage") if item.get("type") == "outgoing" else None,
+            "media_url": media_url,
+            "media_type": media_type,
+            "file_name": item.get("fileName"),
         })
     return True, messages, None
 

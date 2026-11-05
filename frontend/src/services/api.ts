@@ -4148,8 +4148,16 @@ export const maxApi = {
     const response = await api.get('/api/max/personal/chat-by-phone', { params: { phone } });
     return response.data;
   },
-  getPersonalHistory: async (phone: string): Promise<{ messages: Array<{ id: string; text: string; direction: 'incoming' | 'outgoing'; timestamp?: number | null; sender?: string | null }> }> => {
+  getPersonalHistory: async (phone: string): Promise<{ messages: Array<{ id: string; text: string; direction: 'incoming' | 'outgoing'; timestamp?: number | null; sender?: string | null; status?: string | null; media_url?: string | null; media_type?: string | null; file_name?: string | null }> }> => {
     const response = await api.get('/api/max/personal/history', { params: { phone } });
+    return response.data;
+  },
+  sendFile: async (phone: string, file: File, caption = ''): Promise<MaxSendResponse> => {
+    const form = new FormData();
+    form.append('phone', phone);
+    form.append('caption', caption);
+    form.append('file', file);
+    const response = await api.post('/api/max/personal/file', form);
     return response.data;
   },
   checkUser: async (params: { max_user_id?: number; phone?: string }): Promise<{ exists: boolean }> => {

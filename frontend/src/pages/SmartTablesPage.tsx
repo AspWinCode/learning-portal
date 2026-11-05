@@ -10,6 +10,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import DownloadIcon from '@mui/icons-material/Download';
 import SendIcon from '@mui/icons-material/Send';
+import AttachFileIcon from '@mui/icons-material/AttachFile';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -130,6 +131,10 @@ interface MaxChatMessage {
   direction: 'incoming' | 'outgoing';
   timestamp?: number | null;
   sender?: string | null;
+  status?: string | null;
+  media_url?: string | null;
+  media_type?: string | null;
+  file_name?: string | null;
 }
 
 const WorkbookView: React.FC<WorkbookViewProps> = ({
@@ -163,6 +168,8 @@ const WorkbookView: React.FC<WorkbookViewProps> = ({
   const [maxChatInput, setMaxChatInput] = useState('');
   const [maxChatLoading, setMaxChatLoading] = useState(false);
   const [maxChatSending, setMaxChatSending] = useState(false);
+  const [maxChatFiles, setMaxChatFiles] = useState<File[]>([]);
+  const maxChatFileInput = useRef<HTMLInputElement | null>(null);
 
   const { presence, connected } = useSmartTableRealtime(activeSheetId, {
     onSheetUpdate: (sheet) => setDetail(sheet),
@@ -370,6 +377,7 @@ const WorkbookView: React.FC<WorkbookViewProps> = ({
   const handleOpenMaxChat = (phone: string) => {
     setMaxChat({ phone, messages: [] });
     setMaxChatInput('');
+    setMaxChatFiles([]);
     loadMaxChat(phone);
   };
 
@@ -395,11 +403,17 @@ const WorkbookView: React.FC<WorkbookViewProps> = ({
   }, [loadMaxChat, maxChat?.phone]);
 
   const handleSendMaxChat = async () => {
-    if (!maxChat || !maxChatInput.trim()) return;
+    if (!maxChat || (!maxChatInput.trim() && maxChatFiles.length === 0)) return;
     setMaxChatSending(true);
     try {
-      await maxApi.send({ phone: maxChat.phone, message: maxChatInput.trim() });
+      if (maxChatInput.trim()) {
+        await maxApi.send({ phone: maxChat.phone, message: maxChatInput.trim() });
+      }
+      for (const file of maxChatFiles) {
+        await maxApi.sendFile(maxChat.phone, file);
+      }
       setMaxChatInput('');
+      setMaxChatFiles([]);
       await loadMaxChat(maxChat.phone);
     } catch (e: any) {
       setError(e?.response?.data?.detail || 'Не удалось отправить сообщение в MAX');
@@ -578,9 +592,21 @@ const WorkbookView: React.FC<WorkbookViewProps> = ({
             ) : maxChat?.messages.length ? (
               maxChat.messages.map((message) => (
                 <Box key={message.id} sx={{ display: 'flex', justifyContent: message.direction === 'outgoing' ? 'flex-end' : 'flex-start', mb: 1 }}>
-                  <Box sx={{ maxWidth: '78%', px: 1.5, py: 1, borderRadius: 2, bgcolor: message.direction === 'outgoing' ? 'primary.100' : 'background.paper', border: '1px solid', borderColor: 'divider' }}>
+                  <Box sx={{ maxWidth: '78%', px: 1.5, py: 1, borderRadius: 2, bgcolor: message.direction === 'outgoing' ? '#e8def8' : '#ffffff', border: '1px solid', borderColor: message.direction === 'outgoing' ? '#c5a9eb' : '#d9d9d9' }}>
                     <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{message.text}</Typography>
-                    {message.timestamp && <Typography variant="caption" color="text.secondary" display="block">{new Date(message.timestamp * 1000).toLocaleString('ru-RU')}</Typography>}
+                    {message.media_url && message.media_type?.includes('image') && (
+                      <Box component="img" src={message.media_url} alt={message.file_name || 'Изображение'} sx={{ display: 'block', maxWidth: '100%', maxHeight: 180, borderRadius: 1, mt: 1 }} />
+                    )}
+                    {message.media_url && message.media_type?.includes('video') && (
+                      <Box component="video" src={message.media_url} controls sx={{ display: 'block', maxWidth: '100%', maxHeight: 180, borderRadius: 1, mt: 1 }} />
+                    )}
+                    {message.media_url && !message.media_type?.includes('image') && !message.media_type?.includes('video') && (
+                      <Button size="small" href={message.media_url} target="_blank" rel="noreferrer" sx={{ mt: 0.5, px: 0 }}>Открыть файл {message.file_name || ''}</Button>
+                    )}
+                    <Typography variant="caption" color="text.secondary" display="block">
+                      {message.timestamp ? new Date(message.timestamp * 1000).toLocaleString('ru-RU') : ''}
+                      {message.direction === 'outgoing' && ` · ${message.status === 'read' ? 'Прочитано' : message.status === 'delivered' ? 'Доставлено' : 'Отправлено'}`}
+                    </Typography>
                   </Box>
                 </Box>
               ))
@@ -588,7 +614,32 @@ const WorkbookView: React.FC<WorkbookViewProps> = ({
               <Typography color="text.secondary" sx={{ textAlign: 'center', py: 5 }}>Сообщений пока нет</Typography>
             )}
           </Box>
+          {maxChatFiles.length > 0 && (
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: 1 }}>
+              {maxChatFiles.map((file) => (
+                <Button key={`${file.name}-${file.lastModified}`} size="small" variant="outlined" onClick={() => setMaxChatFiles((items) => items.filter((item) => item !== file))}>
+                  {file.name} ×
+                </Button>
+              ))}
+            </Box>
+          )}
           <Box sx={{ display: 'flex', gap: 1, mt: 1.5, alignItems: 'flex-end' }}>
+            <input
+              ref={maxChatFileInput}
+              type="file"
+              multiple
+              hidden
+              accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.rar"
+              onChange={(event) => {
+                setMaxChatFiles((items) => [...items, ...Array.from(event.target.files || [])]);
+                event.target.value = '';
+              }}
+            />
+            <Tooltip title="Прикрепить файл, изображение или видео">
+              <IconButton onClick={() => maxChatFileInput.current?.click()} disabled={maxChatSending}>
+                <AttachFileIcon />
+              </IconButton>
+            </Tooltip>
             <TextField
               fullWidth multiline maxRows={4} size="small" placeholder="Написать сообщение…"
               value={maxChatInput}
@@ -600,7 +651,7 @@ const WorkbookView: React.FC<WorkbookViewProps> = ({
                 }
               }}
             />
-            <Button variant="contained" endIcon={<SendIcon />} disabled={maxChatSending || !maxChatInput.trim()} onClick={handleSendMaxChat}>
+            <Button variant="contained" endIcon={<SendIcon />} disabled={maxChatSending || (!maxChatInput.trim() && maxChatFiles.length === 0)} onClick={handleSendMaxChat}>
               Отправить
             </Button>
           </Box>

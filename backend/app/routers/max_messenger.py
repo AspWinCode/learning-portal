@@ -8,7 +8,7 @@ import os
 from datetime import datetime, timezone
 from typing import Optional, Tuple
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from app import auth
@@ -27,6 +27,7 @@ from app.services.max_messenger import (
     find_personal_chat_by_phone,
     get_chat_history_greenapi,
     resolve_max_chat_id_greenapi,
+    send_file_personal,
     MAX_MESSAGE_TEXT_LIMIT,
 )
 from app.services.max_client import get_max_client
@@ -80,6 +81,27 @@ def api_max_personal_history(
     if not ok:
         raise HTTPException(status_code=502, detail=error or "Не удалось загрузить историю MAX")
     return {"messages": messages}
+
+
+@router.post("/max/personal/file")
+async def api_max_personal_file(
+    phone: str = Form(...),
+    caption: str = Form(""),
+    file: UploadFile = File(...),
+    current_user: User = Depends(auth.require_permission("sales.access")),
+):
+    """Отправить файл, изображение или видео в личный MAX-чат."""
+    content = await file.read(100 * 1024 * 1024 + 1)
+    if len(content) > 100 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Размер файла не должен превышать 100 МБ")
+    if not content:
+        raise HTTPException(status_code=400, detail="Файл пустой")
+    ok, message_id, error = send_file_personal(
+        phone, file.filename or "file", content, file.content_type, caption,
+    )
+    if not ok:
+        raise HTTPException(status_code=502, detail=error or "Не удалось отправить файл в MAX")
+    return {"success": True, "message_id": message_id}
 
 
 @router.get("/max/personal/qr")

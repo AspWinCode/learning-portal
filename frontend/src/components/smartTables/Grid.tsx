@@ -23,6 +23,7 @@ import DriveFileRenameOutlineIcon from '@mui/icons-material/DriveFileRenameOutli
 import ListAltIcon from '@mui/icons-material/ListAlt';
 import SearchIcon from '@mui/icons-material/Search';
 import ChatIcon from '@mui/icons-material/Chat';
+import TaskAltIcon from '@mui/icons-material/TaskAlt';
 import type {
   CellFormatting, CellSnapshot, CellValue, ColumnOut, ColumnType, ConditionOperator, ConditionalFormatRule, PasteCell, RowOut,
   SmartLinkMetadata, SmartLinkTarget, TextAlign,
@@ -77,6 +78,7 @@ interface GridProps {
   onEditSmartLink: (rowId: number, columnId: number, snapshot?: CellSnapshot) => void;
   onClearSmartLink: (rowId: number, columnId: number) => void;
   onOpenMaxChat: (phone: string) => void;
+  onCreateTask?: (selection: { scope: 'cell' | 'range' | 'row' | 'column'; label: string; contact?: string }) => void;
   expanded?: boolean;
   readOnly?: boolean;
 }
@@ -165,7 +167,7 @@ function measureTextWidth(text: string, font = '13px Arial'): number {
 const Grid: React.FC<GridProps> = ({
   columns, rows, onSetCell, onSetFormula, onInsertRow, onDeleteRow, onInsertColumn, onDeleteColumn, onRenameColumn,
   onResizeColumn, onResizeRow, onFormatRange, onSetConditionalFormat, onSetColumnType, onSetDirectory, onSortColumn, onPasteRange,
-  focusTarget = null, onOpenSmartLink, onEditSmartLink, onClearSmartLink, onOpenMaxChat, expanded = false, readOnly = false,
+  focusTarget = null, onOpenSmartLink, onEditSmartLink, onClearSmartLink, onOpenMaxChat, onCreateTask, expanded = false, readOnly = false,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const skipNextBlurCommitRef = useRef(false);
@@ -1042,6 +1044,15 @@ const Grid: React.FC<GridProps> = ({
         }}>
           <ListAltIcon fontSize="small" sx={{ mr: 1 }} /> Заполнение из справочника…
         </MenuItem>
+        {!readOnly && onCreateTask && (
+          <MenuItem onClick={() => {
+            const column = sortedColumns.find((item) => item.id === colMenu?.columnId);
+            if (column) onCreateTask({ scope: 'column', label: `Столбец «${column.name}»` });
+            setColMenu(null);
+          }}>
+            <TaskAltIcon fontSize="small" sx={{ mr: 1 }} /> Добавить задачу…
+          </MenuItem>
+        )}
       </Menu>
 
       <Dialog open={!!columnTypeDialog} onClose={() => setColumnTypeDialog(null)} fullWidth maxWidth="xs">
@@ -1122,6 +1133,17 @@ const Grid: React.FC<GridProps> = ({
         }}>
           <ListAltIcon fontSize="small" sx={{ mr: 1 }} /> Заполнение из справочника…
         </MenuItem>
+        {!readOnly && onCreateTask && (
+          <MenuItem onClick={() => {
+            const row = rows.find((item) => item.id === rowMenu?.rowId);
+            const phoneColumn = columns.find((item) => item.type === 'phone');
+            const contact = phoneColumn && row ? displayOf(row.cells[String(phoneColumn.id)]?.value).trim() : '';
+            onCreateTask({ scope: 'row', label: `Строка №${row ? rows.indexOf(row) + 1 : ''}`, contact: contact || undefined });
+            setRowMenu(null);
+          }}>
+            <TaskAltIcon fontSize="small" sx={{ mr: 1 }} /> Добавить задачу…
+          </MenuItem>
+        )}
       </Menu>
 
       <Menu open={!!cellMenu} anchorEl={cellMenu?.anchor} onClose={() => setCellMenu(null)}>
@@ -1157,6 +1179,19 @@ const Grid: React.FC<GridProps> = ({
             !readOnly && (
               <MenuItem key="directory" onClick={() => { openDirectoryDialog(); setCellMenu(null); }}>
                 <ListAltIcon fontSize="small" sx={{ mr: 1 }} /> Заполнение из справочника…
+              </MenuItem>
+            ),
+            !readOnly && onCreateTask && (
+              <MenuItem key="task" onClick={() => {
+                const selected = selectedIds();
+                onCreateTask({
+                  scope: selected.rowIds.length * selected.columnIds.length > 1 ? 'range' : 'cell',
+                  label: selected.rowIds.length * selected.columnIds.length > 1 ? 'Выбранный диапазон' : `Ячейка «${column?.name || ''}»`,
+                  contact: phoneValue || undefined,
+                });
+                setCellMenu(null);
+              }}>
+                <TaskAltIcon fontSize="small" sx={{ mr: 1 }} /> Добавить задачу…
               </MenuItem>
             ),
             phoneValue && (

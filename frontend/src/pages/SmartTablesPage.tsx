@@ -26,6 +26,7 @@ import ConfirmDialog from '../components/ui/ConfirmDialog';
 import FormDialog from '../components/ui/FormDialog';
 import { smartTablesApi } from '../services/api/smartTables';
 import { maxApi } from '../services/api';
+import { ownerWorkspaceApi } from '../services/api/ownerWorkspace';
 import { useSmartTableRealtime } from '../hooks/useSmartTableRealtime';
 import type { ActiveCell } from '../components/smartTables/Grid';
 import type { CellSnapshot, SheetDetail, SmartLinkTarget, Workbook } from '../types/smartTables';
@@ -138,6 +139,68 @@ interface MaxChatMessage {
   file_name?: string | null;
 }
 
+interface GridTaskSelection {
+  scope: 'cell' | 'range' | 'row' | 'column';
+  label: string;
+  contact?: string;
+}
+
+const GridTaskDialog: React.FC<{
+  open: boolean;
+  selection: GridTaskSelection | null;
+  onClose: () => void;
+  onSubmit: (payload: { title: string; description: string; contact: string; deadline: string }) => Promise<void>;
+}> = ({ open, selection, onClose, onSubmit }) => {
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [contact, setContact] = useState('');
+  const [deadline, setDeadline] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState('');
+
+  useEffect(() => {
+    if (open) {
+      setTitle('');
+      setDescription('');
+      setContact(selection?.contact || '');
+      setDeadline('');
+      setFormError('');
+    }
+  }, [open, selection]);
+
+  const submit = async () => {
+    if (!title.trim()) { setFormError('Введите название задачи'); return; }
+    setSaving(true);
+    setFormError('');
+    try {
+      await onSubmit({ title: title.trim(), description: description.trim(), contact: contact.trim(), deadline });
+      onClose();
+    } catch (e: any) {
+      setFormError(e?.response?.data?.detail || 'Не удалось создать задачу');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onClose={saving ? undefined : onClose} fullWidth maxWidth="sm">
+      <DialogTitle>Постановка задачи</DialogTitle>
+      <DialogContent>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>Применение: {selection?.label}</Typography>
+        <TextField autoFocus fullWidth label="Название задачи" value={title} onChange={(e) => setTitle(e.target.value)} sx={{ mt: 1, mb: 1.5 }} />
+        <TextField fullWidth multiline minRows={3} label="Описание" value={description} onChange={(e) => setDescription(e.target.value)} sx={{ mb: 1.5 }} />
+        <TextField fullWidth label="Контакт" placeholder="Имя или телефон" value={contact} onChange={(e) => setContact(e.target.value)} sx={{ mb: 1.5 }} />
+        <TextField fullWidth type="datetime-local" label="Дедлайн" value={deadline} onChange={(e) => setDeadline(e.target.value)} InputLabelProps={{ shrink: true }} />
+        {formError && <Alert severity="error" sx={{ mt: 1.5 }}>{formError}</Alert>}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose} disabled={saving}>Отмена</Button>
+        <Button variant="contained" onClick={submit} disabled={saving}>{saving ? 'Сохраняю…' : 'Создать задачу'}</Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
 const WorkbookView: React.FC<WorkbookViewProps> = ({
   workbook, requestedSheetId, focusTarget, onBack, onOpenSheet, onOpenWorkbook,
 }) => {
@@ -171,6 +234,7 @@ const WorkbookView: React.FC<WorkbookViewProps> = ({
   const [maxChatSending, setMaxChatSending] = useState(false);
   const [maxChatFiles, setMaxChatFiles] = useState<File[]>([]);
   const maxChatFileInput = useRef<HTMLInputElement | null>(null);
+  const [taskSelection, setTaskSelection] = useState<GridTaskSelection | null>(null);
 
   const { presence, connected } = useSmartTableRealtime(activeSheetId, {
     onSheetUpdate: (sheet) => setDetail(sheet),
@@ -423,6 +487,30 @@ const WorkbookView: React.FC<WorkbookViewProps> = ({
     }
   };
 
+  const handleCreateGridTask = async (payload: { title: string; description: string; contact: string; deadline: string }) => {
+    let contactId: number | null = null;
+    if (payload.contact) {
+      const contacts = await ownerWorkspaceApi.listContacts({ search: payload.contact });
+      const digits = payload.contact.replace(/\D/g, '');
+      const match = contacts.find((item) => {
+        const itemDigits = (item.phone || '').replace(/\D/g, '');
+        return item.full_name.toLowerCase() === payload.contact.toLowerCase()
+          || (digits && itemDigits && itemDigits.includes(digits));
+      }) || contacts[0];
+      contactId = match?.id ?? null;
+    }
+    const description = taskSelection?.label
+      ? `${payload.description}${payload.description ? '\n\n' : ''}Источник: ${taskSelection.label}`
+      : payload.description;
+    await ownerWorkspaceApi.createTask({
+      title: payload.title,
+      description: description || null,
+      contact_id: contactId,
+      deadline_at: payload.deadline ? new Date(payload.deadline).toISOString() : null,
+    });
+    setError('');
+  };
+
   const saveSmartLink = async (label: string, target: SmartLinkTarget) => {
     if (!linkEditor) return;
     await withOps([{
@@ -570,6 +658,7 @@ const WorkbookView: React.FC<WorkbookViewProps> = ({
           onClearSmartLink={(rowId, columnId) =>
             withOps([{ type: 'set_cell', row_id: rowId, column_id: columnId, value: null }])}
           onOpenMaxChat={handleOpenMaxChat}
+          onCreateTask={setTaskSelection}
           expanded={isFullscreen}
           readOnly={!canEdit}
         />
@@ -669,6 +758,13 @@ const WorkbookView: React.FC<WorkbookViewProps> = ({
         </DialogContent>
         <DialogActions><Button onClick={() => setMaxChat(null)}>Закрыть</Button></DialogActions>
       </Dialog>
+
+      <GridTaskDialog
+        open={!!taskSelection}
+        selection={taskSelection}
+        onClose={() => setTaskSelection(null)}
+        onSubmit={handleCreateGridTask}
+      />
 
       <FormDialog
         open={!!renameTarget}

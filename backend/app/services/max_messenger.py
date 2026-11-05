@@ -233,7 +233,10 @@ def check_phone_greenapi(phone_digits: str) -> tuple:
 
 def find_personal_chat_by_phone(phone: str) -> Tuple[bool, Optional[str], Optional[str]]:
     """Найти chatId личного MAX-аккаунта по номеру телефона через api-messenger."""
-    if get_personal_provider() != "api_messenger":
+    # GREEN-API может оставаться включённым для отправки по телефону, но
+    # поиск chatId для прямого перехода поддерживает именно api-messenger.
+    # Поэтому при наличии обоих ключей выбираем api-messenger для этой операции.
+    if not _is_api_messenger_configured():
         return False, None, "Поиск чата по телефону доступен для api-messenger"
     base_url = _get_personal_base_url()
     token = _get_personal_token()

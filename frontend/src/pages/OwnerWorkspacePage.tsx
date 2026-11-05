@@ -5289,7 +5289,7 @@ const OwnerWorkspacePage: React.FC = () => {
             px: 1.75,
             py: 1,
             borderRadius: 2,
-            bgcolor: '#111827',
+            bgcolor: currentWorkZone.color || '#111827',
             color: 'white',
             boxShadow: '0 12px 28px rgba(15,23,42,.24)',
             border: '1px solid rgba(255,255,255,.16)',

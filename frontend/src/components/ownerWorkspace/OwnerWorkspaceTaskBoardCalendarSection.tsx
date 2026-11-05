@@ -86,6 +86,7 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
   const [zoneWeekday, setZoneWeekday] = React.useState('0');
   const [zoneStart, setZoneStart] = React.useState('09:00');
   const [zoneEnd, setZoneEnd] = React.useState('13:00');
+  const [zoneColor, setZoneColor] = React.useState('#4F46E5');
   const [selectedZone, setSelectedZone] = React.useState('');
   const activeZone = React.useMemo(() => {
     const now = new Date();
@@ -115,9 +116,10 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
   const addZone = () => {
     const name = zoneName.trim();
     if (!name || !zoneStart || !zoneEnd) return;
-    onZonesChange([...zones, { id: `${Date.now()}`, name, color: '#4F46E5', weekday: Number(zoneWeekday), start_time: zoneStart, end_time: zoneEnd }]);
+    onZonesChange([...zones, { id: `${Date.now()}`, name, color: zoneColor, weekday: Number(zoneWeekday), start_time: zoneStart, end_time: zoneEnd }]);
     setSelectedZone(name);
     setZoneName('');
+    setZoneColor('#4F46E5');
     setZoneDialogOpen(false);
   };
 
@@ -201,7 +203,7 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
           </IconButton>
           <Stack direction="row" spacing={1} alignItems="center" justifyContent="center" flexWrap="wrap" useFlexGap>
             <Typography variant="h6">{calendarTitle}</Typography>
-            {visibleZone && <Chip size="small" color="primary" label={`Зона: ${visibleZone.name}`} />}
+            {visibleZone && <Chip size="small" label={`Зона: ${visibleZone.name}`} sx={{ bgcolor: visibleZone.color, color: '#fff', fontWeight: 700 }} />}
             <ToggleButtonGroup
               size="small"
               exclusive
@@ -250,6 +252,7 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
                   minHeight: 100,
                   border: '1px solid',
                   borderColor: 'divider',
+                  ...(visibleZone ? { borderTop: `4px solid ${visibleZone.color}` } : {}),
                   borderRadius: 1,
                   p: 0.5,
                   bgcolor: inMonth ? 'background.paper' : 'action.hover',
@@ -292,6 +295,10 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
           <TextField select size="small" label="День недели" value={zoneWeekday} onChange={(e) => setZoneWeekday(e.target.value)}>
             {weekdaysShort.map((day, index) => <MenuItem key={day} value={String(index)}>{day}</MenuItem>)}
           </TextField>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <TextField type="color" size="small" label="Цвет зоны" value={zoneColor} onChange={(e) => setZoneColor(e.target.value)} InputLabelProps={{ shrink: true }} sx={{ width: 130 }} />
+            <Typography variant="caption" color="text.secondary">Цвет будет использоваться в календаре и таймере.</Typography>
+          </Stack>
           <Stack direction="row" spacing={1}>
             <TextField type="time" size="small" label="С" value={zoneStart} onChange={(e) => setZoneStart(e.target.value)} InputLabelProps={{ shrink: true }} fullWidth />
             <TextField type="time" size="small" label="До" value={zoneEnd} onChange={(e) => setZoneEnd(e.target.value)} InputLabelProps={{ shrink: true }} fullWidth />

@@ -482,6 +482,8 @@ const WorkbookView: React.FC<WorkbookViewProps> = ({
             withOps([{ type: 'format_range', row_ids: rowIds, column_ids: columnIds, formatting }])}
           onSetConditionalFormat={(columnId, rules) =>
             withOps([{ type: 'set_conditional_format', column_id: columnId, rules }])}
+          onSetColumnType={(columnId, columnType) =>
+            withOps([{ type: 'set_column_type', column_id: columnId, column_type: columnType }])}
           onSetDirectory={(columnIds, directory, rowIds) =>
             withOps(columnIds.map((columnId) => ({
               type: 'set_directory' as const,

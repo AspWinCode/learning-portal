@@ -3,7 +3,7 @@
 // См. docs/smart-tables-architecture.md.
 
 export type ColumnType =
-  | 'text' | 'number' | 'currency' | 'percentage' | 'date' | 'datetime'
+  | 'text' | 'number' | 'currency' | 'percentage' | 'date' | 'datetime' | 'phone'
   | 'boolean' | 'select' | 'multi_select' | 'formula' | 'ai' | 'smart_link';
 
 export type SmartLinkTarget =
@@ -133,6 +133,7 @@ export type SpreadsheetOperation =
   | { type: 'delete_column'; column_id: number }
   | { type: 'rename_column'; column_id: number; name: string }
   | { type: 'resize_column'; column_id: number; width: number }
+  | { type: 'set_column_type'; column_id: number; column_type: ColumnType }
   | { type: 'set_cell'; row_id: number; column_id: number; value: CellValue }
   | { type: 'set_formula'; row_id: number; column_id: number; formula: string }
   | { type: 'set_smart_link'; row_id: number; column_id: number; label: string; target: SmartLinkTarget }

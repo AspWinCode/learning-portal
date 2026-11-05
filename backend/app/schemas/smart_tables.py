@@ -16,7 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 
 ColumnType = Literal[
-    "text", "number", "currency", "percentage", "date", "datetime",
+    "text", "number", "currency", "percentage", "date", "datetime", "phone",
     "boolean", "select", "multi_select", "formula", "ai", "smart_link",
 ]
 
@@ -233,6 +233,12 @@ class OpResizeColumn(BaseModel):
     width: int = Field(..., ge=40, le=1000)
 
 
+class OpSetColumnType(BaseModel):
+    type: Literal["set_column_type"] = "set_column_type"
+    column_id: int
+    column_type: ColumnType
+
+
 class OpResizeRow(BaseModel):
     type: Literal["resize_row"] = "resize_row"
     row_id: int
@@ -350,6 +356,7 @@ SpreadsheetOperation = Annotated[
         OpDeleteColumn,
         OpRenameColumn,
         OpResizeColumn,
+        OpSetColumnType,
         OpResizeRow,
         OpSetCell,
         OpSetFormula,

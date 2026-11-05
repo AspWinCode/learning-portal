@@ -55,6 +55,23 @@ def _coerce_value(value, column_type: str):
         if isinstance(value, bool):
             return value
         return str(value).strip().lower() in ("1", "true", "да", "yes")
+    if column_type == "phone":
+        import re
+        normalized = str(value).strip()
+        if normalized and not re.fullmatch(r"[+()\-\s\d]{5,32}", normalized):
+            raise OperationError("Телефон должен содержать только цифры, пробелы, скобки, дефисы и знак +")
+        return normalized
+    if column_type in ("date", "datetime"):
+        from datetime import date, datetime
+        normalized = str(value).strip()
+        try:
+            datetime.fromisoformat(normalized.replace("Z", "+00:00"))
+        except ValueError:
+            try:
+                date.fromisoformat(normalized)
+            except ValueError:
+                raise OperationError("Введите дату в формате ГГГГ-ММ-ДД")
+        return normalized
     return value
 
 
@@ -321,6 +338,15 @@ class OperationExecutor:
         prev_width = column.width
         column.width = op["width"]
         return {"type": "resize_column", "column_id": column.id, "width": prev_width}
+
+    def _op_set_column_type(self, op: dict) -> dict:
+        column = self.db.get(SmartTableColumn, op["column_id"])
+        if column is None or column.sheet_id != self.sheet.id:
+            raise OperationError("column_id не найден на этом листе")
+        previous = column.type
+        column.type = op["column_type"]
+        self.db.flush()
+        return {"type": "set_column_type", "column_id": column.id, "column_type": previous}
 
     def _op_rename_column(self, op: dict) -> dict:
         column = self.db.get(SmartTableColumn, op["column_id"])

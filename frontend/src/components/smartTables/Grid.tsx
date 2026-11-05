@@ -23,7 +23,7 @@ import DriveFileRenameOutlineIcon from '@mui/icons-material/DriveFileRenameOutli
 import ListAltIcon from '@mui/icons-material/ListAlt';
 import SearchIcon from '@mui/icons-material/Search';
 import type {
-  CellFormatting, CellSnapshot, CellValue, ColumnOut, ConditionOperator, ConditionalFormatRule, PasteCell, RowOut,
+  CellFormatting, CellSnapshot, CellValue, ColumnOut, ColumnType, ConditionOperator, ConditionalFormatRule, PasteCell, RowOut,
   SmartLinkMetadata, SmartLinkTarget, TextAlign,
 } from '../../types/smartTables';
 import { isFormulaError } from '../../types/smartTables';
@@ -65,6 +65,7 @@ interface GridProps {
   onResizeRow: (rowId: number, height: number) => void;
   onFormatRange: (rowIds: number[], columnIds: number[], formatting: CellFormatting) => void;
   onSetConditionalFormat: (columnId: number, rules: ConditionalFormatRule[]) => void;
+  onSetColumnType: (columnId: number, columnType: ColumnType) => void;
   onSetDirectory: (columnIds: number[], directory: { id: string; label: string; options: Array<{ value: string; label: string }> } | null, rowIds?: number[]) => void;
   onSortColumn: (columnId: number, direction: 'asc' | 'desc') => void;
   onPasteRange: (anchorRowId: number, anchorColumnId: number, cells: PasteCell[][]) => void;
@@ -159,7 +160,7 @@ function measureTextWidth(text: string, font = '13px Arial'): number {
 
 const Grid: React.FC<GridProps> = ({
   columns, rows, onSetCell, onSetFormula, onInsertRow, onDeleteRow, onInsertColumn, onDeleteColumn, onRenameColumn,
-  onResizeColumn, onResizeRow, onFormatRange, onSetConditionalFormat, onSetDirectory, onSortColumn, onPasteRange,
+  onResizeColumn, onResizeRow, onFormatRange, onSetConditionalFormat, onSetColumnType, onSetDirectory, onSortColumn, onPasteRange,
   focusTarget = null, onOpenSmartLink, onEditSmartLink, onClearSmartLink, expanded = false, readOnly = false,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -197,8 +198,10 @@ const Grid: React.FC<GridProps> = ({
   const [directoryOption, setDirectoryOption] = useState<{ value: string; label: string } | null>(null);
   const [loadedDirectoryOptions, setLoadedDirectoryOptions] = useState<Record<string, Array<{ value: string; label: string }>>>({});
   const [directoryLoading, setDirectoryLoading] = useState(false);
+  const [columnTypeDialog, setColumnTypeDialog] = useState<{ columnId: number; type: ColumnType } | null>(null);
 
   const directories = useMemo(() => [
+    { id: 'regions', label: 'Регионы', options: ['Москва', 'Московская область', 'Санкт-Петербург', 'Ленинградская область', 'Иркутская область', 'Красноярский край', 'Новосибирская область', 'Кемеровская область', 'Томская область', 'Омская область', 'Алтайский край', 'Республика Алтай', 'Республика Бурятия', 'Забайкальский край', 'Приморский край', 'Хабаровский край', 'Амурская область', 'Сахалинская область', 'Камчатский край', 'Магаданская область', 'Республика Саха (Якутия)', 'Свердловская область', 'Челябинская область', 'Тюменская область', 'Ханты-Мансийский автономный округ', 'Ямало-Ненецкий автономный округ', 'Республика Татарстан', 'Самарская область', 'Нижегородская область', 'Пермский край', 'Республика Башкортостан', 'Удмуртская Республика', 'Оренбургская область', 'Саратовская область', 'Ростовская область', 'Краснодарский край', 'Ставропольский край', 'Волгоградская область', 'Воронежская область', 'Белгородская область', 'Калининградская область', 'Ярославская область', 'Тульская область', 'Тверская область', 'Рязанская область', 'Владимирская область', 'Калужская область', 'Курская область', 'Брянская область', 'Орловская область'].map((value) => ({ value, label: value })) },
     { id: 'cities', label: 'Города', options: ['Москва', 'Санкт-Петербург', 'Новосибирск', 'Екатеринбург', 'Казань', 'Красноярск', 'Иркутск', 'Владивосток', 'Томск', 'Другой город'].map((value) => ({ value, label: value })) },
     { id: 'schools', label: 'Школы', options: ['Школа № 1', 'Школа № 2', 'Лицей', 'Гимназия'].map((value) => ({ value, label: value })) },
     { id: 'contacts', label: 'Контакты', options: ['Иван Иванов', 'Мария Петрова'].map((value) => ({ value, label: value })) },
@@ -910,6 +913,8 @@ const Grid: React.FC<GridProps> = ({
                           autoFocus
                           variant="standard"
                           fullWidth
+                          type={col.type === 'date' ? 'date' : col.type === 'datetime' ? 'datetime-local' : 'text'}
+                          inputProps={col.type === 'phone' ? { inputMode: 'tel' } : undefined}
                           value={editingValue}
                           onChange={(e) => setEditingValue(e.target.value)}
                           onMouseDown={(e) => e.stopPropagation()}
@@ -977,6 +982,15 @@ const Grid: React.FC<GridProps> = ({
         <MenuItem onClick={() => { if (colMenu) openRenameColumn(colMenu.columnId); }}>
           <DriveFileRenameOutlineIcon fontSize="small" sx={{ mr: 1 }} /> Переименовать колонку
         </MenuItem>
+        <MenuItem onClick={() => {
+          if (colMenu) {
+            const column = columns.find((item) => item.id === colMenu.columnId);
+            if (column) setColumnTypeDialog({ columnId: column.id, type: column.type });
+          }
+          setColMenu(null);
+        }}>
+          <ListAltIcon fontSize="small" sx={{ mr: 1 }} /> Тип данных колонки…
+        </MenuItem>
         <Divider />
         <MenuItem onClick={() => { if (colMenu) onInsertColumn(previousColumnId(colMenu.columnId)); setColMenu(null); }}>
           <AddIcon fontSize="small" sx={{ mr: 1 }} /> Вставить колонку слева
@@ -1006,6 +1020,37 @@ const Grid: React.FC<GridProps> = ({
           <ListAltIcon fontSize="small" sx={{ mr: 1 }} /> Заполнение из справочника…
         </MenuItem>
       </Menu>
+
+      <Dialog open={!!columnTypeDialog} onClose={() => setColumnTypeDialog(null)} fullWidth maxWidth="xs">
+        <DialogTitle>Тип данных колонки</DialogTitle>
+        <DialogContent>
+          <Select
+            autoFocus fullWidth value={columnTypeDialog?.type ?? 'text'} sx={{ mt: 1 }}
+            onChange={(event) => setColumnTypeDialog((current) => current ? { ...current, type: event.target.value as ColumnType } : current)}
+          >
+            <MenuItem value="text">Текст</MenuItem>
+            <MenuItem value="number">Число</MenuItem>
+            <MenuItem value="currency">Деньги</MenuItem>
+            <MenuItem value="percentage">Процент</MenuItem>
+            <MenuItem value="date">Дата</MenuItem>
+            <MenuItem value="datetime">Дата и время</MenuItem>
+            <MenuItem value="phone">Телефон</MenuItem>
+            <MenuItem value="boolean">Да / нет</MenuItem>
+          </Select>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setColumnTypeDialog(null)}>Отмена</Button>
+          <Button
+            variant="contained"
+            onClick={() => {
+              if (columnTypeDialog) onSetColumnType(columnTypeDialog.columnId, columnTypeDialog.type);
+              setColumnTypeDialog(null);
+            }}
+          >
+            Сохранить
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Menu open={!!rowMenu} anchorEl={rowMenu?.anchor} onClose={() => setRowMenu(null)}>
         <MenuItem onClick={() => { if (rowMenu) onInsertRow(previousRowId(rowMenu.rowId)); setRowMenu(null); }}>

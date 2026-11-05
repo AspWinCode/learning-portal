@@ -236,6 +236,7 @@ const WorkbookView: React.FC<WorkbookViewProps> = ({
   const [maxChatFiles, setMaxChatFiles] = useState<File[]>([]);
   const maxChatFileInput = useRef<HTMLInputElement | null>(null);
   const [taskSelection, setTaskSelection] = useState<GridTaskSelection | null>(null);
+  const syncedTaskSheets = useRef<Set<number>>(new Set());
 
   const { presence, connected } = useSmartTableRealtime(activeSheetId, {
     onSheetUpdate: (sheet) => setDetail(sheet),
@@ -411,6 +412,53 @@ const WorkbookView: React.FC<WorkbookViewProps> = ({
       setError(e?.response?.data?.detail || 'Операция не выполнена');
     }
   }, [activeSheetId]);
+
+  useEffect(() => {
+    if (!detail || activeSheetId === null || syncedTaskSheets.current.has(activeSheetId)) return;
+    const taskColumn = detail.columns.find((column) => column.name.trim().toLowerCase() === 'задачи');
+    const phoneColumn = detail.columns.find((column) => column.type === 'phone');
+    if (!taskColumn || !phoneColumn) return;
+    let cancelled = false;
+    Promise.all([
+      ownerWorkspaceApi.listContacts(),
+      ownerWorkspaceApi.listTasks({ limit: 500, sort_by: 'created_at', sort_dir: 'asc' }),
+    ]).then(([contactsPage, tasksPage]) => {
+      if (cancelled) return;
+      const phoneToContactId = new Map<string, number>();
+      contactsPage.forEach((contact) => {
+        const digits = (contact.phone || '').replace(/\D/g, '');
+        if (digits) phoneToContactId.set(digits, contact.id);
+      });
+      const titlesByContact = new Map<number, string[]>();
+      tasksPage.items.forEach((task) => {
+        if (task.contact_id == null) return;
+        const titles = titlesByContact.get(task.contact_id) || [];
+        if (!titles.includes(task.title)) titles.push(task.title);
+        titlesByContact.set(task.contact_id, titles);
+      });
+      const ops = detail.rows.flatMap((row) => {
+        const phone = String(row.cells[String(phoneColumn.id)]?.value ?? '').replace(/\D/g, '');
+        const contactId = phoneToContactId.get(phone);
+        const titles = contactId ? titlesByContact.get(contactId) || [] : [];
+        if (!titles.length) return [];
+        const current = String(row.cells[String(taskColumn.id)]?.value ?? '').trim();
+        const missing = titles.filter((title) => !current.includes(title));
+        if (!missing.length) return [];
+        return [{
+          type: 'set_cell' as const,
+          row_id: row.id,
+          column_id: taskColumn.id,
+          value: [current, ...missing].filter(Boolean).join(' | '),
+        }];
+      });
+      syncedTaskSheets.current.add(activeSheetId);
+      if (ops.length) withOps(ops);
+    }).catch(() => {
+      // Задачи не должны блокировать работу таблицы, если раздел задач временно недоступен.
+      syncedTaskSheets.current.add(activeSheetId);
+    });
+    return () => { cancelled = true; };
+  }, [activeSheetId, detail, withOps]);
 
   const handleUndo = async () => {
     if (activeSheetId === null) return;

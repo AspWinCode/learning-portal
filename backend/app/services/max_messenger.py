@@ -194,7 +194,7 @@ def resolve_max_chat_id_greenapi(phone: str) -> Tuple[bool, Optional[str], Optio
     return False, None, "Пользователь с этим номером не найден в MAX"
 
 
-def get_chat_history_greenapi(phone: str, count: int = 100) -> Tuple[bool, list, Optional[str]]:
+def get_chat_history_greenapi(phone: str, count: int = 5000) -> Tuple[bool, list, Optional[str]]:
     """Получить историю MAX-чата через GREEN-API."""
     base_url = _get_greenapi_base_url()
     id_instance = _get_greenapi_id_instance()
@@ -206,7 +206,7 @@ def get_chat_history_greenapi(phone: str, count: int = 100) -> Tuple[bool, list,
         return False, [], resolve_error or "Не удалось найти чат MAX"
     url = f"{base_url}/waInstance{id_instance}/getChatHistory/{token}"
     try:
-        resp = requests.post(url, json={"chatId": chat_id, "count": min(max(count, 1), 100)}, timeout=20)
+        resp = requests.post(url, json={"chatId": chat_id, "count": min(max(count, 1), 5000)}, timeout=30)
         data = resp.json() if resp.content else []
     except (requests.RequestException, ValueError) as exc:
         logger.warning("max_greenapi: history failed chat_id=%s: %s", chat_id, exc)

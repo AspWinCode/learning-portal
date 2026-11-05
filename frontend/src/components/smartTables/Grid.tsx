@@ -21,11 +21,13 @@ import LinkIcon from '@mui/icons-material/Link';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import DriveFileRenameOutlineIcon from '@mui/icons-material/DriveFileRenameOutline';
 import ListAltIcon from '@mui/icons-material/ListAlt';
+import SearchIcon from '@mui/icons-material/Search';
 import type {
   CellFormatting, CellSnapshot, CellValue, ColumnOut, ConditionOperator, ConditionalFormatRule, PasteCell, RowOut,
   SmartLinkMetadata, SmartLinkTarget, TextAlign,
 } from '../../types/smartTables';
 import { isFormulaError } from '../../types/smartTables';
+import { smartTablesApi } from '../../services/api/smartTables';
 import { MAX_PASTE_CELLS, buildPasteMatrix, parseClipboardText, toPasteCells, toTsv, totalCells } from './clipboard';
 
 // Ядро грида (Phase 1) + форматирование/сортировка/фильтры (Phase 2):
@@ -187,8 +189,14 @@ const Grid: React.FC<GridProps> = ({
   const [filters, setFilters] = useState<Record<number, string>>({});
   const [colorMenu, setColorMenu] = useState<{ anchor: HTMLElement; mode: 'bg' | 'text' } | null>(null);
   const [pasteError, setPasteError] = useState<string | null>(null);
-  const [directoryDialog, setDirectoryDialog] = useState<{ rowIds: number[]; columnIds: number[]; columnScope: boolean } | null>(null);
+  const [directoryDialog, setDirectoryDialog] = useState<{
+    rowIds: number[]; columnIds: number[]; columnScope: boolean; mode: 'bind' | 'pick';
+  } | null>(null);
   const [directoryId, setDirectoryId] = useState('');
+  const [directorySearch, setDirectorySearch] = useState('');
+  const [directoryOption, setDirectoryOption] = useState<{ value: string; label: string } | null>(null);
+  const [loadedDirectoryOptions, setLoadedDirectoryOptions] = useState<Record<string, Array<{ value: string; label: string }>>>({});
+  const [directoryLoading, setDirectoryLoading] = useState(false);
 
   const directories = useMemo(() => [
     { id: 'cities', label: 'Города', options: ['Москва', 'Санкт-Петербург', 'Новосибирск', 'Екатеринбург', 'Казань', 'Красноярск', 'Иркутск', 'Владивосток', 'Томск', 'Другой город'].map((value) => ({ value, label: value })) },
@@ -373,21 +381,47 @@ const Grid: React.FC<GridProps> = ({
     return { rowIds, columnIds };
   }, [selectionBounds, filteredRows, sortedColumns]);
 
-  const openDirectoryDialog = useCallback((scope?: { rowIds: number[]; columnIds: number[]; columnScope?: boolean }) => {
+  const openDirectoryDialog = useCallback((scope?: { rowIds: number[]; columnIds: number[]; columnScope?: boolean }, presetId = '', mode: 'bind' | 'pick' = 'bind') => {
     if (readOnly) return;
     const selected = scope ?? selectedIds();
     if (!selected.rowIds.length || !selected.columnIds.length) return;
-    setDirectoryDialog({ ...selected, columnScope: scope?.columnScope ?? false });
-    setDirectoryId('');
+    setDirectoryDialog({ ...selected, columnScope: scope?.columnScope ?? false, mode });
+    setDirectoryId(presetId);
+    setDirectorySearch('');
+    setDirectoryOption(null);
   }, [readOnly, selectedIds]);
+
+  useEffect(() => {
+    if (!directoryDialog || !directoryId || loadedDirectoryOptions[directoryId]) return;
+    const directory = directories.find((item) => item.id === directoryId);
+    if (!directory) return;
+    setDirectoryLoading(true);
+    smartTablesApi.listDirectoryOptions(directoryId)
+      .then((options) => setLoadedDirectoryOptions((current) => ({ ...current, [directoryId]: options.length ? options : directory.options })))
+      .catch(() => setLoadedDirectoryOptions((current) => ({ ...current, [directoryId]: directory.options })))
+      .finally(() => setDirectoryLoading(false));
+  }, [directoryDialog, directoryId, directories, loadedDirectoryOptions]);
+
+  const dialogOptions = useMemo(() => {
+    const directory = directories.find((item) => item.id === directoryId);
+    const options = loadedDirectoryOptions[directoryId] ?? directory?.options ?? [];
+    const needle = directorySearch.trim().toLocaleLowerCase('ru');
+    return needle ? options.filter((option) => option.label.toLocaleLowerCase('ru').includes(needle)) : options;
+  }, [directories, directoryId, directorySearch, loadedDirectoryOptions]);
 
   const applyDirectory = useCallback(() => {
     if (!directoryDialog || !directoryId) return;
+    if (directoryDialog.mode === 'pick') {
+      if (!directoryOption) return;
+      directoryDialog.rowIds.forEach((rowId) => directoryDialog.columnIds.forEach((columnId) => onSetCell(rowId, columnId, directoryOption.value)));
+      setDirectoryDialog(null);
+      return;
+    }
     const directory = directories.find((item) => item.id === directoryId);
     if (!directory) return;
     onSetDirectory(directoryDialog.columnIds, directory, directoryDialog.columnScope ? undefined : directoryDialog.rowIds);
     setDirectoryDialog(null);
-  }, [directoryDialog, directoryId, directories, onSetDirectory]);
+  }, [directoryDialog, directoryId, directories, directoryOption, onSetCell, onSetDirectory]);
 
   const selectColumn = useCallback((columnId: number, extend: boolean) => {
     if (!filteredRows.length) return;
@@ -855,24 +889,21 @@ const Grid: React.FC<GridProps> = ({
                       }}
                     >
                       {directory && !isEditing && !smartLink ? (
-                        <Select
-                          size="small"
-                          variant="standard"
+                        <Button
                           fullWidth
-                          value={value === null || value === undefined ? '' : String(value)}
-                          displayEmpty
+                          size="small"
+                          variant="text"
                           disabled={readOnly}
                           onMouseDown={(e) => e.stopPropagation()}
-                          onClick={(e) => e.stopPropagation()}
-                          onChange={(e) => onSetCell(row.id, col.id, e.target.value)}
-                          inputProps={{ 'aria-label': `Выбор значения: ${col.name}` }}
-                          sx={{ fontSize: 13 }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openDirectoryDialog({ rowIds: [row.id], columnIds: [col.id] }, directory.id, 'pick');
+                          }}
+                          sx={{ justifyContent: 'space-between', minWidth: 0, px: 0, textTransform: 'none', fontSize: 13, fontStyle: value ? 'normal' : 'italic' }}
                         >
-                          <MenuItem value=""><em>Не выбрано</em></MenuItem>
-                          {directory.options.map((option) => (
-                            <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
-                          ))}
-                        </Select>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayOf(value) || 'Не выбрано'}</span>
+                          <span aria-hidden="true" style={{ marginLeft: 6 }}>▾</span>
+                        </Button>
                       ) : isEditing ? (
                         <TextField
                           autoFocus
@@ -1032,20 +1063,52 @@ const Grid: React.FC<GridProps> = ({
       </Menu>
 
       <Dialog open={!!directoryDialog} onClose={() => setDirectoryDialog(null)} fullWidth maxWidth="xs">
-        <DialogTitle>Заполнение из справочника</DialogTitle>
+        <DialogTitle>{directoryDialog?.mode === 'pick' ? 'Выбор значения из справочника' : 'Заполнение из справочника'}</DialogTitle>
         <DialogContent>
-          <Select
-            autoFocus fullWidth displayEmpty value={directoryId}
-            onChange={(event) => setDirectoryId(event.target.value)}
-            sx={{ mt: 1 }}
-          >
-            <MenuItem value=""><em>Выберите справочник</em></MenuItem>
-            {directories.map((directory) => <MenuItem key={directory.id} value={directory.id}>{directory.label}</MenuItem>)}
-          </Select>
+          {directoryDialog?.mode === 'pick' ? (
+            <>
+              <TextField
+                autoFocus fullWidth size="small" placeholder="Поиск по справочнику…"
+                value={directorySearch} onChange={(event) => setDirectorySearch(event.target.value)}
+                InputProps={{ startAdornment: <SearchIcon fontSize="small" sx={{ mr: 1, color: 'text.secondary' }} /> }}
+                sx={{ mt: 1, mb: 1.5 }}
+              />
+              {directoryLoading ? <Box sx={{ py: 3, textAlign: 'center' }}>Загрузка справочника…</Box> : (
+                <Box sx={{ maxHeight: 360, overflowY: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                  {dialogOptions.length === 0 ? (
+                    <Box sx={{ p: 2, color: 'text.secondary' }}>Ничего не найдено</Box>
+                  ) : dialogOptions.map((option) => (
+                    <MenuItem
+                      key={`${option.value}-${option.label}`}
+                      selected={directoryOption?.value === option.value}
+                      onClick={() => setDirectoryOption(option)}
+                    >
+                      {option.label}
+                    </MenuItem>
+                  ))}
+                </Box>
+              )}
+            </>
+          ) : (
+            <Select
+              autoFocus fullWidth displayEmpty value={directoryId}
+              onChange={(event) => { setDirectoryId(event.target.value); setDirectoryOption(null); }}
+              sx={{ mt: 1 }}
+            >
+              <MenuItem value=""><em>Выберите справочник</em></MenuItem>
+              {directories.map((directory) => <MenuItem key={directory.id} value={directory.id}>{directory.label}</MenuItem>)}
+            </Select>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDirectoryDialog(null)}>Отмена</Button>
-          <Button variant="contained" disabled={!directoryId} onClick={applyDirectory}>Применить</Button>
+          <Button
+            variant="contained"
+            disabled={!directoryId || (directoryDialog?.mode === 'pick' && !directoryOption)}
+            onClick={applyDirectory}
+          >
+            {directoryDialog?.mode === 'pick' ? 'Добавить' : 'Применить'}
+          </Button>
         </DialogActions>
       </Dialog>
 

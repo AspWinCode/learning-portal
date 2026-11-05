@@ -11,6 +11,11 @@ import type {
 
 const BASE = '/smart-tables';
 
+export interface DirectoryOption {
+  value: string;
+  label: string;
+}
+
 export const smartTablesApi = {
   listWorkbooks: (): Promise<Workbook[]> =>
     api.get(`${BASE}/workbooks`).then(r => r.data),
@@ -77,4 +82,22 @@ export const smartTablesApi = {
 
   aiCommand: (sheetId: number, prompt: string): Promise<AiCommandResponse> =>
     api.post(`${BASE}/sheets/${sheetId}/ai/command`, { prompt }).then(r => r.data),
+
+  listDirectoryOptions: async (directoryId: string): Promise<DirectoryOption[]> => {
+    if (directoryId !== 'schools') return [];
+    const options: DirectoryOption[] = [];
+    const pageSize = 500;
+    for (let offset = 0; ; offset += pageSize) {
+      const response = await api.get('/api/sales/schools', {
+        params: { active_only: true, limit: pageSize, offset },
+      });
+      const schools = response.data as Array<{ name: string; city?: string | null }>;
+      options.push(...schools.filter((school) => school.name).map((school) => ({
+        value: school.name,
+        label: school.city ? `${school.name} — ${school.city}` : school.name,
+      })));
+      if (schools.length < pageSize) break;
+    }
+    return options;
+  },
 };

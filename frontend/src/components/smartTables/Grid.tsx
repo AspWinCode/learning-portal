@@ -28,6 +28,7 @@ import type {
 } from '../../types/smartTables';
 import { isFormulaError } from '../../types/smartTables';
 import { smartTablesApi } from '../../services/api/smartTables';
+import type { DirectoryOption } from '../../services/api/smartTables';
 import { MAX_PASTE_CELLS, buildPasteMatrix, parseClipboardText, toPasteCells, toTsv, totalCells } from './clipboard';
 
 // Ядро грида (Phase 1) + форматирование/сортировка/фильтры (Phase 2):
@@ -196,8 +197,8 @@ const Grid: React.FC<GridProps> = ({
   } | null>(null);
   const [directoryId, setDirectoryId] = useState('');
   const [directorySearch, setDirectorySearch] = useState('');
-  const [directoryOption, setDirectoryOption] = useState<{ value: string; label: string } | null>(null);
-  const [loadedDirectoryOptions, setLoadedDirectoryOptions] = useState<Record<string, Array<{ value: string; label: string }>>>({});
+  const [directoryOption, setDirectoryOption] = useState<DirectoryOption | null>(null);
+  const [loadedDirectoryOptions, setLoadedDirectoryOptions] = useState<Record<string, DirectoryOption[]>>({});
   const [directoryLoading, setDirectoryLoading] = useState(false);
   const [columnTypeDialog, setColumnTypeDialog] = useState<{ columnId: number; type: ColumnType } | null>(null);
 
@@ -419,7 +420,13 @@ const Grid: React.FC<GridProps> = ({
     if (!directoryDialog || !directoryId) return;
     if (directoryDialog.mode === 'pick') {
       if (!directoryOption) return;
-      directoryDialog.rowIds.forEach((rowId) => directoryDialog.columnIds.forEach((columnId) => onSetCell(rowId, columnId, directoryOption.value)));
+      directoryDialog.rowIds.forEach((rowId) => directoryDialog.columnIds.forEach((columnId) => {
+        const column = columns.find((item) => item.id === columnId);
+        const value = directoryId === 'contacts' && column?.type === 'phone'
+          ? (directoryOption.phone || directoryOption.value)
+          : directoryOption.value;
+        onSetCell(rowId, columnId, value);
+      }));
       setDirectoryDialog(null);
       return;
     }

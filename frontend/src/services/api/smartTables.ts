@@ -14,6 +14,7 @@ const BASE = '/smart-tables';
 export interface DirectoryOption {
   value: string;
   label: string;
+  phone?: string | null;
 }
 
 export const smartTablesApi = {
@@ -106,7 +107,7 @@ export const smartTablesApi = {
         }
         const value = item.full_name as string;
         const details = [item.phone, item.email].filter(Boolean).join(', ');
-        return { value, label: details ? `${value} — ${details}` : value };
+        return { value, label: details ? `${value} — ${details}` : value, phone: item.phone ?? null };
       }));
       if (items.length < pageSize) break;
     }

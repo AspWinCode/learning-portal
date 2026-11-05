@@ -43,6 +43,7 @@ const MAX_COLUMN_WIDTH = 1000;
 const MIN_ROW_HEIGHT = 16;
 const MAX_ROW_HEIGHT = 500;
 const DEFAULT_ROW_HEIGHT = 32;
+const LONG_CELL_TEXT_LENGTH = 80;
 
 const PALETTE = ['#ffffff', '#ffebee', '#fff3e0', '#fffde7', '#e8f5e9', '#e3f2fd', '#ede7f6', '#fafafa'];
 const TEXT_PALETTE = ['#000000', '#c62828', '#ef6c00', '#2e7d32', '#1565c0', '#6a1b9a'];
@@ -201,6 +202,7 @@ const Grid: React.FC<GridProps> = ({
   const [loadedDirectoryOptions, setLoadedDirectoryOptions] = useState<Record<string, DirectoryOption[]>>({});
   const [directoryLoading, setDirectoryLoading] = useState(false);
   const [columnTypeDialog, setColumnTypeDialog] = useState<{ columnId: number; type: ColumnType } | null>(null);
+  const [textDialog, setTextDialog] = useState<{ rowId: number; columnId: number; title: string; value: string } | null>(null);
 
   const directories = useMemo(() => [
     { id: 'regions', label: 'Регионы', options: ['Москва', 'Московская область', 'Санкт-Петербург', 'Ленинградская область', 'Иркутская область', 'Красноярский край', 'Новосибирская область', 'Кемеровская область', 'Томская область', 'Омская область', 'Алтайский край', 'Республика Алтай', 'Республика Бурятия', 'Забайкальский край', 'Приморский край', 'Хабаровский край', 'Амурская область', 'Сахалинская область', 'Камчатский край', 'Магаданская область', 'Республика Саха (Якутия)', 'Свердловская область', 'Челябинская область', 'Тюменская область', 'Ханты-Мансийский автономный округ', 'Ямало-Ненецкий автономный округ', 'Республика Татарстан', 'Самарская область', 'Нижегородская область', 'Пермский край', 'Республика Башкортостан', 'Удмуртская Республика', 'Оренбургская область', 'Саратовская область', 'Ростовская область', 'Краснодарский край', 'Ставропольский край', 'Волгоградская область', 'Воронежская область', 'Белгородская область', 'Калининградская область', 'Ярославская область', 'Тульская область', 'Тверская область', 'Рязанская область', 'Владимирская область', 'Калужская область', 'Курская область', 'Брянская область', 'Орловская область'].map((value) => ({ value, label: value })) },
@@ -888,6 +890,11 @@ const Grid: React.FC<GridProps> = ({
                         setCellMenu({ anchor: e.currentTarget, rowId: row.id, columnId: col.id });
                       }}
                       onDoubleClick={() => {
+                        const text = displayOf(value);
+                        if (!smartLink && text.length > LONG_CELL_TEXT_LENGTH) {
+                          setTextDialog({ rowId: row.id, columnId: col.id, title: col.name, value: text });
+                          return;
+                        }
                         if (readOnly) return;
                         if (smartLink || col.type === 'smart_link') onEditSmartLink(row.id, col.id, snapshot);
                         else editCell(row, col);
@@ -1062,6 +1069,36 @@ const Grid: React.FC<GridProps> = ({
           >
             Сохранить
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={!!textDialog} onClose={() => setTextDialog(null)} fullWidth maxWidth="md">
+        <DialogTitle>{textDialog?.title || 'Полный текст ячейки'}</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            fullWidth
+            multiline
+            minRows={8}
+            value={textDialog?.value ?? ''}
+            onChange={(event) => setTextDialog((current) => current ? { ...current, value: event.target.value } : current)}
+            InputProps={{ readOnly }}
+            sx={{ mt: 1 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setTextDialog(null)}>Закрыть</Button>
+          {!readOnly && (
+            <Button
+              variant="contained"
+              onClick={() => {
+                if (textDialog) onSetCell(textDialog.rowId, textDialog.columnId, textDialog.value);
+                setTextDialog(null);
+              }}
+            >
+              Сохранить
+            </Button>
+          )}
         </DialogActions>
       </Dialog>
 

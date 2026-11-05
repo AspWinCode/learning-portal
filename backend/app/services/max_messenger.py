@@ -231,6 +231,38 @@ def check_phone_greenapi(phone_digits: str) -> tuple:
         return True, None
 
 
+def find_personal_chat_by_phone(phone: str) -> Tuple[bool, Optional[str], Optional[str]]:
+    """Найти chatId личного MAX-аккаунта по номеру телефона через api-messenger."""
+    if get_personal_provider() != "api_messenger":
+        return False, None, "Поиск чата по телефону доступен для api-messenger"
+    base_url = _get_personal_base_url()
+    token = _get_personal_token()
+    digits = "".join(ch for ch in (phone or "") if ch.isdigit())
+    if digits.startswith("8") and len(digits) == 11:
+        digits = "7" + digits[1:]
+    if not base_url or not token:
+        return False, None, "MAX личный аккаунт не настроен"
+    if len(digits) < 10:
+        return False, None, "Некорректный номер телефона"
+    try:
+        resp = requests.get(
+            f"{base_url}/checkNumber",
+            params={"token": token, "phone": digits},
+            headers={"Content-Type": "application/json; charset=utf-8"},
+            timeout=15,
+        )
+        data = resp.json() if resp.content else {}
+    except (requests.RequestException, ValueError) as exc:
+        logger.warning("max_personal: find chat failed phone=%s: %s", digits, exc)
+        return False, None, "Не удалось найти контакт в MAX"
+    if resp.status_code != 200 or not isinstance(data, dict):
+        return False, None, "Не удалось найти контакт в MAX"
+    result = data.get("result") if isinstance(data.get("result"), dict) else {}
+    if data.get("status") != "OK" or not result.get("numberExists") or not result.get("chatId"):
+        return False, None, "Пользователь с таким номером не найден в MAX"
+    return True, str(result["chatId"]), None
+
+
 def is_configured() -> bool:
     """Настроен хотя бы один способ: бот или личный аккаунт."""
     return _is_bot_configured() or is_personal_configured()

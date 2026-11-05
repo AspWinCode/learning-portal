@@ -22,6 +22,7 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import DriveFileRenameOutlineIcon from '@mui/icons-material/DriveFileRenameOutline';
 import ListAltIcon from '@mui/icons-material/ListAlt';
 import SearchIcon from '@mui/icons-material/Search';
+import ChatIcon from '@mui/icons-material/Chat';
 import type {
   CellFormatting, CellSnapshot, CellValue, ColumnOut, ColumnType, ConditionOperator, ConditionalFormatRule, PasteCell, RowOut,
   SmartLinkMetadata, SmartLinkTarget, TextAlign,
@@ -75,6 +76,7 @@ interface GridProps {
   onOpenSmartLink: (target: SmartLinkTarget) => void;
   onEditSmartLink: (rowId: number, columnId: number, snapshot?: CellSnapshot) => void;
   onClearSmartLink: (rowId: number, columnId: number) => void;
+  onOpenMaxChat: (phone: string) => void;
   expanded?: boolean;
   readOnly?: boolean;
 }
@@ -163,7 +165,7 @@ function measureTextWidth(text: string, font = '13px Arial'): number {
 const Grid: React.FC<GridProps> = ({
   columns, rows, onSetCell, onSetFormula, onInsertRow, onDeleteRow, onInsertColumn, onDeleteColumn, onRenameColumn,
   onResizeColumn, onResizeRow, onFormatRange, onSetConditionalFormat, onSetColumnType, onSetDirectory, onSortColumn, onPasteRange,
-  focusTarget = null, onOpenSmartLink, onEditSmartLink, onClearSmartLink, expanded = false, readOnly = false,
+  focusTarget = null, onOpenSmartLink, onEditSmartLink, onClearSmartLink, onOpenMaxChat, expanded = false, readOnly = false,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const skipNextBlurCommitRef = useRef(false);
@@ -1128,6 +1130,8 @@ const Grid: React.FC<GridProps> = ({
           const column = columns.find((item) => item.id === cellMenu.columnId);
           const snapshot = row?.cells[String(cellMenu.columnId)];
           const link = smartLinkOf(snapshot);
+          const phoneColumn = columns.find((item) => item.type === 'phone');
+          const phoneValue = phoneColumn && row ? displayOf(row.cells[String(phoneColumn.id)]?.value).trim() : '';
           return [
             link && (
               <MenuItem key="open" onClick={() => { onOpenSmartLink(link.target); setCellMenu(null); }}>
@@ -1152,6 +1156,11 @@ const Grid: React.FC<GridProps> = ({
             !readOnly && (
               <MenuItem key="directory" onClick={() => { openDirectoryDialog(); setCellMenu(null); }}>
                 <ListAltIcon fontSize="small" sx={{ mr: 1 }} /> Заполнение из справочника…
+              </MenuItem>
+            ),
+            phoneValue && (
+              <MenuItem key="max" onClick={() => { onOpenMaxChat(phoneValue); setCellMenu(null); }}>
+                <ChatIcon fontSize="small" sx={{ mr: 1 }} /> Перейти в MAX
               </MenuItem>
             ),
           ];

@@ -24,6 +24,7 @@ from app.services.max_messenger import (
     is_personal_configured,
     get_personal_provider,
     get_personal_qr,
+    find_personal_chat_by_phone,
     MAX_MESSAGE_TEXT_LIMIT,
 )
 from app.services.max_client import get_max_client
@@ -52,6 +53,19 @@ def api_max_configured(
         "personal": is_personal_configured(),
         "personal_provider": get_personal_provider() or None,  # "greenapi" | "api_messenger" | null
     }
+
+
+@router.get("/max/personal/chat-by-phone")
+def api_max_personal_chat_by_phone(
+    phone: str,
+    current_user: User = Depends(auth.require_permission("sales.access")),
+):
+    """Найти личный чат MAX по номеру через подключённый api-messenger."""
+    found, chat_id, error = find_personal_chat_by_phone(phone)
+    if not found or not chat_id:
+        raise HTTPException(status_code=404, detail=error or "Чат MAX не найден")
+    # Ссылка открывает профиль/личный чат MAX в приложении или веб-версии.
+    return {"chat_id": chat_id, "url": f"https://max.ru/u/{chat_id}"}
 
 
 @router.get("/max/personal/qr")

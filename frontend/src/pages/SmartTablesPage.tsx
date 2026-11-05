@@ -22,6 +22,7 @@ import AICommandBar from '../components/smartTables/AICommandBar';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 import FormDialog from '../components/ui/FormDialog';
 import { smartTablesApi } from '../services/api/smartTables';
+import { maxApi } from '../services/api';
 import { useSmartTableRealtime } from '../hooks/useSmartTableRealtime';
 import type { ActiveCell } from '../components/smartTables/Grid';
 import type { CellSnapshot, SheetDetail, SmartLinkTarget, Workbook } from '../types/smartTables';
@@ -353,6 +354,19 @@ const WorkbookView: React.FC<WorkbookViewProps> = ({
     );
   };
 
+  const handleOpenMaxChat = (phone: string) => {
+    const popup = window.open('', '_blank', 'noopener,noreferrer');
+    maxApi.findPersonalChatByPhone(phone)
+      .then(({ url }) => {
+        if (popup) popup.location.href = url;
+        else window.open(url, '_blank', 'noopener,noreferrer');
+      })
+      .catch((e: any) => {
+        popup?.close();
+        setError(e?.response?.data?.detail || 'Не удалось найти контакт в MAX');
+      });
+  };
+
   const saveSmartLink = async (label: string, target: SmartLinkTarget) => {
     if (!linkEditor) return;
     await withOps([{
@@ -499,6 +513,7 @@ const WorkbookView: React.FC<WorkbookViewProps> = ({
           onEditSmartLink={(rowId, columnId, snapshot) => setLinkEditor({ rowId, columnId, snapshot })}
           onClearSmartLink={(rowId, columnId) =>
             withOps([{ type: 'set_cell', row_id: rowId, column_id: columnId, value: null }])}
+          onOpenMaxChat={handleOpenMaxChat}
           expanded={isFullscreen}
           readOnly={!canEdit}
         />

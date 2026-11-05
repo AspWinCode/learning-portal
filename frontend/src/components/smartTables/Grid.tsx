@@ -166,6 +166,7 @@ const Grid: React.FC<GridProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const skipNextBlurCommitRef = useRef(false);
   const [scrollTop, setScrollTop] = useState(0);
+  const [scrollLeft, setScrollLeft] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(500);
   const [anchor, setAnchor] = useState<ActiveCell | null>(null);
   const [focus, setFocus] = useState<ActiveCell | null>(null);
@@ -277,6 +278,7 @@ const Grid: React.FC<GridProps> = ({
 
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     setScrollTop(e.currentTarget.scrollTop);
+    setScrollLeft(e.currentTarget.scrollLeft);
   }, []);
 
   useEffect(() => {
@@ -712,9 +714,10 @@ const Grid: React.FC<GridProps> = ({
       </Box>
 
       {/* header row */}
-      <Box sx={{ display: 'flex', bgcolor: 'grey.100', borderBottom: '1px solid', borderColor: 'divider' }}>
-        <Box sx={{ width: ROW_HEADER_WIDTH, flexShrink: 0 }} />
-        {sortedColumns.map((col) => (
+      <Box sx={{ overflow: 'hidden', bgcolor: 'grey.100', borderBottom: '1px solid', borderColor: 'divider' }}>
+        <Box sx={{ display: 'flex', width: 'max-content', transform: `translateX(-${scrollLeft}px)` }}>
+          <Box sx={{ width: ROW_HEADER_WIDTH, flexShrink: 0 }} />
+          {sortedColumns.map((col) => (
           <Box
             key={col.id}
             onClick={(e) => selectColumn(col.id, e.shiftKey)}
@@ -759,19 +762,21 @@ const Grid: React.FC<GridProps> = ({
               </>
             )}
           </Box>
-        ))}
-        {!readOnly && (
-          <IconButton size="small" onClick={() => onInsertColumn(sortedColumns[sortedColumns.length - 1]?.id ?? null)}>
-            <AddIcon fontSize="small" />
-          </IconButton>
-        )}
+          ))}
+          {!readOnly && (
+            <IconButton size="small" onClick={() => onInsertColumn(sortedColumns[sortedColumns.length - 1]?.id ?? null)}>
+              <AddIcon fontSize="small" />
+            </IconButton>
+          )}
+        </Box>
       </Box>
 
       {/* filter row */}
       {filtersOpen && (
-        <Box sx={{ display: 'flex', bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider' }}>
-          <Box sx={{ width: ROW_HEADER_WIDTH, flexShrink: 0 }} />
-          {sortedColumns.map((col) => (
+        <Box sx={{ overflow: 'hidden', bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider' }}>
+          <Box sx={{ display: 'flex', width: 'max-content', transform: `translateX(-${scrollLeft}px)` }}>
+            <Box sx={{ width: ROW_HEADER_WIDTH, flexShrink: 0 }} />
+            {sortedColumns.map((col) => (
             <Box key={col.id} sx={{ width: columnWidthOf(col), flexShrink: 0, px: 0.5, py: 0.5, borderRight: '1px solid', borderColor: 'divider' }}>
               <TextField
                 size="small" variant="standard" placeholder="Фильтр…" fullWidth
@@ -780,7 +785,8 @@ const Grid: React.FC<GridProps> = ({
                 InputProps={{ disableUnderline: true, sx: { fontSize: 12 } }}
               />
             </Box>
-          ))}
+            ))}
+          </Box>
         </Box>
       )}
 

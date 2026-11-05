@@ -24,11 +24,6 @@ def _greenapi_phone_digits(phone: str) -> str:
     return digits
 
 
-def _greenapi_chat_id_from_phone(phone: str) -> str:
-    # Для MAX GREEN-API chatId — числовой идентификатор контакта.
-    return _greenapi_phone_digits(phone)
-
-
 # --- Официальный Bot API (platform-api.max.ru) ---
 
 def _get_base_url() -> str:
@@ -122,16 +117,41 @@ def send_message_greenapi(chat_id: str, text: str) -> Tuple[bool, Optional[str],
     return False, None, f"GREEN-API: {resp.status_code} — {err_text[:200]}"
 
 
+def resolve_max_chat_id_greenapi(phone: str) -> Tuple[bool, Optional[str], Optional[str]]:
+    """Получить постоянный MAX chatId по номеру через GREEN-API CheckAccount."""
+    base_url = _get_greenapi_base_url()
+    id_instance = _get_greenapi_id_instance()
+    token = _get_greenapi_token()
+    phone_digits = _greenapi_phone_digits(phone)
+    if not base_url or not id_instance or not token:
+        return False, None, "GREEN-API не настроен"
+    if len(phone_digits) < 10:
+        return False, None, "Некорректный номер телефона"
+    url = f"{base_url}/waInstance{id_instance}/checkAccount/{token}"
+    try:
+        resp = requests.post(url, json={"phoneNumber": phone_digits}, timeout=20)
+        data = resp.json() if resp.content else {}
+    except (requests.RequestException, ValueError) as exc:
+        logger.warning("max_greenapi: check account failed phone=%s: %s", phone_digits, exc)
+        return False, None, "Не удалось найти пользователя MAX по телефону"
+    if resp.status_code != 200 or not isinstance(data, dict):
+        return False, None, f"GREEN-API: {resp.status_code} — {resp.text[:200]}"
+    chat_id = str(data.get("chatId") or "").strip()
+    if data.get("exist") and chat_id:
+        return True, chat_id, None
+    return False, None, "Пользователь с этим номером не найден в MAX"
+
+
 def get_chat_history_greenapi(phone: str, count: int = 100) -> Tuple[bool, list, Optional[str]]:
     """Получить историю MAX-чата через GREEN-API."""
     base_url = _get_greenapi_base_url()
     id_instance = _get_greenapi_id_instance()
     token = _get_greenapi_token()
-    chat_id = _greenapi_chat_id_from_phone(phone)
     if not base_url or not id_instance or not token:
         return False, [], "GREEN-API не настроен"
-    if len(chat_id) < 10:
-        return False, [], "Некорректный номер телефона"
+    found, chat_id, resolve_error = resolve_max_chat_id_greenapi(phone)
+    if not found or not chat_id:
+        return False, [], resolve_error or "Не удалось найти чат MAX"
     url = f"{base_url}/waInstance{id_instance}/getChatHistory/{token}"
     try:
         resp = requests.post(url, json={"chatId": chat_id, "count": min(max(count, 1), 100)}, timeout=20)

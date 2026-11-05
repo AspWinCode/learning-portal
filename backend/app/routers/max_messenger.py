@@ -26,6 +26,7 @@ from app.services.max_messenger import (
     get_personal_qr,
     find_personal_chat_by_phone,
     get_chat_history_greenapi,
+    resolve_max_chat_id_greenapi,
     MAX_MESSAGE_TEXT_LIMIT,
 )
 from app.services.max_client import get_max_client
@@ -125,9 +126,11 @@ def _prepare_max_message(
     if is_personal_configured() and get_personal_provider() == "greenapi" and phone:
         normalized = normalize_phone(phone)
         if normalized and (normalized.startswith("+7") or normalized.startswith("+375")):
-            digits = normalized.lstrip("+")
-            # GREEN-API для MAX использует числовой chatId, без WhatsApp-суффикса.
-            chat_id_for_personal = digits
+            found, resolved_chat_id, resolve_error = resolve_max_chat_id_greenapi(phone)
+            if found and resolved_chat_id:
+                chat_id_for_personal = resolved_chat_id
+            else:
+                raise HTTPException(status_code=400, detail=resolve_error or "Пользователь не найден в MAX")
             use_phone = True
 
     if not use_phone and user_id is None:

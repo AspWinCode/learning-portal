@@ -1160,7 +1160,7 @@ const Grid: React.FC<GridProps> = ({
             ),
             phoneValue && (
               <MenuItem key="max" onClick={() => { onOpenMaxChat(phoneValue); setCellMenu(null); }}>
-                <ChatIcon fontSize="small" sx={{ mr: 1 }} /> Перейти в MAX
+                <ChatIcon fontSize="small" sx={{ mr: 1 }} /> Открыть переписку MAX
               </MenuItem>
             ),
           ];

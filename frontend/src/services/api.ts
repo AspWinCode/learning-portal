@@ -4148,6 +4148,10 @@ export const maxApi = {
     const response = await api.get('/api/max/personal/chat-by-phone', { params: { phone } });
     return response.data;
   },
+  getPersonalHistory: async (phone: string): Promise<{ messages: Array<{ id: string; text: string; direction: 'incoming' | 'outgoing'; timestamp?: number | null; sender?: string | null }> }> => {
+    const response = await api.get('/api/max/personal/history', { params: { phone } });
+    return response.data;
+  },
   checkUser: async (params: { max_user_id?: number; phone?: string }): Promise<{ exists: boolean }> => {
     const response = await api.get('/api/max/check-user', { params });
     return response.data;

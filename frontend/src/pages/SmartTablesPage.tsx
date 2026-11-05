@@ -9,6 +9,7 @@ import UndoIcon from '@mui/icons-material/Undo';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import DownloadIcon from '@mui/icons-material/Download';
+import SendIcon from '@mui/icons-material/Send';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -123,6 +124,14 @@ interface WorkbookViewProps {
   onOpenWorkbook: (workbookId: number, sheetId?: number | null, focus?: ActiveCell | null) => void;
 }
 
+interface MaxChatMessage {
+  id: string;
+  text: string;
+  direction: 'incoming' | 'outgoing';
+  timestamp?: number | null;
+  sender?: string | null;
+}
+
 const WorkbookView: React.FC<WorkbookViewProps> = ({
   workbook, requestedSheetId, focusTarget, onBack, onOpenSheet, onOpenWorkbook,
 }) => {
@@ -150,6 +159,10 @@ const WorkbookView: React.FC<WorkbookViewProps> = ({
     columnId: number;
     snapshot?: CellSnapshot;
   } | null>(null);
+  const [maxChat, setMaxChat] = useState<{ phone: string; messages: MaxChatMessage[] } | null>(null);
+  const [maxChatInput, setMaxChatInput] = useState('');
+  const [maxChatLoading, setMaxChatLoading] = useState(false);
+  const [maxChatSending, setMaxChatSending] = useState(false);
 
   const { presence, connected } = useSmartTableRealtime(activeSheetId, {
     onSheetUpdate: (sheet) => setDetail(sheet),
@@ -355,16 +368,44 @@ const WorkbookView: React.FC<WorkbookViewProps> = ({
   };
 
   const handleOpenMaxChat = (phone: string) => {
-    const popup = window.open('', '_blank', 'noopener,noreferrer');
-    maxApi.findPersonalChatByPhone(phone)
-      .then(({ url }) => {
-        if (popup) popup.location.href = url;
-        else window.open(url, '_blank', 'noopener,noreferrer');
-      })
-      .catch((e: any) => {
-        popup?.close();
-        setError(e?.response?.data?.detail || 'Не удалось найти контакт в MAX');
-      });
+    setMaxChat({ phone, messages: [] });
+    setMaxChatInput('');
+    loadMaxChat(phone);
+  };
+
+  const loadMaxChat = useCallback(async (phone: string, silent = false) => {
+    if (!silent) setMaxChatLoading(true);
+    try {
+      const result = await maxApi.getPersonalHistory(phone);
+      setMaxChat((current) => current && current.phone === phone
+        ? { ...current, messages: result.messages }
+        : { phone, messages: result.messages });
+      if (!silent) setError('');
+    } catch (e: any) {
+      if (!silent) setError(e?.response?.data?.detail || 'Не удалось загрузить историю MAX');
+    } finally {
+      if (!silent) setMaxChatLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!maxChat) return undefined;
+    const timer = window.setInterval(() => { loadMaxChat(maxChat.phone, true); }, 10000);
+    return () => window.clearInterval(timer);
+  }, [loadMaxChat, maxChat?.phone]);
+
+  const handleSendMaxChat = async () => {
+    if (!maxChat || !maxChatInput.trim()) return;
+    setMaxChatSending(true);
+    try {
+      await maxApi.send({ phone: maxChat.phone, message: maxChatInput.trim() });
+      setMaxChatInput('');
+      await loadMaxChat(maxChat.phone);
+    } catch (e: any) {
+      setError(e?.response?.data?.detail || 'Не удалось отправить сообщение в MAX');
+    } finally {
+      setMaxChatSending(false);
+    }
   };
 
   const saveSmartLink = async (label: string, target: SmartLinkTarget) => {
@@ -526,6 +567,46 @@ const WorkbookView: React.FC<WorkbookViewProps> = ({
         onClose={() => setLinkEditor(null)}
         onSave={saveSmartLink}
       />
+
+      <Dialog open={!!maxChat} onClose={() => setMaxChat(null)} fullWidth maxWidth="sm">
+        <DialogTitle>Переписка в MAX</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>{maxChat?.phone}</Typography>
+          <Box sx={{ height: 360, overflowY: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 1.5, bgcolor: 'grey.50' }}>
+            {maxChatLoading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 5 }}><CircularProgress size={28} /></Box>
+            ) : maxChat?.messages.length ? (
+              maxChat.messages.map((message) => (
+                <Box key={message.id} sx={{ display: 'flex', justifyContent: message.direction === 'outgoing' ? 'flex-end' : 'flex-start', mb: 1 }}>
+                  <Box sx={{ maxWidth: '78%', px: 1.5, py: 1, borderRadius: 2, bgcolor: message.direction === 'outgoing' ? 'primary.100' : 'background.paper', border: '1px solid', borderColor: 'divider' }}>
+                    <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{message.text}</Typography>
+                    {message.timestamp && <Typography variant="caption" color="text.secondary" display="block">{new Date(message.timestamp * 1000).toLocaleString('ru-RU')}</Typography>}
+                  </Box>
+                </Box>
+              ))
+            ) : (
+              <Typography color="text.secondary" sx={{ textAlign: 'center', py: 5 }}>Сообщений пока нет</Typography>
+            )}
+          </Box>
+          <Box sx={{ display: 'flex', gap: 1, mt: 1.5, alignItems: 'flex-end' }}>
+            <TextField
+              fullWidth multiline maxRows={4} size="small" placeholder="Написать сообщение…"
+              value={maxChatInput}
+              onChange={(event) => setMaxChatInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault();
+                  handleSendMaxChat();
+                }
+              }}
+            />
+            <Button variant="contained" endIcon={<SendIcon />} disabled={maxChatSending || !maxChatInput.trim()} onClick={handleSendMaxChat}>
+              Отправить
+            </Button>
+          </Box>
+        </DialogContent>
+        <DialogActions><Button onClick={() => setMaxChat(null)}>Закрыть</Button></DialogActions>
+      </Dialog>
 
       <FormDialog
         open={!!renameTarget}

@@ -17,6 +17,18 @@ logger = logging.getLogger(__name__)
 MAX_MESSAGE_TEXT_LIMIT = 4000
 
 
+def _greenapi_phone_digits(phone: str) -> str:
+    digits = "".join(ch for ch in (phone or "") if ch.isdigit())
+    if digits.startswith("8") and len(digits) == 11:
+        digits = "7" + digits[1:]
+    return digits
+
+
+def _greenapi_chat_id_from_phone(phone: str) -> str:
+    # Для MAX GREEN-API chatId — числовой идентификатор контакта.
+    return _greenapi_phone_digits(phone)
+
+
 # --- Официальный Bot API (platform-api.max.ru) ---
 
 def _get_base_url() -> str:
@@ -108,6 +120,46 @@ def send_message_greenapi(chat_id: str, text: str) -> Tuple[bool, Optional[str],
     err_text = resp.text or resp.reason or str(resp.status_code)
     logger.warning("max_greenapi_failed: chat_id=%s status=%s body=%s", chat_id, resp.status_code, err_text[:200])
     return False, None, f"GREEN-API: {resp.status_code} — {err_text[:200]}"
+
+
+def get_chat_history_greenapi(phone: str, count: int = 100) -> Tuple[bool, list, Optional[str]]:
+    """Получить историю MAX-чата через GREEN-API."""
+    base_url = _get_greenapi_base_url()
+    id_instance = _get_greenapi_id_instance()
+    token = _get_greenapi_token()
+    chat_id = _greenapi_chat_id_from_phone(phone)
+    if not base_url or not id_instance or not token:
+        return False, [], "GREEN-API не настроен"
+    if len(chat_id) < 10:
+        return False, [], "Некорректный номер телефона"
+    url = f"{base_url}/waInstance{id_instance}/getChatHistory/{token}"
+    try:
+        resp = requests.post(url, json={"chatId": chat_id, "count": min(max(count, 1), 100)}, timeout=20)
+        data = resp.json() if resp.content else []
+    except (requests.RequestException, ValueError) as exc:
+        logger.warning("max_greenapi: history failed chat_id=%s: %s", chat_id, exc)
+        return False, [], "Не удалось загрузить историю MAX"
+    if resp.status_code != 200 or not isinstance(data, list):
+        return False, [], f"GREEN-API: {resp.status_code} — {resp.text[:200]}"
+    messages = []
+    for item in reversed(data):
+        if not isinstance(item, dict):
+            continue
+        text = item.get("textMessage")
+        if not text and isinstance(item.get("extendedTextMessage"), dict):
+            text = item["extendedTextMessage"].get("text")
+        if not text:
+            text = item.get("caption") or ("Вложение" if item.get("typeMessage") else "")
+        if not text:
+            continue
+        messages.append({
+            "id": str(item.get("idMessage") or item.get("timestamp") or len(messages)),
+            "text": str(text),
+            "direction": "outgoing" if item.get("type") == "outgoing" else "incoming",
+            "timestamp": item.get("timestamp"),
+            "sender": item.get("senderName") or item.get("senderContactName"),
+        })
+    return True, messages, None
 
 
 def get_personal_qr() -> Tuple[bool, Optional[str], Optional[str]]:

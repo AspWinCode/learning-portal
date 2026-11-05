@@ -25,6 +25,7 @@ from app.services.max_messenger import (
     get_personal_provider,
     get_personal_qr,
     find_personal_chat_by_phone,
+    get_chat_history_greenapi,
     MAX_MESSAGE_TEXT_LIMIT,
 )
 from app.services.max_client import get_max_client
@@ -66,6 +67,18 @@ def api_max_personal_chat_by_phone(
         raise HTTPException(status_code=404, detail=error or "Чат MAX не найден")
     # Ссылка открывает профиль/личный чат MAX в приложении или веб-версии.
     return {"chat_id": chat_id, "url": f"https://max.ru/u/{chat_id}"}
+
+
+@router.get("/max/personal/history")
+def api_max_personal_history(
+    phone: str,
+    current_user: User = Depends(auth.require_permission("sales.access")),
+):
+    """История личного MAX-чата по телефону через GREEN-API."""
+    ok, messages, error = get_chat_history_greenapi(phone)
+    if not ok:
+        raise HTTPException(status_code=502, detail=error or "Не удалось загрузить историю MAX")
+    return {"messages": messages}
 
 
 @router.get("/max/personal/qr")
@@ -113,7 +126,8 @@ def _prepare_max_message(
         normalized = normalize_phone(phone)
         if normalized and (normalized.startswith("+7") or normalized.startswith("+375")):
             digits = normalized.lstrip("+")
-            chat_id_for_personal = f"{digits}@c.us"
+            # GREEN-API для MAX использует числовой chatId, без WhatsApp-суффикса.
+            chat_id_for_personal = digits
             use_phone = True
 
     if not use_phone and user_id is None:

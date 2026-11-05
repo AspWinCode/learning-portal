@@ -84,15 +84,22 @@ export const smartTablesApi = {
     api.post(`${BASE}/sheets/${sheetId}/ai/command`, { prompt }).then(r => r.data),
 
   listDirectoryOptions: async (directoryId: string): Promise<DirectoryOption[]> => {
-    if (!['schools', 'contacts'].includes(directoryId)) return [];
+    if (!['cities', 'schools', 'contacts'].includes(directoryId)) return [];
     const options: DirectoryOption[] = [];
     const pageSize = 500;
     for (let offset = 0; ; offset += pageSize) {
-      const response = await api.get(directoryId === 'schools' ? '/api/sales/schools' : '/api/sales/schools/contacts', {
+      const endpoint = directoryId === 'cities'
+        ? '/api/sales/cities'
+        : directoryId === 'schools' ? '/api/sales/schools' : '/api/sales/schools/contacts';
+      const response = await api.get(endpoint, {
         params: { active_only: true, limit: pageSize, offset },
       });
       const items = response.data as Array<{ name?: string; city?: string | null; full_name?: string; phone?: string | null; email?: string | null }>;
-      options.push(...items.filter((item) => directoryId === 'schools' ? item.name : item.full_name).map((item) => {
+      options.push(...items.filter((item) => directoryId === 'cities' || directoryId === 'schools' ? item.name : item.full_name).map((item) => {
+        if (directoryId === 'cities') {
+          const value = item.name as string;
+          return { value, label: value };
+        }
         if (directoryId === 'schools') {
           const value = item.name as string;
           return { value, label: item.city ? `${value} — ${item.city}` : value };

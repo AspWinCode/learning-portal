@@ -49,6 +49,18 @@ type CalendarTimeEvent = {
   onClick?: () => void;
 };
 
+type CalendarRecurringSlotDraft = {
+  title: string;
+  recurrence_type: 'daily' | 'weekdays' | 'weekly' | 'monthly';
+  weekdays: number[];
+  start_time: string;
+  end_time: string;
+  start_date: string;
+  end_date: string;
+};
+
+const calendarWeekdays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+
 type KanbanColumn = {
   label: string;
   statuses: OwnerWorkspaceTaskStatus[];
@@ -74,6 +86,7 @@ type OwnerWorkspaceTaskBoardCalendarSectionProps = {
   trainerLessons: TrainerLessonSlot[];
   canCreateMeeting: boolean;
   onMeetingsChange: (meetings: OwnerWorkspaceMeeting[]) => void;
+  onRecurringSlotsChange: (slots: OwnerWorkspaceRecurringSlot[]) => void;
 };
 
 function isTaskOverdue(task: OwnerWorkspaceTask): boolean {
@@ -100,6 +113,7 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
   trainerLessons,
   canCreateMeeting,
   onMeetingsChange,
+  onRecurringSlotsChange,
 }: OwnerWorkspaceTaskBoardCalendarSectionProps) {
   const [calendarMode, setCalendarMode] = React.useState<'day' | 'week' | 'month'>('week');
   const [zoneDialogOpen, setZoneDialogOpen] = React.useState(false);
@@ -116,6 +130,11 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
   const [meetingTime, setMeetingTime] = React.useState('10:00');
   const [meetingType, setMeetingType] = React.useState<'online' | 'offline'>('online');
   const [meetingPlace, setMeetingPlace] = React.useState('');
+  const [meetingEditing, setMeetingEditing] = React.useState<OwnerWorkspaceMeeting | null>(null);
+  const [slotDialogOpen, setSlotDialogOpen] = React.useState(false);
+  const [slotEditing, setSlotEditing] = React.useState<OwnerWorkspaceRecurringSlot | null>(null);
+  const [slotSaving, setSlotSaving] = React.useState(false);
+  const [slotDraft, setSlotDraft] = React.useState<CalendarRecurringSlotDraft>({ title: '', recurrence_type: 'weekly', weekdays: [0], start_time: '09:00', end_time: '10:00', start_date: '', end_date: '' });
   const activeZone = React.useMemo(() => {
     const now = new Date();
     const weekday = (now.getDay() + 6) % 7;
@@ -182,6 +201,7 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
     return map;
   }, [calendarMonth, recurringSlots]);
   const openMeetingDialog = (date = format(new Date(), 'yyyy-MM-dd')) => {
+    setMeetingEditing(null);
     setMeetingDate(date);
     setMeetingTitle('');
     setMeetingTime('10:00');
@@ -189,22 +209,60 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
     setMeetingPlace('');
     setMeetingDialogOpen(true);
   };
+  const openMeetingEditDialog = (meeting: OwnerWorkspaceMeeting) => {
+    setMeetingEditing(meeting);
+    setMeetingDate(meeting.meeting_date);
+    setMeetingTitle(meeting.title);
+    setMeetingTime(String(meeting.meeting_time || '').slice(0, 5));
+    setMeetingType(meeting.meeting_type === 'offline' ? 'offline' : 'online');
+    setMeetingPlace(meeting.meeting_type === 'offline' ? (meeting.address || '') : (meeting.online_url || ''));
+    setMeetingDialogOpen(true);
+  };
   const saveMeeting = async () => {
     if (!meetingTitle.trim() || !meetingDate || !meetingTime) return;
     setMeetingSaving(true);
     try {
-      const created = await ownerWorkspaceApi.createMeeting({
+      const payload = {
         title: meetingTitle.trim(),
         meeting_date: meetingDate,
         meeting_time: meetingTime,
         meeting_type: meetingType,
         ...(meetingType === 'offline' ? { address: meetingPlace.trim() || null } : { online_url: meetingPlace.trim() || null }),
-      });
-      onMeetingsChange([...meetings, created]);
+      };
+      const saved = meetingEditing
+        ? await ownerWorkspaceApi.updateMeeting(meetingEditing.id, payload)
+        : await ownerWorkspaceApi.createMeeting(payload);
+      onMeetingsChange(meetingEditing ? meetings.map((meeting) => meeting.id === saved.id ? saved : meeting) : [...meetings, saved]);
       setMeetingDialogOpen(false);
     } finally {
       setMeetingSaving(false);
     }
+  };
+  const deleteMeeting = async () => {
+    if (!meetingEditing || !window.confirm(`Удалить встречу «${meetingEditing.title}»?`)) return;
+    await ownerWorkspaceApi.deleteMeeting(meetingEditing.id);
+    onMeetingsChange(meetings.filter((meeting) => meeting.id !== meetingEditing.id));
+    setMeetingDialogOpen(false);
+  };
+  const openSlotEditDialog = (slot: OwnerWorkspaceRecurringSlot) => {
+    setSlotEditing(slot);
+    setSlotDraft({ title: slot.title, recurrence_type: (slot.recurrence_type as CalendarRecurringSlotDraft['recurrence_type']) || 'weekly', weekdays: slot.weekdays || [], start_time: String(slot.start_time).slice(0, 5), end_time: String(slot.end_time).slice(0, 5), start_date: slot.start_date || '', end_date: slot.end_date || '' });
+    setSlotDialogOpen(true);
+  };
+  const saveSlot = async () => {
+    if (!slotEditing || !slotDraft.title.trim() || !slotDraft.start_time || !slotDraft.end_time) return;
+    setSlotSaving(true);
+    try {
+      const saved = await ownerWorkspaceApi.updateRecurringSlot(slotEditing.id, { title: slotDraft.title.trim(), recurrence_type: slotDraft.recurrence_type, weekdays: slotDraft.weekdays, start_time: slotDraft.start_time, end_time: slotDraft.end_time, start_date: slotDraft.start_date || null, end_date: slotDraft.end_date || null, is_active: true });
+      onRecurringSlotsChange(recurringSlots.map((slot) => slot.id === saved.id ? saved : slot));
+      setSlotDialogOpen(false);
+    } finally { setSlotSaving(false); }
+  };
+  const deleteSlot = async () => {
+    if (!slotEditing || !window.confirm(`Удалить слот «${slotEditing.title}»?`)) return;
+    await ownerWorkspaceApi.deleteRecurringSlot(slotEditing.id);
+    onRecurringSlotsChange(recurringSlots.filter((slot) => slot.id !== slotEditing.id));
+    setSlotDialogOpen(false);
   };
   const addZone = () => {
     const name = zoneName.trim();
@@ -308,7 +366,7 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
         const start = String(meeting.meeting_time || '').slice(0, 5);
         const [hour, minute] = start.split(':').map(Number);
         const end = `${String(Math.min(23, hour + 1)).padStart(2, '0')}:${String(minute || 0).padStart(2, '0')}`;
-        add(key, { id: `meeting-${meeting.id}`, title: meeting.title, startTime: start, endTime: end, tone: 'meeting' });
+        add(key, { id: `meeting-${meeting.id}`, title: meeting.title, startTime: start, endTime: end, tone: 'meeting', onClick: () => openMeetingEditDialog(meeting) });
       });
       (recurringSlotsByDay.get(key) || []).forEach((slot) => add(key, {
         id: `slot-${slot.id}`,
@@ -316,6 +374,7 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
         startTime: String(slot.start_time).slice(0, 5),
         endTime: String(slot.end_time).slice(0, 5),
         tone: 'slot',
+        onClick: () => openSlotEditDialog(slot),
       }));
       (trainerLessonsByDay.get(key) || []).forEach((lesson) => add(key, {
         id: `lesson-${lesson.group_id}-${lesson.lesson_date}-${lesson.start_time}`,
@@ -326,7 +385,7 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
       }));
     });
     return map;
-  }, [filteredTasksByDay, meetingsByDay, onOpenTask, recurringSlotsByDay, timeGridDays, trainerLessonsByDay]);
+  }, [filteredTasksByDay, meetingsByDay, onOpenTask, openMeetingEditDialog, openSlotEditDialog, recurringSlotsByDay, timeGridDays, trainerLessonsByDay]);
 
   const timeToMinutes = (value: string) => {
     const [hour, minute] = value.split(':').map(Number);
@@ -448,7 +507,7 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
         </DialogActions>
       </Dialog>
       <Dialog open={meetingDialogOpen} onClose={() => setMeetingDialogOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>Новая встреча</DialogTitle>
+        <DialogTitle>{meetingEditing ? 'Редактировать встречу' : 'Новая встреча'}</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
           <TextField autoFocus required label="Название" value={meetingTitle} onChange={(e) => setMeetingTitle(e.target.value)} />
           <Stack direction="row" spacing={1}>
@@ -462,9 +521,23 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
           <TextField label={meetingType === 'online' ? 'Ссылка на встречу' : 'Место встречи'} value={meetingPlace} onChange={(e) => setMeetingPlace(e.target.value)} />
         </DialogContent>
         <DialogActions>
+          {meetingEditing && <Button color="error" onClick={() => void deleteMeeting()}>Удалить</Button>}
           <Button onClick={() => setMeetingDialogOpen(false)}>Отмена</Button>
-          <Button variant="contained" onClick={() => void saveMeeting()} disabled={meetingSaving || !meetingTitle.trim()}>Создать</Button>
+          <Button variant="contained" onClick={() => void saveMeeting()} disabled={meetingSaving || !meetingTitle.trim()}>{meetingEditing ? 'Сохранить' : 'Создать'}</Button>
         </DialogActions>
+      </Dialog>
+      <Dialog open={slotDialogOpen} onClose={() => setSlotDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Редактировать регулярный слот</DialogTitle>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
+          <TextField required label="Название слота" value={slotDraft.title} onChange={(event) => setSlotDraft((draft) => ({ ...draft, title: event.target.value }))} />
+          <TextField select label="Регулярность" value={slotDraft.recurrence_type} onChange={(event) => setSlotDraft((draft) => ({ ...draft, recurrence_type: event.target.value as CalendarRecurringSlotDraft['recurrence_type'] }))}>
+            <MenuItem value="daily">Каждый день</MenuItem><MenuItem value="weekdays">По будням</MenuItem><MenuItem value="weekly">Еженедельно</MenuItem><MenuItem value="monthly">Ежемесячно</MenuItem>
+          </TextField>
+          {(slotDraft.recurrence_type === 'weekly' || slotDraft.recurrence_type === 'monthly') && <ToggleButtonGroup value={slotDraft.weekdays} onChange={(_, value) => setSlotDraft((draft) => ({ ...draft, weekdays: value }))} size="small" fullWidth>{calendarWeekdays.map((day, index) => <ToggleButton key={day} value={index}>{day}</ToggleButton>)}</ToggleButtonGroup>}
+          <Stack direction="row" spacing={1}><TextField type="time" label="С" value={slotDraft.start_time} onChange={(event) => setSlotDraft((draft) => ({ ...draft, start_time: event.target.value }))} InputLabelProps={{ shrink: true }} fullWidth /><TextField type="time" label="До" value={slotDraft.end_time} onChange={(event) => setSlotDraft((draft) => ({ ...draft, end_time: event.target.value }))} InputLabelProps={{ shrink: true }} fullWidth /></Stack>
+          <Stack direction="row" spacing={1}><TextField type="date" label="Начало действия" value={slotDraft.start_date} onChange={(event) => setSlotDraft((draft) => ({ ...draft, start_date: event.target.value }))} InputLabelProps={{ shrink: true }} fullWidth /><TextField type="date" label="Окончание действия" value={slotDraft.end_date} onChange={(event) => setSlotDraft((draft) => ({ ...draft, end_date: event.target.value }))} InputLabelProps={{ shrink: true }} fullWidth /></Stack>
+        </DialogContent>
+        <DialogActions><Button color="error" onClick={() => void deleteSlot()}>Удалить</Button><Button onClick={() => setSlotDialogOpen(false)}>Отмена</Button><Button variant="contained" onClick={() => void saveSlot()} disabled={slotSaving || !slotDraft.title.trim()}>Сохранить</Button></DialogActions>
       </Dialog>
     </Card>
   );

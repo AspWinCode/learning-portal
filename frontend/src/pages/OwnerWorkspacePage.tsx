@@ -6702,6 +6702,7 @@ const OwnerWorkspacePage: React.FC = () => {
                   setCalendarMeetings(next);
                   setMeetingsCount(next.length);
                 }}
+                onRecurringSlotsChange={setCalendarRecurringSlots}
               />
             </Suspense>
           )}

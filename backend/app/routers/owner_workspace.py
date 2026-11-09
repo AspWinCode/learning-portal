@@ -81,6 +81,10 @@ from app.models import (
     OwnerWorkspaceWebPushSubscription,
     OwnerUsefulLink,
     OwnerUsefulLinkFolder,
+    Group,
+    GroupSchedule,
+    LessonTrainerOverride,
+    UserRole,
     User,
 )
 from app.schemas.owner_workspace import (
@@ -1108,6 +1112,62 @@ async def delete_recurring_slot(
         raise HTTPException(status_code=404, detail="Регулярный слот не найден")
     db.delete(row)
     db.commit()
+
+
+@router.get("/trainer-lessons-calendar")
+async def list_trainer_lessons_calendar(
+    trainer_id: int = Query(...),
+    date_from: date = Query(...),
+    date_to: date = Query(...),
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    """All regular lesson slots for one trainer, without the attendance/quota filters used by the trainer screen."""
+    assert_full_workspace(ctx)
+    if date_to < date_from or (date_to - date_from).days > 62:
+        raise HTTPException(status_code=400, detail="Период календаря должен быть от 1 до 63 дней")
+    trainer = db.query(User).filter(User.id == trainer_id, User.role == UserRole.TRAINER).first()
+    if not trainer:
+        raise HTTPException(status_code=404, detail="Тренер не найден")
+    groups = db.query(Group).filter(Group.status == "active").all()
+    group_ids = [group.id for group in groups]
+    all_overrides = db.query(LessonTrainerOverride).filter(
+        LessonTrainerOverride.group_id.in_(group_ids or [-1]),
+        LessonTrainerOverride.lesson_date >= date_from,
+        LessonTrainerOverride.lesson_date <= date_to,
+    ).all()
+    replaced_map = {(row.group_id, row.lesson_date, row.start_time, row.end_time): row.trainer_id for row in all_overrides}
+    result = []
+    current = date_from
+    while current <= date_to:
+        weekday = current.weekday()
+        for group in groups:
+            if group.start_date and current < group.start_date:
+                continue
+            schedules = db.query(GroupSchedule).filter(
+                GroupSchedule.group_id == group.id,
+                GroupSchedule.day_of_week == weekday,
+            ).order_by(GroupSchedule.start_time).all()
+            for schedule in schedules:
+                key = (group.id, current, schedule.start_time, schedule.end_time)
+                assigned_trainer_id = replaced_map.get(key, group.trainer_id)
+                if assigned_trainer_id != trainer_id:
+                    continue
+                result.append({
+                    "group_id": group.id,
+                    "group_name": group.name,
+                    "day_of_week": weekday,
+                    "start_time": schedule.start_time,
+                    "end_time": schedule.end_time,
+                    "lesson_date": current,
+                    "students": [],
+                    "trainer_id": trainer.id,
+                    "trainer_name": trainer.full_name,
+                    "is_cancelled": False,
+                })
+        current += timedelta(days=1)
+    result.sort(key=lambda row: (row["lesson_date"], row["start_time"], row["group_name"]))
+    return result
 
 
 def _assert_meeting_refs_visible(

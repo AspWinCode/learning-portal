@@ -62,7 +62,6 @@ import CheckIcon from '@mui/icons-material/Check';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import {
-  eachDayOfInterval,
   endOfWeek,
   format,
   startOfMonth,
@@ -73,7 +72,7 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { useAuth } from '../contexts/AuthContext';
 import { OwnerWorkspaceTaskCreateDialog, type TaskCreatePayload } from '../components/ownerWorkspace/OwnerWorkspaceTaskCreateDialog';
-import { mediaApi, ownerWorkspaceApi, settingsApi, tasksApi, trainerLessonsApi, usersApi } from '../services/api';
+import { mediaApi, ownerWorkspaceApi, settingsApi, tasksApi, usersApi } from '../services/api';
 import type {
   OwnerWorkspaceAuditLog,
   OwnerWorkspaceContact,
@@ -1844,9 +1843,12 @@ const OwnerWorkspacePage: React.FC = () => {
     const rangeStart = startOfWeek(startOfMonth(calendarMonth), { weekStartsOn: 1 });
     const rangeEnd = endOfWeek(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0), { weekStartsOn: 1 });
     try {
-      const days = eachDayOfInterval({ start: rangeStart, end: rangeEnd });
-      const rows = (await Promise.all(days.map((day) => trainerLessonsApi.getForDate(format(day, 'yyyy-MM-dd'))))).flat();
-      setCalendarTrainerLessons(rows.filter((lesson) => lesson.trainer_id === kirillTrainer.id));
+      const rows = await ownerWorkspaceApi.listTrainerLessonsCalendar({
+        trainer_id: kirillTrainer.id,
+        date_from: format(rangeStart, 'yyyy-MM-dd'),
+        date_to: format(rangeEnd, 'yyyy-MM-dd'),
+      });
+      setCalendarTrainerLessons(rows);
     } catch {
       setCalendarTrainerLessons([]);
     }

@@ -24,6 +24,7 @@ import type {
   OwnerWorkspaceTasksAnalyticsOverview,
   OwnerWorkspaceUserPreferences,
   OwnerWorkspaceWebPushStatus,
+  TrainerLessonSlot,
 } from '../../types';
 import { api } from './client';
 
@@ -318,6 +319,14 @@ export const ownerWorkspaceApi = {
   },
   listRecurringSlots: async (includeInactive = false): Promise<OwnerWorkspaceRecurringSlot[]> => {
     const response = await api.get('/api/owner-workspace/recurring-slots', { params: { include_inactive: includeInactive } });
+    return response.data;
+  },
+  listTrainerLessonsCalendar: async (params: {
+    trainer_id: number;
+    date_from: string;
+    date_to: string;
+  }): Promise<TrainerLessonSlot[]> => {
+    const response = await api.get('/api/owner-workspace/trainer-lessons-calendar', { params });
     return response.data;
   },
   createRecurringSlot: async (payload: {

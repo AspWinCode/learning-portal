@@ -45,7 +45,7 @@ type CalendarTimeEvent = {
   title: string;
   startTime: string;
   endTime: string;
-  tone: 'task' | 'meeting' | 'slot' | 'lesson';
+  tone: 'task' | 'meeting' | 'slot' | 'lesson' | 'manual';
   onClick?: () => void;
 };
 
@@ -57,6 +57,15 @@ type CalendarRecurringSlotDraft = {
   end_time: string;
   start_date: string;
   end_date: string;
+};
+
+type CalendarManualLesson = {
+  id: number;
+  title: string;
+  lesson_date: string;
+  start_time: string;
+  end_time?: string | null;
+  trainer_name?: string | null;
 };
 
 const calendarWeekdays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
@@ -84,6 +93,7 @@ type OwnerWorkspaceTaskBoardCalendarSectionProps = {
   meetings: OwnerWorkspaceMeeting[];
   recurringSlots: OwnerWorkspaceRecurringSlot[];
   trainerLessons: TrainerLessonSlot[];
+  manualLessons: CalendarManualLesson[];
   canCreateMeeting: boolean;
   onMeetingsChange: (meetings: OwnerWorkspaceMeeting[]) => void;
   onRecurringSlotsChange: (slots: OwnerWorkspaceRecurringSlot[]) => void;
@@ -111,6 +121,7 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
   meetings,
   recurringSlots,
   trainerLessons,
+  manualLessons,
   canCreateMeeting,
   onMeetingsChange,
   onRecurringSlotsChange,
@@ -176,6 +187,13 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
     });
     return map;
   }, [trainerLessons]);
+  const manualLessonsByDay = React.useMemo(() => {
+    const map = new Map<string, CalendarManualLesson[]>();
+    manualLessons.forEach((lesson) => {
+      map.set(lesson.lesson_date, [...(map.get(lesson.lesson_date) || []), lesson]);
+    });
+    return map;
+  }, [manualLessons]);
   const recurringSlotsByDay = React.useMemo(() => {
     const map = new Map<string, OwnerWorkspaceRecurringSlot[]>();
     const rangeStart = startOfWeek(startOfMonth(calendarMonth), { weekStartsOn: 1 });
@@ -383,9 +401,16 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
         endTime: String(lesson.end_time).slice(0, 5),
         tone: 'lesson',
       }));
+      (manualLessonsByDay.get(key) || []).forEach((lesson) => add(key, {
+        id: `manual-lesson-${lesson.id}`,
+        title: lesson.title || 'Ручное занятие',
+        startTime: String(lesson.start_time || '').slice(0, 5),
+        endTime: String(lesson.end_time || lesson.start_time || '').slice(0, 5),
+        tone: 'manual',
+      }));
     });
     return map;
-  }, [filteredTasksByDay, meetingsByDay, onOpenTask, openMeetingEditDialog, openSlotEditDialog, recurringSlotsByDay, timeGridDays, trainerLessonsByDay]);
+  }, [filteredTasksByDay, manualLessonsByDay, meetingsByDay, onOpenTask, openMeetingEditDialog, openSlotEditDialog, recurringSlotsByDay, timeGridDays, trainerLessonsByDay]);
 
   const timeToMinutes = (value: string) => {
     const [hour, minute] = value.split(':').map(Number);
@@ -396,6 +421,7 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
     meeting: { backgroundColor: '#EEE5FF', borderColor: '#B98AF5', color: '#5B21B6' },
     slot: { backgroundColor: '#FFF4DE', borderColor: '#F0A000', color: '#8A4B00' },
     lesson: { backgroundColor: '#E2F6EE', borderColor: '#31B486', color: '#006B4F' },
+    manual: { backgroundColor: '#F2E8FF', borderColor: '#8B5CF6', color: '#6D28D9' },
   };
 
   return (

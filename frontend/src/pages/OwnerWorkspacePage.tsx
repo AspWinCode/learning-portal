@@ -72,7 +72,7 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { useAuth } from '../contexts/AuthContext';
 import { OwnerWorkspaceTaskCreateDialog, type TaskCreatePayload } from '../components/ownerWorkspace/OwnerWorkspaceTaskCreateDialog';
-import { mediaApi, ownerWorkspaceApi, settingsApi, tasksApi, usersApi } from '../services/api';
+import { mediaApi, ownerWorkspaceApi, salesApi, settingsApi, tasksApi, usersApi } from '../services/api';
 import type {
   OwnerWorkspaceAuditLog,
   OwnerWorkspaceContact,
@@ -949,6 +949,7 @@ const OwnerWorkspacePage: React.FC<OwnerWorkspacePageProps> = ({ initialTab, ini
   const [calendarMeetings, setCalendarMeetings] = useState<OwnerWorkspaceMeeting[]>([]);
   const [calendarRecurringSlots, setCalendarRecurringSlots] = useState<OwnerWorkspaceRecurringSlot[]>([]);
   const [calendarTrainerLessons, setCalendarTrainerLessons] = useState<TrainerLessonSlot[]>([]);
+  const [calendarManualLessons, setCalendarManualLessons] = useState<Awaited<ReturnType<typeof salesApi.listCustomLessons>>>([]);
   const [conversations, setConversations] = useState<OwnerWorkspaceConversation[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [historyLogs, setHistoryLogs] = useState<OwnerWorkspaceAuditLog[]>([]);
@@ -1859,6 +1860,24 @@ const OwnerWorkspacePage: React.FC<OwnerWorkspacePageProps> = ({ initialTab, ini
     }
   }, [calendarMonth, kirillTrainer, tab, taskViewMode]);
 
+  const loadCalendarManualLessons = useCallback(async () => {
+    if (tab !== OW_TAB_TASKS || taskViewMode !== 'calendar') {
+      setCalendarManualLessons([]);
+      return;
+    }
+    const rangeStart = startOfWeek(startOfMonth(calendarMonth), { weekStartsOn: 1 });
+    const rangeEnd = endOfWeek(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0), { weekStartsOn: 1 });
+    try {
+      const rows = await salesApi.listCustomLessons({
+        date_from: format(rangeStart, 'yyyy-MM-dd'),
+        date_to: format(rangeEnd, 'yyyy-MM-dd'),
+      });
+      setCalendarManualLessons(rows);
+    } catch {
+      setCalendarManualLessons([]);
+    }
+  }, [calendarMonth, tab, taskViewMode]);
+
   const loadTasksFiltered = useCallback(async (opts?: { statusFilter?: string }) => {
     try {
       const usePaging = taskViewMode === 'list';
@@ -2392,7 +2411,8 @@ const OwnerWorkspacePage: React.FC<OwnerWorkspacePageProps> = ({ initialTab, ini
 
   useEffect(() => {
     void loadCalendarTrainerLessons();
-  }, [loadCalendarTrainerLessons]);
+    void loadCalendarManualLessons();
+  }, [loadCalendarManualLessons, loadCalendarTrainerLessons]);
 
   useEffect(() => {
     if (tab !== OW_TAB_HISTORY) return;
@@ -6702,6 +6722,7 @@ const OwnerWorkspacePage: React.FC<OwnerWorkspacePageProps> = ({ initialTab, ini
                 meetings={calendarMeetings}
                 recurringSlots={calendarRecurringSlots}
                 trainerLessons={calendarTrainerLessons}
+                manualLessons={calendarManualLessons}
                 canCreateMeeting={isWorkspaceFullAccess}
                 onMeetingsChange={(next) => {
                   setCalendarMeetings(next);

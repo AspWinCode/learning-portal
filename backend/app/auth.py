@@ -114,6 +114,7 @@ DEFAULT_ROLE_PERMISSIONS: Dict[str, Set[str]] = {
         "programs.access",
         "programs.manage",
         "lessons.access",
+        "lessons.mark_attendance",
         "lessons.manual_create",
     },
     UserRole.DEVELOPER.value: {

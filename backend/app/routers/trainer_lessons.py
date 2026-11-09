@@ -1192,14 +1192,13 @@ async def save_custom_lesson_attendance(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.get_current_active_user),
 ):
-    """Посещаемость по ручному уроку (без группы). Только для тренера этого урока."""
-    if _ensure_lessons_mark_attendance(current_user) != UserRole.TRAINER:
-        raise HTTPException(status_code=403, detail="Только для тренеров")
+    """Посещаемость по ручному уроку (без группы). Тренер — только для своих уроков; методист/owner — для всех."""
+    effective_role = _ensure_lessons_mark_attendance(current_user)
 
     lesson = db.query(CustomLesson).filter(CustomLesson.id == payload.lesson_id).first()
     if not lesson:
         raise HTTPException(status_code=404, detail="Урок не найден")
-    if lesson.trainer_id != current_user.id:
+    if effective_role == UserRole.TRAINER and lesson.trainer_id != current_user.id:
         raise HTTPException(status_code=403, detail="Не ваш урок")
 
     # Обновляем посещаемость по ученикам

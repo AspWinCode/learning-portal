@@ -66,6 +66,7 @@ const TrainerLessonsPage: React.FC = () => {
   const canAddStudentToLesson = hasPermission(user, 'lessons.manage_roster');
   const canRemoveStudentFromLesson = hasPermission(user, 'lessons.override');
   const canCreateManualLesson = hasPermission(user, 'lessons.manual_create');
+  const canMarkAttendance = hasPermission(user, 'lessons.mark_attendance');
   const [searchParams] = useSearchParams();
   const [viewDate, setViewDate] = useState(() => format(startOfDay(new Date()), 'yyyy-MM-dd'));
   const [slots, setSlots] = useState<TrainerLessonSlot[]>([]);
@@ -132,6 +133,7 @@ const TrainerLessonsPage: React.FC = () => {
   const [manualOpenAbsencesByStudentId, setManualOpenAbsencesByStudentId] = useState<Record<number, AbsenceFollowUp[]>>({});
   const [manualCreateLoading, setManualCreateLoading] = useState(false);
   const [manualError, setManualError] = useState<string | null>(null);
+  const [manualEditingLesson, setManualEditingLesson] = useState<any | null>(null);
   const [trainerOptions, setTrainerOptions] = useState<Array<{ id: number; full_name: string }>>([]);
 
   useEffect(() => {
@@ -206,6 +208,7 @@ const TrainerLessonsPage: React.FC = () => {
 
   const openManualLessonDialog = () => {
     setAddLessonChoiceOpen(false);
+    setManualEditingLesson(null);
     setManualTitle('');
     setManualDate(viewDate);
     setManualStartTime('15:00');
@@ -221,6 +224,37 @@ const TrainerLessonsPage: React.FC = () => {
     setManualError(null);
     setManualLessonDialogOpen(true);
     usersApi.getAll('trainer').then((list) => setTrainerOptions(list.map((u) => ({ id: u.id, full_name: u.full_name || '' })))).catch(() => setTrainerOptions([]));
+  };
+
+  const openEditManualLessonDialog = async (lesson: any) => {
+    setManualEditingLesson(lesson);
+    setManualTitle(lesson.title || '');
+    setManualDate(lesson.lesson_date || '');
+    setManualStartTime((lesson.start_time || '').slice(0, 5));
+    setManualEndTime((lesson.end_time || '').slice(0, 5));
+    setManualTrainerId(String(lesson.trainer_id || ''));
+    setManualLessonType(lesson.lesson_type || 'makeup');
+    setManualComment(lesson.comment || '');
+    setManualStudentQuery('');
+    setManualStudentOptions([]);
+    setManualPlannedAbsenceByStudentId(
+      Object.fromEntries((lesson.students || []).map((student: any) => [student.student_id, student.planned_absence_id ?? null])),
+    );
+    setManualOpenAbsencesByStudentId({});
+    setManualError(null);
+    setManualLessonDialogOpen(true);
+    usersApi.getAll('trainer').then((list) => setTrainerOptions(list.map((u) => ({ id: u.id, full_name: u.full_name || '' })))).catch(() => setTrainerOptions([]));
+    const students = await Promise.all(
+      (lesson.students || []).map((student: any) => studentsApi.getById(student.student_id).catch(() => null)),
+    );
+    setManualSelectedStudents(students.filter(Boolean) as Student[]);
+  };
+
+  const refreshCustomLessons = async () => {
+    const from = format(subDays(new Date(viewDate), 3), 'yyyy-MM-dd');
+    const to = format(addDays(new Date(viewDate), 3), 'yyyy-MM-dd');
+    const data = await trainerLessonsApi.getCustomLessons({ date_from: from, date_to: to });
+    setCustomLessons(data);
   };
 
   useEffect(() => {
@@ -281,7 +315,7 @@ const TrainerLessonsPage: React.FC = () => {
     setManualCreateLoading(true);
     setManualError(null);
     try {
-      await salesApi.createCustomLesson({
+      const payload = {
         title: manualTitle.trim(),
         lesson_date: manualDate,
         start_time: manualStartTime,
@@ -290,16 +324,31 @@ const TrainerLessonsPage: React.FC = () => {
         lesson_type: manualLessonType,
         comment: manualComment || null,
         students: manualSelectedStudents.map((s) => ({ student_id: s.id, planned_absence_id: manualPlannedAbsenceByStudentId[s.id] ?? null })),
-      });
-      setManualLessonDialogOpen(false);
-      if (effectiveRole === 'trainer') {
-        const from = format(subDays(new Date(viewDate), 3), 'yyyy-MM-dd');
-        const to = format(addDays(new Date(viewDate), 3), 'yyyy-MM-dd');
-        const data = await trainerLessonsApi.getCustomLessons({ date_from: from, date_to: to });
-        setCustomLessons(data);
+      };
+      if (manualEditingLesson) {
+        await salesApi.updateCustomLesson(manualEditingLesson.id, payload);
+      } else {
+        await salesApi.createCustomLesson(payload);
       }
+      setManualLessonDialogOpen(false);
+      setManualEditingLesson(null);
+      await refreshCustomLessons();
     } catch (err: any) {
       setManualError(extractApiError(err, 'Не удалось создать урок'));
+    } finally {
+      setManualCreateLoading(false);
+    }
+  };
+
+  const handleDeleteManualLesson = async (lesson: any) => {
+    if (!window.confirm(`Удалить ручной урок «${lesson.title}»?`)) return;
+    setManualCreateLoading(true);
+    setError(null);
+    try {
+      await salesApi.deleteCustomLesson(lesson.id);
+      await refreshCustomLessons();
+    } catch (err: any) {
+      setError(extractApiError(err, 'Не удалось удалить ручной урок'));
     } finally {
       setManualCreateLoading(false);
     }
@@ -1101,7 +1150,7 @@ const TrainerLessonsPage: React.FC = () => {
       </Dialog>
 
       <Dialog open={manualLessonDialogOpen} onClose={() => !manualCreateLoading && setManualLessonDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Создать ручной урок</DialogTitle>
+        <DialogTitle>{manualEditingLesson ? 'Редактировать ручной урок' : 'Создать ручной урок'}</DialogTitle>
         <DialogContent>
           <TextField
             label="Название урока *"
@@ -1290,7 +1339,7 @@ const TrainerLessonsPage: React.FC = () => {
             Отмена
           </Button>
           <Button variant="contained" onClick={() => void handleCreateManualLesson()} disabled={manualCreateLoading}>
-            {manualCreateLoading ? 'Создание...' : 'Создать'}
+            {manualCreateLoading ? (manualEditingLesson ? 'Сохранение...' : 'Создание...') : (manualEditingLesson ? 'Сохранить' : 'Создать')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -1322,7 +1371,7 @@ const TrainerLessonsPage: React.FC = () => {
                       <Typography variant="caption" color="text.secondary">
                         {lesson.students?.length || 0} уч.
                       </Typography>
-                      {effectiveRole === 'trainer' && (
+                      {canMarkAttendance && (
                         <Button
                           size="small"
                           variant="outlined"
@@ -1341,6 +1390,27 @@ const TrainerLessonsPage: React.FC = () => {
                         >
                           Посещаемость
                         </Button>
+                      )}
+                      {canCreateManualLesson && (
+                        <>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            onClick={() => void openEditManualLessonDialog(lesson)}
+                            disabled={manualCreateLoading}
+                          >
+                            Изменить
+                          </Button>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            color="error"
+                            onClick={() => void handleDeleteManualLesson(lesson)}
+                            disabled={manualCreateLoading}
+                          >
+                            Удалить
+                          </Button>
+                        </>
                       )}
                     </Stack>
                   ))}

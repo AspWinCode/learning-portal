@@ -721,6 +721,17 @@ def _process_attendance_deduction(
 
     DEFAULT_BASE_HOURS = 8.0  # фолбэк для абонементов без явно заданного base_hours
 
+    # Отработка закрывает ранее оплаченный пропуск и не должна расходовать
+    # текущий/будущий абонемент повторным списанием. Для групповой отработки
+    # связь хранится на AbsenceFollowUp до и после перевода в stage=made_up.
+    makeup_follow_up = db.query(AbsenceFollowUp).filter(
+        AbsenceFollowUp.student_id == att.student_id,
+        AbsenceFollowUp.makeup_group_id == att.group_id,
+        AbsenceFollowUp.makeup_lesson_date == att.lesson_date,
+        AbsenceFollowUp.stage.in_(("assigned", "link_sent", "made_up")),
+    ).first()
+    is_makeup_attendance = makeup_follow_up is not None
+
     is_present = att.attended and (not att.absence_reason or att.absence_reason == "was")
     is_absence = not att.attended or (att.absence_reason and att.absence_reason != "was")
 
@@ -753,7 +764,7 @@ def _process_attendance_deduction(
     extra_units_to_apply = 0.0
     price_per_unit = 0.0
 
-    if not in_freeze and not on_grant:
+    if not in_freeze and not on_grant and not is_makeup_attendance:
         abonement = getattr(student, "abonement", None)
         if not abonement and student.abonement_id:
             abonement = db.query(Abonement).filter(Abonement.id == student.abonement_id).first()

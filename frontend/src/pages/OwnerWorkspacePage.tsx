@@ -1830,6 +1830,7 @@ const OwnerWorkspacePage: React.FC = () => {
   const kirillTrainer = useMemo(() => {
     const normalize = (value: string) => value.toLocaleLowerCase('ru-RU').replace(/ё/g, 'е');
     return users.find((candidate) => {
+      if (candidate.role !== 'trainer') return false;
       const name = normalize(String(candidate.full_name || ''));
       return (name.includes('тирских') || name.includes('tirskikh')) && (name.includes('кирилл') || name.includes('kirill'));
     }) || null;

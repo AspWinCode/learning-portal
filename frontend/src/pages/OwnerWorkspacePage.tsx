@@ -2349,8 +2349,9 @@ const OwnerWorkspacePage: React.FC = () => {
   useEffect(() => {
     if (tab === OW_TAB_TASKS) {
       loadTasksFiltered();
+      void loadCalendarRecurringSlots();
     }
-  }, [tab, loadTasksFiltered]);
+  }, [tab, loadTasksFiltered, loadCalendarRecurringSlots]);
 
   useEffect(() => {
     if (tab !== OW_TAB_HISTORY) return;

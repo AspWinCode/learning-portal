@@ -3468,6 +3468,7 @@ export interface TrainerGroupCalculationRow {
   lessons_count: number;
   hours_count: number;
   subtotal: number;
+  lesson_dates: string[];
 }
 
 export interface TrainerCalculationRow {

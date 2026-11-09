@@ -598,6 +598,7 @@ def _compute_trainer_breakdowns(
                     lessons_count=lessons,
                     hours_count=hours,
                     subtotal=round(subtotal, 2),
+                    lesson_dates=sorted({lesson_date for _is_ind, _hours, lesson_date in group_slots}),
                 )
             )
         group_rows.sort(key=lambda r: r.group_name)

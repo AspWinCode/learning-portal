@@ -14,6 +14,8 @@ import {
   Divider,
   IconButton,
   Paper,
+  List,
+  ListItem,
   Stack,
   Table,
   TableBody,
@@ -91,9 +93,10 @@ const formatRate = (value: number | null) => (value === null || value === undefi
 
 type GroupRatesTableProps = {
   groups: TrainerGroupCalculationRow[];
+  onLessonsClick: (group: TrainerGroupCalculationRow) => void;
 };
 
-const GroupRatesTable: React.FC<GroupRatesTableProps> = ({ groups }) => (
+const GroupRatesTable: React.FC<GroupRatesTableProps> = ({ groups, onLessonsClick }) => (
   <Box sx={{ px: { xs: 0, md: 2 }, py: 1.5, bgcolor: 'rgba(248, 250, 252, 0.6)' }}>
     <Typography variant="caption" color="text.secondary" sx={{ px: { xs: 1.5, md: 0 }, display: 'block', mb: 0.5 }}>
       Ставка задаётся по каждой группе отдельно в Настройки → Ставки тренеров.
@@ -122,7 +125,15 @@ const GroupRatesTable: React.FC<GroupRatesTableProps> = ({ groups }) => (
             <TableCell>{g.is_individual_format ? '—' : formatRate(g.rate_per_lesson)}</TableCell>
             <TableCell>{g.is_individual_format ? formatRate(g.rate_per_hour) : '—'}</TableCell>
             <TableCell align="right">
-              {g.is_individual_format ? `${formatDecimal(g.hours_count)} ч` : `${g.lessons_count} уроков`}
+              <Button
+                size="small"
+                variant="text"
+                disabled={g.lesson_dates.length === 0}
+                onClick={() => onLessonsClick(g)}
+                sx={{ minWidth: 0, p: 0, textTransform: 'none', fontWeight: 700 }}
+              >
+                {g.is_individual_format ? `${formatDecimal(g.hours_count)} ч` : `${g.lessons_count} уроков`}
+              </Button>
             </TableCell>
             <TableCell align="right">{formatCurrency(g.subtotal)}</TableCell>
           </TableRow>
@@ -146,6 +157,7 @@ const CalculationsPage: React.FC = () => {
   const [cancelDialog, setCancelDialog] = useState<{ trainerId: number; fullName: string } | null>(null);
   const [cancelSaving, setCancelSaving] = useState(false);
   const [expandedTrainerId, setExpandedTrainerId] = useState<number | null>(null);
+  const [lessonDatesDialog, setLessonDatesDialog] = useState<TrainerGroupCalculationRow | null>(null);
   const periodKey = useMemo(() => getPeriodKey(dateFrom, dateTo), [dateFrom, dateTo]);
   const periodLabel = useMemo(() => formatRange(dateFrom, dateTo), [dateFrom, dateTo]);
 
@@ -516,7 +528,7 @@ const CalculationsPage: React.FC = () => {
                         <TableRow>
                           <TableCell colSpan={7} sx={{ p: 0, borderBottom: expandedTrainerId === row.trainer_id ? undefined : 'none' }}>
                             <Collapse in={expandedTrainerId === row.trainer_id} unmountOnExit>
-                              <GroupRatesTable groups={row.groups} />
+                              <GroupRatesTable groups={row.groups} onLessonsClick={setLessonDatesDialog} />
                             </Collapse>
                           </TableCell>
                         </TableRow>
@@ -585,7 +597,7 @@ const CalculationsPage: React.FC = () => {
                             Ставки по группам ({row.groups.length})
                           </Button>
                           <Collapse in={expandedTrainerId === row.trainer_id} unmountOnExit>
-                            <GroupRatesTable groups={row.groups} />
+                            <GroupRatesTable groups={row.groups} onLessonsClick={setLessonDatesDialog} />
                           </Collapse>
                         </>
                       )}
@@ -598,6 +610,31 @@ const CalculationsPage: React.FC = () => {
           )}
         </Paper>
       </Stack>
+
+      <Dialog open={!!lessonDatesDialog} onClose={() => setLessonDatesDialog(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>
+          Даты занятий{lessonDatesDialog ? ` — ${lessonDatesDialog.group_name}` : ''}
+        </DialogTitle>
+        <DialogContent>
+          {lessonDatesDialog && (
+            <List dense disablePadding>
+              {lessonDatesDialog.lesson_dates.map((lessonDate) => (
+                <ListItem key={lessonDate} disableGutters>
+                  {new Intl.DateTimeFormat('ru-RU', {
+                    weekday: 'long',
+                    day: 'numeric',
+                    month: 'long',
+                    year: 'numeric',
+                  }).format(new Date(`${lessonDate}T00:00:00`))}
+                </ListItem>
+              ))}
+            </List>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setLessonDatesDialog(null)}>Закрыть</Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={!!bonusDialog} onClose={() => setBonusDialog(null)} maxWidth="xs" fullWidth>
         <DialogTitle>Добавить премию</DialogTitle>

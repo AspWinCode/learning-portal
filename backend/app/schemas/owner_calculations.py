@@ -13,6 +13,7 @@ class TrainerGroupCalculationRow(BaseModel):
     lessons_count: int = 0
     hours_count: float = 0.0
     subtotal: float = 0.0
+    lesson_dates: List[date] = []
 
 
 class TrainerCalculationRow(BaseModel):

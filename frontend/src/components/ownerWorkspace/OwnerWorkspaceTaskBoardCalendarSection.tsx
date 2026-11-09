@@ -20,6 +20,7 @@ import {
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import AddIcon from '@mui/icons-material/Add';
+import EventIcon from '@mui/icons-material/Event';
 import {
   eachDayOfInterval,
   endOfDay,
@@ -33,8 +34,9 @@ import {
   startOfWeek,
 } from 'date-fns';
 import { ru } from 'date-fns/locale';
+import { ownerWorkspaceApi } from '../../services/api';
 
-import type { OwnerWorkspaceTask, OwnerWorkspaceWorkZone } from '../../types';
+import type { OwnerWorkspaceMeeting, OwnerWorkspaceTask, OwnerWorkspaceWorkZone } from '../../types';
 
 type OwnerWorkspaceTaskStatus = 'new' | 'in_progress' | 'waiting' | 'completed' | 'cancelled';
 
@@ -58,6 +60,9 @@ type OwnerWorkspaceTaskBoardCalendarSectionProps = {
   weekdaysShort: string[];
   zones: OwnerWorkspaceWorkZone[];
   onZonesChange: (zones: OwnerWorkspaceWorkZone[]) => void;
+  meetings: OwnerWorkspaceMeeting[];
+  canCreateMeeting: boolean;
+  onMeetingsChange: (meetings: OwnerWorkspaceMeeting[]) => void;
 };
 
 function isTaskOverdue(task: OwnerWorkspaceTask): boolean {
@@ -79,6 +84,9 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
   weekdaysShort,
   zones,
   onZonesChange,
+  meetings,
+  canCreateMeeting,
+  onMeetingsChange,
 }: OwnerWorkspaceTaskBoardCalendarSectionProps) {
   const [calendarMode, setCalendarMode] = React.useState<'day' | 'week' | 'month'>('month');
   const [zoneDialogOpen, setZoneDialogOpen] = React.useState(false);
@@ -88,6 +96,13 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
   const [zoneEnd, setZoneEnd] = React.useState('13:00');
   const [zoneColor, setZoneColor] = React.useState('#4F46E5');
   const [selectedZone, setSelectedZone] = React.useState('');
+  const [meetingDialogOpen, setMeetingDialogOpen] = React.useState(false);
+  const [meetingSaving, setMeetingSaving] = React.useState(false);
+  const [meetingTitle, setMeetingTitle] = React.useState('');
+  const [meetingDate, setMeetingDate] = React.useState(format(new Date(), 'yyyy-MM-dd'));
+  const [meetingTime, setMeetingTime] = React.useState('10:00');
+  const [meetingType, setMeetingType] = React.useState<'online' | 'offline'>('online');
+  const [meetingPlace, setMeetingPlace] = React.useState('');
   const activeZone = React.useMemo(() => {
     const now = new Date();
     const weekday = (now.getDay() + 6) % 7;
@@ -108,11 +123,44 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
     const map = new Map<string, OwnerWorkspaceTask[]>();
     filteredTasks.forEach((task) => {
       if (!task.deadline_at) return;
-      const key = format(new Date(task.deadline_at), 'yyyy-MM-dd');
+      const key = String(task.deadline_at).slice(0, 10);
       map.set(key, [...(map.get(key) || []), task]);
     });
     return map;
   }, [filteredTasks, tasksByDeadlineDay, visibleZone]);
+  const meetingsByDay = React.useMemo(() => {
+    const map = new Map<string, OwnerWorkspaceMeeting[]>();
+    meetings.forEach((meeting) => {
+      if (meeting.status === 'cancelled') return;
+      map.set(meeting.meeting_date, [...(map.get(meeting.meeting_date) || []), meeting]);
+    });
+    return map;
+  }, [meetings]);
+  const openMeetingDialog = (date = format(new Date(), 'yyyy-MM-dd')) => {
+    setMeetingDate(date);
+    setMeetingTitle('');
+    setMeetingTime('10:00');
+    setMeetingType('online');
+    setMeetingPlace('');
+    setMeetingDialogOpen(true);
+  };
+  const saveMeeting = async () => {
+    if (!meetingTitle.trim() || !meetingDate || !meetingTime) return;
+    setMeetingSaving(true);
+    try {
+      const created = await ownerWorkspaceApi.createMeeting({
+        title: meetingTitle.trim(),
+        meeting_date: meetingDate,
+        meeting_time: meetingTime,
+        meeting_type: meetingType,
+        ...(meetingType === 'offline' ? { address: meetingPlace.trim() || null } : { online_url: meetingPlace.trim() || null }),
+      });
+      onMeetingsChange([...meetings, created]);
+      setMeetingDialogOpen(false);
+    } finally {
+      setMeetingSaving(false);
+    }
+  };
   const addZone = () => {
     const name = zoneName.trim();
     if (!name || !zoneStart || !zoneEnd) return;
@@ -228,6 +276,7 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
             {zones.map((zone) => <MenuItem key={zone.id} value={zone.name}>{zone.name} · {weekdaysShort[zone.weekday]} {zone.start_time}–{zone.end_time}</MenuItem>)}
           </TextField>
           <Button size="small" startIcon={<AddIcon />} variant="outlined" onClick={() => setZoneDialogOpen(true)}>Добавить зону</Button>
+          {canCreateMeeting && <Button size="small" startIcon={<EventIcon />} variant="contained" onClick={() => openMeetingDialog()}>Встреча</Button>}
         </Stack>
         <Box
           sx={{
@@ -265,16 +314,26 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
                 >
                   {format(day, 'd')}
                 </Typography>
-                <Stack spacing={0.5} sx={{ mt: 0.5 }}>
+                <Stack spacing={0.5} sx={{ mt: 0.5, minWidth: 0 }}>
+                  {(meetingsByDay.get(key) || []).map((meeting) => (
+                    <Chip
+                      key={`meeting-${meeting.id}`}
+                      size="small"
+                      color="primary"
+                      icon={<EventIcon sx={{ fontSize: 14 }} />}
+                      label={`${meeting.meeting_time?.slice(0, 5) || ''} ${meeting.title}`}
+                      sx={{ height: 24, maxWidth: '100%', justifyContent: 'flex-start', '& .MuiChip-label': { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }}
+                    />
+                  ))}
                   {dayTasks.slice(0, 4).map((task) => (
                     <Chip
                       key={task.id}
                       size="small"
                       color={isTaskOverdue(task) ? 'error' : 'default'}
                       variant={isTaskOverdue(task) ? 'filled' : 'outlined'}
-                      label={`${task.title.length > 18 ? `${task.title.slice(0, 18)}…` : task.title} · ${task.status} · ${task.priority}`}
+                      label={task.title}
                       onClick={() => void onOpenTask(task)}
-                      sx={{ height: 'auto', '& .MuiChip-label': { whiteSpace: 'normal', py: 0.25 } }}
+                      sx={{ height: 24, maxWidth: '100%', justifyContent: 'flex-start', '& .MuiChip-label': { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }}
                     />
                   ))}
                   {dayTasks.length > 4 && (
@@ -307,6 +366,25 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
         <DialogActions>
           <Button onClick={() => setZoneDialogOpen(false)}>Отмена</Button>
           <Button variant="contained" onClick={addZone} disabled={!zoneName.trim()}>Создать</Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog open={meetingDialogOpen} onClose={() => setMeetingDialogOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Новая встреча</DialogTitle>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
+          <TextField autoFocus required label="Название" value={meetingTitle} onChange={(e) => setMeetingTitle(e.target.value)} />
+          <Stack direction="row" spacing={1}>
+            <TextField required type="date" label="Дата" value={meetingDate} onChange={(e) => setMeetingDate(e.target.value)} InputLabelProps={{ shrink: true }} fullWidth />
+            <TextField required type="time" label="Время" value={meetingTime} onChange={(e) => setMeetingTime(e.target.value)} InputLabelProps={{ shrink: true }} fullWidth />
+          </Stack>
+          <TextField select label="Формат" value={meetingType} onChange={(e) => setMeetingType(e.target.value as 'online' | 'offline')}>
+            <MenuItem value="online">Онлайн</MenuItem>
+            <MenuItem value="offline">Офлайн</MenuItem>
+          </TextField>
+          <TextField label={meetingType === 'online' ? 'Ссылка на встречу' : 'Место встречи'} value={meetingPlace} onChange={(e) => setMeetingPlace(e.target.value)} />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setMeetingDialogOpen(false)}>Отмена</Button>
+          <Button variant="contained" onClick={() => void saveMeeting()} disabled={meetingSaving || !meetingTitle.trim()}>Создать</Button>
         </DialogActions>
       </Dialog>
     </Card>

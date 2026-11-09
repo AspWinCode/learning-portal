@@ -77,6 +77,7 @@ import type {
   OwnerWorkspaceConversation,
   OwnerWorkspaceDigest,
   OwnerWorkspaceHistoryStats,
+  OwnerWorkspaceMeeting,
   OwnerWorkspaceNotificationsEnvelope,
   OwnerWorkspaceMessage,
   OwnerWorkspaceNotificationConfig,
@@ -932,6 +933,7 @@ const OwnerWorkspacePage: React.FC = () => {
   const [contactsCatalog, setContactsCatalog] = useState<OwnerWorkspaceContact[]>([]);
   const [tasks, setTasks] = useState<OwnerWorkspaceTask[]>([]);
   const [meetingsCount, setMeetingsCount] = useState(0);
+  const [calendarMeetings, setCalendarMeetings] = useState<OwnerWorkspaceMeeting[]>([]);
   const [conversations, setConversations] = useState<OwnerWorkspaceConversation[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [historyLogs, setHistoryLogs] = useState<OwnerWorkspaceAuditLog[]>([]);
@@ -1799,8 +1801,10 @@ const OwnerWorkspacePage: React.FC = () => {
     try {
       const rows = await ownerWorkspaceApi.listMeetings({ limit: 500 });
       setMeetingsCount(rows.length);
+      setCalendarMeetings(rows);
     } catch {
       setMeetingsCount(0);
+      setCalendarMeetings([]);
     }
   }, []);
 
@@ -5125,7 +5129,7 @@ const OwnerWorkspacePage: React.FC = () => {
     const map = new Map<string, OwnerWorkspaceTask[]>();
     for (const t of tasks) {
       if (!t.deadline_at) continue;
-      const key = format(new Date(t.deadline_at), 'yyyy-MM-dd');
+      const key = String(t.deadline_at).slice(0, 10);
       const arr = map.get(key) || [];
       arr.push(t);
       map.set(key, arr);
@@ -6638,6 +6642,12 @@ const OwnerWorkspacePage: React.FC = () => {
                 weekdaysShort={WEEKDAYS_SHORT}
                 zones={workZones}
                 onZonesChange={setWorkZones}
+                meetings={calendarMeetings}
+                canCreateMeeting={isWorkspaceFullAccess}
+                onMeetingsChange={(next) => {
+                  setCalendarMeetings(next);
+                  setMeetingsCount(next.length);
+                }}
               />
             </Suspense>
           )}

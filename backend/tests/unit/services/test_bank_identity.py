@@ -168,15 +168,57 @@ def test_two_real_equal_payments_from_different_sources_stay_two():
     assert strategy is None
 
 
+def test_same_source_generic_income_merges_with_real_name_row():
+    """Выписка отдаёт платёж двумя строками: клиент (ФИО) и зачисление «ООО Банк Точка»."""
+    real_bt = Cand(id=1, payment_date="2026-09-30", amount=2250.0, is_expense=False, payer_name=REAL)
+    incoming_generic = _income(SOURCE_TOCHKA_STATEMENT, "statement-G", name=GENERIC)
+
+    picked, strategy = pick_semantic_match([real_bt], incoming_generic, lambda c: {SOURCE_TOCHKA_STATEMENT})
+
+    assert picked is real_bt
+    assert strategy == STRATEGY_GENERIC_TO_REAL
+
+
 def test_ambiguous_candidates_are_not_merged():
-    first = Cand(id=1, payment_date="2026-09-30", amount=2250.0, is_expense=False, payer_name=GENERIC)
-    second = Cand(id=2, payment_date="2026-09-30", amount=2250.0, is_expense=False, payer_name=GENERIC)
-    incoming = _income(SOURCE_TOCHKA_STATEMENT, "statement-B", name=REAL)
+    first = Cand(id=1, payment_date="2026-09-30", amount=2250.0, is_expense=False, payer_name="Иванова Мария")
+    second = Cand(id=2, payment_date="2026-09-30", amount=2250.0, is_expense=False, payer_name="Петрова Анна")
+    incoming = _income(SOURCE_TOCHKA_STATEMENT, "statement-B", name=GENERIC)
 
     picked, strategy = pick_semantic_match([first, second], incoming, lambda c: set())
 
     assert picked is None
     assert strategy == STRATEGY_AMBIGUOUS
+
+
+def test_identical_twin_candidates_are_paired_one_to_one():
+    """Две одинаковые оплаты в один день: вебхук на каждую, затем две строки выписки."""
+    bt_1 = Cand(id=1, payment_date="2026-09-30", amount=2250.0, is_expense=False, payer_name=REAL)
+    bt_2 = Cand(id=2, payment_date="2026-09-30", amount=2250.0, is_expense=False, payer_name=REAL)
+    sources = {1: {SOURCE_TOCHKA_WEBHOOK}, 2: {SOURCE_TOCHKA_WEBHOOK}}
+
+    first = _income(SOURCE_TOCHKA_STATEMENT, "statement-1", name=REAL)
+    picked, _ = pick_semantic_match([bt_1, bt_2], first, lambda c: sources[c.id])
+    assert picked is bt_1
+    sources[1].add(SOURCE_TOCHKA_STATEMENT)
+
+    second = _income(SOURCE_TOCHKA_STATEMENT, "statement-2", name=REAL)
+    picked, _ = pick_semantic_match([bt_1, bt_2], second, lambda c: sources[c.id])
+    assert picked is bt_2
+    sources[2].add(SOURCE_TOCHKA_STATEMENT)
+
+    third = _income(SOURCE_TOCHKA_STATEMENT, "statement-3", name=REAL)
+    picked, _ = pick_semantic_match([bt_1, bt_2], third, lambda c: sources[c.id])
+    assert picked is None
+
+
+def test_two_real_payments_with_two_generic_lines_collapse_to_two_rows():
+    real_1 = Cand(id=1, payment_date="2026-09-30", amount=2250.0, is_expense=False, payer_name=REAL)
+    real_2 = Cand(id=2, payment_date="2026-09-30", amount=2250.0, is_expense=False, payer_name=REAL)
+    for ext in ("g1", "g2"):
+        generic = _income(SOURCE_TOCHKA_STATEMENT, ext, name=GENERIC)
+        picked, strategy = pick_semantic_match([real_1, real_2], generic, lambda c: {SOURCE_TOCHKA_STATEMENT})
+        assert picked is real_1
+        assert strategy == STRATEGY_GENERIC_TO_REAL
 
 
 def test_income_with_empty_name_never_merges():
@@ -232,8 +274,8 @@ def test_two_identical_expenses_webhook_and_two_statement_lines_give_two_operati
     first_statement = _expense(SOURCE_TOCHKA_STATEMENT, "statement-S1", purpose="Перевод")
 
     picked, _ = pick_semantic_match([bt_1, bt_2], first_statement, lambda c: sources[c.id])
-    # Два кандидата — не склеиваем автоматически, это и есть защита от ошибочного слияния
-    assert picked is None
+    # Кандидаты неразличимы — берём первого, следующая строка достанется второму
+    assert picked is bt_1
 
     # Когда первая выписочная строка уже подтверждена отдельной записью, следующая ищет другую
     sources[1] = {SOURCE_TOCHKA_WEBHOOK, SOURCE_TOCHKA_STATEMENT}

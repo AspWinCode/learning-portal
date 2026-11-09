@@ -207,9 +207,6 @@ def pick_semantic_match(
     """
     eligible = []
     for candidate in candidates:
-        # Тот же источник уже подтвердил эту запись другой операцией — это другая реальная операция.
-        if incoming.source in sources_of(candidate):
-            continue
         if candidate_canonical_date(candidate) != incoming.canonical_date:
             continue
         if abs(float(candidate.amount or 0)) != abs(incoming.amount):
@@ -219,6 +216,14 @@ def pick_semantic_match(
         strategy = match_strategy(candidate, incoming)
         if strategy is None:
             continue
+        # Тот же источник уже подтвердил эту запись другой операцией — это другая реальная
+        # операция. Исключение: приход, где одна сторона — заглушка банка («ООО Банк Точка»),
+        # а другая с реальным ФИО. Банк отдаёт один платёж двумя строками (платёж клиента и
+        # зачисление банка), и обе приходят одним и тем же каналом — это дубль.
+        if incoming.source in sources_of(candidate) and not (
+            strategy == STRATEGY_GENERIC_TO_REAL and not incoming.is_expense
+        ):
+            continue
         if (getattr(candidate, "payment_date", None) or "") != incoming.canonical_date:
             # Запись сохранена в сыром виде (например, с временем) — для диагностики это главное
             strategy = STRATEGY_NORMALIZED_DATE
@@ -227,8 +232,22 @@ def pick_semantic_match(
     if not eligible:
         return None, None
     if len(eligible) > 1:
+        # Кандидаты неразличимы по банковским полям (имя, телефон, назначение): две одинаковые
+        # оплаты в один день. Какой именно взять — неважно, главное разложить 1:1. Следующая
+        # строка той же выписки не возьмёт уже подтверждённого кандидата (правило источников)
+        # и достанется следующему из близнецов.
+        if len({_candidate_signature(c) for c, _ in eligible}) == 1:
+            return min(eligible, key=lambda item: getattr(item[0], "id", 0) or 0)
         return None, STRATEGY_AMBIGUOUS
     return eligible[0]
+
+
+def _candidate_signature(candidate: Any) -> Tuple[str, str, str]:
+    return (
+        normalize_payer_name(getattr(candidate, "payer_name", None)),
+        normalize_phone_digits(getattr(candidate, "payer_phone", None)),
+        normalize_purpose(getattr(candidate, "purpose", None)),
+    )
 
 
 def stable_fingerprint_operation_id(prefix: str, parts: Iterable[Any], occurrence: int = 0) -> str:

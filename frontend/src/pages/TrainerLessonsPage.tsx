@@ -813,6 +813,7 @@ const TrainerLessonsPage: React.FC = () => {
               }
               const slot = item.slot;
               const isCancelled = !!slot.is_cancelled;
+              const isQuotaWarning = !isCancelled && (slot.lesson_index_in_month ?? 0) > 8;
               // Перенесённый урок (moved_to_date) и чистая отмена различаются: восстанавливать можно только чистую отмену.
               const isMovedAway = isCancelled && !!slot.moved_to_date;
               const startLabel = (slot.start_time || '').slice(0, 5);
@@ -825,7 +826,8 @@ const TrainerLessonsPage: React.FC = () => {
                     cursor: isCancelled ? 'default' : 'pointer',
                     '&:hover': { bgcolor: isCancelled ? undefined : 'action.hover' },
                     borderLeft: '4px solid',
-                    borderLeftColor: isCancelled ? 'grey.400' : 'primary.main',
+                    borderLeftColor: isCancelled ? 'grey.400' : isQuotaWarning ? 'warning.main' : 'primary.main',
+                    bgcolor: isQuotaWarning ? 'warning.50' : undefined,
                     opacity: isCancelled ? 0.7 : 1,
                   }}
                   onClick={() => {
@@ -846,6 +848,13 @@ const TrainerLessonsPage: React.FC = () => {
                             {slot.program_name}
                           </Typography>
                         </>
+                      )}
+                      {isQuotaWarning && (
+                        <Chip
+                          size="small"
+                          color="warning"
+                          label={`${slot.lesson_index_in_month}-е занятие · проверьте списание`}
+                        />
                       )}
                     </Stack>
                     <Typography variant="subtitle1" sx={{ mt: 0.5 }}>

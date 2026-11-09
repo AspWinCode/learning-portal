@@ -142,6 +142,7 @@ def _enqueue_lesson_change_notifications(
             )
 
 LESSONS_PER_MONTH = 8
+LESSONS_PER_MONTH_WARNING = LESSONS_PER_MONTH + 1
 
 
 def _first_n_slots_per_group_in_month(
@@ -153,7 +154,11 @@ def _first_n_slots_per_group_in_month(
     individual_group_ids: Optional[Set[int]] = None,
     group_start_dates: Optional[dict[int, date]] = None,
 ) -> Tuple[Set[Tuple[int, date, time, time]], dict]:
-    """Для каждой группы возвращает множество (group_id, date, start_time, end_time) первых 8 слотов в месяце (или все слоты для индивидуальных групп) и маппинг (group_id, date, st, et) -> index 1..8."""
+    """Возвращает первые 9 слотов месяца и их порядковые номера.
+
+    Девятый слот нужен, чтобы показать предупреждение и дать пользователю
+    возможность вручную решить, оставлять ли сверхлимитное занятие.
+    """
     individual_group_ids = individual_group_ids or set()
     group_start_dates = group_start_dates or {}
     cancelled_set = {(c.group_id, c.lesson_date, c.start_time, c.end_time) for c in cancellations}
@@ -180,7 +185,7 @@ def _first_n_slots_per_group_in_month(
         slots_in_month.sort(key=lambda x: (x[0], x[1]))
         # Октябрь 2026: показываем все занятия расписания, без лимита 8 в месяц.
         unlimited_month = (year, month) == (2026, 10)
-        n = len(slots_in_month) if gid in individual_group_ids or unlimited_month else min(LESSONS_PER_MONTH, len(slots_in_month))
+        n = len(slots_in_month) if gid in individual_group_ids or unlimited_month else min(LESSONS_PER_MONTH_WARNING, len(slots_in_month))
         for i, (d, st, et) in enumerate(slots_in_month[:n]):
             allowed.add((gid, d, st, et))
             index_map[(gid, d, st, et)] = i + 1
@@ -314,7 +319,7 @@ async def get_lessons_for_date(
         LessonCancellation.lesson_date >= month_start,
         LessonCancellation.lesson_date <= month_end,
     ).all()
-    first_8_allowed, lesson_index_in_month_map = _first_n_slots_per_group_in_month(
+    visible_slots, lesson_index_in_month_map = _first_n_slots_per_group_in_month(
         db,
         group_ids,
         year,
@@ -380,7 +385,7 @@ async def get_lessons_for_date(
             # Slots with existing attendance records (moved lessons) and manual one-off slots always show,
             # even if the date is outside the regular schedule. Quota filter only applies
             # to schedule-generated future slots with no attendance yet.
-            if not atts and not is_manual and (group.id, lesson_date, slot_start, slot_end) not in first_8_allowed:
+            if not atts and not is_manual and (group.id, lesson_date, slot_start, slot_end) not in visible_slots:
                 return
             # 1) Если в LessonAttendance уже зафиксирован тренер — используем его (исторические данные).
             att_trainer_ids = {

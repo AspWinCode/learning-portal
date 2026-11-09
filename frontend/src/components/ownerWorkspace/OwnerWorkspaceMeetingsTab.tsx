@@ -25,8 +25,6 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Tab,
-  Tabs,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
@@ -82,6 +80,7 @@ type Props = {
   users: User[];
   canCreate: boolean;
   onCountChange?: (count: number) => void;
+  mode?: 'meetings' | 'slots';
 };
 
 const statusLabels: Record<string, string> = {
@@ -129,7 +128,7 @@ function isOverdue(meeting: OwnerWorkspaceMeeting): boolean {
   return new Date(`${meeting.meeting_date}T${meeting.meeting_time || '00:00'}`).getTime() < Date.now();
 }
 
-export function OwnerWorkspaceMeetingsTab({ projects, contacts, users, canCreate, onCountChange }: Props) {
+export function OwnerWorkspaceMeetingsTab({ projects, contacts, users, canCreate, onCountChange, mode = 'meetings' }: Props) {
   const [meetings, setMeetings] = useState<OwnerWorkspaceMeeting[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -150,7 +149,6 @@ export function OwnerWorkspaceMeetingsTab({ projects, contacts, users, canCreate
   const [deleteTarget, setDeleteTarget] = useState<OwnerWorkspaceMeeting | null>(null);
   const [taskDialogMeeting, setTaskDialogMeeting] = useState<OwnerWorkspaceMeeting | null>(null);
   const [taskTitle, setTaskTitle] = useState('');
-  const [meetingSubtab, setMeetingSubtab] = useState<'meetings' | 'slots'>('meetings');
   const [recurringSlots, setRecurringSlots] = useState<OwnerWorkspaceRecurringSlot[]>([]);
   const [slotDialogOpen, setSlotDialogOpen] = useState(false);
   const [slotEditing, setSlotEditing] = useState<OwnerWorkspaceRecurringSlot | null>(null);
@@ -189,9 +187,10 @@ export function OwnerWorkspaceMeetingsTab({ projects, contacts, users, canCreate
   };
 
   useEffect(() => {
+    if (mode === 'slots') return;
     void loadMeetings();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, projectId, contactId, responsibleId, meetingType, dateFrom, dateTo, overdueOnly]);
+  }, [status, projectId, contactId, responsibleId, meetingType, dateFrom, dateTo, overdueOnly, mode]);
 
   const loadRecurringSlots = async () => {
     try {
@@ -202,8 +201,8 @@ export function OwnerWorkspaceMeetingsTab({ projects, contacts, users, canCreate
   };
 
   useEffect(() => {
-    if (meetingSubtab === 'slots') void loadRecurringSlots();
-  }, [meetingSubtab]);
+    if (mode === 'slots') void loadRecurringSlots();
+  }, [mode]);
 
   const openSlotDialog = (slot?: OwnerWorkspaceRecurringSlot) => {
     setSlotEditing(slot || null);
@@ -364,14 +363,10 @@ export function OwnerWorkspaceMeetingsTab({ projects, contacts, users, canCreate
     }
   };
 
-  if (meetingSubtab === 'slots') {
+  if (mode === 'slots') {
     return (
       <Stack spacing={2}>
         {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
-        <Tabs value={meetingSubtab} onChange={(_, value) => setMeetingSubtab(value)} sx={{ borderBottom: 1, borderColor: 'divider' }}>
-          <Tab value="meetings" label="Встречи" />
-          <Tab value="slots" label="Регулярные занятые слоты" />
-        </Tabs>
         <Card>
           <CardContent>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }} justifyContent="space-between">
@@ -427,11 +422,6 @@ export function OwnerWorkspaceMeetingsTab({ projects, contacts, users, canCreate
   return (
     <Stack spacing={2}>
       {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
-
-      <Tabs value={meetingSubtab} onChange={(_, value) => setMeetingSubtab(value)} sx={{ borderBottom: 1, borderColor: 'divider' }}>
-        <Tab value="meetings" label="Встречи" />
-        <Tab value="slots" label="Регулярные занятые слоты" />
-      </Tabs>
 
       <Card>
         <CardContent>

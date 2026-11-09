@@ -61,7 +61,7 @@ async def get_academy_metrics(
 
 @router.get("/academy-metrics/monthly", response_model=AcademyMonthlyMetricsResponse)
 async def get_academy_metrics_monthly(
-    date_from: Optional[date] = Query(None, description="Начало периода (первый день месяца, включительно)"),
+    date_from: Optional[date] = Query(None, description="Начало периода, включительно"),
     date_to: Optional[date] = Query(None, description="Конец периода (день внутри месяца, включительно)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_permission("owner_dashboard.access")),
@@ -81,7 +81,12 @@ async def get_academy_metrics_monthly(
             start_month += 12
             start_year -= 1
         period_from = date(start_year, start_month, 1)
-    months = build_academy_monthly_metrics(db, date_from=period_from, date_to=period_to)
+    months = build_academy_monthly_metrics(
+        db,
+        date_from=period_from,
+        date_to=period_to,
+        exact_period=True,
+    )
     return {"months": months}
 
 

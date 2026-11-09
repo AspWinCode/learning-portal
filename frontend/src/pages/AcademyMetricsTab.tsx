@@ -74,13 +74,7 @@ const formatMonthLabel = (month: string): string => {
   return `${name} ${yearStr}`;
 };
 
-const toMonthInputValue = (date: Date) => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  return `${year}-${month}`;
-};
-
-const monthInputToDateFrom = (value: string) => `${value}-01`;
+const toDateInputValue = (date: Date) => toLocalDateString(date);
 
 const QUICK_RANGES = [
   { label: '6 месяцев', months: 6 },
@@ -114,28 +108,30 @@ const AcademyMetricsTab: React.FC = () => {
   const now = new Date();
   const [monthFrom, setMonthFrom] = useState<string>(() => {
     const d = new Date(now.getFullYear(), now.getMonth() - 11, 1);
-    return toMonthInputValue(d);
+    return toDateInputValue(d);
   });
-  const [monthTo, setMonthTo] = useState<string>(() => toMonthInputValue(now));
+  const [monthTo, setMonthTo] = useState<string>(() => toDateInputValue(now));
+  const monthlyPeriodInvalid = Boolean(monthFrom && monthTo && monthFrom > monthTo);
 
   const applyQuickRange = (months: number | null, sinceJan?: boolean) => {
     const to = new Date();
-    setMonthTo(toMonthInputValue(to));
+    setMonthTo(toDateInputValue(to));
     if (sinceJan) {
-      setMonthFrom(toMonthInputValue(new Date(to.getFullYear(), 0, 1)));
+      setMonthFrom(toDateInputValue(new Date(to.getFullYear(), 0, 1)));
       return;
     }
     const from = new Date(to.getFullYear(), to.getMonth() - ((months || 1) - 1), 1);
-    setMonthFrom(toMonthInputValue(from));
+    setMonthFrom(toDateInputValue(from));
   };
 
   const monthlyQuery = useQuery({
     queryKey: ['owner-dashboard', 'academy-metrics-monthly', monthFrom, monthTo],
     queryFn: () =>
       ownerDashboardApi.getAcademyMetricsMonthly({
-        date_from: monthInputToDateFrom(monthFrom),
-        date_to: monthInputToDateFrom(monthTo),
+        date_from: monthFrom,
+        date_to: monthTo,
       }),
+    enabled: Boolean(monthFrom && monthTo && !monthlyPeriodInvalid),
   });
 
   const monthlyRows: AcademyMonthlyMetricsRow[] = monthlyQuery.data?.months || [];
@@ -324,7 +320,7 @@ const AcademyMetricsTab: React.FC = () => {
               </Typography>
               <TextField
                 label="С"
-                type="month"
+                type="date"
                 size="small"
                 value={monthFrom}
                 onChange={(e) => setMonthFrom(e.target.value)}
@@ -332,7 +328,7 @@ const AcademyMetricsTab: React.FC = () => {
               />
               <TextField
                 label="По"
-                type="month"
+                type="date"
                 size="small"
                 value={monthTo}
                 onChange={(e) => setMonthTo(e.target.value)}
@@ -350,7 +346,13 @@ const AcademyMetricsTab: React.FC = () => {
               ))}
             </Stack>
 
-            {monthlyQuery.isLoading ? (
+            {monthlyPeriodInvalid && (
+              <Alert severity="warning" sx={{ mb: 2 }}>
+                Дата «По» должна быть не раньше даты «С».
+              </Alert>
+            )}
+
+            {monthlyPeriodInvalid ? null : monthlyQuery.isLoading ? (
               <Box display="flex" justifyContent="center" py={4}>
                 <CircularProgress />
               </Box>

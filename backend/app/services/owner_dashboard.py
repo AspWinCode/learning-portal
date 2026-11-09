@@ -648,6 +648,7 @@ def build_academy_monthly_metrics(
     *,
     date_from: date,
     date_to: date,
+    exact_period: bool = False,
 ) -> List[dict]:
     """Динамика Академии по месяцам: одна строка на календарный месяц.
 
@@ -666,8 +667,12 @@ def build_academy_monthly_metrics(
     if not months:
         return []
 
-    range_start = datetime.combine(months[0], time.min, tzinfo=timezone.utc)
-    range_end = datetime.combine(_next_month_start(months[-1]), time.min, tzinfo=timezone.utc)
+    if exact_period:
+        range_start = datetime.combine(date_from, time.min, tzinfo=timezone.utc)
+        range_end = datetime.combine(date_to + timedelta(days=1), time.min, tzinfo=timezone.utc)
+    else:
+        range_start = datetime.combine(months[0], time.min, tzinfo=timezone.utc)
+        range_end = datetime.combine(_next_month_start(months[-1]), time.min, tzinfo=timezone.utc)
 
     leads_rows = (
         db.query(_utc_month_trunc(Lead.created_at).label("m"), func.count(Lead.id))

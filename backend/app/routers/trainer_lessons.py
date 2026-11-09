@@ -732,8 +732,15 @@ def _process_attendance_deduction(
     ).first()
     is_makeup_attendance = makeup_follow_up is not None
 
-    is_present = att.attended and (not att.absence_reason or att.absence_reason == "was")
-    is_absence = not att.attended or (att.absence_reason and att.absence_reason != "was")
+    removed_from_slot = db.query(LessonRosterExclusion).filter(
+        LessonRosterExclusion.group_id == att.group_id,
+        LessonRosterExclusion.lesson_date == att.lesson_date,
+        LessonRosterExclusion.start_time == start_t,
+        LessonRosterExclusion.end_time == end_t,
+        LessonRosterExclusion.student_id == att.student_id,
+    ).first() is not None
+    is_present = (not removed_from_slot) and att.attended and (not att.absence_reason or att.absence_reason == "was")
+    is_absence = (not removed_from_slot) and (not att.attended or (att.absence_reason and att.absence_reason != "was"))
 
     if is_present:
         _close_absence_for_group_makeup(db, attendance=att, group=group)
@@ -764,7 +771,7 @@ def _process_attendance_deduction(
     extra_units_to_apply = 0.0
     price_per_unit = 0.0
 
-    if not in_freeze and not on_grant and not is_makeup_attendance:
+    if not in_freeze and not on_grant and not is_makeup_attendance and not removed_from_slot:
         abonement = getattr(student, "abonement", None)
         if not abonement and student.abonement_id:
             abonement = db.query(Abonement).filter(Abonement.id == student.abonement_id).first()

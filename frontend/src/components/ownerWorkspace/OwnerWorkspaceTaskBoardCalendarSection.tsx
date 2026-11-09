@@ -40,6 +40,15 @@ import type { OwnerWorkspaceMeeting, OwnerWorkspaceRecurringSlot, OwnerWorkspace
 
 type OwnerWorkspaceTaskStatus = 'new' | 'in_progress' | 'waiting' | 'completed' | 'cancelled';
 
+type CalendarTimeEvent = {
+  id: string;
+  title: string;
+  startTime: string;
+  endTime: string;
+  tone: 'task' | 'meeting' | 'slot' | 'lesson';
+  onClick?: () => void;
+};
+
 type KanbanColumn = {
   label: string;
   statuses: OwnerWorkspaceTaskStatus[];
@@ -275,6 +284,61 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
     });
   };
 
+  const timeGridDays = calendarMode === 'day' ? [calendarMonth] : visibleDays;
+  const timeGridRows = React.useMemo(
+    () => Array.from({ length: 96 }, (_, index) => `${String(Math.floor(index / 4)).padStart(2, '0')}:${String((index % 4) * 15).padStart(2, '0')}`),
+    []
+  );
+  const timeGridEventsByDay = React.useMemo(() => {
+    const map = new Map<string, CalendarTimeEvent[]>();
+    const add = (key: string, event: CalendarTimeEvent) => map.set(key, [...(map.get(key) || []), event]);
+    const taskEndTime = (task: OwnerWorkspaceTask) => {
+      const date = new Date(task.deadline_at || '');
+      date.setMinutes(date.getMinutes() + 30);
+      return format(date, 'HH:mm');
+    };
+    timeGridDays.forEach((day) => {
+      const key = format(day, 'yyyy-MM-dd');
+      (filteredTasksByDay.get(key) || []).forEach((task) => {
+        if (!task.deadline_at) return;
+        const date = new Date(task.deadline_at);
+        add(key, { id: `task-${task.id}`, title: task.title, startTime: format(date, 'HH:mm'), endTime: taskEndTime(task), tone: 'task', onClick: () => void onOpenTask(task) });
+      });
+      (meetingsByDay.get(key) || []).forEach((meeting) => {
+        const start = String(meeting.meeting_time || '').slice(0, 5);
+        const [hour, minute] = start.split(':').map(Number);
+        const end = `${String(Math.min(23, hour + 1)).padStart(2, '0')}:${String(minute || 0).padStart(2, '0')}`;
+        add(key, { id: `meeting-${meeting.id}`, title: meeting.title, startTime: start, endTime: end, tone: 'meeting' });
+      });
+      (recurringSlotsByDay.get(key) || []).forEach((slot) => add(key, {
+        id: `slot-${slot.id}`,
+        title: slot.title,
+        startTime: String(slot.start_time).slice(0, 5),
+        endTime: String(slot.end_time).slice(0, 5),
+        tone: 'slot',
+      }));
+      (trainerLessonsByDay.get(key) || []).forEach((lesson) => add(key, {
+        id: `lesson-${lesson.group_id}-${lesson.lesson_date}-${lesson.start_time}`,
+        title: lesson.group_name,
+        startTime: String(lesson.start_time).slice(0, 5),
+        endTime: String(lesson.end_time).slice(0, 5),
+        tone: 'lesson',
+      }));
+    });
+    return map;
+  }, [filteredTasksByDay, meetingsByDay, onOpenTask, recurringSlotsByDay, timeGridDays, trainerLessonsByDay]);
+
+  const timeToMinutes = (value: string) => {
+    const [hour, minute] = value.split(':').map(Number);
+    return (Number.isFinite(hour) ? hour : 0) * 60 + (Number.isFinite(minute) ? minute : 0);
+  };
+  const toneStyles: Record<CalendarTimeEvent['tone'], { backgroundColor: string; borderColor: string; color: string }> = {
+    task: { backgroundColor: '#FDEBEC', borderColor: '#F4B8BD', color: '#A51D2D' },
+    meeting: { backgroundColor: '#EEE5FF', borderColor: '#B98AF5', color: '#5B21B6' },
+    slot: { backgroundColor: '#FFF4DE', borderColor: '#F0A000', color: '#8A4B00' },
+    lesson: { backgroundColor: '#E2F6EE', borderColor: '#31B486', color: '#006B4F' },
+  };
+
   return (
     <Card>
       <CardContent>
@@ -314,94 +378,53 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
           <Button size="small" startIcon={<AddIcon />} variant="outlined" onClick={() => setZoneDialogOpen(true)}>Добавить зону</Button>
           {canCreateMeeting && <Button size="small" startIcon={<EventIcon />} variant="contained" onClick={() => openMeetingDialog()}>Встреча</Button>}
         </Stack>
-        <Box
-          sx={{
-            display: 'grid',
-            gridTemplateColumns: `repeat(${calendarMode === 'day' ? 1 : 7}, 1fr)`,
-            gap: 0.5,
-          }}
-        >
-          {calendarMode !== 'day' && weekdaysShort.map((weekday) => (
-            <Typography key={weekday} variant="caption" color="text.secondary" sx={{ textAlign: 'center', fontWeight: 600 }}>
-              {weekday}
-            </Typography>
-          ))}
-          {visibleDays.map((day) => {
-            const key = format(day, 'yyyy-MM-dd');
-            const dayTasks = filteredTasksByDay.get(key) || [];
-            const inMonth = calendarMode === 'month' ? isSameMonth(day, calendarMonth) : true;
-            return (
-              <Box
-                key={key}
-                sx={{
-                  minHeight: 100,
-                  border: '1px solid',
-                  borderColor: 'divider',
-                  ...(visibleZone ? { borderTop: `4px solid ${visibleZone.color}` } : {}),
-                  borderRadius: 1,
-                  p: 0.5,
-                  bgcolor: inMonth ? 'background.paper' : 'action.hover',
-                  opacity: inMonth ? 1 : 0.65,
-                }}
-              >
-                <Typography
-                  variant="caption"
-                  sx={{ fontWeight: isToday(day) ? 700 : 500, color: isToday(day) ? 'primary.main' : 'text.primary' }}
-                >
-                  {format(day, 'd')}
-                </Typography>
+        {calendarMode === 'month' ? (
+          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 0.5 }}>
+            {weekdaysShort.map((weekday) => <Typography key={weekday} variant="caption" color="text.secondary" sx={{ textAlign: 'center', fontWeight: 600 }}>{weekday}</Typography>)}
+            {visibleDays.map((day) => {
+              const key = format(day, 'yyyy-MM-dd');
+              const dayTasks = filteredTasksByDay.get(key) || [];
+              const inMonth = isSameMonth(day, calendarMonth);
+              return <Box key={key} sx={{ minHeight: 100, border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 0.5, bgcolor: inMonth ? 'background.paper' : 'action.hover', opacity: inMonth ? 1 : 0.65 }}>
+                <Typography variant="caption" sx={{ fontWeight: isToday(day) ? 700 : 500, color: isToday(day) ? 'primary.main' : 'text.primary' }}>{format(day, 'd')}</Typography>
                 <Stack spacing={0.5} sx={{ mt: 0.5, minWidth: 0 }}>
-                  {(recurringSlotsByDay.get(key) || []).map((slot) => (
-                    <Chip
-                      key={`recurring-slot-${slot.id}`}
-                      size="small"
-                      color="warning"
-                      variant="outlined"
-                      label={`${String(slot.start_time).slice(0, 5)}–${String(slot.end_time).slice(0, 5)} ${slot.title}`}
-                      sx={{ height: 24, maxWidth: '100%', justifyContent: 'flex-start', '& .MuiChip-label': { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }}
-                    />
-                  ))}
-                  {(trainerLessonsByDay.get(key) || []).map((lesson) => (
-                    <Chip
-                      key={`trainer-lesson-${lesson.group_id}-${lesson.lesson_date}-${lesson.start_time}`}
-                      size="small"
-                      color="success"
-                      variant="outlined"
-                      label={`${String(lesson.start_time).slice(0, 5)}–${String(lesson.end_time).slice(0, 5)} ${lesson.group_name}`}
-                      sx={{ height: 24, maxWidth: '100%', justifyContent: 'flex-start', '& .MuiChip-label': { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }}
-                    />
-                  ))}
-                  {(meetingsByDay.get(key) || []).map((meeting) => (
-                    <Chip
-                      key={`meeting-${meeting.id}`}
-                      size="small"
-                      color="primary"
-                      icon={<EventIcon sx={{ fontSize: 14 }} />}
-                      label={`${meeting.meeting_time?.slice(0, 5) || ''} ${meeting.title}`}
-                      sx={{ height: 24, maxWidth: '100%', justifyContent: 'flex-start', '& .MuiChip-label': { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }}
-                    />
-                  ))}
-                  {dayTasks.slice(0, 4).map((task) => (
-                    <Chip
-                      key={task.id}
-                      size="small"
-                      color={isTaskOverdue(task) ? 'error' : 'default'}
-                      variant={isTaskOverdue(task) ? 'filled' : 'outlined'}
-                      label={task.title}
-                      onClick={() => void onOpenTask(task)}
-                      sx={{ height: 24, maxWidth: '100%', justifyContent: 'flex-start', '& .MuiChip-label': { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }}
-                    />
-                  ))}
-                  {dayTasks.length > 4 && (
-                    <Typography variant="caption" color="text.secondary">
-                      +{dayTasks.length - 4}
-                    </Typography>
-                  )}
+                  {(timeGridEventsByDay.get(key) || []).map((event) => <Chip key={event.id} size="small" variant="outlined" label={`${event.startTime} ${event.title}`} onClick={event.onClick} sx={{ height: 24, maxWidth: '100%', justifyContent: 'flex-start', borderColor: toneStyles[event.tone].borderColor, color: toneStyles[event.tone].color, bgcolor: toneStyles[event.tone].backgroundColor, '& .MuiChip-label': { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }} />)}
                 </Stack>
+              </Box>;
+            })}
+          </Box>
+        ) : (
+          <Box sx={{ overflow: 'auto', maxHeight: 720 }}>
+            <Box sx={{ minWidth: calendarMode === 'day' ? 620 : 1180 }}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: `72px repeat(${timeGridDays.length}, minmax(160px, 1fr))`, position: 'sticky', top: 0, zIndex: 2, bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider' }}>
+                <Box />
+                {timeGridDays.map((day) => <Typography key={format(day, 'yyyy-MM-dd')} variant="subtitle2" sx={{ textAlign: 'center', py: 1, borderLeft: '1px solid', borderColor: 'divider', color: isToday(day) ? 'primary.main' : 'text.primary' }}>{format(day, 'EEEE, d MMMM', { locale: ru })}</Typography>)}
               </Box>
-            );
-          })}
-        </Box>
+              <Box sx={{ display: 'grid', gridTemplateColumns: `72px repeat(${timeGridDays.length}, minmax(160px, 1fr))`, height: 96 * 24 }}>
+                <Box sx={{ display: 'grid', gridTemplateRows: 'repeat(96, 24px)' }}>
+                  {timeGridRows.map((time) => <Typography key={time} variant="caption" color="text.secondary" sx={{ pr: 1, textAlign: 'right', lineHeight: '24px', borderBottom: '1px solid', borderColor: 'divider' }}>{time}</Typography>)}
+                </Box>
+                {timeGridDays.map((day) => {
+                  const key = format(day, 'yyyy-MM-dd');
+                  const events = timeGridEventsByDay.get(key) || [];
+                  return <Box key={key} sx={{ position: 'relative', borderLeft: '1px solid', borderColor: 'divider', backgroundImage: 'repeating-linear-gradient(to bottom, transparent 0, transparent 23px, rgba(120, 120, 120, .18) 23px, rgba(120, 120, 120, .18) 24px)' }}>
+                    {events.map((event, index) => {
+                      const start = Math.max(0, Math.min(1439, timeToMinutes(event.startTime)));
+                      let end = timeToMinutes(event.endTime);
+                      if (end <= start) end = 1440;
+                      const top = (start / 15) * 24;
+                      const height = Math.max(24, ((end - start) / 15) * 24 - 2);
+                      const sameStart = events.filter((candidate) => candidate.startTime === event.startTime);
+                      const lane = sameStart.indexOf(event);
+                      const lanes = Math.min(3, Math.max(1, sameStart.length));
+                      return <Box key={`${event.id}-${index}`} onClick={event.onClick} sx={{ position: 'absolute', top, height, left: `calc(${(lane * 100) / lanes}% + 2px)`, width: `calc(${100 / lanes}% - 4px)`, overflow: 'hidden', p: 0.5, border: '1px solid', borderColor: toneStyles[event.tone].borderColor, borderRadius: 0.75, bgcolor: toneStyles[event.tone].backgroundColor, color: toneStyles[event.tone].color, cursor: event.onClick ? 'pointer' : 'default', zIndex: 1 }}><Typography variant="caption" sx={{ display: 'block', fontWeight: 700, lineHeight: 1.2 }}>{event.startTime}–{event.endTime}</Typography><Typography variant="caption" sx={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.2 }}>{event.title}</Typography></Box>;
+                    })}
+                  </Box>;
+                })}
+              </Box>
+            </Box>
+          </Box>
+        )}
       </CardContent>
       <Dialog open={zoneDialogOpen} onClose={() => setZoneDialogOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle>Новая зона работы</DialogTitle>

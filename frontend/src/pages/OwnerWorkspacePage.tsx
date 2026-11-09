@@ -78,6 +78,7 @@ import type {
   OwnerWorkspaceDigest,
   OwnerWorkspaceHistoryStats,
   OwnerWorkspaceMeeting,
+  OwnerWorkspaceRecurringSlot,
   OwnerWorkspaceNotificationsEnvelope,
   OwnerWorkspaceMessage,
   OwnerWorkspaceNotificationConfig,
@@ -938,6 +939,7 @@ const OwnerWorkspacePage: React.FC = () => {
   const [tasks, setTasks] = useState<OwnerWorkspaceTask[]>([]);
   const [meetingsCount, setMeetingsCount] = useState(0);
   const [calendarMeetings, setCalendarMeetings] = useState<OwnerWorkspaceMeeting[]>([]);
+  const [calendarRecurringSlots, setCalendarRecurringSlots] = useState<OwnerWorkspaceRecurringSlot[]>([]);
   const [conversations, setConversations] = useState<OwnerWorkspaceConversation[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [historyLogs, setHistoryLogs] = useState<OwnerWorkspaceAuditLog[]>([]);
@@ -1812,6 +1814,14 @@ const OwnerWorkspacePage: React.FC = () => {
     }
   }, []);
 
+  const loadCalendarRecurringSlots = useCallback(async () => {
+    try {
+      setCalendarRecurringSlots(await ownerWorkspaceApi.listRecurringSlots());
+    } catch {
+      setCalendarRecurringSlots([]);
+    }
+  }, []);
+
   const loadTasksFiltered = useCallback(async (opts?: { statusFilter?: string }) => {
     try {
       const usePaging = taskViewMode === 'list';
@@ -2035,11 +2045,11 @@ const OwnerWorkspacePage: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      await Promise.all([loadProjectsAndContacts(), loadTasksFiltered(), loadMeta(), loadMeetingsCount()]);
+      await Promise.all([loadProjectsAndContacts(), loadTasksFiltered(), loadMeta(), loadMeetingsCount(), loadCalendarRecurringSlots()]);
     } finally {
       setLoading(false);
     }
-  }, [loadProjectsAndContacts, loadTasksFiltered, loadMeta, loadMeetingsCount]);
+  }, [loadProjectsAndContacts, loadTasksFiltered, loadMeta, loadMeetingsCount, loadCalendarRecurringSlots]);
 
   useEffect(() => {
     if (tab === OW_TAB_SETTINGS && isWorkspaceFullAccess) {
@@ -6648,6 +6658,7 @@ const OwnerWorkspacePage: React.FC = () => {
                 zones={workZones}
                 onZonesChange={setWorkZones}
                 meetings={calendarMeetings}
+                recurringSlots={calendarRecurringSlots}
                 canCreateMeeting={isWorkspaceFullAccess}
                 onMeetingsChange={(next) => {
                   setCalendarMeetings(next);

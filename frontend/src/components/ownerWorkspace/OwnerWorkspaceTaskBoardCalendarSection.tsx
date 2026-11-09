@@ -36,7 +36,7 @@ import {
 import { ru } from 'date-fns/locale';
 import { ownerWorkspaceApi } from '../../services/api';
 
-import type { OwnerWorkspaceMeeting, OwnerWorkspaceTask, OwnerWorkspaceWorkZone } from '../../types';
+import type { OwnerWorkspaceMeeting, OwnerWorkspaceRecurringSlot, OwnerWorkspaceTask, OwnerWorkspaceWorkZone } from '../../types';
 
 type OwnerWorkspaceTaskStatus = 'new' | 'in_progress' | 'waiting' | 'completed' | 'cancelled';
 
@@ -61,6 +61,7 @@ type OwnerWorkspaceTaskBoardCalendarSectionProps = {
   zones: OwnerWorkspaceWorkZone[];
   onZonesChange: (zones: OwnerWorkspaceWorkZone[]) => void;
   meetings: OwnerWorkspaceMeeting[];
+  recurringSlots: OwnerWorkspaceRecurringSlot[];
   canCreateMeeting: boolean;
   onMeetingsChange: (meetings: OwnerWorkspaceMeeting[]) => void;
 };
@@ -85,6 +86,7 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
   zones,
   onZonesChange,
   meetings,
+  recurringSlots,
   canCreateMeeting,
   onMeetingsChange,
 }: OwnerWorkspaceTaskBoardCalendarSectionProps) {
@@ -136,6 +138,30 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
     });
     return map;
   }, [meetings]);
+  const recurringSlotsByDay = React.useMemo(() => {
+    const map = new Map<string, OwnerWorkspaceRecurringSlot[]>();
+    const rangeStart = startOfWeek(startOfMonth(calendarMonth), { weekStartsOn: 1 });
+    const rangeEnd = endOfWeek(endOfMonth(calendarMonth), { weekStartsOn: 1 });
+    const slotAppliesToDate = (slot: OwnerWorkspaceRecurringSlot, day: Date) => {
+      if (!slot.is_active) return false;
+      const dayKey = format(day, 'yyyy-MM-dd');
+      if (slot.start_date && dayKey < slot.start_date) return false;
+      if (slot.end_date && dayKey > slot.end_date) return false;
+      const weekday = (day.getDay() + 6) % 7;
+      if (slot.recurrence_type === 'daily') return true;
+      if (slot.recurrence_type === 'weekdays') return weekday < 5;
+      if (slot.recurrence_type === 'monthly') {
+        if (slot.weekdays?.length) return slot.weekdays.includes(weekday);
+        return Boolean(slot.start_date) && day.getDate() === Number(slot.start_date.slice(8, 10));
+      }
+      return slot.weekdays?.includes(weekday) ?? false;
+    };
+    eachDayOfInterval({ start: rangeStart, end: rangeEnd }).forEach((day) => {
+      const matches = recurringSlots.filter((slot) => slotAppliesToDate(slot, day));
+      if (matches.length) map.set(format(day, 'yyyy-MM-dd'), matches);
+    });
+    return map;
+  }, [calendarMonth, recurringSlots]);
   const openMeetingDialog = (date = format(new Date(), 'yyyy-MM-dd')) => {
     setMeetingDate(date);
     setMeetingTitle('');
@@ -315,6 +341,16 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
                   {format(day, 'd')}
                 </Typography>
                 <Stack spacing={0.5} sx={{ mt: 0.5, minWidth: 0 }}>
+                  {(recurringSlotsByDay.get(key) || []).map((slot) => (
+                    <Chip
+                      key={`recurring-slot-${slot.id}`}
+                      size="small"
+                      color="warning"
+                      variant="outlined"
+                      label={`${String(slot.start_time).slice(0, 5)}–${String(slot.end_time).slice(0, 5)} ${slot.title}`}
+                      sx={{ height: 24, maxWidth: '100%', justifyContent: 'flex-start', '& .MuiChip-label': { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }}
+                    />
+                  ))}
                   {(meetingsByDay.get(key) || []).map((meeting) => (
                     <Chip
                       key={`meeting-${meeting.id}`}

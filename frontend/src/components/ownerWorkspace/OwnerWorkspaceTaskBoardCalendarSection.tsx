@@ -101,7 +101,7 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
   canCreateMeeting,
   onMeetingsChange,
 }: OwnerWorkspaceTaskBoardCalendarSectionProps) {
-  const [calendarMode, setCalendarMode] = React.useState<'day' | 'week' | 'month'>('month');
+  const [calendarMode, setCalendarMode] = React.useState<'day' | 'week' | 'month'>('week');
   const [zoneDialogOpen, setZoneDialogOpen] = React.useState(false);
   const [zoneName, setZoneName] = React.useState('');
   const [zoneWeekday, setZoneWeekday] = React.useState('0');

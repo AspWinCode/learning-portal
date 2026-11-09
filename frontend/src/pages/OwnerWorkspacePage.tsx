@@ -62,15 +62,18 @@ import CheckIcon from '@mui/icons-material/Check';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import {
+  eachDayOfInterval,
+  endOfWeek,
   format,
   startOfMonth,
+  startOfWeek,
 } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { useAuth } from '../contexts/AuthContext';
 import { OwnerWorkspaceTaskCreateDialog, type TaskCreatePayload } from '../components/ownerWorkspace/OwnerWorkspaceTaskCreateDialog';
-import { mediaApi, ownerWorkspaceApi, settingsApi, tasksApi, usersApi } from '../services/api';
+import { mediaApi, ownerWorkspaceApi, settingsApi, tasksApi, trainerLessonsApi, usersApi } from '../services/api';
 import type {
   OwnerWorkspaceAuditLog,
   OwnerWorkspaceContact,
@@ -99,6 +102,7 @@ import type {
   OwnerWorkspaceTasksAnalyticsOverview,
   OwnerWorkspaceWebPushStatus,
   OwnerWorkspaceWorkZone,
+  TrainerLessonSlot,
   User,
 } from '../types';
 import { extractApiError } from '../utils/extractApiError';
@@ -940,6 +944,7 @@ const OwnerWorkspacePage: React.FC = () => {
   const [meetingsCount, setMeetingsCount] = useState(0);
   const [calendarMeetings, setCalendarMeetings] = useState<OwnerWorkspaceMeeting[]>([]);
   const [calendarRecurringSlots, setCalendarRecurringSlots] = useState<OwnerWorkspaceRecurringSlot[]>([]);
+  const [calendarTrainerLessons, setCalendarTrainerLessons] = useState<TrainerLessonSlot[]>([]);
   const [conversations, setConversations] = useState<OwnerWorkspaceConversation[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [historyLogs, setHistoryLogs] = useState<OwnerWorkspaceAuditLog[]>([]);
@@ -1822,6 +1827,30 @@ const OwnerWorkspacePage: React.FC = () => {
     }
   }, []);
 
+  const kirillTrainer = useMemo(() => {
+    const normalize = (value: string) => value.toLocaleLowerCase('ru-RU').replace(/ё/g, 'е');
+    return users.find((candidate) => {
+      const name = normalize(String(candidate.full_name || ''));
+      return (name.includes('тирских') || name.includes('tirskikh')) && (name.includes('кирилл') || name.includes('kirill'));
+    }) || null;
+  }, [users]);
+
+  const loadCalendarTrainerLessons = useCallback(async () => {
+    if (tab !== OW_TAB_TASKS || taskViewMode !== 'calendar' || !kirillTrainer) {
+      setCalendarTrainerLessons([]);
+      return;
+    }
+    const rangeStart = startOfWeek(startOfMonth(calendarMonth), { weekStartsOn: 1 });
+    const rangeEnd = endOfWeek(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0), { weekStartsOn: 1 });
+    try {
+      const days = eachDayOfInterval({ start: rangeStart, end: rangeEnd });
+      const rows = (await Promise.all(days.map((day) => trainerLessonsApi.getForDate(format(day, 'yyyy-MM-dd'))))).flat();
+      setCalendarTrainerLessons(rows.filter((lesson) => lesson.trainer_id === kirillTrainer.id));
+    } catch {
+      setCalendarTrainerLessons([]);
+    }
+  }, [calendarMonth, kirillTrainer, tab, taskViewMode]);
+
   const loadTasksFiltered = useCallback(async (opts?: { statusFilter?: string }) => {
     try {
       const usePaging = taskViewMode === 'list';
@@ -2352,6 +2381,10 @@ const OwnerWorkspacePage: React.FC = () => {
       void loadCalendarRecurringSlots();
     }
   }, [tab, loadTasksFiltered, loadCalendarRecurringSlots]);
+
+  useEffect(() => {
+    void loadCalendarTrainerLessons();
+  }, [loadCalendarTrainerLessons]);
 
   useEffect(() => {
     if (tab !== OW_TAB_HISTORY) return;
@@ -6660,6 +6693,7 @@ const OwnerWorkspacePage: React.FC = () => {
                 onZonesChange={setWorkZones}
                 meetings={calendarMeetings}
                 recurringSlots={calendarRecurringSlots}
+                trainerLessons={calendarTrainerLessons}
                 canCreateMeeting={isWorkspaceFullAccess}
                 onMeetingsChange={(next) => {
                   setCalendarMeetings(next);

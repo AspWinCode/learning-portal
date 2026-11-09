@@ -36,7 +36,7 @@ import {
 import { ru } from 'date-fns/locale';
 import { ownerWorkspaceApi } from '../../services/api';
 
-import type { OwnerWorkspaceMeeting, OwnerWorkspaceRecurringSlot, OwnerWorkspaceTask, OwnerWorkspaceWorkZone } from '../../types';
+import type { OwnerWorkspaceMeeting, OwnerWorkspaceRecurringSlot, OwnerWorkspaceTask, OwnerWorkspaceWorkZone, TrainerLessonSlot } from '../../types';
 
 type OwnerWorkspaceTaskStatus = 'new' | 'in_progress' | 'waiting' | 'completed' | 'cancelled';
 
@@ -62,6 +62,7 @@ type OwnerWorkspaceTaskBoardCalendarSectionProps = {
   onZonesChange: (zones: OwnerWorkspaceWorkZone[]) => void;
   meetings: OwnerWorkspaceMeeting[];
   recurringSlots: OwnerWorkspaceRecurringSlot[];
+  trainerLessons: TrainerLessonSlot[];
   canCreateMeeting: boolean;
   onMeetingsChange: (meetings: OwnerWorkspaceMeeting[]) => void;
 };
@@ -87,6 +88,7 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
   onZonesChange,
   meetings,
   recurringSlots,
+  trainerLessons,
   canCreateMeeting,
   onMeetingsChange,
 }: OwnerWorkspaceTaskBoardCalendarSectionProps) {
@@ -138,6 +140,14 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
     });
     return map;
   }, [meetings]);
+  const trainerLessonsByDay = React.useMemo(() => {
+    const map = new Map<string, TrainerLessonSlot[]>();
+    trainerLessons.forEach((lesson) => {
+      if (lesson.is_cancelled) return;
+      map.set(lesson.lesson_date, [...(map.get(lesson.lesson_date) || []), lesson]);
+    });
+    return map;
+  }, [trainerLessons]);
   const recurringSlotsByDay = React.useMemo(() => {
     const map = new Map<string, OwnerWorkspaceRecurringSlot[]>();
     const rangeStart = startOfWeek(startOfMonth(calendarMonth), { weekStartsOn: 1 });
@@ -348,6 +358,16 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
                       color="warning"
                       variant="outlined"
                       label={`${String(slot.start_time).slice(0, 5)}–${String(slot.end_time).slice(0, 5)} ${slot.title}`}
+                      sx={{ height: 24, maxWidth: '100%', justifyContent: 'flex-start', '& .MuiChip-label': { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }}
+                    />
+                  ))}
+                  {(trainerLessonsByDay.get(key) || []).map((lesson) => (
+                    <Chip
+                      key={`trainer-lesson-${lesson.group_id}-${lesson.lesson_date}-${lesson.start_time}`}
+                      size="small"
+                      color="success"
+                      variant="outlined"
+                      label={`${String(lesson.start_time).slice(0, 5)}–${String(lesson.end_time).slice(0, 5)} ${lesson.group_name}`}
                       sx={{ height: 24, maxWidth: '100%', justifyContent: 'flex-start', '& .MuiChip-label': { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }}
                     />
                   ))}

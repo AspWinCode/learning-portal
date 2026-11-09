@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Layout from '../components/Layout';
 import {
   Typography,
@@ -72,13 +72,20 @@ const GroupsPage: React.FC = () => {
   });
   const [formSchedules, setFormSchedules] = useState<Array<{ day_of_week: number; start_time: string; end_time: string }>>([]);
   const [groupsTab, setGroupsTab] = useState<'active' | 'archive'>('active');
+  const [groupSearch, setGroupSearch] = useState('');
   const { user } = useAuth();
   const effectiveRole = getEffectiveRole(user);
   const canManageGroups = hasPermission(user, 'groups.manage');
   const canManageMax = hasPermission(user, 'groups.messenger_link');
   const canViewMembers = canManageGroups || effectiveRole === 'trainer';
 
-  const displayedGroups = groups.filter((g) => (groupsTab === 'active' ? g.status === 'active' : g.status === 'archived'));
+  const displayedGroups = useMemo(() => {
+    const query = groupSearch.trim().toLocaleLowerCase('ru-RU');
+    return groups
+      .filter((group) => (groupsTab === 'active' ? group.status === 'active' : group.status === 'archived'))
+      .filter((group) => !query || group.name.toLocaleLowerCase('ru-RU').includes(query))
+      .sort((left, right) => left.name.localeCompare(right.name, 'ru', { numeric: true, sensitivity: 'base' }));
+  }, [groupSearch, groups, groupsTab]);
   const WEEKDAY_OPTIONS = [
     { value: 0, label: 'Понедельник' },
     { value: 1, label: 'Вторник' },
@@ -506,6 +513,20 @@ const GroupsPage: React.FC = () => {
           {error}
         </Alert>
       )}
+
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 2 }} alignItems={{ sm: 'center' }}>
+        <TextField
+          size="small"
+          label="Поиск по названию"
+          placeholder="Например, TKS"
+          value={groupSearch}
+          onChange={(event) => setGroupSearch(event.target.value)}
+          sx={{ minWidth: { sm: 320 } }}
+        />
+        <Typography variant="body2" color="text.secondary">
+          Найдено групп: {displayedGroups.length}
+        </Typography>
+      </Stack>
 
       <DataTable
         columns={groupColumns}

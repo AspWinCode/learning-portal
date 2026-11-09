@@ -907,7 +907,12 @@ const KANBAN_COLUMNS: {
   { label: 'Отменено', statuses: ['cancelled'], dropStatus: 'cancelled' },
 ];
 
-const OwnerWorkspacePage: React.FC = () => {
+type OwnerWorkspacePageProps = {
+  initialTab?: 'tasks';
+  initialTaskViewMode?: 'calendar';
+};
+
+const OwnerWorkspacePage: React.FC<OwnerWorkspacePageProps> = ({ initialTab, initialTaskViewMode }) => {
   const { user } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
@@ -931,7 +936,7 @@ const OwnerWorkspacePage: React.FC = () => {
   const isLimitedWorkspaceUser = effectiveRole === 'sales' || effectiveRole === 'trainer';
   const currentWorkspaceRoleLabel =
     OWNER_WS_GLOBAL_ROLE_LABELS[effectiveRole || ''] || (effectiveRole ?? 'unknown');
-  const [tab, setTab] = useState(0);
+  const [tab, setTab] = useState(initialTab === 'tasks' ? OW_TAB_TASKS : OW_TAB_PROJECTS);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1018,7 +1023,7 @@ const OwnerWorkspacePage: React.FC = () => {
   const [taskActiveOnly, setTaskActiveOnly] = useState(true);
   const [taskAssigneeFilter, setTaskAssigneeFilter] = useState<number | ''>('');
   const [repeatTaskNotice, setRepeatTaskNotice] = useState<OwnerWorkspaceTask | null>(null);
-  const [taskViewMode, setTaskViewMode] = useState<'list' | 'kanban' | 'calendar' | 'gantt'>('list');
+  const [taskViewMode, setTaskViewMode] = useState<'list' | 'kanban' | 'calendar' | 'gantt'>(initialTaskViewMode ?? 'list');
   // Сворачиваемые панели вкладки «Задачи» (уменьшают визуальный перегруз)
   const [showFiltersPanel, setShowFiltersPanel] = useState(
     () => localStorage.getItem('ow_tasks_panel_filters') === '1'

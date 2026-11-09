@@ -1233,6 +1233,14 @@ function App() {
               }
             />
             <Route
+              path="/calendar"
+              element={
+                <PrivateRoute requiredPermission="owner_workspace.access">
+                  <OwnerWorkspacePage initialTab="tasks" initialTaskViewMode="calendar" />
+                </PrivateRoute>
+              }
+            />
+            <Route
               path="/owner-workspace"
               element={
                 <PrivateRoute requiredPermission="owner_workspace.access">

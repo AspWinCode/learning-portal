@@ -96,7 +96,7 @@ const NAV_GROUPS: Array<{ id: string; label: string; paths: Set<string> }> = [
   { id: 'education', label: '🎓 Обучение', paths: new Set(['/trainer-cockpit', '/students', '/groups', '/lessons', '/programs', '/grades', '/characteristics', '/trainer-grades', '/trainers', '/methodists']) },
   { id: 'ops', label: '📋 Учебные операции', paths: new Set(['/operations/absences', '/operations/program-makeup', '/operations/instructions', '/operations/manual-lessons', '/projects']) },
   { id: 'finance', label: '💰 Финансы', paths: new Set(['/finance/overview', '/abonements', '/finance/payments', '/calculations', '/finance/tax-deduction', '/travel']) },
-  { id: 'workspace', label: '✅ Задачи и проекты', paths: new Set(['/tasks', '/owner-workspace/projects', '/owner-workspace/links', '/disk', '/passwords', '/transcription', '/notes', '/agile', '/smart-tables']) },
+  { id: 'workspace', label: '✅ Задачи и проекты', paths: new Set(['/tasks', '/calendar', '/owner-workspace/projects', '/owner-workspace/links', '/disk', '/passwords', '/transcription', '/notes', '/agile', '/smart-tables']) },
   { id: 'b2b', label: '🤝 Контрагенты и B2B', paths: new Set(['/owner-workspace/counterparties', '/b2b-schools']) },
   { id: 'system', label: '⚙️ Администрирование', paths: new Set(['/admin/settings', '/settings/communications', '/roles', '/reports']) },
 ];
@@ -464,6 +464,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
       items.push({ text: 'Проекты', icon: <Assignment />, path: '/projects' });
       items.push({ text: 'Таск трекер', icon: <Assignment />, path: '/owner-workspace/projects' });
+      items.push({ text: 'Календарь', icon: <EventAvailable />, path: '/calendar' });
       items.push({ text: 'Полезные ссылки', icon: <Link />, path: '/owner-workspace/links' });
       items.push({ text: 'Диск', icon: <Folder />, path: '/disk' });
       items.push({ text: 'Умные таблицы', icon: <TableChart />, path: '/smart-tables' });
@@ -547,6 +548,7 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
 
   const appBarPageTitle =
     effectiveMenuItems.find((item) => item.path === location.pathname)?.text ??
+    (location.pathname === '/calendar' ? 'Календарь' : null) ??
     (location.pathname.startsWith('/owner-workspace/counterparties') ? 'Контрагенты' : null) ??
     (isOwnerWorkspaceMainSection(location.pathname) ? 'Таск трекер' : null) ??
     (location.pathname.startsWith('/agile') ? 'IT-проекты' : null) ??

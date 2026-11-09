@@ -700,6 +700,11 @@ const TrainerLessonsPage: React.FC = () => {
     return format(d, 'd MMMM yyyy г.', { locale: ru });
   })() : '';
   const displayWeekday = viewDate ? WEEKDAY_NAMES[(new Date(viewDate + 'T12:00:00').getDay() + 6) % 7] : '';
+  const customLessonsForViewDate = customLessons.filter((lesson) => lesson.lesson_date === viewDate);
+  const timelineItems = [
+    ...slots.map((slot) => ({ kind: 'slot' as const, sortTime: slot.start_time || '', slot })),
+    ...customLessonsForViewDate.map((lesson) => ({ kind: 'custom' as const, sortTime: lesson.start_time || '', lesson })),
+  ].sort((a, b) => a.sortTime.localeCompare(b.sortTime));
 
   return (
     <Layout>
@@ -724,14 +729,89 @@ const TrainerLessonsPage: React.FC = () => {
         {error && <Alert severity="error">{error}</Alert>}
         {loading ? (
           <Typography color="text.secondary">Загрузка...</Typography>
-        ) : slots.length === 0 ? (
+        ) : timelineItems.length === 0 ? (
           <Typography color="text.secondary">
             На эту дату нет занятий по расписанию. Добавьте расписание в карточке группы (Группы → группа → расписание)
             или создайте разовое занятие через кнопку «Добавить урок».
           </Typography>
         ) : (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-            {slots.map((slot) => {
+            {timelineItems.map((item) => {
+              if (item.kind === 'custom') {
+                const lesson = item.lesson;
+                const startLabel = (lesson.start_time || '').slice(0, 5);
+                const endLabel = (lesson.end_time || '').slice(0, 5);
+                return (
+                  <Card
+                    key={`custom-${lesson.id}`}
+                    variant="outlined"
+                    sx={{
+                      borderLeft: '4px solid',
+                      borderLeftColor: 'secondary.main',
+                      cursor: canCreateManualLesson ? 'pointer' : 'default',
+                      '&:hover': canCreateManualLesson ? { bgcolor: 'action.hover' } : undefined,
+                    }}
+                    onClick={() => canCreateManualLesson && void openEditManualLessonDialog(lesson)}
+                  >
+                    <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                      <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap">
+                        <Typography variant="subtitle2" color="secondary.main">
+                          {startLabel} – {endLabel}
+                        </Typography>
+                        <Chip size="small" label="Ручной урок" color="secondary" variant="outlined" />
+                      </Stack>
+                      <Typography variant="subtitle1" sx={{ mt: 0.5 }}>
+                        {lesson.title}
+                      </Typography>
+                      <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mt: 0.5 }} flexWrap="wrap">
+                        <PeopleIcon fontSize="small" sx={{ color: 'text.secondary' }} />
+                        <Typography variant="body2" color="text.secondary">
+                          {lesson.students?.map((student: any) => student.student_name || student.student_id).join(', ') || 'Нет учеников'}
+                        </Typography>
+                      </Stack>
+                      {lesson.trainer_name && (
+                        <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                          Тренер: {lesson.trainer_name}
+                        </Typography>
+                      )}
+                      <Stack direction="row" spacing={1} sx={{ mt: 1 }} flexWrap="wrap">
+                        {canMarkAttendance && (
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setCustomAttendanceLesson(lesson);
+                              const draft: Record<number, { attended: boolean; reason: string; comment: string }> = {};
+                              (lesson.students || []).forEach((student: any) => {
+                                draft[student.id] = {
+                                  attended: student.attended ?? false,
+                                  reason: student.absence_reason || 'not_was',
+                                  comment: student.absence_comment || '',
+                                };
+                              });
+                              setCustomAttendanceDraft(draft);
+                            }}
+                          >
+                            Посещаемость
+                          </Button>
+                        )}
+                        {canCreateManualLesson && (
+                          <>
+                            <Button size="small" variant="outlined" onClick={(event) => { event.stopPropagation(); void openEditManualLessonDialog(lesson); }} disabled={manualCreateLoading}>
+                              Изменить
+                            </Button>
+                            <Button size="small" variant="outlined" color="error" onClick={(event) => { event.stopPropagation(); void handleDeleteManualLesson(lesson); }} disabled={manualCreateLoading}>
+                              Удалить
+                            </Button>
+                          </>
+                        )}
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                );
+              }
+              const slot = item.slot;
               const isCancelled = !!slot.is_cancelled;
               // Перенесённый урок (moved_to_date) и чистая отмена различаются: восстанавливать можно только чистую отмену.
               const isMovedAway = isCancelled && !!slot.moved_to_date;
@@ -1344,7 +1424,7 @@ const TrainerLessonsPage: React.FC = () => {
         </DialogActions>
       </Dialog>
 
-      {canAccessLessons && (
+      {canAccessLessons && customLessonsForViewDate.length === 0 && (
         <>
           <Card variant="outlined" sx={{ mt: 2 }}>
             <CardContent>

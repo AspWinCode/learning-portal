@@ -467,7 +467,10 @@ def _rate_at(
         return fallback
     idx = bisect.bisect_right(dates, lesson_date) - 1
     if idx < 0:
-        return (None, None)
+        # Первая история ставки может быть создана уже после начала выбранного
+        # периода. Для расчёта прошлых занятий используем текущую ставку группы,
+        # иначе все даты до effective_from ошибочно получают нулевую сумму.
+        return fallback
     return rates[idx]
 
 

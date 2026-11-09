@@ -1052,7 +1052,7 @@ const OwnerWorkspacePage: React.FC = () => {
       taskActiveOnly,
     ]
   );
-  const [calendarMonth, setCalendarMonth] = useState(() => startOfMonth(new Date()));
+  const [calendarMonth, setCalendarMonth] = useState(() => new Date());
   const [workZones, setWorkZones] = useState<OwnerWorkspaceWorkZone[]>(() => {
     try {
       const raw = localStorage.getItem('owner_workspace_work_zones');

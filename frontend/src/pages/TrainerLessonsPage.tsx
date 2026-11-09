@@ -1295,7 +1295,7 @@ const TrainerLessonsPage: React.FC = () => {
         </DialogActions>
       </Dialog>
 
-      {effectiveRole === 'trainer' && (
+      {canAccessLessons && (
         <>
           <Card variant="outlined" sx={{ mt: 2 }}>
             <CardContent>
@@ -1314,27 +1314,34 @@ const TrainerLessonsPage: React.FC = () => {
                         {format(new Date(lesson.lesson_date + 'T12:00:00'), 'd MMM', { locale: ru })} {lesson.start_time}
                         {lesson.end_time ? `–${lesson.end_time}` : ''} · {lesson.title}
                       </Typography>
+                      {effectiveRole !== 'trainer' && lesson.trainer_name && (
+                        <Typography variant="caption" color="text.secondary">
+                          Тренер: {lesson.trainer_name}
+                        </Typography>
+                      )}
                       <Typography variant="caption" color="text.secondary">
                         {lesson.students?.length || 0} уч.
                       </Typography>
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        onClick={() => {
-                          setCustomAttendanceLesson(lesson);
-                          const draft: Record<number, { attended: boolean; reason: string; comment: string }> = {};
-                          (lesson.students || []).forEach((s: any) => {
-                            draft[s.id] = {
-                              attended: s.attended ?? false,
-                              reason: s.absence_reason || 'not_was',
-                              comment: s.absence_comment || '',
-                            };
-                          });
-                          setCustomAttendanceDraft(draft);
-                        }}
-                      >
-                        Посещаемость
-                      </Button>
+                      {effectiveRole === 'trainer' && (
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={() => {
+                            setCustomAttendanceLesson(lesson);
+                            const draft: Record<number, { attended: boolean; reason: string; comment: string }> = {};
+                            (lesson.students || []).forEach((s: any) => {
+                              draft[s.id] = {
+                                attended: s.attended ?? false,
+                                reason: s.absence_reason || 'not_was',
+                                comment: s.absence_comment || '',
+                              };
+                            });
+                            setCustomAttendanceDraft(draft);
+                          }}
+                        >
+                          Посещаемость
+                        </Button>
+                      )}
                     </Stack>
                   ))}
                 </Stack>

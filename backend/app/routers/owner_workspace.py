@@ -60,6 +60,7 @@ from app.models import (
     OwnerWorkspaceCounterpartyDocument,
     OwnerWorkspaceConversationRead,
     OwnerWorkspaceMeeting,
+    OwnerWorkspaceRecurringSlot,
     OwnerWorkspaceMeetingContact,
     OwnerWorkspaceMeetingReschedule,
     OwnerWorkspaceMeetingTask,
@@ -109,6 +110,9 @@ from app.schemas.owner_workspace import (
     OwnerWorkspaceMeetingResponse,
     OwnerWorkspaceMeetingTaskCreate,
     OwnerWorkspaceMeetingUpdate,
+    OwnerWorkspaceRecurringSlotCreate,
+    OwnerWorkspaceRecurringSlotResponse,
+    OwnerWorkspaceRecurringSlotUpdate,
     OwnerWorkspaceNotificationsEnvelope,
     OwnerWorkspaceNotificationResponse,
     OwnerWorkspaceWebPushStatusResponse,
@@ -1030,6 +1034,80 @@ def _meeting_to_response(db: Session, meeting: OwnerWorkspaceMeeting) -> OwnerWo
         updated_at=meeting.updated_at,
         closed_at=meeting.closed_at,
     )
+
+
+@router.get("/recurring-slots", response_model=List[OwnerWorkspaceRecurringSlotResponse])
+async def list_recurring_slots(
+    include_inactive: bool = Query(False),
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    q = db.query(OwnerWorkspaceRecurringSlot)
+    if not ctx.full:
+        q = q.filter(OwnerWorkspaceRecurringSlot.created_by == ctx.user.id)
+    if not include_inactive:
+        q = q.filter(OwnerWorkspaceRecurringSlot.is_active.is_(True))
+    return q.order_by(OwnerWorkspaceRecurringSlot.title.asc()).all()
+
+
+@router.post("/recurring-slots", response_model=OwnerWorkspaceRecurringSlotResponse, status_code=status.HTTP_201_CREATED)
+async def create_recurring_slot(
+    payload: OwnerWorkspaceRecurringSlotCreate,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    assert_full_workspace(ctx)
+    if not payload.title.strip():
+        raise HTTPException(status_code=400, detail="Название слота обязательно")
+    if payload.end_time <= payload.start_time:
+        raise HTTPException(status_code=400, detail="Время окончания должно быть позже времени начала")
+    row = OwnerWorkspaceRecurringSlot(
+        title=payload.title.strip(), recurrence_type=payload.recurrence_type,
+        weekdays=payload.weekdays, start_time=payload.start_time, end_time=payload.end_time,
+        start_date=payload.start_date, end_date=payload.end_date, is_active=payload.is_active,
+        created_by=ctx.user.id,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.patch("/recurring-slots/{slot_id}", response_model=OwnerWorkspaceRecurringSlotResponse)
+async def update_recurring_slot(
+    slot_id: int,
+    payload: OwnerWorkspaceRecurringSlotUpdate,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    assert_full_workspace(ctx)
+    row = db.query(OwnerWorkspaceRecurringSlot).filter(OwnerWorkspaceRecurringSlot.id == slot_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Регулярный слот не найден")
+    data = payload.model_dump(exclude_unset=True)
+    if "title" in data:
+        data["title"] = data["title"].strip()
+    for key, value in data.items():
+        setattr(row, key, value)
+    if row.end_time <= row.start_time:
+        raise HTTPException(status_code=400, detail="Время окончания должно быть позже времени начала")
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.delete("/recurring-slots/{slot_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_recurring_slot(
+    slot_id: int,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    assert_full_workspace(ctx)
+    row = db.query(OwnerWorkspaceRecurringSlot).filter(OwnerWorkspaceRecurringSlot.id == slot_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Регулярный слот не найден")
+    db.delete(row)
+    db.commit()
 
 
 def _assert_meeting_refs_visible(

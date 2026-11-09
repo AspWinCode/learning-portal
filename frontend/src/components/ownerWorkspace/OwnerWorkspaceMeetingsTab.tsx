@@ -25,7 +25,11 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  Tab,
+  Tabs,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
@@ -34,7 +38,7 @@ import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { ownerWorkspaceApi } from '../../services/api';
 import { extractApiError } from '../../utils/extractApiError';
-import type { OwnerWorkspaceContact, OwnerWorkspaceMeeting, OwnerWorkspaceProject, User } from '../../types';
+import type { OwnerWorkspaceContact, OwnerWorkspaceMeeting, OwnerWorkspaceProject, OwnerWorkspaceRecurringSlot, User } from '../../types';
 
 type MeetingDraft = {
   title: string;
@@ -52,6 +56,24 @@ type MeetingDraft = {
   agenda: string;
   meeting_result: string;
   next_steps: string;
+};
+
+type RecurringSlotDraft = {
+  title: string;
+  recurrence_type: 'daily' | 'weekdays' | 'weekly' | 'monthly';
+  weekdays: number[];
+  start_time: string;
+  end_time: string;
+  start_date: string;
+  end_date: string;
+};
+
+const weekdays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+const blankRecurringSlot = (): RecurringSlotDraft => ({
+  title: '', recurrence_type: 'weekly', weekdays: [0], start_time: '09:00', end_time: '10:00', start_date: '', end_date: '',
+});
+const recurrenceLabels: Record<string, string> = {
+  daily: 'Каждый день', weekdays: 'По будням', weekly: 'Еженедельно', monthly: 'Ежемесячно',
 };
 
 type Props = {
@@ -128,6 +150,12 @@ export function OwnerWorkspaceMeetingsTab({ projects, contacts, users, canCreate
   const [deleteTarget, setDeleteTarget] = useState<OwnerWorkspaceMeeting | null>(null);
   const [taskDialogMeeting, setTaskDialogMeeting] = useState<OwnerWorkspaceMeeting | null>(null);
   const [taskTitle, setTaskTitle] = useState('');
+  const [meetingSubtab, setMeetingSubtab] = useState<'meetings' | 'slots'>('meetings');
+  const [recurringSlots, setRecurringSlots] = useState<OwnerWorkspaceRecurringSlot[]>([]);
+  const [slotDialogOpen, setSlotDialogOpen] = useState(false);
+  const [slotEditing, setSlotEditing] = useState<OwnerWorkspaceRecurringSlot | null>(null);
+  const [slotDraft, setSlotDraft] = useState<RecurringSlotDraft>(() => blankRecurringSlot());
+  const [slotSaving, setSlotSaving] = useState(false);
 
   const projectById = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects]);
   const contactById = useMemo(() => new Map(contacts.map((c) => [c.id, c])), [contacts]);
@@ -164,6 +192,62 @@ export function OwnerWorkspaceMeetingsTab({ projects, contacts, users, canCreate
     void loadMeetings();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, projectId, contactId, responsibleId, meetingType, dateFrom, dateTo, overdueOnly]);
+
+  const loadRecurringSlots = async () => {
+    try {
+      setRecurringSlots(await ownerWorkspaceApi.listRecurringSlots(true));
+    } catch (e) {
+      setError(extractApiError(e, 'Не удалось загрузить регулярные слоты'));
+    }
+  };
+
+  useEffect(() => {
+    if (meetingSubtab === 'slots') void loadRecurringSlots();
+  }, [meetingSubtab]);
+
+  const openSlotDialog = (slot?: OwnerWorkspaceRecurringSlot) => {
+    setSlotEditing(slot || null);
+    setSlotDraft(slot ? {
+      title: slot.title,
+      recurrence_type: (slot.recurrence_type as RecurringSlotDraft['recurrence_type']) || 'weekly',
+      weekdays: slot.weekdays || [],
+      start_time: String(slot.start_time || '').slice(0, 5),
+      end_time: String(slot.end_time || '').slice(0, 5),
+      start_date: slot.start_date || '',
+      end_date: slot.end_date || '',
+    } : blankRecurringSlot());
+    setSlotDialogOpen(true);
+  };
+
+  const saveRecurringSlot = async () => {
+    if (!slotDraft.title.trim() || !slotDraft.start_time || !slotDraft.end_time) return;
+    setSlotSaving(true);
+    try {
+      const payload = {
+        title: slotDraft.title.trim(), recurrence_type: slotDraft.recurrence_type, weekdays: slotDraft.weekdays,
+        start_time: slotDraft.start_time, end_time: slotDraft.end_time,
+        start_date: slotDraft.start_date || null, end_date: slotDraft.end_date || null, is_active: true,
+      };
+      if (slotEditing) await ownerWorkspaceApi.updateRecurringSlot(slotEditing.id, payload);
+      else await ownerWorkspaceApi.createRecurringSlot(payload);
+      setSlotDialogOpen(false);
+      await loadRecurringSlots();
+    } catch (e) {
+      setError(extractApiError(e, 'Не удалось сохранить регулярный слот'));
+    } finally {
+      setSlotSaving(false);
+    }
+  };
+
+  const deleteRecurringSlot = async (slot: OwnerWorkspaceRecurringSlot) => {
+    if (!window.confirm(`Удалить слот «${slot.title}»?`)) return;
+    try {
+      await ownerWorkspaceApi.deleteRecurringSlot(slot.id);
+      await loadRecurringSlots();
+    } catch (e) {
+      setError(extractApiError(e, 'Не удалось удалить регулярный слот'));
+    }
+  };
 
   const openCreateDialog = () => {
     setEditing(null);
@@ -280,9 +364,74 @@ export function OwnerWorkspaceMeetingsTab({ projects, contacts, users, canCreate
     }
   };
 
+  if (meetingSubtab === 'slots') {
+    return (
+      <Stack spacing={2}>
+        {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
+        <Tabs value={meetingSubtab} onChange={(_, value) => setMeetingSubtab(value)} sx={{ borderBottom: 1, borderColor: 'divider' }}>
+          <Tab value="meetings" label="Встречи" />
+          <Tab value="slots" label="Регулярные занятые слоты" />
+        </Tabs>
+        <Card>
+          <CardContent>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }} justifyContent="space-between">
+              <Box>
+                <Typography variant="h6">Регулярные занятые слоты</Typography>
+                <Typography variant="body2" color="text.secondary">Зарезервированное время, которое нельзя занимать встречами.</Typography>
+              </Box>
+              {canCreate && <Button variant="contained" startIcon={<AddIcon />} onClick={() => openSlotDialog()}>Добавить слот</Button>}
+            </Stack>
+          </CardContent>
+        </Card>
+        <Card>
+          <TableContainer>
+            <Table>
+              <TableHead><TableRow>
+                <TableCell>Название</TableCell><TableCell>Регулярность</TableCell><TableCell>Время</TableCell><TableCell>Период действия</TableCell><TableCell align="right">Действия</TableCell>
+              </TableRow></TableHead>
+              <TableBody>
+                {recurringSlots.map((slot) => (
+                  <TableRow key={slot.id} hover>
+                    <TableCell><Typography fontWeight={700}>{slot.title}</Typography>{!slot.is_active && <Chip size="small" label="Выключен" />}</TableCell>
+                    <TableCell>{recurrenceLabels[slot.recurrence_type] || slot.recurrence_type}{slot.weekdays?.length ? ` · ${slot.weekdays.map((d) => weekdays[d]).join(', ')}` : ''}</TableCell>
+                    <TableCell>{String(slot.start_time).slice(0, 5)}–{String(slot.end_time).slice(0, 5)}</TableCell>
+                    <TableCell>{slot.start_date || 'Без начала'} — {slot.end_date || 'без окончания'}</TableCell>
+                    <TableCell align="right">
+                      {canCreate && <><Button size="small" onClick={() => openSlotDialog(slot)}>Изменить</Button><Button size="small" color="error" onClick={() => void deleteRecurringSlot(slot)}>Удалить</Button></>}
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {recurringSlots.length === 0 && <TableRow><TableCell colSpan={5}><Box py={6} textAlign="center"><Typography variant="h6">Слотов пока нет</Typography><Typography color="text.secondary" mt={1}>Добавьте регулярное занятое время.</Typography></Box></TableCell></TableRow>}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Card>
+        <Dialog open={slotDialogOpen} onClose={() => setSlotDialogOpen(false)} maxWidth="sm" fullWidth>
+          <DialogTitle>{slotEditing ? 'Изменить регулярный слот' : 'Новый регулярный слот'}</DialogTitle>
+          <DialogContent>
+            <Grid container spacing={2} sx={{ mt: 0.5 }}>
+              <Grid item xs={12}><TextField fullWidth required label="Название слота" value={slotDraft.title} onChange={(e) => setSlotDraft((d) => ({ ...d, title: e.target.value }))} placeholder="Личные дела" /></Grid>
+              <Grid item xs={12} sm={6}><FormControl fullWidth><InputLabel>Регулярность</InputLabel><Select label="Регулярность" value={slotDraft.recurrence_type} onChange={(e) => setSlotDraft((d) => ({ ...d, recurrence_type: e.target.value as RecurringSlotDraft['recurrence_type'] }))}><MenuItem value="daily">Каждый день</MenuItem><MenuItem value="weekdays">По будням</MenuItem><MenuItem value="weekly">Еженедельно</MenuItem><MenuItem value="monthly">Ежемесячно</MenuItem></Select></FormControl></Grid>
+              <Grid item xs={12} sm={6}><Stack direction="row" spacing={1}><TextField fullWidth required type="time" label="С" value={slotDraft.start_time} onChange={(e) => setSlotDraft((d) => ({ ...d, start_time: e.target.value }))} InputLabelProps={{ shrink: true }} /><TextField fullWidth required type="time" label="До" value={slotDraft.end_time} onChange={(e) => setSlotDraft((d) => ({ ...d, end_time: e.target.value }))} InputLabelProps={{ shrink: true }} /></Stack></Grid>
+              {(slotDraft.recurrence_type === 'weekly' || slotDraft.recurrence_type === 'monthly') && <Grid item xs={12}><Typography variant="caption" color="text.secondary">Дни недели</Typography><ToggleButtonGroup value={slotDraft.weekdays} onChange={(_, value) => setSlotDraft((d) => ({ ...d, weekdays: value }))} size="small" fullWidth>{weekdays.map((day, index) => <ToggleButton key={day} value={index}>{day}</ToggleButton>)}</ToggleButtonGroup></Grid>}
+              <Grid item xs={12} sm={6}><TextField fullWidth type="date" label="Начало действия" value={slotDraft.start_date} onChange={(e) => setSlotDraft((d) => ({ ...d, start_date: e.target.value }))} InputLabelProps={{ shrink: true }} /></Grid>
+              <Grid item xs={12} sm={6}><TextField fullWidth type="date" label="Окончание действия" value={slotDraft.end_date} onChange={(e) => setSlotDraft((d) => ({ ...d, end_date: e.target.value }))} InputLabelProps={{ shrink: true }} /></Grid>
+            </Grid>
+          </DialogContent>
+          <DialogActions><Button onClick={() => setSlotDialogOpen(false)}>Отмена</Button><Button variant="contained" onClick={() => void saveRecurringSlot()} disabled={slotSaving || !slotDraft.title.trim()}>Сохранить</Button></DialogActions>
+        </Dialog>
+      </Stack>
+    );
+  }
+
   return (
     <Stack spacing={2}>
       {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
+
+      <Tabs value={meetingSubtab} onChange={(_, value) => setMeetingSubtab(value)} sx={{ borderBottom: 1, borderColor: 'divider' }}>
+        <Tab value="meetings" label="Встречи" />
+        <Tab value="slots" label="Регулярные занятые слоты" />
+      </Tabs>
 
       <Card>
         <CardContent>

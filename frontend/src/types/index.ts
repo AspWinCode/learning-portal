@@ -1974,6 +1974,23 @@ export interface OwnerWorkspaceMeeting {
   closed_at?: string | null;
 }
 
+export type OwnerWorkspaceRecurringSlotType = 'daily' | 'weekdays' | 'weekly' | 'monthly';
+
+export interface OwnerWorkspaceRecurringSlot {
+  id: number;
+  title: string;
+  recurrence_type: OwnerWorkspaceRecurringSlotType | string;
+  weekdays: number[];
+  start_time: string;
+  end_time: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  is_active: boolean;
+  created_by?: number | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
 /** Ответ GET /api/owner-workspace/tasks (пагинация). */
 export interface OwnerWorkspaceTaskListPage {
   items: OwnerWorkspaceTask[];

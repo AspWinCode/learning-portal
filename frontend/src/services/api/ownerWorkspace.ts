@@ -10,6 +10,7 @@ import type {
   OwnerWorkspaceHistoryStats,
   OwnerWorkspaceMessage,
   OwnerWorkspaceMeeting,
+  OwnerWorkspaceRecurringSlot,
   OwnerWorkspaceNotificationsEnvelope,
   OwnerWorkspaceProject,
   OwnerWorkspaceProjectDocument,
@@ -314,6 +315,39 @@ export const ownerWorkspaceApi = {
   }): Promise<OwnerWorkspaceMeeting[]> => {
     const response = await api.get('/api/owner-workspace/meetings', { params: params || {} });
     return response.data;
+  },
+  listRecurringSlots: async (includeInactive = false): Promise<OwnerWorkspaceRecurringSlot[]> => {
+    const response = await api.get('/api/owner-workspace/recurring-slots', { params: { include_inactive: includeInactive } });
+    return response.data;
+  },
+  createRecurringSlot: async (payload: {
+    title: string;
+    recurrence_type: string;
+    weekdays: number[];
+    start_time: string;
+    end_time: string;
+    start_date?: string | null;
+    end_date?: string | null;
+    is_active?: boolean;
+  }): Promise<OwnerWorkspaceRecurringSlot> => {
+    const response = await api.post('/api/owner-workspace/recurring-slots', payload);
+    return response.data;
+  },
+  updateRecurringSlot: async (id: number, payload: Partial<{
+    title: string;
+    recurrence_type: string;
+    weekdays: number[];
+    start_time: string;
+    end_time: string;
+    start_date: string | null;
+    end_date: string | null;
+    is_active: boolean;
+  }>): Promise<OwnerWorkspaceRecurringSlot> => {
+    const response = await api.patch(`/api/owner-workspace/recurring-slots/${id}`, payload);
+    return response.data;
+  },
+  deleteRecurringSlot: async (id: number): Promise<void> => {
+    await api.delete(`/api/owner-workspace/recurring-slots/${id}`);
   },
   createMeeting: async (payload: {
     title: string;

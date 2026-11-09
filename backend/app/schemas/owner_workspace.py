@@ -917,4 +917,42 @@ class OwnerWorkspaceMeetingResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+OwnerWorkspaceRecurringSlotType = Literal["daily", "weekdays", "weekly", "monthly"]
+
+
+class OwnerWorkspaceRecurringSlotBase(BaseModel):
+    title: str
+    recurrence_type: OwnerWorkspaceRecurringSlotType = "weekly"
+    weekdays: List[int] = Field(default_factory=list)
+    start_time: time
+    end_time: time
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    is_active: bool = True
+
+
+class OwnerWorkspaceRecurringSlotCreate(OwnerWorkspaceRecurringSlotBase):
+    pass
+
+
+class OwnerWorkspaceRecurringSlotUpdate(BaseModel):
+    title: Optional[str] = None
+    recurrence_type: Optional[OwnerWorkspaceRecurringSlotType] = None
+    weekdays: Optional[List[int]] = None
+    start_time: Optional[time] = None
+    end_time: Optional[time] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    is_active: Optional[bool] = None
+
+
+class OwnerWorkspaceRecurringSlotResponse(OwnerWorkspaceRecurringSlotBase):
+    id: int
+    created_by: Optional[int] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 __all__ = [name for name in globals() if not name.startswith("_")]

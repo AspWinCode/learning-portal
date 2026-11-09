@@ -3173,6 +3173,25 @@ class OwnerWorkspaceMeeting(Base):
     next_meeting = relationship("OwnerWorkspaceMeeting", foreign_keys=[next_meeting_id], remote_side=[id])
 
 
+class OwnerWorkspaceRecurringSlot(Base):
+    __tablename__ = "owner_workspace_recurring_slots"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(255), nullable=False, index=True)
+    recurrence_type = Column(String(32), nullable=False, server_default="weekly")
+    weekdays = Column(JSON, nullable=False, server_default="[]")
+    start_time = Column(Time, nullable=False)
+    end_time = Column(Time, nullable=False)
+    start_date = Column(Date, nullable=True)
+    end_date = Column(Date, nullable=True)
+    is_active = Column(Boolean, nullable=False, server_default="true", index=True)
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    creator = relationship("User", foreign_keys=[created_by])
+
+
 class OwnerWorkspaceMeetingContact(Base):
     __tablename__ = "owner_workspace_meeting_contacts"
     __table_args__ = (

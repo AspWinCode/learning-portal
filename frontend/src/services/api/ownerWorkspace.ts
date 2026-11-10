@@ -374,6 +374,8 @@ export const ownerWorkspaceApi = {
     agenda?: string | null;
     meeting_result?: string | null;
     next_steps?: string | null;
+    previous_meeting_id?: number | null;
+    next_meeting_id?: number | null;
   }): Promise<OwnerWorkspaceMeeting> => {
     const response = await api.post('/api/owner-workspace/meetings', payload);
     return response.data;
@@ -397,6 +399,8 @@ export const ownerWorkspaceApi = {
       agenda: string | null;
       meeting_result: string | null;
       next_steps: string | null;
+      previous_meeting_id: number | null;
+      next_meeting_id: number | null;
     }>
   ): Promise<OwnerWorkspaceMeeting> => {
     const response = await api.patch(`/api/owner-workspace/meetings/${meetingId}`, payload);

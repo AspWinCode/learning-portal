@@ -6729,6 +6729,11 @@ const OwnerWorkspacePage: React.FC<OwnerWorkspacePageProps> = ({ initialTab, ini
                   setMeetingsCount(next.length);
                 }}
                 onRecurringSlotsChange={setCalendarRecurringSlots}
+                onTaskCreated={(task) => {
+                  setTasks((current) => current.some((item) => item.id === task.id) ? current : [...current, task]);
+                  setTaskListTotal((current) => current + 1);
+                  void loadDigest();
+                }}
               />
             </Suspense>
           )}

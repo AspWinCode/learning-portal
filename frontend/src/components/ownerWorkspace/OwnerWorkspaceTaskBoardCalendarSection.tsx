@@ -11,6 +11,7 @@ import {
   DialogTitle,
   IconButton,
   MenuItem,
+  Menu,
   Stack,
   TextField,
   ToggleButton,
@@ -21,6 +22,8 @@ import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import AddIcon from '@mui/icons-material/Add';
 import EventIcon from '@mui/icons-material/Event';
+import HistoryIcon from '@mui/icons-material/History';
+import TaskAltIcon from '@mui/icons-material/TaskAlt';
 import {
   eachDayOfInterval,
   endOfDay,
@@ -47,6 +50,7 @@ type CalendarTimeEvent = {
   endTime: string;
   tone: 'task' | 'meeting' | 'slot' | 'lesson' | 'manual';
   onClick?: () => void;
+  source?: OwnerWorkspaceTask | OwnerWorkspaceMeeting;
 };
 
 type CalendarRecurringSlotDraft = {
@@ -97,6 +101,7 @@ type OwnerWorkspaceTaskBoardCalendarSectionProps = {
   canCreateMeeting: boolean;
   onMeetingsChange: (meetings: OwnerWorkspaceMeeting[]) => void;
   onRecurringSlotsChange: (slots: OwnerWorkspaceRecurringSlot[]) => void;
+  onTaskCreated?: (task: OwnerWorkspaceTask) => void;
 };
 
 function isTaskOverdue(task: OwnerWorkspaceTask): boolean {
@@ -125,6 +130,7 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
   canCreateMeeting,
   onMeetingsChange,
   onRecurringSlotsChange,
+  onTaskCreated,
 }: OwnerWorkspaceTaskBoardCalendarSectionProps) {
   const [calendarMode, setCalendarMode] = React.useState<'day' | 'week' | 'month'>('week');
   const [zoneDialogOpen, setZoneDialogOpen] = React.useState(false);
@@ -142,6 +148,17 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
   const [meetingType, setMeetingType] = React.useState<'online' | 'offline'>('online');
   const [meetingPlace, setMeetingPlace] = React.useState('');
   const [meetingEditing, setMeetingEditing] = React.useState<OwnerWorkspaceMeeting | null>(null);
+  const [meetingPreviousId, setMeetingPreviousId] = React.useState<number | null>(null);
+  const [contextMenu, setContextMenu] = React.useState<{ mouseX: number; mouseY: number; event: CalendarTimeEvent } | null>(null);
+  const [historyOpen, setHistoryOpen] = React.useState(false);
+  const [historyLoading, setHistoryLoading] = React.useState(false);
+  const [historyItems, setHistoryItems] = React.useState<Array<{ id: number; title: string; date?: string; time?: string; result?: string | null; nextSteps?: string | null; kind: 'task' | 'meeting' }>>([]);
+  const [taskDialogOpen, setTaskDialogOpen] = React.useState(false);
+  const [taskSource, setTaskSource] = React.useState<CalendarTimeEvent | null>(null);
+  const [taskTitle, setTaskTitle] = React.useState('');
+  const [taskDescription, setTaskDescription] = React.useState('');
+  const [taskDeadline, setTaskDeadline] = React.useState('');
+  const [taskSaving, setTaskSaving] = React.useState(false);
   const [slotDialogOpen, setSlotDialogOpen] = React.useState(false);
   const [slotEditing, setSlotEditing] = React.useState<OwnerWorkspaceRecurringSlot | null>(null);
   const [slotSaving, setSlotSaving] = React.useState(false);
@@ -225,7 +242,14 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
     setMeetingTime('10:00');
     setMeetingType('online');
     setMeetingPlace('');
+    setMeetingPreviousId(null);
     setMeetingDialogOpen(true);
+  };
+  const openMeetingFromEvent = (event: CalendarTimeEvent) => {
+    const meeting = event.tone === 'meeting' ? event.source as OwnerWorkspaceMeeting : null;
+    openMeetingDialog(meeting?.meeting_date || format(new Date(), 'yyyy-MM-dd'));
+    setMeetingTitle(`Продолжение: ${event.title}`);
+    setMeetingPreviousId(meeting?.id || null);
   };
   const openMeetingEditDialog = (meeting: OwnerWorkspaceMeeting) => {
     setMeetingEditing(meeting);
@@ -246,15 +270,89 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
         meeting_time: meetingTime,
         meeting_type: meetingType,
         ...(meetingType === 'offline' ? { address: meetingPlace.trim() || null } : { online_url: meetingPlace.trim() || null }),
+      ...(meetingPreviousId ? { previous_meeting_id: meetingPreviousId } : {}),
       };
       const saved = meetingEditing
         ? await ownerWorkspaceApi.updateMeeting(meetingEditing.id, payload)
         : await ownerWorkspaceApi.createMeeting(payload);
-      onMeetingsChange(meetingEditing ? meetings.map((meeting) => meeting.id === saved.id ? saved : meeting) : [...meetings, saved]);
+      if (!meetingEditing && meetingPreviousId) {
+        try {
+          const previous = await ownerWorkspaceApi.updateMeeting(meetingPreviousId, { next_meeting_id: saved.id });
+          onMeetingsChange([...meetings.map((meeting) => meeting.id === previous.id ? previous : meeting), saved]);
+        } catch {
+          onMeetingsChange([...meetings, saved]);
+        }
+      } else {
+        onMeetingsChange(meetingEditing ? meetings.map((meeting) => meeting.id === saved.id ? saved : meeting) : [...meetings, saved]);
+      }
       setMeetingDialogOpen(false);
     } finally {
       setMeetingSaving(false);
     }
+  };
+  const openTaskFromEvent = (event: CalendarTimeEvent) => {
+    setTaskSource(event);
+    setTaskTitle(`Следующий шаг: ${event.title}`);
+    setTaskDescription(`Задача по результатам «${event.title}»`);
+    setTaskDeadline('');
+    setTaskDialogOpen(true);
+  };
+  const saveTaskFromEvent = async () => {
+    if (!taskTitle.trim()) return;
+    setTaskSaving(true);
+    try {
+      const sourceMeeting = taskSource?.tone === 'meeting' ? taskSource.source as OwnerWorkspaceMeeting : null;
+      const sourceTask = taskSource?.tone === 'task' ? taskSource.source as OwnerWorkspaceTask : null;
+      const saved = sourceMeeting
+        ? await ownerWorkspaceApi.createTaskFromMeeting(sourceMeeting.id, { title: taskTitle.trim(), description: taskDescription.trim() || null, deadline_at: taskDeadline ? new Date(taskDeadline).toISOString() : null })
+        : await ownerWorkspaceApi.createTask({ title: taskTitle.trim(), description: taskDescription.trim() || null, deadline_at: taskDeadline ? new Date(taskDeadline).toISOString() : null, previous_task_id: sourceTask?.id || null, status: 'new', priority: 'medium' });
+      onTaskCreated?.(saved);
+      setTaskDialogOpen(false);
+    } finally { setTaskSaving(false); }
+  };
+  const openHistory = async (event: CalendarTimeEvent) => {
+    setContextMenu(null);
+    setHistoryLoading(true);
+    setHistoryOpen(true);
+    try {
+      const items: typeof historyItems = [];
+      if (event.tone === 'meeting') {
+        const byId = new Map(meetings.map((meeting) => [meeting.id, meeting]));
+        let current = event.source as OwnerWorkspaceMeeting;
+        const visited = new Set<number>();
+        while (current && !visited.has(current.id)) {
+          visited.add(current.id);
+          items.unshift({ id: current.id, title: current.title, date: current.meeting_date, time: String(current.meeting_time).slice(0, 5), result: current.meeting_result, nextSteps: current.next_steps, kind: 'meeting' });
+          current = current.previous_meeting_id ? byId.get(current.previous_meeting_id)! : (null as unknown as OwnerWorkspaceMeeting);
+        }
+        current = event.source as OwnerWorkspaceMeeting;
+        while (current?.next_meeting_id && !visited.has(current.next_meeting_id)) {
+          const next = byId.get(current.next_meeting_id);
+          if (!next) break;
+          visited.add(next.id);
+          items.push({ id: next.id, title: next.title, date: next.meeting_date, time: String(next.meeting_time).slice(0, 5), result: next.meeting_result, nextSteps: next.next_steps, kind: 'meeting' });
+          current = next;
+        }
+      } else if (event.tone === 'task') {
+        const byId = new Map(tasks.map((task) => [task.id, task]));
+        let current = event.source as OwnerWorkspaceTask;
+        const visited = new Set<number>();
+        while (current && !visited.has(current.id)) {
+          visited.add(current.id);
+          items.unshift({ id: current.id, title: current.title, date: current.deadline_at ? format(new Date(current.deadline_at), 'dd.MM.yyyy HH:mm') : undefined, result: current.description, kind: 'task' });
+          current = current.previous_task_id ? byId.get(current.previous_task_id)! : (null as unknown as OwnerWorkspaceTask);
+        }
+        current = event.source as OwnerWorkspaceTask;
+        while (current) {
+          const next = tasks.find((task) => task.previous_task_id === current.id && !visited.has(task.id));
+          if (!next) break;
+          visited.add(next.id);
+          items.push({ id: next.id, title: next.title, date: next.deadline_at ? format(new Date(next.deadline_at), 'dd.MM.yyyy HH:mm') : undefined, result: next.description, kind: 'task' });
+          current = next;
+        }
+      }
+      setHistoryItems(items);
+    } finally { setHistoryLoading(false); }
   };
   const deleteMeeting = async () => {
     if (!meetingEditing || !window.confirm(`Удалить встречу «${meetingEditing.title}»?`)) return;
@@ -378,13 +476,13 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
       (filteredTasksByDay.get(key) || []).forEach((task) => {
         if (!task.deadline_at) return;
         const date = new Date(task.deadline_at);
-        add(key, { id: `task-${task.id}`, title: task.title, startTime: format(date, 'HH:mm'), endTime: taskEndTime(task), tone: 'task', onClick: () => void onOpenTask(task) });
+        add(key, { id: `task-${task.id}`, title: task.title, startTime: format(date, 'HH:mm'), endTime: taskEndTime(task), tone: 'task', source: task, onClick: () => void onOpenTask(task) });
       });
       (meetingsByDay.get(key) || []).forEach((meeting) => {
         const start = String(meeting.meeting_time || '').slice(0, 5);
         const [hour, minute] = start.split(':').map(Number);
         const end = `${String(Math.min(23, hour + 1)).padStart(2, '0')}:${String(minute || 0).padStart(2, '0')}`;
-        add(key, { id: `meeting-${meeting.id}`, title: meeting.title, startTime: start, endTime: end, tone: 'meeting', onClick: () => openMeetingEditDialog(meeting) });
+        add(key, { id: `meeting-${meeting.id}`, title: meeting.title, startTime: start, endTime: end, tone: 'meeting', source: meeting, onClick: () => openMeetingEditDialog(meeting) });
       });
       (recurringSlotsByDay.get(key) || []).forEach((slot) => add(key, {
         id: `slot-${slot.id}`,
@@ -473,7 +571,7 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
               return <Box key={key} sx={{ minHeight: 100, border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 0.5, bgcolor: inMonth ? 'background.paper' : 'action.hover', opacity: inMonth ? 1 : 0.65 }}>
                 <Typography variant="caption" sx={{ fontWeight: isToday(day) ? 700 : 500, color: isToday(day) ? 'primary.main' : 'text.primary' }}>{format(day, 'd')}</Typography>
                 <Stack spacing={0.5} sx={{ mt: 0.5, minWidth: 0 }}>
-                  {(timeGridEventsByDay.get(key) || []).map((event) => <Chip key={event.id} size="small" variant="outlined" label={`${event.startTime} ${event.title}`} onClick={event.onClick} sx={{ height: 24, maxWidth: '100%', justifyContent: 'flex-start', borderColor: toneStyles[event.tone].borderColor, color: toneStyles[event.tone].color, bgcolor: toneStyles[event.tone].backgroundColor, '& .MuiChip-label': { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }} />)}
+                  {(timeGridEventsByDay.get(key) || []).map((event) => <Chip key={event.id} size="small" variant="outlined" label={`${event.startTime} ${event.title}`} onClick={event.onClick} onContextMenu={(mouseEvent) => { if (!event.source) return; mouseEvent.preventDefault(); setContextMenu({ mouseX: mouseEvent.clientX + 2, mouseY: mouseEvent.clientY - 6, event }); }} sx={{ height: 24, maxWidth: '100%', justifyContent: 'flex-start', borderColor: toneStyles[event.tone].borderColor, color: toneStyles[event.tone].color, bgcolor: toneStyles[event.tone].backgroundColor, '& .MuiChip-label': { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }} />)}
                 </Stack>
               </Box>;
             })}
@@ -502,7 +600,7 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
                       const sameStart = events.filter((candidate) => candidate.startTime === event.startTime);
                       const lane = sameStart.indexOf(event);
                       const lanes = Math.min(3, Math.max(1, sameStart.length));
-                      return <Box key={`${event.id}-${index}`} onClick={event.onClick} sx={{ position: 'absolute', top, height, left: `calc(${(lane * 100) / lanes}% + 2px)`, width: `calc(${100 / lanes}% - 4px)`, overflow: 'hidden', p: 0.5, border: '1px solid', borderColor: toneStyles[event.tone].borderColor, borderRadius: 0.75, bgcolor: toneStyles[event.tone].backgroundColor, color: toneStyles[event.tone].color, cursor: event.onClick ? 'pointer' : 'default', zIndex: 1 }}><Typography variant="caption" sx={{ display: 'block', fontWeight: 700, lineHeight: 1.2 }}>{event.startTime}–{event.endTime}</Typography><Typography variant="caption" sx={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.2 }}>{event.title}</Typography></Box>;
+                      return <Box key={`${event.id}-${index}`} onClick={event.onClick} onContextMenu={(mouseEvent) => { if (!event.source) return; mouseEvent.preventDefault(); mouseEvent.stopPropagation(); setContextMenu({ mouseX: mouseEvent.clientX + 2, mouseY: mouseEvent.clientY - 6, event }); }} sx={{ position: 'absolute', top, height, left: `calc(${(lane * 100) / lanes}% + 2px)`, width: `calc(${100 / lanes}% - 4px)`, overflow: 'hidden', p: 0.5, border: '1px solid', borderColor: toneStyles[event.tone].borderColor, borderRadius: 0.75, bgcolor: toneStyles[event.tone].backgroundColor, color: toneStyles[event.tone].color, cursor: event.onClick ? 'pointer' : 'default', zIndex: 1 }}><Typography variant="caption" sx={{ display: 'block', fontWeight: 700, lineHeight: 1.2 }}>{event.startTime}–{event.endTime}</Typography><Typography variant="caption" sx={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.2 }}>{event.title}</Typography></Box>;
                     })}
                   </Box>;
                 })}
@@ -511,6 +609,47 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
           </Box>
         )}
       </CardContent>
+      <Menu
+        open={Boolean(contextMenu)}
+        onClose={() => setContextMenu(null)}
+        anchorReference="anchorPosition"
+        anchorPosition={contextMenu ? { top: contextMenu.mouseY, left: contextMenu.mouseX } : undefined}
+      >
+        <MenuItem onClick={() => { if (contextMenu) openMeetingFromEvent(contextMenu.event); setContextMenu(null); }}>
+          <EventIcon fontSize="small" sx={{ mr: 1 }} />Новая встреча по этому событию
+        </MenuItem>
+        <MenuItem onClick={() => { if (contextMenu) openTaskFromEvent(contextMenu.event); setContextMenu(null); }}>
+          <TaskAltIcon fontSize="small" sx={{ mr: 1 }} />Новая задача по этому событию
+        </MenuItem>
+        <MenuItem onClick={() => contextMenu && void openHistory(contextMenu.event)}>
+          <HistoryIcon fontSize="small" sx={{ mr: 1 }} />Посмотреть историю взаимодействия
+        </MenuItem>
+      </Menu>
+      <Dialog open={historyOpen} onClose={() => setHistoryOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>История взаимодействия</DialogTitle>
+        <DialogContent>
+          {historyLoading ? <Typography color="text.secondary">Загрузка истории…</Typography> : historyItems.length === 0 ? <Typography color="text.secondary">Связанных событий пока нет.</Typography> : (
+            <Stack spacing={1.5}>
+              {historyItems.map((item, index) => <Box key={`${item.kind}-${item.id}`} sx={{ pl: 2, borderLeft: '3px solid', borderColor: index === historyItems.length - 1 ? 'primary.main' : 'divider' }}>
+                <Typography variant="caption" color="text.secondary">{item.date || 'Дата не указана'}{item.time ? ` · ${item.time}` : ''}</Typography>
+                <Typography fontWeight={700}>{item.title}</Typography>
+                {item.result && <Typography variant="body2" color="text.secondary">{item.kind === 'meeting' ? 'Итог: ' : ''}{item.result}</Typography>}
+                {item.nextSteps && <Typography variant="body2" color="text.secondary">Следующий шаг: {item.nextSteps}</Typography>}
+              </Box>)}
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions><Button onClick={() => setHistoryOpen(false)}>Закрыть</Button></DialogActions>
+      </Dialog>
+      <Dialog open={taskDialogOpen} onClose={() => setTaskDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Новая задача по событию</DialogTitle>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
+          <TextField autoFocus required label="Название задачи" value={taskTitle} onChange={(event) => setTaskTitle(event.target.value)} />
+          <TextField multiline minRows={3} label="О чём договорились / комментарий" value={taskDescription} onChange={(event) => setTaskDescription(event.target.value)} />
+          <TextField type="datetime-local" label="Срок" value={taskDeadline} onChange={(event) => setTaskDeadline(event.target.value)} InputLabelProps={{ shrink: true }} />
+        </DialogContent>
+        <DialogActions><Button onClick={() => setTaskDialogOpen(false)}>Отмена</Button><Button variant="contained" onClick={() => void saveTaskFromEvent()} disabled={taskSaving || !taskTitle.trim()}>Создать</Button></DialogActions>
+      </Dialog>
       <Dialog open={zoneDialogOpen} onClose={() => setZoneDialogOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle>Новая зона работы</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>

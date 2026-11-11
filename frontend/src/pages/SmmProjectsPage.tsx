@@ -217,7 +217,7 @@ const ContentPlanTab: React.FC<{ projectCode: string; canGenerate: boolean }> = 
           </Stack>
           <TextField size="small" label="Цель плана" value={objective} onChange={(e) => setObjective(e.target.value)} fullWidth />
           <TextField size="small" label="Аудитория" value={audience} onChange={(e) => setAudience(e.target.value)} placeholder="Например: подростки, родители, преподаватели" fullWidth />
-          <TextField size="small" label="Дополнительный контекст для этого плана" value={extraContext} onChange={(e) => setExtraContext(e.target.value)} multiline minRows={2} fullWidth />
+          <TextField size="small" label="Разовый контекст для этого плана" helperText="Не сохраняется в базе проекта. Постоянные документы и референсы добавляются во вкладке «Контекст проекта»." value={extraContext} onChange={(e) => setExtraContext(e.target.value)} multiline minRows={2} fullWidth />
           <Box>
             <Typography variant="caption" color="text.secondary">Каналы</Typography>
             <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 0.5 }}>
@@ -1585,6 +1585,44 @@ const ContentPlanWorkspaceTab: React.FC = () => {
   );
 };
 
+const KnowledgeWorkspaceTab: React.FC = () => {
+  const { user } = useAuth();
+  const [projects, setProjects] = useState<smm.ProjectListItem[]>([]);
+  const [selected, setSelected] = useState('');
+  const canManageKnowledge = hasPermission(user, 'smm_projects.manage_knowledge');
+
+  useEffect(() => {
+    smm.listProjects().then((list) => {
+      setProjects(list);
+      setSelected((current) => current || list[0]?.code || '');
+    }).catch(() => setProjects([]));
+  }, []);
+
+  return (
+    <Stack spacing={2}>
+      <Alert severity="info">
+        Этот контекст сохраняется за проектом и автоматически передаётся планировщику при создании каждого контент-плана.
+        Текстовые документы индексируются, а изображения сохраняются как визуальные референсы с описанием для AI.
+      </Alert>
+      <FormControl size="small" sx={{ maxWidth: 420 }}>
+        <InputLabel id="knowledge-project">Проект</InputLabel>
+        <Select
+          labelId="knowledge-project"
+          label="Проект"
+          value={selected}
+          onChange={(e) => setSelected(e.target.value)}
+        >
+          {projects.map((project) => (
+            <MenuItem key={project.code} value={project.code}>{project.name}</MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+      {!projects.length && <Alert severity="info">Сначала создайте SMM-проект.</Alert>}
+      {selected && <KnowledgeTab projectCode={selected} canManage={canManageKnowledge} />}
+    </Stack>
+  );
+};
+
 // ─── Главная страница: 4 вкладки ────────────────────────────────────────────
 
 const SmmProjectsPage: React.FC = () => {
@@ -1594,6 +1632,7 @@ const SmmProjectsPage: React.FC = () => {
   const tabs = [
     { label: 'Новые', node: <ComposeTab onPublished={() => setReloadKey((k) => k + 1)} /> },
     { label: 'Контент-план', node: <ContentPlanWorkspaceTab /> },
+    { label: 'Контекст проекта', node: <KnowledgeWorkspaceTab /> },
     { label: 'Запланированные', node: <PublicationsListTab state="scheduled" reloadKey={reloadKey} /> },
     { label: 'Отправленные', node: <PublicationsListTab state="sent" reloadKey={reloadKey} /> },
     { label: 'Настройки', node: <ProjectSettingsTab /> },

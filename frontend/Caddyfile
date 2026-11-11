@@ -7,7 +7,7 @@ http://{$DOMAIN} {
     @api path /api/*
     handle @api {
         request_body {
-            max_size 100MB
+            max_size 200MB
         }
         reverse_proxy backend:8000
     }

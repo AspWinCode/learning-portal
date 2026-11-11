@@ -10,7 +10,7 @@ from uuid import uuid4
 _DISK_ROOT = Path(os.getenv("DISK_STORAGE_ROOT", "/app/storage/disk")).resolve()
 SMM_STORAGE_ROOT = (_DISK_ROOT / "smm_projects").resolve()
 
-MAX_UPLOAD_BYTES = int(os.getenv("SMM_MAX_UPLOAD_BYTES", str(50 * 1024 * 1024)))
+MAX_UPLOAD_BYTES = int(os.getenv("SMM_MAX_UPLOAD_BYTES", str(200 * 1024 * 1024)))
 
 
 def _safe_name(value: str, fallback: str = "file") -> str:

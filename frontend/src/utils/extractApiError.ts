@@ -1,4 +1,7 @@
 export const extractApiError = (err: any, fallback: string): string => {
+  if (err?.response?.status === 413) {
+    return 'Файл или ZIP слишком большой. Максимальный размер — 200 МБ.';
+  }
   const detail = err?.response?.data?.detail;
   const rawError = err?.response?.data?.error;
 

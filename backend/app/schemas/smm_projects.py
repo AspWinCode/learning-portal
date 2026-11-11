@@ -81,6 +81,9 @@ class KnowledgeItemOut(BaseModel):
     content: str
     source_type: str
     source_url: Optional[str]
+    storage_key: Optional[str]
+    original_filename: Optional[str]
+    content_type: Optional[str]
     is_active: bool
     created_by_id: Optional[int]
     created_at: Optional[datetime]

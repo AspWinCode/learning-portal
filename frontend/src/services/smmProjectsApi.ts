@@ -61,6 +61,9 @@ export interface KnowledgeItem {
   content: string;
   source_type: string;
   source_url: string | null;
+  storage_key: string | null;
+  original_filename: string | null;
+  content_type: string | null;
   is_active: boolean;
   created_by_id: number | null;
   created_at: string | null;
@@ -79,6 +82,13 @@ export const createKnowledge = (
   code: string,
   payload: { title: string; content: string; source_type?: string; source_url?: string }
 ): Promise<KnowledgeItem> => api.post(`${BASE}/projects/${code}/knowledge`, payload).then((r) => r.data);
+
+export const uploadKnowledgeFile = (code: string, file: File, title?: string): Promise<KnowledgeItem> => {
+  const form = new FormData();
+  form.append('file', file);
+  if (title?.trim()) form.append('title', title.trim());
+  return api.post(`${BASE}/projects/${code}/knowledge/upload`, form, { headers: { 'Content-Type': 'multipart/form-data' } }).then((r) => r.data);
+};
 
 export const updateKnowledge = (
   code: string,

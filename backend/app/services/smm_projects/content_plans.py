@@ -78,7 +78,10 @@ async def generate_plan(db: Session, user, *, project: SmmProject, payload: Dict
         raise ValueError("Контент-план можно создавать максимум на 2 месяца")
 
     query = " ".join(str(payload.get(key) or "") for key in ("objective", "audience", "extra_context"))
-    hits = await knowledge_svc.search(db, project, query or project.name)
+    # Контекст плана должен быть постоянным и полным: при генерации месячного
+    # плана читаем все активные факты/файлы проекта, а не только совпадения по
+    # короткому запросу формы.
+    hits = knowledge_svc.list_items(db, project)
     knowledge = knowledge_svc.as_prompt_block(hits)
     fallback = _fallback_items(payload)
     requested_formats = payload.get("formats") or DEFAULT_FORMATS

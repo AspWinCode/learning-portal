@@ -59,6 +59,7 @@ from app.services.smm_projects import channels as channels_svc
 from app.services.smm_projects import content_plans as content_plans_svc
 from app.services.smm_projects import generation
 from app.services.smm_projects import knowledge as knowledge_svc
+from app.services.smm_projects import knowledge_files as knowledge_files_svc
 from app.services.smm_projects import projects as projects_svc
 from app.services.smm_projects import publishing as publishing_svc
 from app.services.smm_projects import storage as storage_svc
@@ -235,6 +236,45 @@ def create_knowledge(
     project = _get_accessible_project(db, code, current_user)
     item = knowledge_svc.create_item(db, project, payload.model_dump(), user_id=current_user.id)
     log_action(db, current_user.id, "create", "smm_knowledge_item", item.id, {"project": code, "title": item.title})
+    return item
+
+
+@router.post("/projects/{code}/knowledge/upload", response_model=KnowledgeItemOut, status_code=status.HTTP_201_CREATED)
+async def upload_knowledge_file(
+    code: str,
+    file: UploadFile = File(...),
+    title: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("smm_projects.manage_knowledge")),
+):
+    project = _get_accessible_project(db, code, current_user)
+    filename = file.filename or "reference"
+    suffix = os.path.splitext(filename.lower())[1]
+    if suffix not in knowledge_files_svc.ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="Поддерживаются PDF, DOCX, TXT, Markdown, HTML и изображения JPG/PNG/WEBP")
+    data = await file.read()
+    try:
+        storage_key, extracted = await knowledge_files_svc.save_and_extract(
+            data, filename, file.content_type or "application/octet-stream", user_id=current_user.id
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Не удалось прочитать файл: {exc}") from exc
+    item = knowledge_svc.create_item(
+        db,
+        project,
+        {
+            "title": (title or os.path.splitext(filename)[0])[:256],
+            "content": extracted or "Файл сохранён, но текст для извлечения не найден.",
+            "source_type": "image_reference" if (file.content_type or "").startswith("image/") else "file",
+            "storage_key": storage_key,
+            "original_filename": filename,
+            "content_type": file.content_type,
+        },
+        user_id=current_user.id,
+    )
+    log_action(db, current_user.id, "create", "smm_knowledge_file", item.id, {"project": code, "filename": filename})
     return item
 
 

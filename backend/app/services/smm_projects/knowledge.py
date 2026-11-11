@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.models import SmmKnowledgeItem, SmmProject
 from app.services import ai_gateway
 from app.services.academy_ai.retrieval import _or_tsquery_text, _vec_literal
+from app.services.smm_projects import storage
 
 _WORD_RE = re.compile(r"[\wа-яёА-ЯЁ]{3,}", re.UNICODE)
 
@@ -33,6 +34,9 @@ def create_item(db: Session, project: SmmProject, data: Dict[str, Any], *, user_
         content=data["content"],
         source_type=data.get("source_type") or "manual",
         source_url=data.get("source_url"),
+        storage_key=data.get("storage_key"),
+        original_filename=data.get("original_filename"),
+        content_type=data.get("content_type"),
         created_by_id=user_id,
     )
     db.add(item)
@@ -53,6 +57,8 @@ def update_item(db: Session, item: SmmKnowledgeItem, updates: Dict[str, Any]) ->
 def delete_item(db: Session, item: SmmKnowledgeItem) -> None:
     item.is_active = False
     db.commit()
+    if item.storage_key:
+        storage.delete(item.storage_key)
 
 
 def capabilities(db: Session, *, refresh: bool = False) -> Dict[str, bool]:

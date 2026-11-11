@@ -539,6 +539,8 @@ const KnowledgeTab: React.FC<{ projectCode: string; canManage: boolean }> = ({ p
   const [content, setContent] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [reindexResult, setReindexResult] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const reload = () => smm.listKnowledge(projectCode).then((r) => setItems(r.items)).catch(() => setItems([]));
 
@@ -575,6 +577,20 @@ const KnowledgeTab: React.FC<{ projectCode: string; canManage: boolean }> = ({ p
     }
   };
 
+  const upload = async (file: File) => {
+    setUploading(true);
+    setError(null);
+    try {
+      await smm.uploadKnowledgeFile(projectCode, file);
+      await reload();
+    } catch (e) {
+      setError(extractApiError(e, 'Не удалось загрузить файл'));
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   return (
     <Stack spacing={2}>
       {canManage && (
@@ -585,6 +601,16 @@ const KnowledgeTab: React.FC<{ projectCode: string; canManage: boolean }> = ({ p
               <Button size="small" onClick={reindex}>
                 Переиндексировать эмбеддинги
               </Button>
+              <Button size="small" variant="outlined" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+                {uploading ? 'Читаем…' : 'Загрузить документ / референс'}
+              </Button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                hidden
+                accept=".pdf,.docx,.txt,.md,.markdown,.rst,.html,.htm,.jpg,.jpeg,.png,.webp"
+                onChange={(e) => { const file = e.target.files?.[0]; if (file) upload(file); }}
+              />
             </Stack>
             {reindexResult && <Alert severity="info">{reindexResult}</Alert>}
             <TextField size="small" label="Заголовок" value={title} onChange={(e) => setTitle(e.target.value)} />
@@ -601,7 +627,10 @@ const KnowledgeTab: React.FC<{ projectCode: string; canManage: boolean }> = ({ p
       {items?.map((item) => (
         <Paper key={item.id} variant="outlined" sx={{ p: 2 }}>
           <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
-            <Typography variant="subtitle2">{item.title}</Typography>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Typography variant="subtitle2">{item.title}</Typography>
+                {item.original_filename && <Chip size="small" variant="outlined" label={item.original_filename} />}
+              </Stack>
             {canManage && (
               <Button size="small" color="error" onClick={() => remove(item.id)}>
                 Удалить

@@ -48,6 +48,7 @@ from app.services.payment_status import (
     get_payment_status_summary as payment_status_summary_svc,
 )
 from app.services.pricing import student_abonement_price
+from app.services.student_group_membership import close_active_group_memberships
 from app.services.student_activity import log_student_activity
 from app.student_display import get_student_display_name
 
@@ -602,6 +603,7 @@ async def close_by_fact_confirm(
         card.archived = True
     student.status = StudentStatus.ARCHIVED
     student.archived_at = utcnow()
+    close_active_group_memberships(db, student_id)
     db.commit()
     log_action(
         db,

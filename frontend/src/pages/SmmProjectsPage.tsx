@@ -150,6 +150,122 @@ const NewContentTab: React.FC<{ projectCode: string; canGenerate: boolean; onGen
   );
 };
 
+// ─── Месячный контент-план ──────────────────────────────────────────────────
+
+const PLAN_FORMATS = ['Пост', 'Карточка', 'Карусель', 'Видео / Reels / Shorts', 'Инфографика'];
+const PLAN_CHANNELS = ['vk', 'telegram', 'instagram', 'max'];
+
+function isoDate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+const ContentPlanTab: React.FC<{ projectCode: string; canGenerate: boolean }> = ({ projectCode, canGenerate }) => {
+  const today = new Date();
+  const [dateFrom, setDateFrom] = useState(isoDate(new Date(today.getFullYear(), today.getMonth(), 1)));
+  const [dateTo, setDateTo] = useState(isoDate(new Date(today.getFullYear(), today.getMonth() + 1, 0)));
+  const [objective, setObjective] = useState('Повысить вовлечённость и привести аудиторию к следующему действию');
+  const [audience, setAudience] = useState('');
+  const [extraContext, setExtraContext] = useState('');
+  const [postsPerWeek, setPostsPerWeek] = useState(3);
+  const [channels, setChannels] = useState<string[]>(['vk', 'telegram']);
+  const [formats, setFormats] = useState<string[]>(PLAN_FORMATS);
+  const [plans, setPlans] = useState<smm.ContentPlan[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const reload = () => smm.listContentPlans(projectCode).then((r) => setPlans(r.items)).catch(() => setPlans([]));
+  useEffect(() => { reload(); }, [projectCode]);
+
+  const toggle = (value: string, setter: React.Dispatch<React.SetStateAction<string[]>>) =>
+    setter((current) => (current.includes(value) ? current.filter((v) => v !== value) : [...current, value]));
+
+  const generate = async () => {
+    if (!dateFrom || !dateTo || !formats.length) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await smm.generateContentPlan(projectCode, {
+        date_from: dateFrom,
+        date_to: dateTo,
+        objective,
+        audience,
+        extra_context: extraContext,
+        channels,
+        formats,
+        posts_per_week: postsPerWeek,
+      });
+      await reload();
+    } catch (e) {
+      setError(extractApiError(e, 'Не удалось создать контент-план'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Stack spacing={2}>
+      <Paper variant="outlined" sx={{ p: 2 }}>
+        <Stack spacing={1.5}>
+          <Typography variant="subtitle1">Создать контент-план на период</Typography>
+          <Typography variant="body2" color="text.secondary">
+            Планировщик использует настройки проекта и активные записи из «Базы знаний», поэтому сначала добавьте туда факты, даты и ограничения.
+          </Typography>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+            <TextField size="small" type="date" label="С" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} InputLabelProps={{ shrink: true }} fullWidth />
+            <TextField size="small" type="date" label="По" value={dateTo} onChange={(e) => setDateTo(e.target.value)} InputLabelProps={{ shrink: true }} fullWidth />
+            <TextField size="small" type="number" label="Постов в неделю" value={postsPerWeek} onChange={(e) => setPostsPerWeek(Math.max(1, Math.min(14, Number(e.target.value) || 1)))} sx={{ minWidth: 150 }} />
+          </Stack>
+          <TextField size="small" label="Цель плана" value={objective} onChange={(e) => setObjective(e.target.value)} fullWidth />
+          <TextField size="small" label="Аудитория" value={audience} onChange={(e) => setAudience(e.target.value)} placeholder="Например: подростки, родители, преподаватели" fullWidth />
+          <TextField size="small" label="Дополнительный контекст для этого плана" value={extraContext} onChange={(e) => setExtraContext(e.target.value)} multiline minRows={2} fullWidth />
+          <Box>
+            <Typography variant="caption" color="text.secondary">Каналы</Typography>
+            <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 0.5 }}>
+              {PLAN_CHANNELS.map((channel) => <Chip key={channel} label={channel} clickable onClick={() => toggle(channel, setChannels)} color={channels.includes(channel) ? 'secondary' : 'default'} variant={channels.includes(channel) ? 'filled' : 'outlined'} />)}
+            </Stack>
+          </Box>
+          <Box>
+            <Typography variant="caption" color="text.secondary">Форматы</Typography>
+            <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 0.5 }}>
+              {PLAN_FORMATS.map((formatName) => <Chip key={formatName} label={formatName} clickable onClick={() => toggle(formatName, setFormats)} color={formats.includes(formatName) ? 'secondary' : 'default'} variant={formats.includes(formatName) ? 'filled' : 'outlined'} />)}
+            </Stack>
+          </Box>
+          {error && <Alert severity="error">{error}</Alert>}
+          <Button variant="contained" onClick={generate} disabled={busy || !canGenerate || !dateFrom || !dateTo || !formats.length}>
+            {busy ? 'Планируем…' : 'Создать контент-план'}
+          </Button>
+        </Stack>
+      </Paper>
+      {plans.map((plan) => (
+        <Paper key={plan.id} variant="outlined" sx={{ p: 2, overflowX: 'auto' }}>
+          <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1} sx={{ mb: 1 }}>
+            <Box>
+              <Typography variant="subtitle1">{plan.name}</Typography>
+              <Typography variant="caption" color="text.secondary">{plan.items.length} публикаций · {plan.posts_per_week} в неделю</Typography>
+            </Box>
+            <Chip size="small" label="Черновик плана" />
+          </Stack>
+          <Stack spacing={1} sx={{ minWidth: 860 }}>
+            {plan.items.map((item) => (
+              <Box key={item.id} sx={{ display: 'grid', gridTemplateColumns: '100px 180px minmax(240px, 1fr) minmax(220px, 1fr) 170px', gap: 1, alignItems: 'start', borderTop: '1px solid', borderColor: 'divider', pt: 1 }}>
+                <Typography variant="body2" fontWeight={600}>{new Date(`${item.publish_date}T12:00:00`).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' })}</Typography>
+                <Typography variant="body2"><b>{item.rubric || 'Без рубрики'}</b><br />{item.title}</Typography>
+                <Typography variant="body2" color="text.secondary">{item.brief || '—'}</Typography>
+                <Typography variant="body2" color="text.secondary">{item.retention_mechanic || '—'}</Typography>
+                <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                  <Chip size="small" label={item.content_format} />
+                  {item.channel && <Chip size="small" variant="outlined" label={item.channel} />}
+                </Stack>
+              </Box>
+            ))}
+          </Stack>
+        </Paper>
+      ))}
+      {!plans.length && <Alert severity="info">Контент-планов пока нет. Создайте первый на 4 недели.</Alert>}
+    </Stack>
+  );
+};
+
 // ─── Черновики ──────────────────────────────────────────────────────────────
 
 const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage: boolean; canPublish: boolean; reloadKey: number }> = ({
@@ -791,6 +907,7 @@ const ProjectWorkspaceView: React.FC<{ projectCode: string }> = ({ projectCode }
   const tabs = useMemo(
     () => [
       { label: 'Новый материал', node: <NewContentTab projectCode={projectCode} canGenerate={canGenerate} onGenerated={() => setReloadKey((k) => k + 1)} /> },
+      { label: 'Контент-план', node: <ContentPlanTab projectCode={projectCode} canGenerate={canGenerate} /> },
       { label: 'Черновики', node: <DraftsTab projectCode={projectCode} canGenerate={canGenerate} canManage={canManageContent} canPublish={canPublish} reloadKey={reloadKey} /> },
       { label: 'Пакет по событию', node: <EventPackTab projectCode={projectCode} canGenerate={canGenerate} onGenerated={() => setReloadKey((k) => k + 1)} /> },
       { label: 'База знаний', node: <KnowledgeTab projectCode={projectCode} canManage={canManageKnowledge} /> },

@@ -25,6 +25,9 @@ from app.schemas.smm_projects import (
     ChannelStatusOut,
     ChannelVerifyOut,
     ContentList,
+    ContentPlanGenerateRequest,
+    ContentPlanList,
+    ContentPlanOut,
     ContentOut,
     ContentUpdate,
     EventPackRequest,
@@ -53,6 +56,7 @@ from app.schemas.smm_projects import (
 from app.services.smm_projects import access as access_svc
 from app.services.smm_projects import assets as assets_svc
 from app.services.smm_projects import channels as channels_svc
+from app.services.smm_projects import content_plans as content_plans_svc
 from app.services.smm_projects import generation
 from app.services.smm_projects import knowledge as knowledge_svc
 from app.services.smm_projects import projects as projects_svc
@@ -286,6 +290,33 @@ def list_templates(
 
 
 # ─── Generate / Content ──────────────────────────────────────────────────
+
+@router.get("/projects/{code}/content-plans", response_model=ContentPlanList)
+def list_content_plans(
+    code: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("smm_projects.access")),
+):
+    project = _get_accessible_project(db, code, current_user)
+    items = content_plans_svc.list_plans(db, project)
+    return ContentPlanList(items=items, total=len(items))
+
+
+@router.post("/projects/{code}/content-plans/generate", response_model=ContentPlanOut, status_code=status.HTTP_201_CREATED)
+async def generate_content_plan(
+    code: str,
+    payload: ContentPlanGenerateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("smm_projects.generate")),
+):
+    project = _get_accessible_project(db, code, current_user)
+    try:
+        plan = await content_plans_svc.generate_plan(db, current_user, project=project, payload=payload.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    log_action(db, current_user.id, "create", "smm_content_plan", plan.id, {"project": code, "items": len(plan.items)})
+    return plan
+
 
 @router.post("/projects/{code}/generate", response_model=ContentOut)
 async def generate_content(

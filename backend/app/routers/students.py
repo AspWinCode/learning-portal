@@ -37,6 +37,7 @@ from app.student_display import (
 from app.services.parent_invite import create_parent_user_no_invite, create_invite_for_existing_parent
 from app.services.student_activity import log_student_activity
 from app.services.student_account_finance import ensure_default_student_account
+from app.services.student_group_membership import close_active_group_memberships
 from app.utils.datetime import utcnow
 
 router = APIRouter()
@@ -1233,6 +1234,7 @@ async def update_student(
 
     # При архивации проверяем, нужно ли деактивировать родителя
     if "status" in update_data and update_data["status"] == StudentStatus.ARCHIVED:
+        close_active_group_memberships(db, student_id)
         if db_student.parent_id:
             # Проверяем, есть ли у родителя другие активные ученики
             active_students_count = db.query(Student).filter(
@@ -1330,6 +1332,7 @@ async def delete_student(
 
     # Архивируем вместо удаления
     db_student.status = StudentStatus.ARCHIVED
+    close_active_group_memberships(db, student_id)
     db.commit()
 
     # Проверяем, нужно ли деактивировать родителя

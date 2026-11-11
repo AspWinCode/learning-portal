@@ -4562,6 +4562,7 @@ class SmmProject(Base):
 
     knowledge_items = relationship("SmmKnowledgeItem", back_populates="project", cascade="all, delete-orphan")
     templates = relationship("SmmContentTemplate", back_populates="project", cascade="all, delete-orphan")
+    content_plans = relationship("SmmContentPlan", back_populates="project", cascade="all, delete-orphan")
 
 
 class SmmProjectAccess(Base):
@@ -4641,6 +4642,52 @@ class SmmChannelConfig(Base):
     __table_args__ = (UniqueConstraint("project_id", "channel", name="uq_smm_channel_configs_project_channel"),)
 
 
+class SmmContentPlan(Base):
+    """Месячный редакционный план проекта."""
+
+    __tablename__ = "smm_content_plans"
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("smm_projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(256), nullable=False)
+    date_from = Column(Date, nullable=False, index=True)
+    date_to = Column(Date, nullable=False, index=True)
+    objective = Column(Text, nullable=True)
+    audience = Column(Text, nullable=True)
+    channels = Column(JSON, nullable=True)
+    formats = Column(JSON, nullable=True)
+    posts_per_week = Column(Integer, nullable=False, default=3)
+    status = Column(String(16), nullable=False, default="draft", index=True)
+    created_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    project = relationship("SmmProject", back_populates="content_plans")
+    items = relationship("SmmContentPlanItem", back_populates="plan", cascade="all, delete-orphan", order_by="SmmContentPlanItem.publish_date, SmmContentPlanItem.position")
+
+
+class SmmContentPlanItem(Base):
+    """Одна строка контент-плана; материал создаётся отдельно после согласования."""
+
+    __tablename__ = "smm_content_plan_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    plan_id = Column(Integer, ForeignKey("smm_content_plans.id", ondelete="CASCADE"), nullable=False, index=True)
+    publish_date = Column(Date, nullable=False, index=True)
+    position = Column(Integer, nullable=False, default=0)
+    rubric = Column(String(256), nullable=True)
+    title = Column(String(256), nullable=False)
+    brief = Column(Text, nullable=True)
+    retention_mechanic = Column(Text, nullable=True)
+    content_format = Column(String(128), nullable=False, default="post")
+    channel = Column(String(32), nullable=True)
+    status = Column(String(16), nullable=False, default="planned", index=True)
+    generated_content_id = Column(Integer, ForeignKey("smm_content.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    plan = relationship("SmmContentPlan", back_populates="items")
+
+
 class SmmContentStatus(str, enum.Enum):
     DRAFT = "draft"
     APPROVED = "approved"
@@ -4656,6 +4703,7 @@ class SmmContent(Base):
     id = Column(Integer, primary_key=True, index=True)
     project_id = Column(Integer, ForeignKey("smm_projects.id", ondelete="CASCADE"), nullable=False, index=True)
     template_id = Column(Integer, ForeignKey("smm_content_templates.id", ondelete="SET NULL"), nullable=True, index=True)
+    plan_item_id = Column(Integer, ForeignKey("smm_content_plan_items.id", ondelete="SET NULL"), nullable=True, index=True)
     parent_content_id = Column(Integer, ForeignKey("smm_content.id", ondelete="SET NULL"), nullable=True, index=True)
     created_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     title = Column(String(256), nullable=True)

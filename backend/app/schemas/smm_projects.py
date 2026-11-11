@@ -124,6 +124,62 @@ class ChannelVerifyOut(BaseModel):
     feed_url: Optional[str] = None
 
 
+# ─── Content plans ──────────────────────────────────────────────────────────
+
+class ContentPlanGenerateRequest(BaseModel):
+    date_from: date
+    date_to: date
+    objective: Optional[str] = None
+    audience: Optional[str] = None
+    channels: List[str] = Field(default_factory=list)
+    formats: List[str] = Field(default_factory=list)
+    posts_per_week: int = Field(default=3, ge=1, le=14)
+    extra_context: Optional[str] = None
+
+
+class ContentPlanItemOut(BaseModel):
+    id: int
+    plan_id: int
+    publish_date: date
+    position: int
+    rubric: Optional[str]
+    title: str
+    brief: Optional[str]
+    retention_mechanic: Optional[str]
+    content_format: str
+    channel: Optional[str]
+    status: str
+    generated_content_id: Optional[int]
+    created_at: Optional[datetime]
+
+    model_config = _ORM
+
+
+class ContentPlanOut(BaseModel):
+    id: int
+    project_id: int
+    name: str
+    date_from: date
+    date_to: date
+    objective: Optional[str]
+    audience: Optional[str]
+    channels: Optional[List[str]]
+    formats: Optional[List[str]]
+    posts_per_week: int
+    status: str
+    created_by_id: Optional[int]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+    items: List[ContentPlanItemOut] = Field(default_factory=list)
+
+    model_config = _ORM
+
+
+class ContentPlanList(BaseModel):
+    items: List[ContentPlanOut]
+    total: int
+
+
 # ─── Templates ──────────────────────────────────────────────────────────────
 
 class TemplateOut(BaseModel):

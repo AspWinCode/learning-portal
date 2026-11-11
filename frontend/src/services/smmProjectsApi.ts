@@ -148,6 +148,50 @@ export const removeChannel = (code: string, channel: string): Promise<void> =>
 export const verifyChannel = (code: string, channel: string): Promise<ChannelVerifyResult> =>
   api.post(`${BASE}/projects/${code}/channels/${channel}/verify`).then((r) => r.data);
 
+// ─── Контент-планы ─────────────────────────────────────────────────────────
+
+export interface ContentPlanItem {
+  id: number;
+  plan_id: number;
+  publish_date: string;
+  position: number;
+  rubric: string | null;
+  title: string;
+  brief: string | null;
+  retention_mechanic: string | null;
+  content_format: string;
+  channel: string | null;
+  status: string;
+  generated_content_id: number | null;
+  created_at: string | null;
+}
+
+export interface ContentPlan {
+  id: number;
+  project_id: number;
+  name: string;
+  date_from: string;
+  date_to: string;
+  objective: string | null;
+  audience: string | null;
+  channels: string[] | null;
+  formats: string[] | null;
+  posts_per_week: number;
+  status: string;
+  created_by_id: number | null;
+  created_at: string | null;
+  updated_at: string | null;
+  items: ContentPlanItem[];
+}
+
+export const listContentPlans = (code: string): Promise<{ items: ContentPlan[]; total: number }> =>
+  api.get(`${BASE}/projects/${code}/content-plans`).then((r) => r.data);
+
+export const generateContentPlan = (
+  code: string,
+  payload: { date_from: string; date_to: string; objective?: string; audience?: string; channels: string[]; formats: string[]; posts_per_week: number; extra_context?: string },
+): Promise<ContentPlan> => api.post(`${BASE}/projects/${code}/content-plans/generate`, payload).then((r) => r.data);
+
 // ─── Templates ────────────────────────────────────────────────────────────
 
 export interface TemplateField {

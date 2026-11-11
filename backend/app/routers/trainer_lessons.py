@@ -34,6 +34,7 @@ from app.models import (
     LessonRosterExclusion,
     UserRole,
     Student,
+    StudentStatus,
     Abonement,
     StudentAccount,
     StudentAccountTransaction,
@@ -368,6 +369,12 @@ async def get_lessons_for_date(
             GroupStudent.group_id == group.id,
             GroupStudent.left_at.is_(None),
         ).all()
+        # Архивные ученики не должны попадать в текущий ростер даже если
+        # членство было создано до автоматического закрытия при архивации.
+        students_in_group = [
+            gs for gs in students_in_group
+            if gs.student is not None and getattr(gs.student, "status", None) == StudentStatus.ACTIVE
+        ]
         restricted_map = _restricted_schedule_ids_map(db, [gs.id for gs in students_in_group])
         group_student_ids = {gs.student_id for gs in students_in_group if gs.student_id}
         attendance_student_ids = {att.student_id for att in attendances}

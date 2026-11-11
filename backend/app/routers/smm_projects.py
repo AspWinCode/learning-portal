@@ -7,6 +7,7 @@ Studio). Поток: создать проект → подключить кан
 включает публикацию; для отложенных постов дальше идёт без дополнительного
 клика, см. services/smm_projects/publishing.py)."""
 import os
+import mimetypes
 from datetime import datetime
 from typing import List, Optional
 from xml.sax.saxutils import escape as xml_escape
@@ -36,6 +37,7 @@ from app.schemas.smm_projects import (
     KnowledgeItemCreate,
     KnowledgeItemList,
     KnowledgeItemOut,
+    KnowledgeUploadBatchOut,
     KnowledgeItemUpdate,
     ProjectCreate,
     ProjectListItem,
@@ -276,6 +278,65 @@ async def upload_knowledge_file(
     )
     log_action(db, current_user.id, "create", "smm_knowledge_file", item.id, {"project": code, "filename": filename})
     return item
+
+
+async def _create_uploaded_knowledge_item(db: Session, project: SmmProject, filename: str, data: bytes, content_type: str, current_user: User):
+    suffix = os.path.splitext(filename.lower())[1]
+    if suffix not in knowledge_files_svc.ALLOWED_EXTENSIONS:
+        raise ValueError("Неподдерживаемый тип файла")
+    storage_key, extracted = await knowledge_files_svc.save_and_extract(
+        data, filename, content_type or "application/octet-stream", user_id=current_user.id
+    )
+    item = knowledge_svc.create_item(
+        db,
+        project,
+        {
+            "title": os.path.splitext(os.path.basename(filename))[0][:256],
+            "content": extracted or "Файл сохранён, но текст для извлечения не найден.",
+            "source_type": "image_reference" if (content_type or "").startswith("image/") else "file",
+            "storage_key": storage_key,
+            "original_filename": filename,
+            "content_type": content_type,
+        },
+        user_id=current_user.id,
+    )
+    log_action(db, current_user.id, "create", "smm_knowledge_file", item.id, {"project": project.code, "filename": filename})
+    return item
+
+
+@router.post("/projects/{code}/knowledge/upload-batch", response_model=KnowledgeUploadBatchOut, status_code=status.HTTP_201_CREATED)
+async def upload_knowledge_batch(
+    code: str,
+    files: List[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("smm_projects.manage_knowledge")),
+):
+    project = _get_accessible_project(db, code, current_user)
+    queue: list[tuple[str, bytes, str]] = []
+    skipped = 0
+    errors: list[str] = []
+    for upload in files:
+        filename = upload.filename or "reference"
+        if os.path.splitext(filename.lower())[1] == ".zip":
+            try:
+                queue.extend((name, data, mimetypes.guess_type(name)[0] or "application/octet-stream") for name, data in knowledge_files_svc.unpack_archive(await upload.read()))
+            except ValueError as exc:
+                errors.append(f"{filename}: {exc}")
+            continue
+        if os.path.splitext(filename.lower())[1] not in knowledge_files_svc.ALLOWED_EXTENSIONS:
+            skipped += 1
+            continue
+        queue.append((filename, await upload.read(), upload.content_type or "application/octet-stream"))
+
+    created = []
+    for filename, data, content_type in queue:
+        try:
+            created.append(await _create_uploaded_knowledge_item(db, project, filename, data, content_type, current_user))
+        except Exception as exc:
+            errors.append(f"{filename}: {exc}")
+    if not created and errors:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="; ".join(errors[:10]))
+    return KnowledgeUploadBatchOut(items=created, uploaded=len(created), skipped=skipped, errors=errors[:50])
 
 
 @router.patch("/projects/{code}/knowledge/{item_id}", response_model=KnowledgeItemOut)

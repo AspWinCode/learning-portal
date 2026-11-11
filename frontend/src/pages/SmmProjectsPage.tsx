@@ -540,6 +540,7 @@ const KnowledgeTab: React.FC<{ projectCode: string; canManage: boolean }> = ({ p
   const [error, setError] = useState<string | null>(null);
   const [reindexResult, setReindexResult] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadResult, setUploadResult] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const reload = () => smm.listKnowledge(projectCode).then((r) => setItems(r.items)).catch(() => setItems([]));
@@ -577,12 +578,16 @@ const KnowledgeTab: React.FC<{ projectCode: string; canManage: boolean }> = ({ p
     }
   };
 
-  const upload = async (file: File) => {
+  const upload = async (files: File[]) => {
+    if (!files.length) return;
     setUploading(true);
     setError(null);
+    setUploadResult(null);
     try {
-      await smm.uploadKnowledgeFile(projectCode, file);
+      const result = await smm.uploadKnowledgeBatch(projectCode, files);
       await reload();
+      const details = result.errors.length ? ` Ошибки: ${result.errors.join(' | ')}` : '';
+      setUploadResult(`Загружено: ${result.uploaded}${result.skipped ? `, пропущено: ${result.skipped}` : ''}.${details}`);
     } catch (e) {
       setError(extractApiError(e, 'Не удалось загрузить файл'));
     } finally {
@@ -602,17 +607,22 @@ const KnowledgeTab: React.FC<{ projectCode: string; canManage: boolean }> = ({ p
                 Переиндексировать эмбеддинги
               </Button>
               <Button size="small" variant="outlined" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
-                {uploading ? 'Читаем…' : 'Загрузить документ / референс'}
+                {uploading ? 'Читаем файлы…' : 'Загрузить файлы / ZIP'}
               </Button>
               <input
                 ref={fileInputRef}
                 type="file"
                 hidden
-                accept=".pdf,.docx,.txt,.md,.markdown,.rst,.html,.htm,.jpg,.jpeg,.png,.webp"
-                onChange={(e) => { const file = e.target.files?.[0]; if (file) upload(file); }}
+                multiple
+                accept=".zip,.pdf,.docx,.txt,.md,.markdown,.rst,.html,.htm,.jpg,.jpeg,.png,.webp"
+                onChange={(e) => { const files = Array.from(e.target.files || []); if (files.length) upload(files); }}
               />
             </Stack>
             {reindexResult && <Alert severity="info">{reindexResult}</Alert>}
+            <Typography variant="caption" color="text.secondary">
+              Можно выбрать несколько файлов сразу или ZIP-архив. Из ZIP будут распакованы и обработаны поддерживаемые документы и изображения.
+            </Typography>
+            {uploadResult && <Alert severity="info">{uploadResult}</Alert>}
             <TextField size="small" label="Заголовок" value={title} onChange={(e) => setTitle(e.target.value)} />
             <TextField size="small" label="Содержание" multiline minRows={3} value={content} onChange={(e) => setContent(e.target.value)} />
             {error && <Alert severity="error">{error}</Alert>}

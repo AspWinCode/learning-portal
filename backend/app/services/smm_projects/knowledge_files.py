@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import io
+import os
+import zipfile
 from typing import Tuple
 
 import docx
@@ -13,6 +15,44 @@ from app.services.smm_projects import storage
 
 ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt", ".md", ".markdown", ".rst", ".html", ".htm", ".jpg", ".jpeg", ".png", ".webp"}
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
+MAX_ARCHIVE_FILES = int(os.getenv("SMM_MAX_ARCHIVE_FILES", "200"))
+MAX_ARCHIVE_UNCOMPRESSED_BYTES = int(os.getenv("SMM_MAX_ARCHIVE_UNCOMPRESSED_BYTES", str(200 * 1024 * 1024)))
+
+
+def unpack_archive(data: bytes) -> list[tuple[str, bytes]]:
+    """Safely unpack supported files from a ZIP without allowing path traversal or bombs."""
+    if len(data) > storage.MAX_UPLOAD_BYTES:
+        raise ValueError(f"Размер ZIP не должен превышать {storage.MAX_UPLOAD_BYTES} байт")
+    files: list[tuple[str, bytes]] = []
+    total_size = 0
+    try:
+        archive = zipfile.ZipFile(io.BytesIO(data))
+    except zipfile.BadZipFile as exc:
+        raise ValueError("Файл не является корректным ZIP-архивом") from exc
+    with archive:
+        for info in archive.infolist():
+            if info.is_dir() or not info.filename:
+                continue
+            name = info.filename.replace("\\", "/")
+            parts = [part for part in name.split("/") if part not in ("", ".")]
+            if not parts or ".." in parts or name.startswith("/"):
+                continue
+            filename = parts[-1]
+            if os.path.splitext(filename.lower())[1] not in ALLOWED_EXTENSIONS:
+                continue
+            if info.flag_bits & 0x1:
+                continue
+            if info.file_size > storage.MAX_UPLOAD_BYTES:
+                continue
+            total_size += info.file_size
+            if len(files) >= MAX_ARCHIVE_FILES:
+                raise ValueError(f"В ZIP больше {MAX_ARCHIVE_FILES} поддерживаемых файлов")
+            if total_size > MAX_ARCHIVE_UNCOMPRESSED_BYTES:
+                raise ValueError("Распакованный размер ZIP превышает допустимый лимит")
+            files.append((filename, archive.read(info)))
+    if not files:
+        raise ValueError("В ZIP не найдено поддерживаемых документов или изображений")
+    return files
 
 
 def _docx_text(data: bytes) -> str:

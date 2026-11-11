@@ -97,6 +97,13 @@ class KnowledgeItemList(BaseModel):
     total: int
 
 
+class KnowledgeUploadBatchOut(BaseModel):
+    items: List[KnowledgeItemOut]
+    uploaded: int
+    skipped: int = 0
+    errors: List[str] = Field(default_factory=list)
+
+
 class ReindexResult(BaseModel):
     indexed: int
     backend: str

@@ -90,6 +90,19 @@ export const uploadKnowledgeFile = (code: string, file: File, title?: string): P
   return api.post(`${BASE}/projects/${code}/knowledge/upload`, form, { headers: { 'Content-Type': 'multipart/form-data' } }).then((r) => r.data);
 };
 
+export interface KnowledgeUploadBatchResult {
+  items: KnowledgeItem[];
+  uploaded: number;
+  skipped: number;
+  errors: string[];
+}
+
+export const uploadKnowledgeBatch = (code: string, files: File[]): Promise<KnowledgeUploadBatchResult> => {
+  const form = new FormData();
+  files.forEach((file) => form.append('files', file));
+  return api.post(`${BASE}/projects/${code}/knowledge/upload-batch`, form, { headers: { 'Content-Type': 'multipart/form-data' } }).then((r) => r.data);
+};
+
 export const updateKnowledge = (
   code: string,
   id: number,

@@ -508,7 +508,14 @@ async def generate_image(
             if result.ok:
                 return result
         except Exception as exc:  # noqa: BLE001
-            last_error = f"{name}: {exc}"
+            detail = ""
+            if isinstance(exc, httpx.HTTPStatusError) and exc.response is not None:
+                try:
+                    body = exc.response.json()
+                    detail = f" | provider: {body.get('error') or body.get('detail') or body}"
+                except Exception:
+                    detail = f" | provider: {exc.response.text[:500]}"
+            last_error = f"{name}: {exc}{detail}"
             _log_call(
                 feature=feature,
                 result=GatewayResult(ok=False, provider=name, purpose="image", error=last_error),

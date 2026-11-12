@@ -314,6 +314,15 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
   const [assetsByContent, setAssetsByContent] = useState<Record<number, smm.GeneratedAsset[]>>({});
   const [publications, setPublications] = useState<Record<number, smm.Publication[]>>({});
 
+  const stageLabel = (item: smm.GeneratedContent) => {
+    const mediaStatus = item.input_json?.media_status;
+    if (mediaStatus === 'error') return 'Медиа требует внимания';
+    if (item.status === 'approved') return 'Одобрен';
+    if (item.status === 'archived') return 'Архивирован';
+    if (mediaStatus === 'ready' || mediaStatus === 'generated') return 'Готов к проверке';
+    return 'Черновик создан';
+  };
+
   const reload = () =>
     smm
       .listContent(projectCode)
@@ -428,13 +437,18 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
             </Stack>
             <Chip
               size="small"
-              label={item.status}
-              color={item.status === 'approved' ? 'success' : item.status === 'archived' ? 'default' : 'warning'}
+              label={stageLabel(item)}
+              color={item.status === 'approved' ? 'success' : item.status === 'archived' ? 'default' : item.input_json?.media_status === 'error' ? 'error' : 'warning'}
             />
           </Stack>
           <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', mt: 1 }}>
             {item.output_text}
           </Typography>
+          {item.input_json?.media_error && (
+            <Alert severity="warning" sx={{ mt: 1 }}>
+              Текст создан, но медиа не готово: {String(item.input_json.media_error)}. Можно повторить генерацию визуала ниже.
+            </Alert>
+          )}
           {canGenerate && (
             <Stack direction="row" spacing={1} sx={{ mt: 1 }} flexWrap="wrap" useFlexGap>
               {(Object.keys(smm.TRANSFORM_ACTION_LABELS) as smm.TransformAction[]).map((action) => (
@@ -1702,13 +1716,13 @@ const SmmProjectsPage: React.FC = () => {
   const [reloadKey, setReloadKey] = useState(0);
 
   const tabs = [
-    { label: 'Новые', node: <ComposeTab onPublished={() => setReloadKey((k) => k + 1)} /> },
     { label: 'Контент-план', node: <ContentPlanWorkspaceTab /> },
     { label: 'Черновики', node: <DraftsWorkspaceTab /> },
-    { label: 'Контекст проекта', node: <KnowledgeWorkspaceTab /> },
     { label: 'Запланированные', node: <PublicationsListTab state="scheduled" reloadKey={reloadKey} /> },
     { label: 'Отправленные', node: <PublicationsListTab state="sent" reloadKey={reloadKey} /> },
+    { label: 'Контекст проекта', node: <KnowledgeWorkspaceTab /> },
     { label: 'Настройки', node: <ProjectSettingsTab /> },
+    { label: 'Создание', node: <ComposeTab onPublished={() => setReloadKey((k) => k + 1)} /> },
   ];
 
   return (

@@ -106,11 +106,13 @@ async def test_verify_valid_token_and_wall_permission_succeeds(monkeypatch, publ
 
 @pytest.mark.asyncio
 async def test_publish_surfaces_actionable_error_when_token_lacks_photos_permission(monkeypatch, publisher):
-    """Live VK bug: a community token with "Стена" but not "Фотографии"
-    enabled lets wall.post through but fails photos.getWallUploadServer with
-    the raw "Group authorization failed: method is unavailable with group
-    auth." — publish() used to leak that raw text instead of saying what to
-    fix."""
+    """Live VK bug: a community access key — even with both "Стена" and
+    "Фотографии" enabled — fails photos.getWallUploadServer with the raw
+    "Group authorization failed: method is unavailable with group auth.".
+    The method is simply unavailable for community/group keys regardless of
+    permissions; only a personal (user) token with wall+photos scopes works.
+    publish() used to leak VK's raw English text, then wrongly blamed a
+    missing permission; it must now point at the real fix (user token)."""
     monkeypatch.setattr(
         "httpx.AsyncClient",
         _client_factory([
@@ -121,5 +123,5 @@ async def test_publish_surfaces_actionable_error_when_token_lacks_photos_permiss
         project_code="kodarena", channel="vk", text="Текст",
         asset_bytes=b"one", config={"token": "t", "group_id": "1"},
     )
-    with pytest.raises(ValueError, match="Фотографии"):
+    with pytest.raises(ValueError, match="личный токен администратора"):
         await publisher.publish(context)

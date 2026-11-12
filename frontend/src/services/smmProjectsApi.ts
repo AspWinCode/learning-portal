@@ -98,9 +98,22 @@ export interface KnowledgeUploadBatchResult {
 }
 
 export const uploadKnowledgeBatch = (code: string, files: File[]): Promise<KnowledgeUploadBatchResult> => {
-  const form = new FormData();
-  files.forEach((file) => form.append('files', file));
-  return api.post(`${BASE}/projects/${code}/knowledge/upload-batch`, form, { headers: { 'Content-Type': 'multipart/form-data' } }).then((r) => r.data);
+  return files.reduce<Promise<KnowledgeUploadBatchResult>>(async (promise, file) => {
+    const result = await promise;
+    const form = new FormData();
+    form.append('files', file);
+    try {
+      const response = await api.post(`${BASE}/projects/${code}/knowledge/upload-batch`, form, { headers: { 'Content-Type': 'multipart/form-data' } });
+      result.items.push(...(response.data.items || []));
+      result.uploaded += response.data.uploaded || 0;
+      result.skipped += response.data.skipped || 0;
+      result.errors.push(...(response.data.errors || []));
+    } catch (error: any) {
+      const detail = error?.response?.data?.detail;
+      result.errors.push(`${file.name}: ${typeof detail === 'string' ? detail : error?.message || 'ошибка загрузки'}`);
+    }
+    return result;
+  }, Promise.resolve({ items: [], uploaded: 0, skipped: 0, errors: [] }));
 };
 
 export const updateKnowledge = (

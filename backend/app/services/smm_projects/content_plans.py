@@ -125,8 +125,82 @@ def list_plans(db: Session, project: SmmProject) -> List[SmmContentPlan]:
     )
 
 
+async def _generate_item_draft(db: Session, *, plan: SmmContentPlan, item: SmmContentPlanItem) -> bool:
+    """Create one editable draft from a content-plan row."""
+    if item.generated_content_id is not None or item.status != "planned":
+        return False
+    project = db.query(SmmProject).filter(SmmProject.id == plan.project_id).first()
+    if project is None:
+        return False
+    knowledge = knowledge_svc.as_prompt_block(knowledge_svc.list_items(db, project), max_chars=12000)
+    system = "\n\n".join(part for part in [GLOBAL_SAFETY_RULES, _brand_block(project), knowledge, (
+        "Ты — редактор SMM-проекта. Создай готовый черновик публикации по брифу. "
+        "Не выдумывай факты, даты, цены и характеристики, которых нет в контексте. "
+        "Верни только текст публикации без пояснений."
+    )] if part)
+    prompt = (
+        f"Дата публикации: {item.publish_date.isoformat()}\n"
+        f"Тема: {item.title}\n"
+        f"Рубрика: {item.rubric or 'без рубрики'}\n"
+        f"Формат: {item.content_format}\n"
+        f"Канал: {item.channel or 'универсальный'}\n"
+        f"Бриф: {item.brief or 'раскрой тему через подтверждённые факты проекта'}\n"
+        f"Механика удержания: {item.retention_mechanic or 'вопрос аудитории в конце'}"
+    )
+    raw = ""
+    provider = model = None
+    if ai_gateway.is_configured("text"):
+        result = await ai_gateway.complete_text(
+            feature=f"smm_projects:{project.code}:scheduled_plan_item",
+            system=system,
+            prompt=prompt,
+            temperature=0.55,
+            max_tokens=1400,
+            user_id=plan.created_by_id,
+        )
+        if result.ok and result.text:
+            raw = result.text.strip()
+            provider, model = result.provider, result.model
+    output = _plain_post_text(raw or f"{item.title}\n\n{item.brief or 'Подготовить публикацию по материалам проекта.'}")
+    content = SmmContent(
+        project_id=project.id,
+        plan_item_id=item.id,
+        created_by_id=plan.created_by_id,
+        title=item.title,
+        input_json={"source": "content_plan", "plan_item_id": item.id, "publish_date": item.publish_date.isoformat(), "content_format": item.content_format},
+        prompt_text=prompt,
+        output_text=output,
+        provider=provider,
+        model=model,
+        status="draft",
+        channel=item.channel,
+        auto_generated=True,
+    )
+    db.add(content)
+    db.flush()
+    media_error = await _materialize_media(db, project, content, item)
+    content.input_json = {
+        **(content.input_json or {}),
+        "media_status": "error" if media_error else ("ready" if item.content_format in ("Пост", "Пост + карточка") else "generated"),
+        **({"media_error": media_error} if media_error else {}),
+    }
+    item.generated_content_id = content.id
+    item.status = "generated"
+    db.commit()
+    return True
+
+
+async def generate_plan_items(db: Session, *, plan: SmmContentPlan) -> int:
+    """Immediately materialize all rows of a newly created plan as drafts."""
+    created = 0
+    for item in sorted(plan.items, key=lambda row: (row.publish_date, row.position)):
+        if await _generate_item_draft(db, plan=plan, item=item):
+            created += 1
+    return created
+
+
 async def generate_due_items(db: Session, *, limit: int = 5) -> int:
-    """Create draft materials for plan rows whose publication date has arrived."""
+    """Fallback worker for plan rows that were not materialized immediately."""
     today = date.today()
     rows = (
         db.query(SmmContentPlanItem)
@@ -144,69 +218,8 @@ async def generate_due_items(db: Session, *, limit: int = 5) -> int:
     created = 0
     for item in rows:
         plan = db.query(SmmContentPlan).filter(SmmContentPlan.id == item.plan_id).first()
-        if plan is None:
-            continue
-        project = db.query(SmmProject).filter(SmmProject.id == plan.project_id).first()
-        if project is None:
-            continue
-        knowledge = knowledge_svc.as_prompt_block(
-            knowledge_svc.list_items(db, project), max_chars=12000
-        )
-        system = "\n\n".join(part for part in [GLOBAL_SAFETY_RULES, _brand_block(project), knowledge, (
-            "Ты — редактор SMM-проекта. Создай готовый черновик публикации по брифу. "
-            "Не выдумывай факты, даты, цены и характеристики, которых нет в контексте. "
-            "Верни только текст публикации без пояснений."
-        )] if part)
-        prompt = (
-            f"Дата публикации: {item.publish_date.isoformat()}\n"
-            f"Тема: {item.title}\n"
-            f"Рубрика: {item.rubric or 'без рубрики'}\n"
-            f"Формат: {item.content_format}\n"
-            f"Канал: {item.channel or 'универсальный'}\n"
-            f"Бриф: {item.brief or 'раскрой тему через подтверждённые факты проекта'}\n"
-            f"Механика удержания: {item.retention_mechanic or 'вопрос аудитории в конце'}"
-        )
-        raw = ""
-        provider = model = None
-        if ai_gateway.is_configured("text"):
-            result = await ai_gateway.complete_text(
-                feature=f"smm_projects:{project.code}:scheduled_plan_item",
-                system=system,
-                prompt=prompt,
-                temperature=0.55,
-                max_tokens=1400,
-                user_id=plan.created_by_id,
-            )
-            if result.ok and result.text:
-                raw = result.text.strip()
-                provider, model = result.provider, result.model
-        output = _plain_post_text(raw or f"{item.title}\n\n{item.brief or 'Подготовить публикацию по материалам проекта.'}")
-        content = SmmContent(
-            project_id=project.id,
-            plan_item_id=item.id,
-            created_by_id=plan.created_by_id,
-            title=item.title,
-            input_json={"source": "content_plan", "plan_item_id": item.id, "publish_date": item.publish_date.isoformat()},
-            prompt_text=prompt,
-            output_text=output,
-            provider=provider,
-            model=model,
-            status="draft",
-            channel=item.channel,
-            auto_generated=True,
-        )
-        db.add(content)
-        db.flush()
-        media_error = await _materialize_media(db, project, content, item)
-        content.input_json = {
-            **(content.input_json or {}),
-            "media_status": "error" if media_error else ("ready" if item.content_format in ("Пост", "Пост + карточка") else "generated"),
-            **({"media_error": media_error} if media_error else {}),
-        }
-        item.generated_content_id = content.id
-        item.status = "generated"
-        db.commit()
-        created += 1
+        if plan and await _generate_item_draft(db, plan=plan, item=item):
+            created += 1
     return created
 
 
@@ -347,4 +360,6 @@ async def generate_plan(db: Session, user, *, project: SmmProject, payload: Dict
             channel=str(item.get("channel") or "").strip()[:32] or None,
         ))
     db.commit()
+    db.refresh(plan)
+    await generate_plan_items(db, plan=plan)
     return get_plan(db, project, plan.id)  # type: ignore[return-value]

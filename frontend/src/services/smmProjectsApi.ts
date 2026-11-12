@@ -350,6 +350,8 @@ export const updateContent = (
   }>
 ): Promise<GeneratedContent> => api.patch(`${BASE}/content/${id}`, payload).then((r) => r.data);
 
+export const deleteContent = (id: number): Promise<void> => api.delete(`${BASE}/content/${id}`);
+
 export const approveContent = (id: number): Promise<GeneratedContent> =>
   api.post(`${BASE}/content/${id}/approve`).then((r) => r.data);
 

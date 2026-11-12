@@ -508,6 +508,29 @@ def update_content(
     return content
 
 
+@router.delete("/content/{content_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_content(
+    content_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("smm_projects.manage_content")),
+):
+    content = _get_content_or_404(db, content_id)
+    project = _project_for_content(db, content, current_user)
+    active_publication = (
+        db.query(SmmPublication)
+        .filter(
+            SmmPublication.content_id == content_id,
+            SmmPublication.status.notin_(("cancelled", "error")),
+        )
+        .first()
+    )
+    if active_publication:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Нельзя удалить материал с активной или уже опубликованной публикацией")
+    db.delete(content)
+    db.commit()
+    log_action(db, current_user.id, "delete", "smm_content", content_id, {"project": project.code})
+
+
 @router.post("/content/{content_id}/approve", response_model=ContentOut)
 def approve_content(
     content_id: int,

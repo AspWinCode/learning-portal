@@ -407,6 +407,20 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
     await reload();
   };
 
+  const removeDraft = async (id: number) => {
+    if (!window.confirm('Удалить этот черновик и его визуалы?')) return;
+    setBusyId(id);
+    setError(null);
+    try {
+      await smm.deleteContent(id);
+      await reload();
+    } catch (e) {
+      setError(extractApiError(e, 'Не удалось удалить черновик'));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   // Немедленная публикация исполняется фоновой задачей (dramatiq), поэтому
   // ответ publish-bundle приходит со status=approved, когда работа ещё не
   // началась — опрашиваем публикации, пока они не дойдут до success/error,
@@ -527,6 +541,9 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
               </Button>
               <Button size="small" onClick={() => setStatus(item.id, 'archived')} disabled={item.status === 'archived'}>
                 Архивировать
+              </Button>
+              <Button size="small" color="error" onClick={() => removeDraft(item.id)} disabled={busyId === item.id}>
+                Удалить
               </Button>
             </Stack>
           )}

@@ -317,7 +317,11 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
   const reload = () =>
     smm
       .listContent(projectCode)
-      .then((r) => setItems(r.items))
+      .then(async (r) => {
+        setItems(r.items);
+        const generated = await Promise.all(r.items.map(async (item) => [item.id, await smm.listContentAssets(item.id)] as const));
+        setAssetsByContent(Object.fromEntries(generated));
+      })
       .catch(() => setItems([]));
 
   useEffect(() => {

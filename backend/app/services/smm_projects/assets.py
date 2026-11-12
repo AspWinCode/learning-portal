@@ -36,6 +36,7 @@ async def build_image_prompt(*, project: SmmProject, content: SmmContent, user) 
 
 async def render_image(
     db: Session, user, *, project: SmmProject, content: SmmContent, prompt: Optional[str] = None,
+    meta: Optional[Dict[str, Any]] = None,
 ) -> SmmContentAsset:
     final_prompt = (prompt or await build_image_prompt(project=project, content=content, user=user)).strip()
     if not final_prompt:
@@ -61,7 +62,8 @@ async def render_image(
 
     asset = SmmContentAsset(
         content_id=content.id, asset_type="image", prompt=final_prompt, provider=result.provider,
-        model=result.model, url=url, storage_key=storage_key, created_by_id=getattr(user, "id", None),
+        model=result.model, url=url, storage_key=storage_key, meta=meta,
+        created_by_id=getattr(user, "id", None),
     )
     db.add(asset)
     db.commit()

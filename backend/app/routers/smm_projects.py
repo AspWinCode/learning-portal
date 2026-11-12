@@ -598,7 +598,11 @@ def list_content_assets(
 ):
     content = _get_content_or_404(db, content_id)
     _project_for_content(db, content, current_user)
-    return assets_svc.list_assets(db, content)
+    assets = assets_svc.list_assets(db, content)
+    for asset in assets:
+        if asset.storage_key:
+            asset.url = f"/api/v1/smm-projects/assets/{asset.id}/file"
+    return assets
 
 
 @router.post("/content/{content_id}/select-asset", response_model=AssetOut)

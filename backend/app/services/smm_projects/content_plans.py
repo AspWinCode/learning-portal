@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import date, timedelta
 from typing import Any, Dict, List
 
@@ -11,6 +12,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.models import SmmContent, SmmContentPlan, SmmContentPlanItem, SmmProject
 from app.services import ai_gateway
 from app.services.smm_projects import knowledge as knowledge_svc
+from app.services.smm_projects import assets as assets_svc
 from app.services.smm_projects.prompt_builder import GLOBAL_SAFETY_RULES, _brand_block
 
 DEFAULT_FORMATS = ["Пост", "Карточка", "Карусель", "Видео / Reels / Shorts", "Инфографика"]
@@ -20,6 +22,45 @@ def _as_date(value: Any) -> date:
     if isinstance(value, date):
         return value
     return date.fromisoformat(str(value))
+
+
+def _plain_post_text(value: str) -> str:
+    """Convert model markdown-ish output to readable social-post text."""
+    text = re.sub(r"```(?:\w+)?\s*|```", "", value or "")
+    text = re.sub(r"!\[([^\]]*)\]\([^)]*\)", r"\1", text)
+    text = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", text)
+    text = re.sub(r"^\s{0,3}#{1,6}\s*", "", text, flags=re.MULTILINE)
+    text = re.sub(r"(\*\*|__|~~|`)", "", text)
+    text = re.sub(r"^\s*[-*+]\s+", "• ", text, flags=re.MULTILINE)
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
+
+
+async def _materialize_media(db: Session, project: SmmProject, content: SmmContent, item: SmmContentPlanItem) -> str | None:
+    format_name = (item.content_format or "").lower()
+    if "карт" not in format_name and "карусел" not in format_name:
+        return None
+    count = 5 if "карусел" in format_name else 1
+    try:
+        for slide in range(1, count + 1):
+            slide_hint = (
+                f"Создай изображение для публикации проекта. Это слайд {slide} из {count}. "
+                "Не добавляй текст, логотипы, даты или цены на изображение. "
+                f"Тема публикации: {content.title}. Факты и смысл: {content.output_text}"
+            )
+            await assets_svc.render_image(
+                db,
+                None,
+                project=project,
+                content=content,
+                prompt=slide_hint,
+                meta={"slide": slide, "slides_total": count, "content_format": item.content_format},
+            )
+        assets = assets_svc.list_assets(db, content)
+        if assets and not content.selected_asset_id:
+            assets_svc.select_asset(db, content, assets[-1].id)
+        return None
+    except Exception as exc:  # media failure must not lose the text draft
+        return str(exc)
 
 
 def list_plans(db: Session, project: SmmProject) -> List[SmmContentPlan]:
@@ -87,7 +128,7 @@ async def generate_due_items(db: Session, *, limit: int = 5) -> int:
             if result.ok and result.text:
                 raw = result.text.strip()
                 provider, model = result.provider, result.model
-        output = raw or f"{item.title}\n\n{item.brief or 'Подготовить публикацию по материалам проекта.'}"
+        output = _plain_post_text(raw or f"{item.title}\n\n{item.brief or 'Подготовить публикацию по материалам проекта.'}")
         content = SmmContent(
             project_id=project.id,
             plan_item_id=item.id,
@@ -104,6 +145,12 @@ async def generate_due_items(db: Session, *, limit: int = 5) -> int:
         )
         db.add(content)
         db.flush()
+        media_error = await _materialize_media(db, project, content, item)
+        content.input_json = {
+            **(content.input_json or {}),
+            "media_status": "error" if media_error else ("ready" if item.content_format in ("Пост", "Пост + карточка") else "generated"),
+            **({"media_error": media_error} if media_error else {}),
+        }
         item.generated_content_id = content.id
         item.status = "generated"
         db.commit()

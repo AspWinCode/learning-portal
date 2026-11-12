@@ -58,6 +58,8 @@ jobs:
             git fetch origin main
             git checkout main
             git pull --ff-only origin main
+            # Для генерации визуалов используем Gemini Image API, а не старую Qwen-модель.
+            export AI_TUNNEL_MODEL_IMAGE=gemini-3.1-flash-lite-image
             docker compose pull migrator backend app_worker app_scheduler app_delivery_worker web
 
             # Run migrations first and wait for them to finish

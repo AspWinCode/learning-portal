@@ -467,6 +467,7 @@ async def generate_image(
     feature: str,
     prompt: str,
     size: Optional[str] = None,
+    input_references: Optional[List[Dict[str, Any]]] = None,
     user_id: Optional[int] = None,
     timeout: float = 180.0,
 ) -> GatewayResult:
@@ -482,6 +483,8 @@ async def generate_image(
             continue
         headers = {"Authorization": f"Bearer {cfg['api_key']}", "Content-Type": "application/json"}
         payload = {"model": cfg["model"], "prompt": prompt, "n": 1}
+        if input_references:
+            payload["input_references"] = input_references
         if size:
             payload["size"] = size
         if name == "tunnel":

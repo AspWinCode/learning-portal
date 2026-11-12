@@ -190,6 +190,22 @@ async def test_generate_image_includes_size_when_requested(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_generate_image_includes_input_references(monkeypatch):
+    monkeypatch.setenv("AI_TUNNEL_BASE_URL", "https://tunnel.example/v1")
+    monkeypatch.setenv("AI_TUNNEL_API_KEY", "k")
+    monkeypatch.setenv("AI_TUNNEL_MODEL_IMAGE", "gemini-3.1-flash-lite-image")
+    _FakeAsyncClient.payload = {"data": [{"b64_json": "abc"}]}
+    monkeypatch.setattr(httpx, "AsyncClient", _FakeAsyncClient)
+
+    refs = [{"type": "image_url", "image_url": {"url": "data:image/png;base64,abc"}}]
+    result = await ai_gateway.generate_image(feature="unit", prompt="персонаж на арене", input_references=refs)
+
+    assert result.ok is True
+    _, kwargs = _FakeAsyncClient.calls[0]
+    assert kwargs["json"]["input_references"] == refs
+
+
+@pytest.mark.asyncio
 async def test_embed_surfaces_real_provider_error(monkeypatch):
     monkeypatch.setenv("AI_TUNNEL_BASE_URL", "https://tunnel.example/v1")
     monkeypatch.setenv("AI_TUNNEL_API_KEY", "k")

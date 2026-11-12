@@ -59,6 +59,26 @@ async def build_image_prompt(*, db: Session, project: SmmProject, content: SmmCo
     return (result.text or prompt).strip() if result.ok else prompt
 
 
+def _visual_input_references(db: Session, project: SmmProject) -> list[dict[str, object]]:
+    """Подготовить реальные изображения проекта для AITunnel image-to-image."""
+    references: list[dict[str, object]] = []
+    total_bytes = 0
+    for item in knowledge_svc.list_items(db, project):
+        if len(references) >= 4:
+            break
+        if item.source_type != "image_reference" and not (item.content_type or "").startswith("image/"):
+            continue
+        if not item.storage_key or not item.content_type:
+            continue
+        raw = storage.read_bytes(item.storage_key)
+        if not raw or len(raw) > 12 * 1024 * 1024 or total_bytes + len(raw) > 40 * 1024 * 1024:
+            continue
+        data_uri = f"data:{item.content_type};base64,{base64.b64encode(raw).decode('ascii')}"
+        references.append({"type": "image_url", "image_url": {"url": data_uri}})
+        total_bytes += len(raw)
+    return references
+
+
 async def render_image(
     db: Session, user, *, project: SmmProject, content: SmmContent, prompt: Optional[str] = None,
     meta: Optional[Dict[str, Any]] = None,
@@ -69,8 +89,12 @@ async def render_image(
     if not ai_gateway.is_configured("image"):
         raise ValueError("Генератор изображений не настроен (нет image-провайдера в AI Tunnel)")
 
+    # AITunnel принимает до нескольких input_references для image-to-image.
+    # Передаём именно загруженные изображения персонажей/стиля, а не только их OCR/AI-описания.
+    references = _visual_input_references(db, project)
     result = await ai_gateway.generate_image(
-        feature=f"smm_projects:{project.code}:render_image", prompt=final_prompt, user_id=getattr(user, "id", None),
+        feature=f"smm_projects:{project.code}:render_image", prompt=final_prompt,
+        input_references=references or None, user_id=getattr(user, "id", None),
     )
     if not result.ok or not result.data:
         raise ValueError(result.error or "Генератор изображений вернул пустой ответ")

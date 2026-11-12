@@ -1,5 +1,6 @@
 import pytest
 
+from app.services.smm_projects.publishers.base import PublicationContext
 from app.services.smm_projects.publishers.vk import VkPublisher
 
 
@@ -22,6 +23,9 @@ class _FakeAsyncClient:
         return False
 
     async def get(self, url, **kwargs):
+        return self._responses.pop(0)
+
+    async def post(self, url, **kwargs):
         return self._responses.pop(0)
 
 
@@ -98,3 +102,24 @@ async def test_verify_valid_token_and_wall_permission_succeeds(monkeypatch, publ
     result = await publisher.verify("kodarena", {"token": "t", "group_id": "1"})
     assert result.ok is True
     assert result.detail == {"chat_id": "1", "chat_title": "КодАрена"}
+
+
+@pytest.mark.asyncio
+async def test_publish_surfaces_actionable_error_when_token_lacks_photos_permission(monkeypatch, publisher):
+    """Live VK bug: a community token with "Стена" but not "Фотографии"
+    enabled lets wall.post through but fails photos.getWallUploadServer with
+    the raw "Group authorization failed: method is unavailable with group
+    auth." — publish() used to leak that raw text instead of saying what to
+    fix."""
+    monkeypatch.setattr(
+        "httpx.AsyncClient",
+        _client_factory([
+            _FakeResponse({"error": {"error_code": 27, "error_msg": "Group authorization failed: method is unavailable with group auth."}}),
+        ]),
+    )
+    context = PublicationContext(
+        project_code="kodarena", channel="vk", text="Текст",
+        asset_bytes=b"one", config={"token": "t", "group_id": "1"},
+    )
+    with pytest.raises(ValueError, match="Фотографии"):
+        await publisher.publish(context)

@@ -15,7 +15,14 @@ VK_API_VERSION = "5.199"
 _VK_ERROR_MESSAGES = {
     5: "Недействительный токен VK",
     15: "Токен не имеет доступа к этому сообществу",
-    27: "Это токен пользователя, а не сообщества",
+    # Официальный текст VK — "Group authorization failed: method is unavailable
+    # with group auth" — встречается именно на photos.getWallUploadServer /
+    # photos.saveWallPhoto, когда у ключа доступа сообщества не включено
+    # разрешение «Фотографии» (при этом wall.post работает нормально, т.к.
+    # разрешение «Стена» включено отдельно).
+    27: "Токену сообщества не хватает прав для загрузки фото — включите "
+        "«Фотографии» в настройках ключа доступа сообщества (Управление "
+        "сообществом → Работа с API → Ключи доступа) или выпустите новый ключ",
     100: "Сообщество не найдено: неверный ID",
     113: "Сообщество не найдено: неверный ID",
 }
@@ -103,20 +110,23 @@ class VkPublisher(Publisher):
                         params={"group_id": config["group_id"], "access_token": config["token"], "v": VK_API_VERSION},
                     )
                     upload_data = upload.json()
-                    if "error" in upload_data:
-                        raise ValueError(str(upload_data["error"].get("error_msg") or upload_data["error"]))
+                    error = _vk_error(upload_data)
+                    if error:
+                        raise ValueError(error)
                     upload_url = (upload_data.get("response") or {}).get("upload_url")
                     uploaded = await client.post(upload_url, files={"photo": (f"slide_{slide_index}.png", slide_bytes_item, "image/png")})
                     uploaded_data = uploaded.json()
-                    if "error" in uploaded_data:
-                        raise ValueError(str(uploaded_data["error"].get("error_msg") or uploaded_data["error"]))
+                    error = _vk_error(uploaded_data)
+                    if error:
+                        raise ValueError(error)
                     saved = await client.post(
                         f"{VK_API}/photos.saveWallPhoto",
                         data={"group_id": config["group_id"], "server": uploaded_data.get("server"), "photo": uploaded_data.get("photo"), "hash": uploaded_data.get("hash"), "access_token": config["token"], "v": VK_API_VERSION},
                     )
                     saved_data = saved.json()
-                    if "error" in saved_data:
-                        raise ValueError(str(saved_data["error"].get("error_msg") or saved_data["error"]))
+                    error = _vk_error(saved_data)
+                    if error:
+                        raise ValueError(error)
                     photo = (saved_data.get("response") or [{}])[0]
                     if photo.get("owner_id") and photo.get("id"):
                         attachments_list.append(f"photo{photo['owner_id']}_{photo['id']}")
@@ -134,8 +144,9 @@ class VkPublisher(Publisher):
                 params["attachments"] = attachments
             response = await client.post(f"{VK_API}/wall.post", data=params)
             data = response.json()
-        if "error" in data:
-            raise ValueError(str(data["error"].get("error_msg") or data["error"]))
+        error = _vk_error(data)
+        if error:
+            raise ValueError(error)
         post_id = (data.get("response") or {}).get("post_id")
         if post_id is None:
             raise ValueError("VK API не вернул post_id")

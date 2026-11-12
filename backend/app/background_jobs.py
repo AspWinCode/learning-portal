@@ -52,6 +52,18 @@ def run_smm_due_publications() -> None:
     _run_db_job("smm_due_publications", _job)
 
 
+def run_smm_due_plan_items() -> None:
+    import asyncio
+    from app.services.smm_projects.content_plans import generate_due_items
+
+    def _job(db):
+        created = asyncio.run(generate_due_items(db, limit=5))
+        if created:
+            logger.info("smm_due_plan_items: created %d draft(s)", created)
+
+    _run_db_job("smm_due_plan_items", _job)
+
+
 def run_tochka_auto_import() -> None:
     try:
         from app.services.tochka_client import is_configured

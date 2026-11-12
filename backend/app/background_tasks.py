@@ -26,6 +26,7 @@ from app.background_jobs import (
     run_transcription,
     run_smm_publication,
     run_smm_due_publications,
+    run_smm_due_plan_items,
 )
 from app.services.email_broadcast_service import send_broadcast as _send_broadcast
 
@@ -68,6 +69,11 @@ def task_lesson_deduction_reconcile() -> None:
 @dramatiq.actor(queue_name="delivery")
 def task_scheduled_messages() -> None:
     run_scheduled_messages()
+
+
+@dramatiq.actor(queue_name="periodic")
+def task_smm_due_plan_items() -> None:
+    run_smm_due_plan_items()
 
 
 @dramatiq.actor(queue_name="delivery")

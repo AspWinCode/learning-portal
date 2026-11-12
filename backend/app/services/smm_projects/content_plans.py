@@ -15,6 +15,12 @@ from app.services.smm_projects.prompt_builder import GLOBAL_SAFETY_RULES, _brand
 DEFAULT_FORMATS = ["Пост", "Карточка", "Карусель", "Видео / Reels / Shorts", "Инфографика"]
 
 
+def _as_date(value: Any) -> date:
+    if isinstance(value, date):
+        return value
+    return date.fromisoformat(str(value))
+
+
 def list_plans(db: Session, project: SmmProject) -> List[SmmContentPlan]:
     return (
         db.query(SmmContentPlan)
@@ -35,8 +41,8 @@ def get_plan(db: Session, project: SmmProject, plan_id: int) -> SmmContentPlan |
 
 
 def _fallback_items(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
-    start = date.fromisoformat(payload["date_from"])
-    end = date.fromisoformat(payload["date_to"])
+    start = _as_date(payload["date_from"])
+    end = _as_date(payload["date_to"])
     formats = payload.get("formats") or DEFAULT_FORMATS
     rows: List[Dict[str, Any]] = []
     current = start
@@ -70,8 +76,8 @@ def _parse_json(raw: str, fallback: List[Dict[str, Any]]) -> List[Dict[str, Any]
 
 
 async def generate_plan(db: Session, user, *, project: SmmProject, payload: Dict[str, Any]) -> SmmContentPlan:
-    start = date.fromisoformat(payload["date_from"])
-    end = date.fromisoformat(payload["date_to"])
+    start = _as_date(payload["date_from"])
+    end = _as_date(payload["date_to"])
     if end < start:
         raise ValueError("Дата окончания не может быть раньше даты начала")
     if (end - start).days > 62:

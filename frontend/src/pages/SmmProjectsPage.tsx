@@ -497,9 +497,11 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
 
   return (
     <Stack spacing={2}>
-      {error && <Alert severity="error">{error}</Alert>}
-      {items.map((item) => (
-        <Paper key={item.id} variant="outlined" sx={{ p: 2 }}>
+      <>
+        {error && <Alert severity="error">{error}</Alert>}
+        {items.map((item) => (
+          <Paper key={item.id} variant="outlined" sx={{ p: 2 }}>
+            <>
           <Stack direction="row" justifyContent="space-between" alignItems="flex-start" flexWrap="wrap" gap={1}>
             <Stack direction="row" spacing={1} alignItems="center">
               <Typography variant="subtitle1">{item.title || `#${item.id}`}</Typography>
@@ -573,18 +575,20 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
           ))}
           {canManage && (
             <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
-              <Button size="small" onClick={() => setStatus(item.id, 'approved')} disabled={item.status === 'approved'}>
-                Одобрить
-              </Button>
-              <Button size="small" onClick={() => setStatus(item.id, 'archived')} disabled={item.status === 'archived'}>
-                Архивировать
-              </Button>
-              <Button size="small" color="error" onClick={() => removeDraft(item.id)} disabled={busyId === item.id}>
-                Удалить
-              </Button>
-              <Button size="small" variant="outlined" onClick={() => downloadVkPack(item.id)} disabled={busyId === item.id}>
-                Скачать ZIP для VK
-              </Button>
+              <>
+                <Button size="small" onClick={() => setStatus(item.id, 'approved')} disabled={item.status === 'approved'}>
+                  Одобрить
+                </Button>
+                <Button size="small" onClick={() => setStatus(item.id, 'archived')} disabled={item.status === 'archived'}>
+                  Архивировать
+                </Button>
+                <Button size="small" color="error" onClick={() => removeDraft(item.id)} disabled={busyId === item.id}>
+                  Удалить
+                </Button>
+                <Button size="small" variant="outlined" onClick={() => downloadVkPack(item.id)} disabled={busyId === item.id}>
+                  Скачать ZIP для VK
+                </Button>
+              </>
             </Stack>
           )}
           {canPublish && (
@@ -649,8 +653,10 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
               })}
             </Stack>
           )}
-        </Paper>
-      ))}
+            </>
+          </Paper>
+        ))}
+      </>
     </Stack>
   );
 };

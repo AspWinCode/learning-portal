@@ -5,7 +5,7 @@ import io
 import json
 import re
 import zipfile
-from typing import Iterable, Mapping, Optional, Tuple
+from typing import Iterable, Optional, Tuple
 
 
 def _safe_filename(value: str, fallback: str = "file") -> str:

@@ -497,11 +497,9 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
 
   return (
     <Stack spacing={2}>
-      <>
-        {error && <Alert severity="error">{error}</Alert>}
-        {items.map((item) => (
-          <Paper key={item.id} variant="outlined" sx={{ p: 2 }}>
-            <>
+      {error && <Alert severity="error">{error}</Alert>}
+      {items.map((item) => (
+        <Paper key={item.id} variant="outlined" sx={{ p: 2 }}>
           <Stack direction="row" justifyContent="space-between" alignItems="flex-start" flexWrap="wrap" gap={1}>
             <Stack direction="row" spacing={1} alignItems="center">
               <Typography variant="subtitle1">{item.title || `#${item.id}`}</Typography>
@@ -653,10 +651,8 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
               })}
             </Stack>
           )}
-            </>
-          </Paper>
-        ))}
-      </>
+        </Paper>
+      ))}
     </Stack>
   );
 };

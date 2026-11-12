@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64
+import mimetypes
 import logging
 from typing import Any, Dict, Optional
 
@@ -68,12 +69,17 @@ def _visual_input_references(db: Session, project: SmmProject) -> list[dict[str,
             break
         if item.source_type != "image_reference" and not (item.content_type or "").startswith("image/"):
             continue
-        if not item.storage_key or not item.content_type:
+        if not item.storage_key:
+            continue
+        content_type = (item.content_type or mimetypes.guess_type(item.original_filename or "")[0] or "").lower()
+        if content_type == "image/jpg":
+            content_type = "image/jpeg"
+        if content_type not in {"image/png", "image/jpeg", "image/webp"}:
             continue
         raw = storage.read_bytes(item.storage_key)
         if not raw or len(raw) > 12 * 1024 * 1024 or total_bytes + len(raw) > 40 * 1024 * 1024:
             continue
-        data_uri = f"data:{item.content_type};base64,{base64.b64encode(raw).decode('ascii')}"
+        data_uri = f"data:{content_type};base64,{base64.b64encode(raw).decode('ascii')}"
         references.append({"type": "image_url", "image_url": {"url": data_uri}})
         total_bytes += len(raw)
     return references

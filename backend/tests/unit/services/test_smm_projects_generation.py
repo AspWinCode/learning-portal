@@ -84,6 +84,16 @@ def test_humanize_nested_social_post_json():
     assert text == "Заголовок\n\nЧитаемый текст\n\n#КодАрена"
 
 
+def test_prepare_publication_text_removes_vk_service_markdown():
+    text = generation.prepare_publication_text(
+        "# Пост для ВКонтакте\n\n---\n\n**Программирование — это стратегия.**\n\nОбычный текст."
+    )
+    assert "Пост для ВКонтакте" not in text
+    assert "---" not in text
+    assert "**" not in text
+    assert "Программирование — это стратегия." in text
+
+
 @pytest.mark.asyncio
 async def test_generate_assigns_group_key_and_auto_generated_flag(monkeypatch):
     monkeypatch.setattr(generation.ai_gateway, "is_configured", lambda purpose="text": False)

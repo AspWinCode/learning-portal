@@ -12,6 +12,7 @@ group_key объединяет мультиканальные версии од�
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from typing import Any, Dict, List, Optional
 
@@ -61,6 +62,47 @@ EVENT_PACK_ITEMS: List[Dict[str, str]] = [
     {"key": "cover_image_prompt", "channel": "universal", "content_type": "image_prompt", "name": "Промпт для обложки",
      "instruction": "Составь текстовый промпт для генератора изображений — обложка по мотивам этого мероприятия, в стиле бренда проекта."},
 ]
+
+_VK_SERVICE_LINE_RE = re.compile(r"^\s*#\s*(?:пост\s+для\s+(?:вконтакте|vk|вк))\s*$", re.IGNORECASE)
+
+
+def _unicode_bold(value: str) -> str:
+    """Use Unicode bold for characters supported by VK's plain-text API.
+
+    VK wall.post accepts plain text rather than rich text/Markdown. Latin
+    letters and digits have mathematical-bold Unicode variants; Cyrillic does
+    not, so unsupported characters are kept as-is while Markdown markers are
+    still removed.
+    """
+    result: List[str] = []
+    for char in value:
+        codepoint = ord(char)
+        if "A" <= char <= "Z":
+            result.append(chr(0x1D400 + codepoint - ord("A")))
+        elif "a" <= char <= "z":
+            result.append(chr(0x1D41A + codepoint - ord("a")))
+        elif "0" <= char <= "9":
+            result.append(chr(0x1D7CE + codepoint - ord("0")))
+        else:
+            result.append(char)
+    return "".join(result)
+
+
+def prepare_publication_text(text: str, channel: Optional[str] = None) -> str:
+    """Prepare generated/editor text for a social network's plain-text API."""
+    if not text:
+        return ""
+    lines = [line.rstrip() for line in text.replace("\r\n", "\n").split("\n")]
+    lines = [line for line in lines if not _VK_SERVICE_LINE_RE.match(line)]
+    cleaned = "\n".join(lines)
+    cleaned = re.sub(r"^\s*---\s*$", "", cleaned, flags=re.MULTILINE)
+    cleaned = re.sub(r"\*\*\*(.+?)\*\*\*", lambda match: _unicode_bold(match.group(1)), cleaned, flags=re.DOTALL)
+    cleaned = re.sub(r"\*\*(.+?)\*\*", lambda match: _unicode_bold(match.group(1)), cleaned, flags=re.DOTALL)
+    cleaned = re.sub(r"__(.+?)__", r"\1", cleaned, flags=re.DOTALL)
+    cleaned = re.sub(r"(?<!\*)\*([^*\n]+)\*(?!\*)", r"\1", cleaned)
+    cleaned = re.sub(r"(?<!_)_([^_\n]+)_(?!_)", r"\1", cleaned)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned.strip()
 
 
 def humanize_structured_output(value: Any, fallback: str = "") -> str:

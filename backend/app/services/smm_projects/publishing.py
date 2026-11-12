@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.models import SmmContent, SmmContentAsset, SmmProject, SmmPublication, SmmPublicationStatus, SmmPublishLog
 from app.services.smm_projects import channels as channels_svc
-from app.services.smm_projects.generation import humanize_structured_output
+from app.services.smm_projects.generation import humanize_structured_output, prepare_publication_text
 from app.services.smm_projects import storage
 from app.services.smm_projects.publishers.base import PublicationContext, PublisherResult
 
@@ -61,14 +61,14 @@ def _context(db: Session, project: SmmProject, publication: SmmPublication, asse
     )
 
 
-def _publication_text(content: SmmContent) -> str:
+def _publication_text(content: SmmContent, channel: Optional[str] = None) -> str:
     """Return readable post text, including for legacy JSON drafts."""
     raw = (content.output_text or "").strip()
     if isinstance(content.output_json, dict):
         readable = humanize_structured_output(content.output_json, fallback=raw)
         if readable and readable != raw:
-            return readable
-    return raw
+            raw = readable
+    return prepare_publication_text(raw, channel=channel)
 
 
 async def _deliver(db: Session, project: SmmProject, publication: SmmPublication, asset: Optional[SmmContentAsset]) -> PublisherResult:
@@ -87,7 +87,7 @@ async def publish(db: Session, user, *, project: SmmProject, content: SmmContent
         raise ValueError(f"Канал «{channel}» не поддерживается. Доступны: {', '.join(SUPPORTED_CHANNELS)}")
     if content.status != "approved":
         raise ValueError("Материал можно публиковать только после одобрения")
-    text = _publication_text(content)
+    text = _publication_text(content, channel=channel)
     if not text:
         raise ValueError("У материала нет текста для публикации")
 
@@ -140,7 +140,7 @@ def create_publications(
             raise ValueError("Материал не найден в выбранном проекте")
         if content.status != "approved":
             raise ValueError(f"Материал #{content.id} можно публиковать только после одобрения")
-        text = _publication_text(content)
+        text = _publication_text(content, channel=channel)
         if not text:
             raise ValueError(f"Материал #{content.id} не содержит текста")
         asset_id = item.get("asset_id") or getattr(content, "selected_asset_id", None)

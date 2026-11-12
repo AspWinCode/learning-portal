@@ -581,8 +581,13 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
               <Button size="small" disabled={!variantChannel[item.id] || busyId === item.id} onClick={() => runVariant(item.id)}>
                 Сделать версию
               </Button>
-              <Button size="small" disabled={busyId === item.id} onClick={() => renderImage(item.id)}>
-                Создать визуал
+              <Button
+                size="small"
+                disabled={busyId === item.id}
+                onClick={() => renderImage(item.id)}
+                startIcon={busyId === item.id ? <CircularProgress size={14} /> : undefined}
+              >
+                {busyId === item.id ? 'Генерация визуала…' : 'Создать визуал'}
               </Button>
             </Stack>
           )}

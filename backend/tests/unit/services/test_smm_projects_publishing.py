@@ -1,6 +1,6 @@
 import pytest
 
-from app.models import SmmContent, SmmProject
+from app.models import SmmContent, SmmContentAsset, SmmProject, SmmPublication, SmmPublicationStatus
 from app.services.smm_projects import publishing
 
 
@@ -14,6 +14,7 @@ def _project(code="test_project"):
 def _content(status="approved", text="Текст поста", selected_asset_id=None):
     c = SmmContent()
     c.id = 1
+    c.project_id = 1
     c.status = status
     c.output_text = text
     c.selected_asset_id = selected_asset_id
@@ -103,3 +104,104 @@ def test_due_publication_ids_filters_by_status_and_time():
 
     ids = publishing.due_publication_ids(_DueDB())
     assert ids == [1, 2]
+
+
+def _matches(obj, condition) -> bool:
+    try:
+        return getattr(obj, condition.left.key, object()) == condition.right.value
+    except AttributeError:
+        return True
+
+
+class _BundleQuery:
+    def __init__(self, items):
+        self._items = items
+
+    def filter(self, *conditions):
+        items = self._items
+        for condition in conditions:
+            items = [obj for obj in items if _matches(obj, condition)]
+        return _BundleQuery(items)
+
+    def first(self):
+        return self._items[0] if self._items else None
+
+
+class _BundleDB:
+    def __init__(self, *, content, assets=None, publications=None):
+        self._rows = {SmmContent: [content], SmmContentAsset: list(assets or []), SmmPublication: list(publications or [])}
+        self.added = []
+
+    def query(self, model):
+        return _BundleQuery(self._rows.get(model, []))
+
+    def add(self, obj):
+        self.added.append(obj)
+        self._rows.setdefault(type(obj), []).append(obj)
+
+    def commit(self):
+        for obj in self.added:
+            if getattr(obj, "id", None) is None:
+                obj.id = len(self.added)
+
+    def refresh(self, obj):
+        pass
+
+
+def _publication(idempotency_key, status, error="old error"):
+    row = SmmPublication()
+    row.id = 1
+    row.idempotency_key = idempotency_key
+    row.status = status
+    row.last_error = error
+    row.external_id = "old_external_id"
+    row.external_url = "https://example/old"
+    return row
+
+
+def test_create_publications_retries_a_previously_failed_attempt():
+    """create_publications() dedups by idempotency_key, which for an
+    immediate ("now") publish never changes across attempts — without special
+    handling, clicking "Опубликовать" again after a failure (e.g. the VK
+    token got fixed) just returns the same stale error row and never calls
+    the publisher again."""
+    content = _content()
+    stale = _publication("publication:1:vk:now", SmmPublicationStatus.ERROR.value)
+    db = _BundleDB(content=content, publications=[stale])
+
+    rows = publishing.create_publications(
+        db, object(), project=_project(), items=[{"channel": "vk", "content_id": 1}], publish_at=None,
+    )
+
+    assert rows == [stale]
+    assert stale.status == SmmPublicationStatus.APPROVED.value
+    assert stale.last_error is None
+    assert stale.external_id is None
+    assert stale.external_url is None
+
+
+def test_create_publications_does_not_retry_a_successful_attempt():
+    content = _content()
+    success = _publication("publication:1:vk:now", SmmPublicationStatus.SUCCESS.value, error=None)
+    db = _BundleDB(content=content, publications=[success])
+
+    rows = publishing.create_publications(
+        db, object(), project=_project(), items=[{"channel": "vk", "content_id": 1}], publish_at=None,
+    )
+
+    assert rows == [success]
+    assert success.status == SmmPublicationStatus.SUCCESS.value
+    assert success.external_id == "old_external_id"
+
+
+def test_create_publications_creates_new_row_when_none_exists():
+    content = _content()
+    db = _BundleDB(content=content, publications=[])
+
+    rows = publishing.create_publications(
+        db, object(), project=_project(), items=[{"channel": "vk", "content_id": 1}], publish_at=None,
+    )
+
+    assert len(rows) == 1
+    assert rows[0].status == SmmPublicationStatus.APPROVED.value
+    assert rows[0].idempotency_key == "publication:1:vk:now"

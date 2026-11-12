@@ -151,6 +151,19 @@ def create_publications(
         idem = f"publication:{content.id}:{channel}:{scheduled.isoformat() if scheduled else 'now'}"
         existing = db.query(SmmPublication).filter(SmmPublication.idempotency_key == idem).first()
         if existing:
+            if existing.status == SmmPublicationStatus.ERROR.value:
+                # Для немедленной публикации idempotency_key не зависит от
+                # времени ("...:now"), поэтому без этой ветки повторный клик
+                # «Опубликовать» после сбоя (например, протух токен) просто
+                # возвращал ту же ошибку снова, ни разу не вызывая publisher —
+                # task_smm_publication.send() ниже запускается только для
+                # status == approved, а не error.
+                existing.text_snapshot, existing.asset_id = text, asset_id
+                existing.status, existing.scheduled_at = state, scheduled
+                existing.approved_by_id, existing.approved_at = getattr(user, "id", None), now
+                existing.last_error, existing.external_id, existing.external_url = None, None, None
+                publications.append(existing)
+                continue
             publications.append(existing)
             continue
         row = SmmPublication(

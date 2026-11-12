@@ -44,6 +44,7 @@ def _fallback_items(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
     start = _as_date(payload["date_from"])
     end = _as_date(payload["date_to"])
     formats = payload.get("formats") or DEFAULT_FORMATS
+    topics = payload.get("_knowledge_titles") or []
     rows: List[Dict[str, Any]] = []
     current = start
     step = max(1, round(7 / max(1, int(payload.get("posts_per_week") or 3))))
@@ -51,10 +52,10 @@ def _fallback_items(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
     while current <= end:
         rows.append({
             "date": current.isoformat(),
-            "rubric": "Тема недели",
-            "title": f"Контент по теме проекта №{i + 1}",
-            "brief": "Раскрыть тему через факты из базы знаний проекта; неподтверждённые детали пометить для уточнения.",
-            "retention_mechanic": "Вопрос аудитории в конце публикации",
+            "rubric": topics[i % len(topics)] if topics else "Тема проекта",
+            "title": topics[i % len(topics)] if topics else f"Контент по теме проекта №{i + 1}",
+            "brief": "Раскрыть тему через материалы постоянного контекста проекта; неподтверждённые детали пометить для уточнения.",
+            "retention_mechanic": "Вопрос аудитории и просьба поделиться мнением",
             "format": formats[i % len(formats)],
             "channel": (payload.get("channels") or [None])[i % len(payload.get("channels") or [None])],
         })
@@ -71,7 +72,15 @@ def _parse_json(raw: str, fallback: List[Dict[str, Any]]) -> List[Dict[str, Any]
         if isinstance(items, list):
             return [item for item in items if isinstance(item, dict)]
     except (TypeError, ValueError, AttributeError):
-        pass
+        start, end = text.find("{"), text.rfind("}")
+        if start >= 0 and end > start:
+            try:
+                data = json.loads(text[start : end + 1])
+                items = data.get("items", data) if isinstance(data, dict) else data
+                if isinstance(items, list):
+                    return [item for item in items if isinstance(item, dict)]
+            except (TypeError, ValueError, AttributeError):
+                pass
     return fallback
 
 
@@ -88,8 +97,9 @@ async def generate_plan(db: Session, user, *, project: SmmProject, payload: Dict
     # плана читаем все активные факты/файлы проекта, а не только совпадения по
     # короткому запросу формы.
     hits = knowledge_svc.list_items(db, project)
-    knowledge = knowledge_svc.as_prompt_block(hits)
-    fallback = _fallback_items(payload)
+    knowledge = knowledge_svc.as_prompt_block(hits, max_chars=18000)
+    fallback_payload = {**payload, "_knowledge_titles": [item.title for item in hits if item.title]}
+    fallback = _fallback_items(fallback_payload)
     requested_formats = payload.get("formats") or DEFAULT_FORMATS
     system = "\n\n".join(part for part in [GLOBAL_SAFETY_RULES, _brand_block(project), knowledge, (
         "Ты — SMM-планер. Составляй только редакционный план, не готовые тексты. "

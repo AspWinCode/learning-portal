@@ -203,8 +203,18 @@ async def search(db: Session, project: SmmProject, query: str, *, limit: int = 5
     return _ilike_search(db, project, q, limit)
 
 
-def as_prompt_block(items: List[SmmKnowledgeItem]) -> str:
+def as_prompt_block(items: List[SmmKnowledgeItem], *, max_chars: int | None = None) -> str:
     if not items:
         return ""
-    lines = [f"[{item.title}] {item.content[:900]}" for item in items]
+    lines = []
+    used = 0
+    for item in items:
+        line = f"[{item.title}] {item.content[:900]}"
+        if max_chars is not None and used + len(line) > max_chars:
+            remaining = max_chars - used
+            if remaining > 80:
+                lines.append(line[:remaining])
+            break
+        lines.append(line)
+        used += len(line) + 2
     return "=== БАЗА ЗНАНИЙ ПРОЕКТА ===\n" + "\n\n".join(lines)

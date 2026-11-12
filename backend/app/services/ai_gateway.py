@@ -519,7 +519,7 @@ async def generate_image(
                     detail = f" | provider: {body.get('error') or body.get('detail') or body}"
                 except Exception:
                     detail = f" | provider: {exc.response.text[:500]}"
-            last_error = f"{name}: {exc}{detail}"
+            last_error = f"{name} ({cfg['model']}): {exc}{detail}"
             _log_call(
                 feature=feature,
                 result=GatewayResult(ok=False, provider=name, purpose="image", error=last_error),

@@ -153,6 +153,15 @@ const NewContentTab: React.FC<{ projectCode: string; canGenerate: boolean; onGen
 // ─── Месячный контент-план ──────────────────────────────────────────────────
 
 const PLAN_FORMATS = ['Пост', 'Карточка', 'Карусель', 'Видео / Reels / Shorts', 'Инфографика'];
+const PLAN_OBJECTIVES = [
+  'Повысить вовлечённость и привести аудиторию к следующему действию',
+  'Повысить узнаваемость проекта',
+  'Привлечь участников к регистрации',
+  'Объяснить проект и его механику новичкам',
+  'Сформировать доверие у родителей и преподавателей',
+  'Поддерживать активность и развитие сообщества',
+  'Другая цель',
+];
 const PLAN_CHANNELS = ['vk', 'telegram', 'instagram', 'max'];
 
 function isoDate(d: Date): string {
@@ -163,7 +172,8 @@ const ContentPlanTab: React.FC<{ projectCode: string; canGenerate: boolean }> = 
   const today = new Date();
   const [dateFrom, setDateFrom] = useState(isoDate(new Date(today.getFullYear(), today.getMonth(), 1)));
   const [dateTo, setDateTo] = useState(isoDate(new Date(today.getFullYear(), today.getMonth() + 1, 0)));
-  const [objective, setObjective] = useState('Повысить вовлечённость и привести аудиторию к следующему действию');
+  const [objective, setObjective] = useState(PLAN_OBJECTIVES[0]);
+  const [customObjective, setCustomObjective] = useState('');
   const [audience, setAudience] = useState('');
   const [extraContext, setExtraContext] = useState('');
   const [postsPerWeek, setPostsPerWeek] = useState(3);
@@ -187,7 +197,7 @@ const ContentPlanTab: React.FC<{ projectCode: string; canGenerate: boolean }> = 
       await smm.generateContentPlan(projectCode, {
         date_from: dateFrom,
         date_to: dateTo,
-        objective,
+        objective: objective === 'Другая цель' ? customObjective.trim() : objective,
         audience,
         extra_context: extraContext,
         channels,
@@ -215,7 +225,26 @@ const ContentPlanTab: React.FC<{ projectCode: string; canGenerate: boolean }> = 
             <TextField size="small" type="date" label="По" value={dateTo} onChange={(e) => setDateTo(e.target.value)} InputLabelProps={{ shrink: true }} fullWidth />
             <TextField size="small" type="number" label="Постов в неделю" value={postsPerWeek} onChange={(e) => setPostsPerWeek(Math.max(1, Math.min(14, Number(e.target.value) || 1)))} sx={{ minWidth: 150 }} />
           </Stack>
-          <TextField size="small" label="Цель плана" value={objective} onChange={(e) => setObjective(e.target.value)} fullWidth />
+          <FormControl size="small" fullWidth>
+            <InputLabel id="content-plan-objective-label">Цель плана</InputLabel>
+            <Select
+              labelId="content-plan-objective-label"
+              label="Цель плана"
+              value={objective}
+              onChange={(e) => setObjective(e.target.value)}
+            >
+              {PLAN_OBJECTIVES.map((item) => <MenuItem key={item} value={item}>{item}</MenuItem>)}
+            </Select>
+          </FormControl>
+          {objective === 'Другая цель' && (
+            <TextField
+              size="small"
+              label="Опишите цель"
+              value={customObjective}
+              onChange={(e) => setCustomObjective(e.target.value)}
+              fullWidth
+            />
+          )}
           <TextField size="small" label="Аудитория" value={audience} onChange={(e) => setAudience(e.target.value)} placeholder="Например: подростки, родители, преподаватели" fullWidth />
           <TextField size="small" label="Разовый контекст для этого плана" helperText="Не сохраняется в базе проекта. Постоянные документы и референсы добавляются во вкладке «Контекст проекта»." value={extraContext} onChange={(e) => setExtraContext(e.target.value)} multiline minRows={2} fullWidth />
           <Box>
@@ -231,7 +260,7 @@ const ContentPlanTab: React.FC<{ projectCode: string; canGenerate: boolean }> = 
             </Stack>
           </Box>
           {error && <Alert severity="error">{error}</Alert>}
-          <Button variant="contained" onClick={generate} disabled={busy || !canGenerate || !dateFrom || !dateTo || !formats.length}>
+          <Button variant="contained" onClick={generate} disabled={busy || !canGenerate || !dateFrom || !dateTo || !formats.length || (objective === 'Другая цель' && !customObjective.trim())}>
             {busy ? 'Планируем…' : 'Создать контент-план'}
           </Button>
         </Stack>

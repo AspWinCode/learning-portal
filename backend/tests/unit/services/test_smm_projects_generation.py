@@ -84,6 +84,23 @@ def test_humanize_nested_social_post_json():
     assert text == "Заголовок\n\nЧитаемый текст\n\n#КодАрена"
 
 
+def test_structured_output_strips_code_fence_before_parsing_json():
+    """A model under json_mode can still wrap its answer in ```json ... ```
+    (seen live on VK: the whole fenced JSON got published verbatim because
+    json.loads choked on the fence and fell back to raw text)."""
+    raw = (
+        "```json\n"
+        "{\"platform\": \"telegram\", \"cta\": \"Принять участие\", "
+        "\"content\": \"Пост текст\"}\n"
+        "```"
+    )
+    text, parsed = generation._structured_output(raw)
+    assert parsed == {"platform": "telegram", "cta": "Принять участие", "content": "Пост текст"}
+    assert "```" not in text
+    assert "platform" not in text
+    assert "Пост текст" in text
+
+
 def test_prepare_publication_text_removes_vk_service_markdown():
     text = generation.prepare_publication_text(
         "# Пост для ВКонтакте\n\n---\n\n**Программирование — это стратегия.**\n\nОбычный текст."

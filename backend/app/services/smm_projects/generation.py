@@ -140,9 +140,21 @@ def humanize_structured_output(value: Any, fallback: str = "") -> str:
     return "\n\n".join(parts) or fallback
 
 
+_CODE_FENCE_RE = re.compile(r"^\s*```(?:\w+)?\s*\n?(.*?)\n?\s*```\s*$", re.DOTALL)
+
+
+def _strip_code_fence(raw: str) -> str:
+    """Some models wrap json_mode output in a ```json ... ``` fence anyway —
+    strip it so json.loads sees the actual payload instead of falling back to
+    the fenced text (which would otherwise get published verbatim, braces and
+    all)."""
+    match = _CODE_FENCE_RE.match(raw)
+    return match.group(1) if match else raw
+
+
 def _structured_output(raw: str) -> tuple[str, Optional[Dict[str, Any]]]:
     try:
-        value = json.loads(raw)
+        value = json.loads(_strip_code_fence(raw))
     except (TypeError, ValueError):
         return raw, None
     if not isinstance(value, dict):

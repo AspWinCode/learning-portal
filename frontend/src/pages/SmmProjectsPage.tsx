@@ -438,6 +438,26 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
     }
   };
 
+  const downloadVkPack = async (id: number) => {
+    setBusyId(id);
+    setError(null);
+    try {
+      const blob = await smm.downloadVkPack(id);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `vk_pack_${id}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(extractApiError(e, 'Не удалось скачать пакет VK'));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   // Немедленная публикация исполняется фоновой задачей (dramatiq), поэтому
   // ответ publish-bundle приходит со status=approved, когда работа ещё не
   // началась — опрашиваем публикации, пока они не дойдут до success/error,
@@ -561,6 +581,9 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
               </Button>
               <Button size="small" color="error" onClick={() => removeDraft(item.id)} disabled={busyId === item.id}>
                 Удалить
+              </Button>
+              <Button size="small" variant="outlined" onClick={() => downloadVkPack(item.id)} disabled={busyId === item.id}>
+                Скачать ZIP для VK
               </Button>
             </Stack>
           )}

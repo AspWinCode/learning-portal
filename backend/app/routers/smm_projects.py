@@ -8,7 +8,10 @@ Studio). Поток: создать проект → подключить кан
 клика, см. services/smm_projects/publishing.py)."""
 import os
 import mimetypes
+from io import BytesIO
 from datetime import datetime
+from urllib.parse import quote
+from fastapi.responses import StreamingResponse
 from typing import List, Optional
 from xml.sax.saxutils import escape as xml_escape
 
@@ -67,6 +70,7 @@ from app.services.smm_projects import projects as projects_svc
 from app.services.smm_projects import publishing as publishing_svc
 from app.services.smm_projects import storage as storage_svc
 from app.services.smm_projects import templates as templates_svc
+from app.services.smm_projects.vk_pack import build_vk_pack
 
 router = APIRouter()
 
@@ -664,6 +668,37 @@ def list_content_assets(
         if asset.storage_key:
             asset.url = f"/api/v1/smm-projects/assets/{asset.id}/file"
     return assets
+
+
+@router.get("/content/{content_id}/vk-pack")
+def download_vk_pack(
+    content_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("smm_projects.access")),
+):
+    """Download a ready-to-upload VK ZIP package (text + ordered media)."""
+    content = _get_content_or_404(db, content_id)
+    _project_for_content(db, content, current_user)
+    assets = (
+        db.query(SmmContentAsset)
+        .filter(SmmContentAsset.content_id == content.id, SmmContentAsset.storage_key.isnot(None))
+        .order_by(SmmContentAsset.id)
+        .all()
+    )
+    pack_assets = []
+    for asset in assets:
+        data = storage_svc.read_bytes(asset.storage_key)
+        if data is None:
+            continue
+        meta = asset.meta if isinstance(asset.meta, dict) else {}
+        pack_assets.append((f"asset_{asset.id}", data, meta.get("content_type")))
+    archive = build_vk_pack(title=content.title, text=content.output_text or "", assets=pack_assets)
+    filename = quote(f"vk_pack_{content.id}.zip")
+    return StreamingResponse(
+        BytesIO(archive),
+        media_type="application/zip",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
+    )
 
 
 @router.post("/content/{content_id}/select-asset", response_model=AssetOut)

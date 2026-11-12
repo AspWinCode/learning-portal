@@ -1662,6 +1662,35 @@ const KnowledgeWorkspaceTab: React.FC = () => {
   );
 };
 
+const DraftsWorkspaceTab: React.FC = () => {
+  const { user } = useAuth();
+  const [projects, setProjects] = useState<smm.ProjectListItem[]>([]);
+  const [selected, setSelected] = useState('');
+  const canGenerate = hasPermission(user, 'smm_projects.generate');
+  const canManageContent = hasPermission(user, 'smm_projects.manage_content');
+  const canPublish = hasPermission(user, 'smm_projects.publish');
+
+  useEffect(() => {
+    smm.listProjects().then((list) => {
+      setProjects(list);
+      setSelected((current) => current || list[0]?.code || '');
+    }).catch(() => setProjects([]));
+  }, []);
+
+  return (
+    <Stack spacing={2}>
+      <FormControl size="small" sx={{ maxWidth: 420 }}>
+        <InputLabel id="drafts-project">Проект</InputLabel>
+        <Select labelId="drafts-project" label="Проект" value={selected} onChange={(e) => setSelected(e.target.value)}>
+          {projects.map((project) => <MenuItem key={project.code} value={project.code}>{project.name}</MenuItem>)}
+        </Select>
+      </FormControl>
+      {!projects.length && <Alert severity="info">Сначала создайте SMM-проект.</Alert>}
+      {selected && <DraftsTab projectCode={selected} canGenerate={canGenerate} canManage={canManageContent} canPublish={canPublish} reloadKey={0} />}
+    </Stack>
+  );
+};
+
 // ─── Главная страница: 4 вкладки ────────────────────────────────────────────
 
 const SmmProjectsPage: React.FC = () => {
@@ -1671,6 +1700,7 @@ const SmmProjectsPage: React.FC = () => {
   const tabs = [
     { label: 'Новые', node: <ComposeTab onPublished={() => setReloadKey((k) => k + 1)} /> },
     { label: 'Контент-план', node: <ContentPlanWorkspaceTab /> },
+    { label: 'Черновики', node: <DraftsWorkspaceTab /> },
     { label: 'Контекст проекта', node: <KnowledgeWorkspaceTab /> },
     { label: 'Запланированные', node: <PublicationsListTab state="scheduled" reloadKey={reloadKey} /> },
     { label: 'Отправленные', node: <PublicationsListTab state="sent" reloadKey={reloadKey} /> },

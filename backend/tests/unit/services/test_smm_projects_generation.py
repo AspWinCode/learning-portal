@@ -75,6 +75,15 @@ async def test_generate_rejects_missing_required_fields():
         await generation.generate(db=None, user=object(), project=_project(), template=_template(), input_data={})
 
 
+def test_humanize_nested_social_post_json():
+    text = generation.humanize_structured_output({
+        "platform": "vk",
+        "content": {"title": "Заголовок", "text": "Читаемый текст", "hashtags": ["#КодАрена"]},
+        "target_audience": ["школьники"],
+    })
+    assert text == "Заголовок\n\nЧитаемый текст\n\n#КодАрена"
+
+
 @pytest.mark.asyncio
 async def test_generate_assigns_group_key_and_auto_generated_flag(monkeypatch):
     monkeypatch.setattr(generation.ai_gateway, "is_configured", lambda purpose="text": False)

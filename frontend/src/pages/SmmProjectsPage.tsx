@@ -32,6 +32,32 @@ import { hasPermission } from '../utils/permissions';
 import { extractApiError } from '../utils/extractApiError';
 import * as smm from '../services/smmProjectsApi';
 
+const readableSmmText = (raw: string | null | undefined, structured?: Record<string, unknown> | null): string => {
+  const fallback = raw || '';
+  let value: Record<string, any> | null = structured || null;
+  if (!value && fallback.trim()) {
+    try {
+      const candidate = fallback.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+      const parsed = JSON.parse(candidate);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) value = parsed;
+    } catch {
+      return fallback;
+    }
+  }
+  if (!value) return fallback;
+  const content = value.content && typeof value.content === 'object' ? value.content : value;
+  const parts: string[] = [];
+  for (const key of ['title', 'hook', 'text', 'body', 'caption', 'description', 'content']) {
+    const candidate = content[key];
+    if (typeof candidate === 'string' && candidate.trim() && !parts.includes(candidate.trim())) parts.push(candidate.trim());
+  }
+  const cta = value.cta;
+  if (typeof cta === 'string' && cta.trim() && !parts.includes(cta.trim())) parts.push(cta.trim());
+  const hashtags = content.hashtags || value.hashtags;
+  if (Array.isArray(hashtags) && hashtags.length) parts.push(hashtags.map((tag: unknown) => String(tag).startsWith('#') ? String(tag) : `#${tag}`).join(' '));
+  return parts.join('\n\n') || fallback;
+};
+
 // ─── Новый материал ─────────────────────────────────────────────────────────
 
 const NewContentTab: React.FC<{ projectCode: string; canGenerate: boolean; onGenerated: () => void }> = ({
@@ -143,7 +169,7 @@ const NewContentTab: React.FC<{ projectCode: string; canGenerate: boolean; onGen
       </Button>
       {result && (
         <Paper variant="outlined" sx={{ p: 2, whiteSpace: 'pre-wrap' }}>
-          {result.output_text}
+          {readableSmmText(result.output_text, result.output_json)}
         </Paper>
       )}
     </Stack>
@@ -513,7 +539,7 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
             />
           </Stack>
           <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', mt: 1 }}>
-            {item.output_text}
+            {readableSmmText(item.output_text, item.output_json)}
           </Typography>
           {item.input_json?.media_error && (
             <Alert severity="warning" sx={{ mt: 1 }}>
@@ -1045,7 +1071,7 @@ const EventPackTab: React.FC<{ projectCode: string; canGenerate: boolean; onGene
                 {item.channel && <Chip size="small" variant="outlined" label={item.channel} />}
               </Stack>
               <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', mt: 0.5 }}>
-                {item.output_text}
+                {readableSmmText(item.output_text, item.output_json)}
               </Typography>
             </Paper>
           ))}
@@ -1579,7 +1605,7 @@ const PublicationsListTab: React.FC<{ state: 'scheduled' | 'sent'; reloadKey: nu
             </Stack>
             {p.asset_url && <Box component="img" src={p.asset_url} alt="" sx={{ maxWidth: 160, maxHeight: 160, borderRadius: 1, mt: 1 }} />}
             <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', mt: 1 }}>
-              {p.text_snapshot}
+                  {readableSmmText(p.text_snapshot)}
             </Typography>
             {p.status === 'error' && p.last_error && (
               <Alert severity="error" sx={{ mt: 1 }}>

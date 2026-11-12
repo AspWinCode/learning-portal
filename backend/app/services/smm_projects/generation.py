@@ -63,6 +63,41 @@ EVENT_PACK_ITEMS: List[Dict[str, str]] = [
 ]
 
 
+def humanize_structured_output(value: Any, fallback: str = "") -> str:
+    """Convert the model's JSON envelope into text suitable for a social post.
+
+    Models often return the actual post under ``content.text``/``content.body``
+    while keeping planning metadata next to it.  That metadata must never be
+    sent to a social network or shown as the publication body.
+    """
+    if not isinstance(value, dict):
+        return fallback
+
+    content = value.get("content")
+    source = content if isinstance(content, dict) else value
+    parts: List[str] = []
+    title = source.get("title") or value.get("title")
+    if title:
+        parts.append(str(title).strip())
+
+    for key in ("hook", "text", "body", "caption", "description", "content"):
+        candidate = source.get(key)
+        if isinstance(candidate, str) and candidate.strip() and candidate.strip() not in parts:
+            parts.append(candidate.strip())
+
+    cta = value.get("cta")
+    if isinstance(cta, str) and cta.strip() and cta.strip() not in parts:
+        parts.append(cta.strip())
+    hashtags = source.get("hashtags") or value.get("hashtags") or []
+    if isinstance(hashtags, str):
+        hashtags = hashtags.split()
+    if isinstance(hashtags, list):
+        tags = " ".join(str(tag) if str(tag).startswith("#") else f"#{tag}" for tag in hashtags if str(tag).strip())
+        if tags:
+            parts.append(tags)
+    return "\n\n".join(parts) or fallback
+
+
 def _structured_output(raw: str) -> tuple[str, Optional[Dict[str, Any]]]:
     try:
         value = json.loads(raw)
@@ -70,11 +105,7 @@ def _structured_output(raw: str) -> tuple[str, Optional[Dict[str, Any]]]:
         return raw, None
     if not isinstance(value, dict):
         return raw, None
-    parts = [str(value.get(key) or "").strip() for key in ("hook", "body", "cta")]
-    hashtags = value.get("hashtags") or []
-    if hashtags:
-        parts.append(" ".join(str(tag) if str(tag).startswith("#") else f"#{tag}" for tag in hashtags))
-    final_text = "\n\n".join(part for part in parts if part)
+    final_text = humanize_structured_output(value, fallback=raw)
     return final_text or raw, value
 
 

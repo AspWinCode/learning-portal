@@ -206,6 +206,22 @@ async def test_generate_image_includes_input_references(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_generate_image_limits_qwen_references(monkeypatch):
+    monkeypatch.setenv("AI_TUNNEL_BASE_URL", "https://tunnel.example/v1")
+    monkeypatch.setenv("AI_TUNNEL_API_KEY", "k")
+    monkeypatch.setenv("AI_TUNNEL_MODEL_IMAGE", "qwen-image-3")
+    _FakeAsyncClient.payload = {"data": [{"b64_json": "abc"}]}
+    monkeypatch.setattr(httpx, "AsyncClient", _FakeAsyncClient)
+
+    refs = [{"type": "image_url", "image_url": {"url": f"data:image/png;base64,{i}"}} for i in range(4)]
+    result = await ai_gateway.generate_image(feature="unit", prompt="персонажи", input_references=refs)
+
+    assert result.ok is True
+    _, kwargs = _FakeAsyncClient.calls[0]
+    assert len(kwargs["json"]["input_references"]) == 3
+
+
+@pytest.mark.asyncio
 async def test_embed_surfaces_real_provider_error(monkeypatch):
     monkeypatch.setenv("AI_TUNNEL_BASE_URL", "https://tunnel.example/v1")
     monkeypatch.setenv("AI_TUNNEL_API_KEY", "k")

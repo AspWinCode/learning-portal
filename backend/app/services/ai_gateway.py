@@ -484,7 +484,11 @@ async def generate_image(
         headers = {"Authorization": f"Bearer {cfg['api_key']}", "Content-Type": "application/json"}
         payload = {"model": cfg["model"], "prompt": prompt, "n": 1}
         if input_references:
-            payload["input_references"] = input_references
+            # Лимит зависит от реально выбранной image-модели. В частности,
+            # qwen-image-3 принимает максимум три reference-изображения.
+            model_name = cfg["model"].lower()
+            max_references = 3 if model_name == "qwen-image-3" else 4
+            payload["input_references"] = input_references[:max_references]
         if size:
             payload["size"] = size
         if name == "tunnel":

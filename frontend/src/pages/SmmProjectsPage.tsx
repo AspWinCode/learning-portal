@@ -370,6 +370,7 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
   const [items, setItems] = useState<smm.GeneratedContent[] | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [imageErrors, setImageErrors] = useState<Record<number, string>>({});
   const [variantChannel, setVariantChannel] = useState<Record<number, string>>({});
   const [publishChannels, setPublishChannels] = useState<smm.ChannelStatus[]>([]);
   const [selectedChannels, setSelectedChannels] = useState<Record<number, string[]>>({});
@@ -405,12 +406,15 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
   const renderImage = async (id: number) => {
     setBusyId(id);
     setError(null);
+    setImageErrors((current) => ({ ...current, [id]: '' }));
     try {
       await smm.renderContentImage(id);
       const assets = await smm.listContentAssets(id);
       setAssetsByContent((a) => ({ ...a, [id]: assets }));
     } catch (e) {
-      setError(extractApiError(e, 'Ошибка'));
+      const message = extractApiError(e, 'Ошибка генерации визуала');
+      setImageErrors((current) => ({ ...current, [id]: message }));
+      setError(message);
     } finally {
       setBusyId(null);
     }
@@ -590,6 +594,11 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
                 {busyId === item.id ? 'Генерация визуала…' : 'Создать визуал'}
               </Button>
             </Stack>
+          )}
+          {imageErrors[item.id] && (
+            <Alert severity="error" sx={{ mt: 1 }}>
+              {imageErrors[item.id]}
+            </Alert>
           )}
           {assetsByContent[item.id]?.map((asset) => (
             <Box key={asset.id} sx={{ mt: 1 }}>

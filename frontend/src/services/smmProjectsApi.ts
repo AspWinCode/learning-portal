@@ -226,6 +226,9 @@ export interface ContentPlan {
 export const listContentPlans = (code: string): Promise<{ items: ContentPlan[]; total: number }> =>
   api.get(`${BASE}/projects/${code}/content-plans`).then((r) => r.data);
 
+export const deleteContentPlan = (code: string, planId: number): Promise<void> =>
+  api.delete(`${BASE}/projects/${code}/content-plans/${planId}`);
+
 export interface ContentPlanReadiness {
   ai: { configured: boolean; provider: string | null; model: string | null; purpose: string };
   context: { active_items: number; indexed_items: number; total_chars: number; items: Array<{ id: number; title: string; source_type: string; filename: string | null }> };
@@ -495,6 +498,9 @@ export const retryPublication = (publicationId: number): Promise<Publication> =>
 
 export const cancelPublication = (publicationId: number): Promise<Publication> =>
   api.post(`${BASE}/publications/${publicationId}/cancel`).then((r) => r.data);
+
+export const deletePublicationRecord = (publicationId: number): Promise<void> =>
+  api.delete(`${BASE}/publications/${publicationId}`);
 
 export const listContentPublishLogs = (contentId: number): Promise<PublishLog[]> =>
   api.get(`${BASE}/content/${contentId}/publish-logs`).then((r) => r.data);

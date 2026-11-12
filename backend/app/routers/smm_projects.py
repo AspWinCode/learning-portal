@@ -443,6 +443,33 @@ async def generate_content_plan(
     return plan
 
 
+@router.delete("/projects/{code}/content-plans/{plan_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_content_plan(
+    code: str,
+    plan_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("smm_projects.manage_content")),
+):
+    project = _get_accessible_project(db, code, current_user)
+    plan = content_plans_svc.get_plan(db, project, plan_id)
+    if plan is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Контент-план не найден")
+    content_ids = [item.generated_content_id for item in plan.items if item.generated_content_id]
+    if content_ids:
+        active_publication = db.query(SmmPublication).filter(
+            SmmPublication.content_id.in_(content_ids),
+            SmmPublication.status.notin_(("cancelled", "error")),
+        ).first()
+        if active_publication:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Нельзя удалить план: по нему уже есть активная или опубликованная публикация")
+        db.query(SmmContent).filter(
+            SmmContent.id.in_(content_ids), SmmContent.auto_generated.is_(True)
+        ).delete(synchronize_session=False)
+    db.delete(plan)
+    db.commit()
+    log_action(db, current_user.id, "delete", "smm_content_plan", plan_id, {"project": code})
+
+
 @router.post("/projects/{code}/generate", response_model=ContentOut)
 async def generate_content(
     code: str,
@@ -752,6 +779,23 @@ def cancel_publication(
     db.commit()
     log_action(db, current_user.id, "cancel_schedule", "smm_publication", row.id, {"content_id": row.content_id})
     return row
+
+
+@router.delete("/publications/{publication_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_publication_record(
+    publication_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("smm_projects.manage_content")),
+):
+    row = db.query(SmmPublication).filter(SmmPublication.id == publication_id).first()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Публикация не найдена")
+    project = db.query(SmmProject).filter(SmmProject.id == row.project_id).first()
+    access_svc.ensure_project_access(db, current_user, project)
+    if row.status not in ("cancelled", "error"):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Можно удалить только отменённую или неуспешную запись")
+    db.delete(row)
+    db.commit()
 
 
 # ─── Compose (вставил текст → выбрал каналы/проект → опубликовал) ──────────

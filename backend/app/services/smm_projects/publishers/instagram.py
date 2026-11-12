@@ -27,16 +27,25 @@ class InstagramPublisher(Publisher):
         config = context.config or self._env_config(context.project_code)
         if config is None:
             raise ValueError("Instagram не настроен / публикация недоступна")
-        if not context.asset_url:
+        image_urls = context.asset_urls or ([context.asset_url] if context.asset_url else [])
+        if not image_urls:
             raise ValueError("Instagram требует публичный URL изображения")
         graph_version = os.getenv("SMM_META_GRAPH_VERSION", "v23.0").strip()
         base = f"https://graph.facebook.com/{graph_version}/{config['account_id']}"
         async with httpx.AsyncClient(timeout=40.0) as client:
-            container = await client.post(
-                f"{base}/media",
-                data={"image_url": context.asset_url, "caption": context.text, "access_token": config["token"]},
-            )
-            container_data = container.json()
+            if len(image_urls) > 1:
+                children = []
+                for image_url in image_urls:
+                    child = await client.post(f"{base}/media", data={"image_url": image_url, "is_carousel_item": "true", "access_token": config["token"]})
+                    child_data = child.json()
+                    if child_data.get("error") or not child_data.get("id"):
+                        raise ValueError(str((child_data.get("error") or {}).get("message") or "Meta API не создал слайд карусели"))
+                    children.append(child_data["id"])
+                container = await client.post(f"{base}/media", data={"media_type": "CAROUSEL", "children": ",".join(children), "caption": context.text, "access_token": config["token"]})
+                container_data = container.json()
+            else:
+                container = await client.post(f"{base}/media", data={"image_url": image_urls[0], "caption": context.text, "access_token": config["token"]})
+                container_data = container.json()
             if container_data.get("error"):
                 raise ValueError(str(container_data["error"].get("message") or container_data["error"]))
             creation_id = container_data.get("id")

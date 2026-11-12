@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import json
 from typing import Dict, Optional
 
 import httpx
@@ -27,7 +28,23 @@ class TelegramPublisher(Publisher):
             raise ValueError(f"Telegram не настроен для проекта «{context.project_code}»")
         endpoint = f"https://api.telegram.org/bot{config['token']}"
         async with httpx.AsyncClient(timeout=30.0) as client:
-            if context.asset_bytes:
+            slide_bytes = context.asset_bytes_list or []
+            if len(slide_bytes) > 1:
+                media = []
+                files = {}
+                for index, payload in enumerate(slide_bytes):
+                    key = f"slide{index}"
+                    media_item = {"type": "photo", "media": f"attach://{key}"}
+                    if index == 0:
+                        media_item["caption"] = context.text
+                    media.append(media_item)
+                    files[key] = (f"{key}.png", payload, "image/png")
+                response = await client.post(
+                    f"{endpoint}/sendMediaGroup",
+                    data={"chat_id": config["chat_id"], "media": json.dumps(media)},
+                    files=files,
+                )
+            elif context.asset_bytes:
                 response = await client.post(
                     f"{endpoint}/sendPhoto",
                     data={"chat_id": config["chat_id"], "caption": context.text},
@@ -41,6 +58,8 @@ class TelegramPublisher(Publisher):
         if not data.get("ok"):
             raise ValueError(str(data.get("description") or "Telegram API вернул ошибку"))
         message = data.get("result") or {}
+        if isinstance(message, list):
+            message = message[0] if message else {}
         message_id = message.get("message_id")
         external_url = None
         username = (config.get("username") or "").strip().lstrip("@")

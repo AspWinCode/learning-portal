@@ -94,43 +94,36 @@ class VkPublisher(Publisher):
             raise ValueError(f"VK не настроен для проекта «{context.project_code}»")
         owner_id = f"-{config['group_id']}"
         async with httpx.AsyncClient(timeout=30.0) as client:
-            attachments = None
-            if context.asset_bytes:
-                upload = await client.post(
-                    f"{VK_API}/photos.getWallUploadServer",
-                    params={"group_id": config["group_id"], "access_token": config["token"], "v": VK_API_VERSION},
-                )
-                upload_data = upload.json()
-                if "error" in upload_data:
-                    raise ValueError(str(upload_data["error"].get("error_msg") or upload_data["error"]))
-                upload_url = (upload_data.get("response") or {}).get("upload_url")
-                if not upload_url:
-                    raise ValueError("VK не вернул upload_url")
-                uploaded = await client.post(
-                    upload_url,
-                    files={"photo": (context.asset_filename, context.asset_bytes, "image/png")},
-                )
-                uploaded_data = uploaded.json()
-                if "error" in uploaded_data:
-                    raise ValueError(str(uploaded_data["error"].get("error_msg") or uploaded_data["error"]))
-                saved = await client.post(
-                    f"{VK_API}/photos.saveWallPhoto",
-                    data={
-                        "group_id": config["group_id"],
-                        "server": uploaded_data.get("server"),
-                        "photo": uploaded_data.get("photo"),
-                        "hash": uploaded_data.get("hash"),
-                        "access_token": config["token"],
-                        "v": VK_API_VERSION,
-                    },
-                )
-                saved_data = saved.json()
-                if "error" in saved_data:
-                    raise ValueError(str(saved_data["error"].get("error_msg") or saved_data["error"]))
-                photo = (saved_data.get("response") or [{}])[0]
-                if photo.get("owner_id") and photo.get("id"):
-                    attachments = f"photo{photo['owner_id']}_{photo['id']}"
-
+            attachments_list = []
+            slide_bytes = context.asset_bytes_list or ([context.asset_bytes] if context.asset_bytes else [])
+            if slide_bytes:
+                for slide_index, slide_bytes_item in enumerate(slide_bytes):
+                    upload = await client.post(
+                        f"{VK_API}/photos.getWallUploadServer",
+                        params={"group_id": config["group_id"], "access_token": config["token"], "v": VK_API_VERSION},
+                    )
+                    upload_data = upload.json()
+                    if "error" in upload_data:
+                        raise ValueError(str(upload_data["error"].get("error_msg") or upload_data["error"]))
+                    upload_url = (upload_data.get("response") or {}).get("upload_url")
+                    uploaded = await client.post(upload_url, files={"photo": (f"slide_{slide_index}.png", slide_bytes_item, "image/png")})
+                    uploaded_data = uploaded.json()
+                    if "error" in uploaded_data:
+                        raise ValueError(str(uploaded_data["error"].get("error_msg") or uploaded_data["error"]))
+                    saved = await client.post(
+                        f"{VK_API}/photos.saveWallPhoto",
+                        data={"group_id": config["group_id"], "server": uploaded_data.get("server"), "photo": uploaded_data.get("photo"), "hash": uploaded_data.get("hash"), "access_token": config["token"], "v": VK_API_VERSION},
+                    )
+                    saved_data = saved.json()
+                    if "error" in saved_data:
+                        raise ValueError(str(saved_data["error"].get("error_msg") or saved_data["error"]))
+                    photo = (saved_data.get("response") or [{}])[0]
+                    if photo.get("owner_id") and photo.get("id"):
+                        attachments_list.append(f"photo{photo['owner_id']}_{photo['id']}")
+            if attachments_list:
+                attachments = ",".join(attachments_list)
+            else:
+                attachments = None
             params = {
                 "owner_id": owner_id,
                 "message": context.text,

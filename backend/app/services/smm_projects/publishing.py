@@ -32,6 +32,21 @@ def is_channel_configured(db: Session, project: SmmProject, channel: str) -> boo
 
 
 def _context(db: Session, project: SmmProject, publication: SmmPublication, asset: Optional[SmmContentAsset]) -> PublicationContext:
+    all_assets = []
+    if asset:
+        all_assets = db.query(SmmContentAsset).filter(SmmContentAsset.content_id == publication.content_id).order_by(SmmContentAsset.created_at, SmmContentAsset.id).all()
+        slides_total = (asset.meta or {}).get("slides_total") if isinstance(asset.meta, dict) else None
+        if slides_total and int(slides_total) > 1:
+            all_assets = [candidate for candidate in all_assets if isinstance(candidate.meta, dict) and candidate.meta.get("slides_total") == slides_total]
+        else:
+            all_assets = [asset]
+    bytes_list = []
+    for candidate in all_assets:
+        if candidate.storage_key:
+            payload = storage.read_bytes(candidate.storage_key)
+            if payload:
+                bytes_list.append(payload)
+    url_list = [candidate.url for candidate in all_assets if candidate.url]
     return PublicationContext(
         project_code=project.code,
         channel=publication.channel,
@@ -39,6 +54,8 @@ def _context(db: Session, project: SmmProject, publication: SmmPublication, asse
         asset_bytes=storage.read_bytes(asset.storage_key) if asset and asset.storage_key else None,
         asset_filename=f"smm_{publication.content_id}.png",
         asset_url=asset.url if asset else None,
+        asset_bytes_list=bytes_list or None,
+        asset_urls=url_list or None,
         config=channels_svc.get_channel_config(db, project, publication.channel),
     )
 

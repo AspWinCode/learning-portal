@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 
 @dataclass
@@ -12,6 +12,8 @@ class PublicationContext:
     asset_bytes: Optional[bytes] = None
     asset_filename: str = "image.png"
     asset_url: Optional[str] = None
+    asset_bytes_list: Optional[List[bytes]] = None
+    asset_urls: Optional[List[str]] = None
     # Разрешённые секреты из SmmChannelConfig (UI), если owner настроил канал
     # в проекте; если None — публикатор падает на env-переменные (ops-level
     # резервный путь, см. каждый _env_config()).

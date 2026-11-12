@@ -216,6 +216,20 @@ const ContentPlanTab: React.FC<{ projectCode: string; canGenerate: boolean }> = 
     }
   };
 
+  const removePlan = async (id: number) => {
+    if (!window.confirm('Удалить контент-план и связанные авто-черновики?')) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await smm.deleteContentPlan(projectCode, id);
+      await reload();
+    } catch (e) {
+      setError(extractApiError(e, 'Не удалось удалить контент-план'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <Stack spacing={2}>
       <Paper variant="outlined" sx={{ p: 2 }}>
@@ -292,7 +306,10 @@ const ContentPlanTab: React.FC<{ projectCode: string; canGenerate: boolean }> = 
               <Typography variant="subtitle1">{plan.name}</Typography>
               <Typography variant="caption" color="text.secondary">{plan.items.length} публикаций · {plan.posts_per_week} в неделю</Typography>
             </Box>
-            <Chip size="small" label="Черновик плана" />
+            <Stack direction="row" spacing={1} alignItems="center">
+              <Chip size="small" label="Черновик плана" />
+              <Button size="small" color="error" onClick={() => removePlan(plan.id)} disabled={busy}>Удалить</Button>
+            </Stack>
           </Stack>
           <Stack spacing={1} sx={{ minWidth: 860 }}>
             {plan.items.map((item) => (
@@ -1481,6 +1498,19 @@ const PublicationsListTab: React.FC<{ state: 'scheduled' | 'sent'; reloadKey: nu
     }
   };
 
+  const removeRecord = async (id: number) => {
+    if (!window.confirm('Удалить эту запись из истории?')) return;
+    setBusyId(id);
+    try {
+      await smm.deletePublicationRecord(id);
+      setItems((rows) => rows ? rows.filter((row) => row.id !== id) : rows);
+    } catch (e) {
+      setError(extractApiError(e, 'Не удалось удалить запись'));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   return (
     <Stack spacing={2}>
       <FormControl size="small" sx={{ maxWidth: 260 }}>
@@ -1547,6 +1577,11 @@ const PublicationsListTab: React.FC<{ state: 'scheduled' | 'sent'; reloadKey: nu
               {p.status === 'error' && (
                 <Button size="small" disabled={busyId === p.id} onClick={() => retry(p.id)}>
                   Повторить
+                </Button>
+              )}
+              {['error', 'cancelled'].includes(p.status) && (
+                <Button size="small" color="error" disabled={busyId === p.id} onClick={() => removeRecord(p.id)}>
+                  Удалить запись
                 </Button>
               )}
             </Stack>

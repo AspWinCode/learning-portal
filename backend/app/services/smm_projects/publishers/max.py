@@ -75,7 +75,8 @@ class MaxPublisher(Publisher):
         headers = {"Authorization": config["token"]}
         async with httpx.AsyncClient(timeout=40.0) as client:
             attachments = []
-            if context.asset_bytes:
+            slide_bytes = context.asset_bytes_list or ([context.asset_bytes] if context.asset_bytes else [])
+            for slide_index, slide_payload in enumerate(slide_bytes):
                 upload = await client.post(f"{self.API}/uploads?type=image", headers=headers)
                 upload_error = self._error_for(upload)
                 if upload_error:
@@ -87,7 +88,7 @@ class MaxPublisher(Publisher):
                 uploaded = await client.post(
                     upload_url,
                     headers=headers,
-                    files={"data": (context.asset_filename, context.asset_bytes, "image/png")},
+                    files={"data": (f"slide_{slide_index}.png", slide_payload, "image/png")},
                 )
                 uploaded_error = self._error_for(uploaded)
                 if uploaded_error:

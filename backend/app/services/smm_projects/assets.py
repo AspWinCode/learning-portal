@@ -8,21 +8,42 @@ from sqlalchemy.orm import Session
 
 from app.models import SmmContent, SmmContentAsset, SmmProject
 from app.services import ai_gateway
+from app.services.smm_projects import knowledge as knowledge_svc
 from app.services.smm_projects import storage
 
 
-async def build_image_prompt(*, project: SmmProject, content: SmmContent, user) -> str:
+async def build_image_prompt(*, db: Session, project: SmmProject, content: SmmContent, user) -> str:
     structured = content.output_json if isinstance(content.output_json, dict) else {}
-    if structured.get("image_prompt"):
-        return str(structured["image_prompt"]).strip()
     brand = project.brand_context if isinstance(project.brand_context, dict) else {}
     brand_lines = ", ".join(f"{key}: {value}" for key, value in brand.items() if value)
+    base_prompt = str(structured.get("image_prompt") or "").strip()
+    if not base_prompt:
+        base_prompt = (
+            "Создай визуальный промпт для social media изображения. Не рисуй текст, даты, цены или логотипы. "
+            "Опирайся только на факты материала. Укажи композицию, настроение и тип визуала.\n"
+            f"Бренд: {brand_lines or 'не задан'}\n"
+            f"Тип материала: {content.title or 'social post'}\n"
+            f"Факты: {content.output_text or content.title or ''}"
+        )
+
+    # Контекст проекта должен влиять и на визуалы. При загрузке изображений их
+    # содержание сохраняется в SmmKnowledgeItem как image_reference, поэтому
+    # передаём генератору не бинарник, а подготовленное описание референса.
+    knowledge_items = knowledge_svc.list_items(db, project)
+    visual_refs = [
+        item for item in knowledge_items
+        if item.source_type == "image_reference" or (item.content_type or "").startswith("image/")
+    ]
+    visual_block = "\n\n=== ВИЗУАЛЬНЫЕ РЕФЕРЕНСЫ КОДАРЕНЫ ===\n" + "\n".join(
+        f"[{item.title}] {(item.content or '')[:1400]}" for item in visual_refs[:12]
+    ) if visual_refs else ""
+    context_block = knowledge_svc.as_prompt_block(knowledge_items[:12], max_chars=7000) if knowledge_items else ""
     prompt = (
-        "Создай визуальный промпт для social media изображения. Не рисуй текст, даты, цены или логотипы. "
-        "Опирайся только на факты материала. Укажи композицию, настроение и тип визуала.\n"
-        f"Бренд: {brand_lines or 'не задан'}\n"
-        f"Тип материала: {content.title or 'social post'}\n"
-        f"Факты: {content.output_text or content.title or ''}"
+        f"{base_prompt}\n\n"
+        "Это обязательный постоянный контекст проекта. Сохрани узнаваемый мир, персонажей, "
+        "цветовую палитру и визуальный язык КодАрены. Не заменяй их абстрактным стоковым дизайном. "
+        "Не добавляй надписи в изображение."
+        f"{visual_block}{context_block}"
     )
     if not ai_gateway.is_configured("text"):
         return prompt
@@ -38,7 +59,7 @@ async def render_image(
     db: Session, user, *, project: SmmProject, content: SmmContent, prompt: Optional[str] = None,
     meta: Optional[Dict[str, Any]] = None,
 ) -> SmmContentAsset:
-    final_prompt = (prompt or await build_image_prompt(project=project, content=content, user=user)).strip()
+    final_prompt = (prompt or await build_image_prompt(db=db, project=project, content=content, user=user)).strip()
     if not final_prompt:
         raise ValueError("Нет промпта для генерации изображения")
     if not ai_gateway.is_configured("image"):

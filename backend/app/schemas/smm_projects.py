@@ -190,6 +190,12 @@ class ContentPlanList(BaseModel):
     total: int
 
 
+class ContentPlanReadinessOut(BaseModel):
+    ai: Dict[str, Any]
+    context: Dict[str, Any]
+    publication_stats: Dict[str, Any]
+
+
 # ─── Templates ──────────────────────────────────────────────────────────────
 
 class TemplateOut(BaseModel):

@@ -29,6 +29,7 @@ from app.schemas.smm_projects import (
     ContentPlanGenerateRequest,
     ContentPlanList,
     ContentPlanOut,
+    ContentPlanReadinessOut,
     ContentOut,
     ContentUpdate,
     EventPackRequest,
@@ -414,6 +415,16 @@ def list_content_plans(
     project = _get_accessible_project(db, code, current_user)
     items = content_plans_svc.list_plans(db, project)
     return ContentPlanList(items=items, total=len(items))
+
+
+@router.get("/projects/{code}/content-plans/readiness", response_model=ContentPlanReadinessOut)
+def content_plan_readiness(
+    code: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("smm_projects.access")),
+):
+    project = _get_accessible_project(db, code, current_user)
+    return content_plans_svc.plan_readiness(db, project)
 
 
 @router.post("/projects/{code}/content-plans/generate", response_model=ContentPlanOut, status_code=status.HTTP_201_CREATED)

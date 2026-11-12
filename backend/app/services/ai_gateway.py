@@ -119,6 +119,15 @@ def is_configured(purpose: Purpose = "text") -> bool:
     return False
 
 
+def configuration_status(purpose: Purpose = "text") -> Dict[str, Any]:
+    """Безопасный статус конфигурации без выдачи ключей и секретов."""
+    for provider in _provider_order():
+        config = _anthropic_config() if provider == "claude" and purpose == "text" else _openai_config(provider, purpose)
+        if config:
+            return {"configured": True, "provider": provider, "model": config.get("model"), "purpose": purpose}
+    return {"configured": False, "provider": None, "model": None, "purpose": purpose}
+
+
 # ─── Извлечение текста/усэйджа из ответов ───────────────────────────────────
 
 def _extract_openai_text(payload: Dict[str, Any]) -> str:

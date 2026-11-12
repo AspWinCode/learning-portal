@@ -9,13 +9,65 @@ from typing import Any, Dict, List
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session, joinedload
 
-from app.models import SmmContent, SmmContentPlan, SmmContentPlanItem, SmmProject
+from app.models import SmmContent, SmmContentPlan, SmmContentPlanItem, SmmProject, SmmPublication
 from app.services import ai_gateway
 from app.services.smm_projects import knowledge as knowledge_svc
 from app.services.smm_projects import assets as assets_svc
 from app.services.smm_projects.prompt_builder import GLOBAL_SAFETY_RULES, _brand_block
 
 DEFAULT_FORMATS = ["Пост", "Карточка", "Карусель", "Видео / Reels / Shorts", "Инфографика"]
+
+
+def plan_readiness(db: Session, project: SmmProject) -> Dict[str, Any]:
+    knowledge_items = knowledge_svc.list_items(db, project)
+    publications = (
+        db.query(SmmPublication, SmmContent, SmmContentPlanItem)
+        .outerjoin(SmmContent, SmmContent.id == SmmPublication.content_id)
+        .outerjoin(SmmContentPlanItem, SmmContentPlanItem.id == SmmContent.plan_item_id)
+        .filter(SmmPublication.project_id == project.id)
+        .all()
+    )
+    by_channel: Dict[str, int] = {}
+    by_format: Dict[str, int] = {}
+    successful = failed = scheduled = 0
+    last_published_at = None
+    for publication, content, plan_item in publications:
+        by_channel[publication.channel] = by_channel.get(publication.channel, 0) + 1
+        if publication.status == "success":
+            successful += 1
+            if publication.published_at and (last_published_at is None or publication.published_at > last_published_at):
+                last_published_at = publication.published_at
+        elif publication.status == "error":
+            failed += 1
+        elif publication.status == "scheduled":
+            scheduled += 1
+        fmt = None
+        if plan_item:
+            fmt = plan_item.content_format
+        fmt = fmt or ((content.input_json or {}).get("content_format") if content else None) or "Не указан"
+        by_format[fmt] = by_format.get(fmt, 0) + 1
+    return {
+        "ai": ai_gateway.configuration_status("text"),
+        "context": {
+            "active_items": len(knowledge_items),
+            "indexed_items": sum(1 for item in knowledge_items if item.content),
+            "total_chars": sum(len(item.content or "") for item in knowledge_items),
+            "items": [
+                {"id": item.id, "title": item.title, "source_type": item.source_type, "filename": item.original_filename}
+                for item in knowledge_items
+            ],
+        },
+        "publication_stats": {
+            "total": len(publications),
+            "successful": successful,
+            "failed": failed,
+            "scheduled": scheduled,
+            "by_channel": by_channel,
+            "by_format": by_format,
+            "last_published_at": last_published_at.isoformat() if last_published_at else None,
+            "engagement_metrics_available": False,
+        },
+    }
 
 
 def _as_date(value: Any) -> date:
@@ -219,12 +271,13 @@ async def generate_plan(db: Session, user, *, project: SmmProject, payload: Dict
     if (end - start).days > 62:
         raise ValueError("Контент-план можно создавать максимум на 2 месяца")
 
-    query = " ".join(str(payload.get(key) or "") for key in ("objective", "audience", "extra_context"))
     # Контекст плана должен быть постоянным и полным: при генерации месячного
     # плана читаем все активные факты/файлы проекта, а не только совпадения по
     # короткому запросу формы.
     hits = knowledge_svc.list_items(db, project)
     knowledge = knowledge_svc.as_prompt_block(hits, max_chars=18000)
+    readiness = plan_readiness(db, project)
+    stats = readiness["publication_stats"]
     fallback_payload = {**payload, "_knowledge_titles": [item.title for item in hits if item.title]}
     fallback = _fallback_items(fallback_payload)
     requested_formats = payload.get("formats") or DEFAULT_FORMATS
@@ -242,6 +295,9 @@ async def generate_plan(db: Session, user, *, project: SmmProject, payload: Dict
         f"Предпочтительные форматы: {', '.join(requested_formats)}.\n"
         f"Публикаций в неделю: {payload.get('posts_per_week')}.\n"
         f"Дополнительный контекст: {payload.get('extra_context') or 'нет'}.\n"
+        f"Статистика прошлых публикаций: всего {stats['total']}, успешно {stats['successful']}, ошибок {stats['failed']}; "
+        f"по каналам: {json.dumps(stats['by_channel'], ensure_ascii=False)}; "
+        f"по форматам: {json.dumps(stats['by_format'], ensure_ascii=False)}.\n"
         "Сделай равномерный план на весь период. Свяжи повторяющиеся форматы в серии, "
         "добавляй механику удержания и не называй характеристику продукта, которой нет в контексте."
     )

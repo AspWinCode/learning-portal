@@ -226,6 +226,15 @@ export interface ContentPlan {
 export const listContentPlans = (code: string): Promise<{ items: ContentPlan[]; total: number }> =>
   api.get(`${BASE}/projects/${code}/content-plans`).then((r) => r.data);
 
+export interface ContentPlanReadiness {
+  ai: { configured: boolean; provider: string | null; model: string | null; purpose: string };
+  context: { active_items: number; indexed_items: number; total_chars: number; items: Array<{ id: number; title: string; source_type: string; filename: string | null }> };
+  publication_stats: { total: number; successful: number; failed: number; scheduled: number; by_channel: Record<string, number>; by_format: Record<string, number>; last_published_at: string | null; engagement_metrics_available: boolean };
+}
+
+export const getContentPlanReadiness = (code: string): Promise<ContentPlanReadiness> =>
+  api.get(`${BASE}/projects/${code}/content-plans/readiness`).then((r) => r.data);
+
 export const generateContentPlan = (
   code: string,
   payload: { date_from: string; date_to: string; objective?: string; audience?: string; channels: string[]; formats: string[]; posts_per_week: number; extra_context?: string },

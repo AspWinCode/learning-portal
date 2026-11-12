@@ -180,11 +180,15 @@ const ContentPlanTab: React.FC<{ projectCode: string; canGenerate: boolean }> = 
   const [channels, setChannels] = useState<string[]>(['vk', 'telegram']);
   const [formats, setFormats] = useState<string[]>(PLAN_FORMATS);
   const [plans, setPlans] = useState<smm.ContentPlan[]>([]);
+  const [readiness, setReadiness] = useState<smm.ContentPlanReadiness | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const reload = () => smm.listContentPlans(projectCode).then((r) => setPlans(r.items)).catch(() => setPlans([]));
-  useEffect(() => { reload(); }, [projectCode]);
+  useEffect(() => {
+    reload();
+    smm.getContentPlanReadiness(projectCode).then(setReadiness).catch(() => setReadiness(null));
+  }, [projectCode]);
 
   const toggle = (value: string, setter: React.Dispatch<React.SetStateAction<string[]>>) =>
     setter((current) => (current.includes(value) ? current.filter((v) => v !== value) : [...current, value]));
@@ -220,6 +224,22 @@ const ContentPlanTab: React.FC<{ projectCode: string; canGenerate: boolean }> = 
           <Typography variant="body2" color="text.secondary">
             Планировщик использует настройки проекта и активные записи из «Базы знаний», поэтому сначала добавьте туда факты, даты и ограничения.
           </Typography>
+          {readiness && (
+            <Alert severity={readiness.ai.configured ? 'success' : 'warning'}>
+              <Stack spacing={0.5}>
+                <Typography variant="body2" fontWeight={600}>
+                  AI-модель: {readiness.ai.configured ? `${readiness.ai.provider} · ${readiness.ai.model}` : 'не настроена — будет использован резервный шаблон'}
+                </Typography>
+                <Typography variant="body2">
+                  Контекст: {readiness.context.active_items} активных источников · {readiness.context.total_chars.toLocaleString('ru-RU')} знаков
+                  {' · '}прошлые публикации: {readiness.publication_stats.total} (успешно {readiness.publication_stats.successful}, ошибок {readiness.publication_stats.failed})
+                </Typography>
+                {!readiness.publication_stats.engagement_metrics_available && readiness.publication_stats.total > 0 && (
+                  <Typography variant="caption">Лайки, просмотры и комментарии пока не подключены к API каналов.</Typography>
+                )}
+              </Stack>
+            </Alert>
+          )}
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
             <TextField size="small" type="date" label="С" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} InputLabelProps={{ shrink: true }} fullWidth />
             <TextField size="small" type="date" label="По" value={dateTo} onChange={(e) => setDateTo(e.target.value)} InputLabelProps={{ shrink: true }} fullWidth />

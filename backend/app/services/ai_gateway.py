@@ -468,7 +468,7 @@ async def generate_image(
     prompt: str,
     size: Optional[str] = None,
     user_id: Optional[int] = None,
-    timeout: float = 90.0,
+    timeout: float = 180.0,
 ) -> GatewayResult:
     """Генерация изображения. data = список {url|b64_json} из ответа провайдера.
 

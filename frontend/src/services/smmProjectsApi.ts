@@ -437,7 +437,8 @@ export interface GeneratedAsset {
 }
 
 export const renderContentImage = (contentId: number, prompt?: string): Promise<GeneratedAsset> =>
-  api.post(`${BASE}/content/${contentId}/render-image`, { prompt }).then((r) => r.data);
+  // Генерация изображения у Gemini может занимать больше общего API-таймаута.
+  api.post(`${BASE}/content/${contentId}/render-image`, { prompt }, { timeout: 180000 }).then((r) => r.data);
 
 export const selectContentAsset = (contentId: number, assetId: number): Promise<GeneratedAsset> =>
   api.post(`${BASE}/content/${contentId}/select-asset`, { asset_id: assetId }).then((r) => r.data);

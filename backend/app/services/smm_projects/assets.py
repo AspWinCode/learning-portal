@@ -2,14 +2,18 @@
 from __future__ import annotations
 
 import base64
+import logging
 from typing import Any, Dict, Optional
 
+import httpx
 from sqlalchemy.orm import Session
 
 from app.models import SmmContent, SmmContentAsset, SmmProject
 from app.services import ai_gateway
 from app.services.smm_projects import knowledge as knowledge_svc
 from app.services.smm_projects import storage
+
+logger = logging.getLogger(__name__)
 
 
 async def build_image_prompt(*, db: Session, project: SmmProject, content: SmmContent, user) -> str:
@@ -75,11 +79,26 @@ async def render_image(
     b64 = item.get("b64_json") if isinstance(item, dict) else None
     url = item.get("url") if isinstance(item, dict) else None
 
+    if not b64 and not url:
+        raise ValueError("Генератор изображений вернул ответ без url и без данных файла")
+
     storage_key = None
     if b64:
         storage_key = storage.save_bytes(base64.b64decode(b64), f"content_{content.id}.png")
-    elif not url:
-        raise ValueError("Генератор изображений вернул ответ без url и без данных файла")
+    elif url:
+        # Некоторые провайдеры (напр. Gemini через AI Tunnel) возвращают только
+        # временный url, без b64_json. Без локальной копии байтов каналы,
+        # которым нужен файл, а не ссылка (Telegram/VK/MAX), молча публикуют
+        # пост без картинки — attachments остаются пустыми, publish() не
+        # падает с ошибкой. Поэтому сразу скачиваем картинку по url и
+        # сохраняем как storage_key; сам url всё равно оставляем для Instagram.
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.get(url)
+                response.raise_for_status()
+            storage_key = storage.save_bytes(response.content, f"content_{content.id}.png")
+        except Exception as exc:  # noqa: BLE001 — остаёмся на url-only, а не роняем генерацию
+            logger.warning("smm asset download failed, keeping url-only: %s", exc)
 
     asset = SmmContentAsset(
         content_id=content.id, asset_type="image", prompt=final_prompt, provider=result.provider,

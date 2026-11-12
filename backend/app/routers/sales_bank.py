@@ -47,6 +47,7 @@ from app.services.bank_identity import (
     pick_semantic_match,
 )
 from app.services.bank_operation import apply_bank_operation_to_student as bank_operation_apply
+from app.services.bank_reconcile import reconcile_generic_income
 from app.services.finance_ledger import ensure_finance_transaction_for_bank_transaction
 from app.services.student_account_payment import resolve_payment_format
 
@@ -436,6 +437,8 @@ def _upsert_tochka_bank_transaction(
 
     _record_alias(db, bank_transaction, incoming)
     _sync_ft(db, bank_transaction, (transaction.get("description") or "").strip())
+    if not is_expense:
+        reconcile_generic_income(db, tx_date, amount)
     return bank_transaction
 
 
@@ -524,6 +527,10 @@ def do_tochka_import_and_apply(
 
                 _record_alias(db, bank_transaction, incoming)
                 _sync_ft(db, bank_transaction, (transaction.get("description") or "").strip())
+                if not is_expense:
+                    reconcile_generic_income(db, tx_date, amount)
+                if bank_transaction.status == BankTransactionStatus.IGNORED.value:
+                    continue
                 if bank_transaction.status == BankTransactionStatus.EXPENSE.value:
                     continue
                 if bank_transaction.status == BankTransactionStatus.APPLIED.value:

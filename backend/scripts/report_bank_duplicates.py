@@ -20,7 +20,7 @@ sys.path.insert(0, ROOT)
 os.chdir(ROOT)
 
 from app.database import SessionLocal  # noqa: E402
-from app.models import BankTransaction, FinanceTransaction  # noqa: E402
+from app.models import BankTransaction, BankTransactionAlias, FinanceTransaction  # noqa: E402
 from app.services.bank_identity import normalize_bank_operation_date  # noqa: E402
 
 
@@ -28,6 +28,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--date-from", default="")
     parser.add_argument("--date-to", default="")
+    parser.add_argument("--amount", type=float, default=None, help="показать только группы с этой суммой")
     args = parser.parse_args()
 
     db = SessionLocal()
@@ -37,6 +38,10 @@ def main() -> int:
         for ft in db.query(FinanceTransaction).filter(FinanceTransaction.bank_operation_id.isnot(None)).all():
             ft_by_op[ft.bank_operation_id].append(ft)
 
+        alias_by_bt = defaultdict(list)
+        for alias in db.query(BankTransactionAlias).all():
+            alias_by_bt[alias.bank_transaction_id].append(alias)
+
         groups = defaultdict(list)
         for bt in rows:
             canonical = normalize_bank_operation_date(bt.payment_date)
@@ -45,6 +50,8 @@ def main() -> int:
             if args.date_to and canonical > args.date_to:
                 continue
             if bt.status == "ignored":
+                continue
+            if args.amount is not None and round(abs(bt.amount or 0), 2) != round(args.amount, 2):
                 continue
             direction = "expense" if bt.status == "expense" else "income"
             key = (bt.tochka_account_id or "xlsx", canonical, round(abs(bt.amount or 0), 2), direction)
@@ -59,7 +66,13 @@ def main() -> int:
                 # Только признаки, без содержимого платежа целиком
                 name = (bt.payer_name or "")[:40]
                 phone_tail = (bt.payer_phone or "")[-4:]
+                arrived = bt.created_at.strftime("%Y-%m-%d %H:%M:%S") if bt.created_at else "?"
+                channels = ",".join(
+                    f"{a.source}@{a.created_at.strftime('%H:%M:%S') if a.created_at else '?'}"
+                    for a in alias_by_bt.get(bt.id, [])
+                )
                 print(
+                    f"  arrived={arrived} channels=[{channels}]\n"
                     f"  bt_id={bt.id} status={bt.status} name={name!r} phone=***{phone_tail} "
                     f"raw_date={bt.payment_date!r} finance_rows={ft_count} op={bt.operation_id[:12]}..."
                 )

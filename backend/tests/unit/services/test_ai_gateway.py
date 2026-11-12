@@ -170,6 +170,8 @@ async def test_generate_image_omits_size_by_default(monkeypatch):
     assert result.ok is True
     _, kwargs = _FakeAsyncClient.calls[0]
     assert "size" not in kwargs["json"]
+    assert kwargs["json"]["resolution"] == "1K"
+    assert kwargs["json"]["aspect_ratio"] == "1:1"
 
 
 @pytest.mark.asyncio

@@ -36,6 +36,7 @@ ANTHROPIC_VERSION = "2023-06-01"
 DEFAULT_RANVIK_BASE_URL = "https://api.ranvik.ru/v1"
 DEFAULT_RANVIK_MODEL = "claude-haiku-4-5"
 DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-6"
+DEFAULT_TUNNEL_IMAGE_MODEL = "gemini-3.1-flash-lite-image"
 
 _ALL_PROVIDERS = ("tunnel", "ranvik", "claude")
 
@@ -85,7 +86,12 @@ def _openai_config(provider: str, purpose: Purpose) -> Optional[Dict[str, str]]:
             "image": "AI_TUNNEL_MODEL_IMAGE",
             "embed": "AI_TUNNEL_MODEL_EMBED",
         }[purpose]
-        model = (os.getenv(model_env) or os.getenv("AI_TUNNEL_MODEL_TEXT") or "").strip()
+        if purpose == "image":
+            # Не подставляем текстовую модель в /images/generations: AI Tunnel
+            # использует отдельную модель Gemini Image.
+            model = (os.getenv(model_env) or DEFAULT_TUNNEL_IMAGE_MODEL).strip()
+        else:
+            model = (os.getenv(model_env) or os.getenv("AI_TUNNEL_MODEL_TEXT") or "").strip()
         if not model:
             return None
         return {"base_url": base_url, "api_key": api_key, "model": model}
@@ -478,6 +484,9 @@ async def generate_image(
         payload = {"model": cfg["model"], "prompt": prompt, "n": 1}
         if size:
             payload["size"] = size
+        if name == "tunnel":
+            payload["resolution"] = os.getenv("AI_TUNNEL_IMAGE_RESOLUTION", "1K")
+            payload["aspect_ratio"] = os.getenv("AI_TUNNEL_IMAGE_ASPECT_RATIO", "1:1")
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.post(f"{cfg['base_url']}/images/generations", headers=headers, json=payload)

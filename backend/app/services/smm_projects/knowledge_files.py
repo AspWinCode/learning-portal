@@ -66,27 +66,37 @@ def _docx_text(data: bytes) -> str:
     return "\n".join(parts).strip()
 
 
-async def save_and_extract(data: bytes, filename: str, content_type: str, *, user_id: int | None = None) -> Tuple[str, str]:
+async def save_and_extract(
+    data: bytes,
+    filename: str,
+    content_type: str,
+    *,
+    user_id: int | None = None,
+    analyze_images: bool = True,
+) -> Tuple[str, str]:
     storage_key = storage.save_bytes(data, filename)
     name = (filename or "file").lower()
     try:
         if name.endswith(".docx"):
             text = _docx_text(data)
         elif content_type in ALLOWED_IMAGE_TYPES or name.endswith((".jpg", ".jpeg", ".png", ".webp")):
-            uri = storage.as_data_uri(storage_key, content_type or "image/jpeg")
-            result = await ai_gateway.analyze_image(
-                feature="smm_projects:knowledge_image",
-                image_url=uri or "",
-                prompt=(
-                    "Проанализируй изображение как постоянный референс проекта. "
-                    "Опиши видимые объекты, стиль, цвета, композицию, текст на изображении "
-                    "и идеи, которые можно безопасно использовать при планировании контента. "
-                    "Не придумывай факты, которых не видно. Ответь по-русски."
-                ),
-                max_tokens=1200,
-                user_id=user_id,
-            )
-            text = result.text.strip() if result.ok and result.text else "Изображение сохранено как визуальный референс проекта."
+            if not analyze_images:
+                text = f"Изображение сохранено как визуальный референс проекта: {filename}"
+            else:
+                uri = storage.as_data_uri(storage_key, content_type or "image/jpeg")
+                result = await ai_gateway.analyze_image(
+                    feature="smm_projects:knowledge_image",
+                    image_url=uri or "",
+                    prompt=(
+                        "Проанализируй изображение как постоянный референс проекта. "
+                        "Опиши видимые объекты, стиль, цвета, композицию, текст на изображении "
+                        "и идеи, которые можно безопасно использовать при планировании контента. "
+                        "Не придумывай факты, которых не видно. Ответь по-русски."
+                    ),
+                    max_tokens=1200,
+                    user_id=user_id,
+                )
+                text = result.text.strip() if result.ok and result.text else "Изображение сохранено как визуальный референс проекта."
         else:
             text = extract_text_sync(data, content_type, filename)
         return storage_key, text[:20000]

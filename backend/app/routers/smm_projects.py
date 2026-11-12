@@ -280,12 +280,25 @@ async def upload_knowledge_file(
     return item
 
 
-async def _create_uploaded_knowledge_item(db: Session, project: SmmProject, filename: str, data: bytes, content_type: str, current_user: User):
+async def _create_uploaded_knowledge_item(
+    db: Session,
+    project: SmmProject,
+    filename: str,
+    data: bytes,
+    content_type: str,
+    current_user: User,
+    *,
+    analyze_images: bool = True,
+):
     suffix = os.path.splitext(filename.lower())[1]
     if suffix not in knowledge_files_svc.ALLOWED_EXTENSIONS:
         raise ValueError("Неподдерживаемый тип файла")
     storage_key, extracted = await knowledge_files_svc.save_and_extract(
-        data, filename, content_type or "application/octet-stream", user_id=current_user.id
+        data,
+        filename,
+        content_type or "application/octet-stream",
+        user_id=current_user.id,
+        analyze_images=analyze_images,
     )
     item = knowledge_svc.create_item(
         db,
@@ -312,26 +325,26 @@ async def upload_knowledge_batch(
     current_user: User = Depends(auth.require_permission("smm_projects.manage_knowledge")),
 ):
     project = _get_accessible_project(db, code, current_user)
-    queue: list[tuple[str, bytes, str]] = []
+    queue: list[tuple[str, bytes, str, bool]] = []
     skipped = 0
     errors: list[str] = []
     for upload in files:
         filename = upload.filename or "reference"
         if os.path.splitext(filename.lower())[1] == ".zip":
             try:
-                queue.extend((name, data, mimetypes.guess_type(name)[0] or "application/octet-stream") for name, data in knowledge_files_svc.unpack_archive(await upload.read()))
+                queue.extend((name, data, mimetypes.guess_type(name)[0] or "application/octet-stream", False) for name, data in knowledge_files_svc.unpack_archive(await upload.read()))
             except ValueError as exc:
                 errors.append(f"{filename}: {exc}")
             continue
         if os.path.splitext(filename.lower())[1] not in knowledge_files_svc.ALLOWED_EXTENSIONS:
             skipped += 1
             continue
-        queue.append((filename, await upload.read(), upload.content_type or "application/octet-stream"))
+        queue.append((filename, await upload.read(), upload.content_type or "application/octet-stream", True))
 
     created = []
-    for filename, data, content_type in queue:
+    for filename, data, content_type, analyze_images in queue:
         try:
-            created.append(await _create_uploaded_knowledge_item(db, project, filename, data, content_type, current_user))
+            created.append(await _create_uploaded_knowledge_item(db, project, filename, data, content_type, current_user, analyze_images=analyze_images))
         except Exception as exc:
             errors.append(f"{filename}: {exc}")
     if not created and errors:

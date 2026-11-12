@@ -161,6 +161,12 @@ async def render_image(
     db.add(asset)
     db.commit()
     db.refresh(asset)
+    # Публикация (publishing.create_publications) берёт картинку только из
+    # content.selected_asset_id — в UI нет отдельного шага "выбрать визуал",
+    # "Создать визуал" это единственное действие пользователя, поэтому без
+    # автовыбора только что сгенерированный визуал молча пропадал при
+    # публикации (пост уходил без картинки, без ошибки).
+    select_asset(db, content, asset.id)
     return asset
 
 

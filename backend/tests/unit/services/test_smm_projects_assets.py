@@ -23,6 +23,33 @@ def _content():
     return c
 
 
+def _matches(obj, condition) -> bool:
+    try:
+        return getattr(obj, condition.left.key, object()) == condition.right.value
+    except AttributeError:
+        return True
+
+
+class _Query:
+    def __init__(self, items):
+        self._items = items
+
+    def filter(self, *conditions):
+        items = self._items
+        for condition in conditions:
+            items = [obj for obj in items if _matches(obj, condition)]
+        return _Query(items)
+
+    def first(self):
+        return self._items[0] if self._items else None
+
+    def update(self, values, synchronize_session=False):
+        for item in self._items:
+            for key, value in values.items():
+                setattr(item, key, value)
+        return len(self._items)
+
+
 class _FakeDB:
     def __init__(self):
         self.added = []
@@ -37,6 +64,9 @@ class _FakeDB:
 
     def refresh(self, obj):
         pass
+
+    def query(self, model):
+        return _Query([obj for obj in self.added if isinstance(obj, model)])
 
 
 class _Response:
@@ -84,11 +114,13 @@ async def test_render_image_downloads_url_only_response_for_byte_channels(monkey
 
     monkeypatch.setattr(assets.storage, "save_bytes", fake_save_bytes)
 
-    asset = await assets.render_image(_FakeDB(), None, project=_project(), content=_content(), prompt="draw a cat")
+    content = _content()
+    asset = await assets.render_image(_FakeDB(), None, project=_project(), content=content, prompt="draw a cat")
 
     assert asset.url == "https://cdn.example/slide.png"
     assert asset.storage_key == "fake_storage_key.png"
     assert saved["data"] == b"downloaded-bytes"
+    assert content.selected_asset_id == asset.id
 
 
 @pytest.mark.asyncio
@@ -118,10 +150,12 @@ async def test_render_image_keeps_url_only_when_download_fails(monkeypatch):
 
     monkeypatch.setattr(assets.storage, "save_bytes", fail_save_bytes)
 
-    asset = await assets.render_image(_FakeDB(), None, project=_project(), content=_content(), prompt="draw a cat")
+    content = _content()
+    asset = await assets.render_image(_FakeDB(), None, project=_project(), content=content, prompt="draw a cat")
 
     assert asset.url == "https://cdn.example/slide.png"
     assert asset.storage_key is None
+    assert content.selected_asset_id == asset.id
 
 
 def _png_bytes() -> bytes:
@@ -159,12 +193,43 @@ async def test_render_image_retries_without_references_when_provider_refuses(mon
     monkeypatch.setattr("httpx.AsyncClient", lambda *a, **k: _Client(_Response(b"retry-bytes")))
     monkeypatch.setattr(assets.storage, "save_bytes", lambda data, filename: "retry_storage_key.png")
 
-    asset = await assets.render_image(_FakeDB(), None, project=_project(), content=_content(), prompt="draw a cat")
+    content = _content()
+    asset = await assets.render_image(_FakeDB(), None, project=_project(), content=content, prompt="draw a cat")
 
     assert len(calls) == 2
     assert calls[0]["input_references"]
     assert "input_references" not in calls[1] or not calls[1]["input_references"]
     assert asset.url == "https://cdn.example/retry.png"
+    assert content.selected_asset_id == asset.id
+
+
+@pytest.mark.asyncio
+async def test_render_image_switches_selection_to_the_newly_generated_asset(monkeypatch):
+    """The SMM editor has no separate "pick this visual" step — "Создать
+    визуал" is the only action — so generating a second image for the same
+    draft must move content.selected_asset_id to it, or publishing keeps
+    attaching the stale one (or none, if the draft never had one selected)."""
+    monkeypatch.setattr(ai_gateway, "is_configured", lambda purpose: True)
+    monkeypatch.setattr(assets.knowledge_svc, "list_items", lambda db, project: [])
+    monkeypatch.setattr("httpx.AsyncClient", lambda *a, **k: _Client(_Response(b"bytes")))
+    monkeypatch.setattr(assets.storage, "save_bytes", lambda data, filename: "storage_key.png")
+
+    async def fake_generate_image(**kwargs):
+        return ai_gateway.GatewayResult(ok=True, provider="tunnel", model="gemini", data=[{"url": "https://cdn.example/img.png"}])
+
+    monkeypatch.setattr(ai_gateway, "generate_image", fake_generate_image)
+
+    db = _FakeDB()
+    content = _content()
+    first = await assets.render_image(db, None, project=_project(), content=content, prompt="first")
+    assert content.selected_asset_id == first.id
+    assert first.is_selected is True
+
+    second = await assets.render_image(db, None, project=_project(), content=content, prompt="second")
+
+    assert content.selected_asset_id == second.id
+    assert second.is_selected is True
+    assert first.is_selected is False
 
 
 @pytest.mark.asyncio

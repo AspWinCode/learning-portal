@@ -15,6 +15,15 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const SESSION_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 const ACTIVE_SESSION_WINDOW_MS = 20 * 60 * 1000;
+const AUTH_BOOTSTRAP_TIMEOUT_MS = 10000;
+
+const withTimeout = <T,>(promise: Promise<T>, timeoutMs: number): Promise<T> =>
+  Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      window.setTimeout(() => reject(new Error('Сессия не ответила вовремя')), timeoutMs);
+    }),
+  ]);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -64,7 +73,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loadUser = async () => {
     try {
-      const userData = await authApi.getCurrentUser();
+      const userData = await withTimeout(authApi.getCurrentUser(), AUTH_BOOTSTRAP_TIMEOUT_MS);
       setUser(userData);
     } catch (error) {
       localStorage.removeItem('token');

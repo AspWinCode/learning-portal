@@ -103,7 +103,10 @@ export const uploadKnowledgeBatch = (code: string, files: File[]): Promise<Knowl
     const form = new FormData();
     form.append('files', file);
     try {
-      const response = await api.post(`${BASE}/projects/${code}/knowledge/upload-batch`, form, { headers: { 'Content-Type': 'multipart/form-data' } });
+      const response = await api.post(`${BASE}/projects/${code}/knowledge/upload-batch`, form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 600000,
+      });
       result.items.push(...(response.data.items || []));
       result.uploaded += response.data.uploaded || 0;
       result.skipped += response.data.skipped || 0;

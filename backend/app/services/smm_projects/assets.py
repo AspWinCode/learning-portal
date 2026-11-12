@@ -114,6 +114,17 @@ async def render_image(
         feature=f"smm_projects:{project.code}:render_image", prompt=final_prompt,
         input_references=references or None, user_id=getattr(user, "id", None),
     )
+    if not result.ok and references:
+        # Gemini иногда отвечает finish_reason=STOP без картинки и без явного
+        # block_reason — не блокировка по политике, а отказ именно совмещать
+        # запрос с переданными референсами (часто это реальные фото людей на
+        # турнирных фотографиях). Явного флага для этого нет, поэтому просто
+        # пробуем тот же промпт без референсов, прежде чем показывать ошибку.
+        logger.warning("smm render_image retrying without references after provider error: %s", result.error)
+        result = await ai_gateway.generate_image(
+            feature=f"smm_projects:{project.code}:render_image", prompt=final_prompt,
+            user_id=getattr(user, "id", None),
+        )
     if not result.ok or not result.data:
         raise ValueError(result.error or "Генератор изображений вернул пустой ответ")
 

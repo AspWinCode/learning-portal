@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import base64
+import io
 import mimetypes
 import logging
 from typing import Any, Dict, Optional
 
 import httpx
 from sqlalchemy.orm import Session
+from PIL import Image
 
 from app.models import SmmContent, SmmContentAsset, SmmProject
 from app.services import ai_gateway
@@ -79,7 +81,17 @@ def _visual_input_references(db: Session, project: SmmProject) -> list[dict[str,
         raw = storage.read_bytes(item.storage_key)
         if not raw or len(raw) > 12 * 1024 * 1024 or total_bytes + len(raw) > 40 * 1024 * 1024:
             continue
-        data_uri = f"data:{content_type};base64,{base64.b64encode(raw).decode('ascii')}"
+        try:
+            # Gemini может отклонять валидные по расширению файлы с нестандартным
+            # codec/profile (CMYK JPEG, animated WebP и т.п.). Нормализуем только
+            # копию для API в обычный RGB PNG; оригинал пользователя не меняем.
+            with Image.open(io.BytesIO(raw)) as image:
+                normalized = io.BytesIO()
+                image.convert("RGB").save(normalized, format="PNG", optimize=True)
+                raw = normalized.getvalue()
+        except Exception:
+            continue
+        data_uri = f"data:image/png;base64,{base64.b64encode(raw).decode('ascii')}"
         references.append({"type": "image_url", "image_url": {"url": data_uri}})
         total_bytes += len(raw)
     return references

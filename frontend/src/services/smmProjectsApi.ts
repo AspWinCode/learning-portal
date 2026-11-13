@@ -215,6 +215,7 @@ export interface ContentPlan {
   audience: string | null;
   channels: string[] | null;
   formats: string[] | null;
+  genres: string[] | null;
   posts_per_week: number;
   status: string;
   created_by_id: number | null;
@@ -240,7 +241,7 @@ export const getContentPlanReadiness = (code: string): Promise<ContentPlanReadin
 
 export const generateContentPlan = (
   code: string,
-  payload: { date_from: string; date_to: string; objective?: string; audience?: string; channels: string[]; formats: string[]; posts_per_week: number; extra_context?: string },
+  payload: { date_from: string; date_to: string; objective?: string; audience?: string; channels: string[]; formats: string[]; genres: string[]; posts_per_week: number; extra_context?: string },
 ): Promise<ContentPlan> =>
   api.post(`${BASE}/projects/${code}/content-plans/generate`, payload, { timeout: 180000 }).then((r) => r.data);
 

@@ -179,6 +179,7 @@ const NewContentTab: React.FC<{ projectCode: string; canGenerate: boolean; onGen
 // ─── Месячный контент-план ──────────────────────────────────────────────────
 
 const PLAN_FORMATS = ['Пост', 'Карточка', 'Карусель', 'Видео / Reels / Shorts', 'Инфографика'];
+const PLAN_GENRES = ['Экспертный', 'Образовательный', 'Интерактивный', 'Юмористический', 'История / закулисье', 'Анонс / продающий'];
 const PLAN_OBJECTIVES = [
   'Повысить вовлечённость и привести аудиторию к следующему действию',
   'Повысить узнаваемость проекта',
@@ -205,6 +206,7 @@ const ContentPlanTab: React.FC<{ projectCode: string; canGenerate: boolean }> = 
   const [postsPerWeek, setPostsPerWeek] = useState(3);
   const [channels, setChannels] = useState<string[]>(['vk', 'telegram']);
   const [formats, setFormats] = useState<string[]>(PLAN_FORMATS);
+  const [genres, setGenres] = useState<string[]>(PLAN_GENRES);
   const [plans, setPlans] = useState<smm.ContentPlan[]>([]);
   const [readiness, setReadiness] = useState<smm.ContentPlanReadiness | null>(null);
   const [busy, setBusy] = useState(false);
@@ -232,6 +234,7 @@ const ContentPlanTab: React.FC<{ projectCode: string; canGenerate: boolean }> = 
         extra_context: extraContext,
         channels,
         formats,
+        genres,
         posts_per_week: postsPerWeek,
       });
       await reload();
@@ -319,8 +322,17 @@ const ContentPlanTab: React.FC<{ projectCode: string; canGenerate: boolean }> = 
               {PLAN_FORMATS.map((formatName) => <Chip key={formatName} label={formatName} clickable onClick={() => toggle(formatName, setFormats)} color={formats.includes(formatName) ? 'secondary' : 'default'} variant={formats.includes(formatName) ? 'filled' : 'outlined'} />)}
             </Stack>
           </Box>
+          <Box>
+            <Typography variant="caption" color="text.secondary">Жанры публикаций</Typography>
+            <Typography variant="caption" display="block" color="text.secondary">
+              Планировщик будет чередовать подачу: от юмористической до экспертной.
+            </Typography>
+            <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 0.5 }}>
+              {PLAN_GENRES.map((genre) => <Chip key={genre} label={genre} clickable onClick={() => toggle(genre, setGenres)} color={genres.includes(genre) ? 'secondary' : 'default'} variant={genres.includes(genre) ? 'filled' : 'outlined'} />)}
+            </Stack>
+          </Box>
           {error && <Alert severity="error">{error}</Alert>}
-          <Button variant="contained" onClick={generate} disabled={busy || !canGenerate || !dateFrom || !dateTo || !formats.length || (objective === 'Другая цель' && !customObjective.trim())}>
+          <Button variant="contained" onClick={generate} disabled={busy || !canGenerate || !dateFrom || !dateTo || !formats.length || !genres.length || (objective === 'Другая цель' && !customObjective.trim())}>
             {busy ? 'Планируем…' : 'Создать контент-план'}
           </Button>
         </Stack>
@@ -331,6 +343,7 @@ const ContentPlanTab: React.FC<{ projectCode: string; canGenerate: boolean }> = 
             <Box>
               <Typography variant="subtitle1">{plan.name}</Typography>
               <Typography variant="caption" color="text.secondary">{plan.items.length} публикаций · {plan.posts_per_week} в неделю</Typography>
+              {plan.genres?.length ? <Typography variant="caption" display="block" color="text.secondary">Жанры: {plan.genres.join(' · ')}</Typography> : null}
             </Box>
             <Stack direction="row" spacing={1} alignItems="center">
               <Chip size="small" label="Черновик плана" />

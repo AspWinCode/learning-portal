@@ -16,6 +16,7 @@ from app.services.smm_projects import assets as assets_svc
 from app.services.smm_projects.prompt_builder import GLOBAL_SAFETY_RULES, _brand_block
 
 DEFAULT_FORMATS = ["Пост", "Карточка", "Карусель", "Видео / Reels / Shorts", "Инфографика"]
+DEFAULT_GENRES = ["Экспертный", "Образовательный", "Интерактивный", "Юмористический", "История / закулисье", "Анонс / продающий"]
 
 
 def plan_readiness(db: Session, project: SmmProject) -> Dict[str, Any]:
@@ -294,6 +295,7 @@ async def generate_plan(db: Session, user, *, project: SmmProject, payload: Dict
     fallback_payload = {**payload, "_knowledge_titles": [item.title for item in hits if item.title]}
     fallback = _fallback_items(fallback_payload)
     requested_formats = payload.get("formats") or DEFAULT_FORMATS
+    requested_genres = payload.get("genres") or DEFAULT_GENRES
     system = "\n\n".join(part for part in [GLOBAL_SAFETY_RULES, _brand_block(project), knowledge, (
         "Ты — SMM-планер. Составляй только редакционный план, не готовые тексты. "
         "Опирайся на контекст проекта и не выдумывай факты. Верни ТОЛЬКО JSON вида "
@@ -306,6 +308,7 @@ async def generate_plan(db: Session, user, *, project: SmmProject, payload: Dict
         f"Аудитория: {payload.get('audience') or 'аудитория проекта'}.\n"
         f"Каналы: {', '.join(payload.get('channels') or ['универсальный'])}.\n"
         f"Предпочтительные форматы: {', '.join(requested_formats)}.\n"
+        f"Жанры и тон публикаций: {', '.join(requested_genres)}. Распредели их по плану разнообразно, не делай все публикации экспертными.\n"
         f"Публикаций в неделю: {payload.get('posts_per_week')}.\n"
         f"Дополнительный контекст: {payload.get('extra_context') or 'нет'}.\n"
         f"Статистика прошлых публикаций: всего {stats['total']}, успешно {stats['successful']}, ошибок {stats['failed']}; "
@@ -338,6 +341,7 @@ async def generate_plan(db: Session, user, *, project: SmmProject, payload: Dict
         audience=payload.get("audience"),
         channels=payload.get("channels") or [],
         formats=requested_formats,
+        genres=requested_genres,
         posts_per_week=payload.get("posts_per_week") or 3,
         created_by_id=getattr(user, "id", None),
     )

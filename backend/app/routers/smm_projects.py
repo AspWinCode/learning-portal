@@ -547,16 +547,18 @@ def delete_content(
 ):
     content = _get_content_or_404(db, content_id)
     project = _project_for_content(db, content, current_user)
-    active_publication = (
-        db.query(SmmPublication)
-        .filter(
-            SmmPublication.content_id == content_id,
-            SmmPublication.status.notin_(("cancelled", "error")),
-        )
-        .first()
-    )
-    if active_publication:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Нельзя удалить материал с активной или уже опубликованной публикацией")
+    # Удаление материала — явное действие пользователя. Сначала останавливаем
+    # связанные доставки, затем удаляем сам материал вместе с публикациями,
+    # логами и визуалами (FK CASCADE). Иначе активная публикация блокировала
+    # удаление даже для черновиков из вкладок «Контент-план» и «Отправленные».
+    publications = db.query(SmmPublication).filter(SmmPublication.content_id == content_id).all()
+    for publication in publications:
+        if publication.status not in ("cancelled", "error"):
+            publication.status = "cancelled"
+            publication.last_error = "Материал удалён пользователем"
+    for asset in db.query(SmmContentAsset).filter(SmmContentAsset.content_id == content_id).all():
+        if asset.storage_key:
+            storage_svc.delete(asset.storage_key)
     db.delete(content)
     db.commit()
     log_action(db, current_user.id, "delete", "smm_content", content_id, {"project": project.code})

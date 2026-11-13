@@ -241,7 +241,8 @@ export const getContentPlanReadiness = (code: string): Promise<ContentPlanReadin
 export const generateContentPlan = (
   code: string,
   payload: { date_from: string; date_to: string; objective?: string; audience?: string; channels: string[]; formats: string[]; posts_per_week: number; extra_context?: string },
-): Promise<ContentPlan> => api.post(`${BASE}/projects/${code}/content-plans/generate`, payload).then((r) => r.data);
+): Promise<ContentPlan> =>
+  api.post(`${BASE}/projects/${code}/content-plans/generate`, payload, { timeout: 180000 }).then((r) => r.data);
 
 // ─── Templates ────────────────────────────────────────────────────────────
 

@@ -323,6 +323,7 @@ async def generate_plan(db: Session, user, *, project: SmmProject, payload: Dict
             json_mode=True,
             temperature=0.55,
             max_tokens=4000,
+            timeout=120.0,
             user_id=getattr(user, "id", None),
         )
         if result.ok and result.text:

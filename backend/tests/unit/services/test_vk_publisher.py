@@ -105,23 +105,25 @@ async def test_verify_valid_token_and_wall_permission_succeeds(monkeypatch, publ
 
 
 @pytest.mark.asyncio
-async def test_publish_surfaces_actionable_error_when_token_lacks_photos_permission(monkeypatch, publisher):
-    """Live VK bug: a community access key — even with both "Стена" and
-    "Фотографии" enabled — fails photos.getWallUploadServer with the raw
-    "Group authorization failed: method is unavailable with group auth.".
-    The method is simply unavailable for community/group keys regardless of
-    permissions; only a personal (user) token with wall+photos scopes works.
-    publish() used to leak VK's raw English text, then wrongly blamed a
-    missing permission; it must now point at the real fix (user token)."""
+async def test_publish_falls_back_to_text_only_when_token_cannot_upload_photos(monkeypatch, publisher):
+    """A community access key — even with both "Стена" and "Фотографии"
+    enabled — fails photos.getWallUploadServer with "Group authorization
+    failed: method is unavailable with group auth.": the method is simply
+    unavailable for community/group keys regardless of permissions, and VK
+    has shut down every known way to self-issue a personal token with the
+    needed scopes for a non-business app. Since wall.post itself works fine
+    with the community key, publish() must still post the text instead of
+    failing the whole publication over an attachment VK won't allow."""
     monkeypatch.setattr(
         "httpx.AsyncClient",
         _client_factory([
             _FakeResponse({"error": {"error_code": 27, "error_msg": "Group authorization failed: method is unavailable with group auth."}}),
+            _FakeResponse({"response": {"post_id": 42}}),
         ]),
     )
     context = PublicationContext(
         project_code="kodarena", channel="vk", text="Текст",
         asset_bytes=b"one", config={"token": "t", "group_id": "1"},
     )
-    with pytest.raises(ValueError, match="личный токен администратора"):
-        await publisher.publish(context)
+    result = await publisher.publish(context)
+    assert result.external_id == "42"

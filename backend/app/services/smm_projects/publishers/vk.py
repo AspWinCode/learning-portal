@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 import os
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 import httpx
 
 from .base import PublicationContext, Publisher, PublisherResult, VerifyResult
+
+logger = logging.getLogger(__name__)
 
 VK_API = "https://api.vk.com/method"
 VK_API_VERSION = "5.199"
@@ -99,41 +102,53 @@ class VkPublisher(Publisher):
         name = group.get("name") or f"id{resolved['group_id']}"
         return VerifyResult(ok=True, detail={"chat_id": str(group.get("id") or resolved["group_id"]), "chat_title": name})
 
+    async def _upload_slides(self, client: httpx.AsyncClient, config: Dict[str, str], slide_bytes: List[bytes]) -> List[str]:
+        """Загрузить слайды на стену. Возвращает [] и логирует, а не падает,
+        если именно ЭТА часть не удалась (error_code=27 — ключ сообщества не
+        может грузить фото на стену ни при каких правах, см. _VK_ERROR_MESSAGES) —
+        wall.post с ключом сообщества работает сам по себе, так что пост всё
+        равно должен уйти, просто без картинки, вместо провала всей публикации."""
+        attachments_list: List[str] = []
+        for slide_index, slide_bytes_item in enumerate(slide_bytes):
+            try:
+                upload = await client.post(
+                    f"{VK_API}/photos.getWallUploadServer",
+                    params={"group_id": config["group_id"], "access_token": config["token"], "v": VK_API_VERSION},
+                )
+                upload_data = upload.json()
+                error = _vk_error(upload_data)
+                if error:
+                    raise ValueError(error)
+                upload_url = (upload_data.get("response") or {}).get("upload_url")
+                uploaded = await client.post(upload_url, files={"photo": (f"slide_{slide_index}.png", slide_bytes_item, "image/png")})
+                uploaded_data = uploaded.json()
+                error = _vk_error(uploaded_data)
+                if error:
+                    raise ValueError(error)
+                saved = await client.post(
+                    f"{VK_API}/photos.saveWallPhoto",
+                    data={"group_id": config["group_id"], "server": uploaded_data.get("server"), "photo": uploaded_data.get("photo"), "hash": uploaded_data.get("hash"), "access_token": config["token"], "v": VK_API_VERSION},
+                )
+                saved_data = saved.json()
+                error = _vk_error(saved_data)
+                if error:
+                    raise ValueError(error)
+                photo = (saved_data.get("response") or [{}])[0]
+                if photo.get("owner_id") and photo.get("id"):
+                    attachments_list.append(f"photo{photo['owner_id']}_{photo['id']}")
+            except ValueError as exc:
+                logger.warning("vk wall photo upload failed, publishing text-only: %s", exc)
+                return []
+        return attachments_list
+
     async def publish(self, context: PublicationContext) -> PublisherResult:
         config = context.config or self._env_config(context.project_code)
         if config is None:
             raise ValueError(f"VK не настроен для проекта «{context.project_code}»")
         owner_id = f"-{config['group_id']}"
         async with httpx.AsyncClient(timeout=30.0) as client:
-            attachments_list = []
             slide_bytes = context.asset_bytes_list or ([context.asset_bytes] if context.asset_bytes else [])
-            if slide_bytes:
-                for slide_index, slide_bytes_item in enumerate(slide_bytes):
-                    upload = await client.post(
-                        f"{VK_API}/photos.getWallUploadServer",
-                        params={"group_id": config["group_id"], "access_token": config["token"], "v": VK_API_VERSION},
-                    )
-                    upload_data = upload.json()
-                    error = _vk_error(upload_data)
-                    if error:
-                        raise ValueError(error)
-                    upload_url = (upload_data.get("response") or {}).get("upload_url")
-                    uploaded = await client.post(upload_url, files={"photo": (f"slide_{slide_index}.png", slide_bytes_item, "image/png")})
-                    uploaded_data = uploaded.json()
-                    error = _vk_error(uploaded_data)
-                    if error:
-                        raise ValueError(error)
-                    saved = await client.post(
-                        f"{VK_API}/photos.saveWallPhoto",
-                        data={"group_id": config["group_id"], "server": uploaded_data.get("server"), "photo": uploaded_data.get("photo"), "hash": uploaded_data.get("hash"), "access_token": config["token"], "v": VK_API_VERSION},
-                    )
-                    saved_data = saved.json()
-                    error = _vk_error(saved_data)
-                    if error:
-                        raise ValueError(error)
-                    photo = (saved_data.get("response") or [{}])[0]
-                    if photo.get("owner_id") and photo.get("id"):
-                        attachments_list.append(f"photo{photo['owner_id']}_{photo['id']}")
+            attachments_list = await self._upload_slides(client, config, slide_bytes) if slide_bytes else []
             if attachments_list:
                 attachments = ",".join(attachments_list)
             else:

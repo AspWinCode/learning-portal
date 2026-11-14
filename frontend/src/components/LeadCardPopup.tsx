@@ -358,7 +358,10 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
                     Последний контакт: {format(parseISO(lead.last_contact_at), 'dd.MM.yyyy HH:mm')}
                   </Typography>
                 ) : (
-                  lead.created_at && <Typography variant="caption" color="text.secondary">Создан: {format(parseISO(lead.created_at), 'dd.MM.yyyy')}</Typography>
+                  <>
+                    {lead.created_at && <Typography variant="caption" color="text.secondary">Создан: {format(parseISO(lead.created_at), 'dd.MM.yyyy HH:mm')}</Typography>}
+                    {lead.ip_city && <Typography variant="caption" color="text.secondary">Город по IP: {lead.ip_city}</Typography>}
+                  </>
                 )}
               </Stack>
             </Box>
@@ -530,7 +533,7 @@ export const LeadCardPopup: React.FC<LeadCardPopupProps> = ({
                       <Typography variant="subtitle2" sx={{ mb: 0.5 }}>Информация</Typography>
                       {sidebar.source && <Typography variant="body2">Источник: {sidebar.source}</Typography>}
                       {sidebar.owner_name && <Typography variant="body2">Менеджер: {sidebar.owner_name}</Typography>}
-                      {sidebar.created_at && <Typography variant="body2">Создан: {format(parseISO(sidebar.created_at), 'dd.MM.yyyy')}</Typography>}
+                      {sidebar.created_at && <Typography variant="body2">Создан: {format(parseISO(sidebar.created_at), 'dd.MM.yyyy HH:mm')}</Typography>}
                     </Box>
                     {sidebar.upcoming_tasks.length > 0 && (
                       <>

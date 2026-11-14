@@ -178,7 +178,7 @@ const NewContentTab: React.FC<{ projectCode: string; canGenerate: boolean; onGen
 
 // ─── Месячный контент-план ──────────────────────────────────────────────────
 
-const PLAN_FORMATS = ['Пост', 'Карточка', 'Карусель', 'Видео / Reels / Shorts', 'Инфографика'];
+const PLAN_FORMATS = ['Пост', 'Карусель', 'Видео / Reels / Shorts', 'Инфографика'];
 const PLAN_GENRES = ['Экспертный', 'Образовательный', 'Интерактивный', 'Юмористический', 'История / закулисье', 'Анонс / продающий'];
 const PLAN_OBJECTIVES = [
   'Повысить вовлечённость и привести аудиторию к следующему действию',
@@ -401,11 +401,39 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
   };
 
   const reload = () =>
-    smm
-      .listContent(projectCode)
-      .then(async (r) => {
-        setItems(r.items);
-        const generated = await Promise.all(r.items.map(async (item) => [item.id, await smm.listContentAssets(item.id)] as const));
+    Promise.all([smm.listContent(projectCode), smm.listContentPlans(projectCode)])
+      .then(async ([contentResponse, plansResponse]) => {
+        // Build the queue order from the plan itself. This also fixes older
+        // drafts where plan_item_id/input_json was not populated correctly.
+        const planOrder = new Map<number, { date: string; position: number }>();
+        plansResponse.items.forEach((plan) => {
+          plan.items.forEach((planItem) => {
+            if (planItem.generated_content_id != null) {
+              planOrder.set(planItem.generated_content_id, {
+                date: planItem.publish_date,
+                position: planItem.position,
+              });
+            }
+          });
+        });
+
+        const orderedItems = [...contentResponse.items].sort((a, b) => {
+          const aPlan = planOrder.get(a.id);
+          const bPlan = planOrder.get(b.id);
+          if (aPlan && bPlan) return aPlan.date.localeCompare(bPlan.date) || aPlan.position - bPlan.position || a.id - b.id;
+          if (aPlan && !bPlan) return -1;
+          if (!aPlan && bPlan) return 1;
+
+          // Fallback for standalone/legacy drafts.
+          const aDate = typeof a.input_json?.publish_date === 'string' ? a.input_json.publish_date : null;
+          const bDate = typeof b.input_json?.publish_date === 'string' ? b.input_json.publish_date : null;
+          if (aDate && bDate && aDate !== bDate) return aDate.localeCompare(bDate);
+          if (aDate && !bDate) return -1;
+          if (!aDate && bDate) return 1;
+          return a.id - b.id;
+        });
+        setItems(orderedItems);
+        const generated = await Promise.all(orderedItems.map(async (item) => [item.id, await smm.listContentAssets(item.id)] as const));
         setAssetsByContent(Object.fromEntries(generated));
       })
       .catch(() => setItems([]));
@@ -543,6 +571,14 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
       {error && <Alert severity="error">{error}</Alert>}
       {items.map((item) => (
         <Paper key={item.id} variant="outlined" sx={{ p: 2 }}>
+          {/** Карусель и инфографика публикуются изображениями; текст ниже нужен только для обычных постов. */}
+          {(() => {
+            const contentFormat = String(item.input_json?.content_format || '').toLowerCase();
+            const isImageOnly = ['карусел', 'carousel', 'инфограф', 'infographic'].some((marker) => contentFormat.includes(marker));
+            const isCarousel = contentFormat.includes('карусел') || contentFormat.includes('carousel');
+            const assetCount = assetsByContent[item.id]?.length || 0;
+            return (
+              <>
           <Stack direction="row" justifyContent="space-between" alignItems="flex-start" flexWrap="wrap" gap={1}>
             <Stack direction="row" spacing={1} alignItems="center">
               <Typography variant="subtitle1">{item.title || `#${item.id}`}</Typography>
@@ -555,12 +591,19 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
               color={item.status === 'approved' ? 'success' : item.status === 'archived' ? 'default' : item.input_json?.media_status === 'error' ? 'error' : 'warning'}
             />
           </Stack>
-          <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', mt: 1 }}>
-            {readableSmmText(item.output_text, item.output_json)}
-          </Typography>
+          {!isImageOnly && (
+            <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', mt: 1 }}>
+              {readableSmmText(item.output_text, item.output_json)}
+            </Typography>
+          )}
           {item.input_json?.media_error && (
             <Alert severity="warning" sx={{ mt: 1 }}>
               Текст создан, но медиа не готово: {String(item.input_json.media_error)}. Можно повторить генерацию визуала ниже.
+            </Alert>
+          )}
+          {isCarousel && assetCount < 5 && (
+            <Alert severity="warning" sx={{ mt: 1 }}>
+              Для карусели нужно минимум 5 изображений. Сейчас готово: {assetCount}.
             </Alert>
           )}
           {canGenerate && (
@@ -677,7 +720,7 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
                 size="small"
                 color="secondary"
                 variant="contained"
-                disabled={!(selectedChannels[item.id] || []).length || item.status !== 'approved' || busyId === item.id}
+                disabled={!(selectedChannels[item.id] || []).length || item.status !== 'approved' || busyId === item.id || (isCarousel && assetCount < 5)}
                 onClick={() => runPublish(item.id)}
               >
                 {scheduleAt[item.id] ? 'Запланировать' : 'Опубликовать сейчас'}
@@ -704,6 +747,9 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
               })}
             </Stack>
           )}
+              </>
+            );
+          })()}
         </Paper>
       ))}
     </Stack>

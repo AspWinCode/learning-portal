@@ -216,10 +216,12 @@ async def transform(
 ) -> SmmContent:
     if action not in TRANSFORM_ACTIONS:
         raise ValueError(f"Неизвестное действие «{action}». Доступны: {', '.join(TRANSFORM_ACTIONS)}")
+    # Transformations are edits of the current draft. Creating a child here
+    # made every click produce a duplicate card and broke the publication queue.
     return await _rewrite(
         db, user, project=project, source=source, instruction=TRANSFORM_ACTIONS[action],
         feature=f"smm_projects:{project.code}:transform:{action}",
-        input_meta={"transform_action": action, "source_content_id": source.id}, channel=channel,
+        input_meta={"transform_action": action}, channel=channel, in_place=True,
     )
 
 
@@ -236,7 +238,7 @@ async def create_variant(db: Session, user, *, project: SmmProject, source: SmmC
 
 async def _rewrite(
     db: Session, user, *, project: SmmProject, source: SmmContent, instruction: str, feature: str,
-    input_meta: Dict[str, Any], channel: Optional[str] = None,
+    input_meta: Dict[str, Any], channel: Optional[str] = None, in_place: bool = False,
 ) -> SmmContent:
     template = None
     if source.template_id:
@@ -251,6 +253,20 @@ async def _rewrite(
         fallback=source.output_text or "",
     )
     output_text, output_json = _structured_output(raw_output)
+
+    if in_place:
+        source.input_json = {**(source.input_json or {}), **input_meta}
+        source.prompt_text = user_prompt
+        source.output_text = output_text
+        source.output_json = output_json
+        source.provider = provider
+        source.model = model
+        source.status = SmmContentStatus.DRAFT.value
+        if channel:
+            source.channel = channel
+        db.commit()
+        db.refresh(source)
+        return source
 
     content = SmmContent(
         project_id=project.id, template_id=source.template_id, parent_content_id=source.id,

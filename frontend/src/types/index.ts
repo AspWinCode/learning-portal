@@ -732,6 +732,8 @@ export interface Lead {
   child_phone?: string | null;
   email?: string | null;
   city?: string | null;
+  ip_address?: string | null;
+  ip_city?: string | null;
   school_name?: string | null;
   school_class?: string | null;
   outreach_at?: string | null;

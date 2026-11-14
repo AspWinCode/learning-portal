@@ -650,6 +650,8 @@ class Lead(Base):
     child_phone = Column(String, nullable=True)
     email = Column(String, nullable=True)
     city = Column(String, nullable=True)
+    ip_address = Column(String(45), nullable=True)
+    ip_city = Column(String, nullable=True)
     school_name = Column(String, nullable=True, index=True)
     school_class = Column(String, nullable=True, index=True)
     outreach_at = Column(DateTime(timezone=True), nullable=True, index=True)

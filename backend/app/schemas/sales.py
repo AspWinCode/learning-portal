@@ -305,6 +305,8 @@ class LeadResponse(BaseModel):
     child_phone: Optional[str] = None
     email: Optional[EmailStr] = None
     city: Optional[str] = None
+    ip_address: Optional[str] = None
+    ip_city: Optional[str] = None
     school_name: Optional[str] = None
     school_class: Optional[str] = None
     outreach_at: Optional[datetime] = None

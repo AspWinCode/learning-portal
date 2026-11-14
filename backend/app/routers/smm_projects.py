@@ -16,11 +16,12 @@ from typing import List, Optional
 from xml.sax.saxutils import escape as xml_escape
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app import auth
 from app.database import get_db
-from app.models import SmmContent, SmmContentAsset, SmmContentStatus, SmmKnowledgeItem, SmmProject, SmmPublication, User
+from app.models import SmmContent, SmmContentAsset, SmmContentPlanItem, SmmContentStatus, SmmKnowledgeItem, SmmProject, SmmPublication, User
 from app.routers.action_log import log_action
 from app.schemas.smm_projects import (
     AssetOut,
@@ -501,10 +502,29 @@ def list_content(
     current_user: User = Depends(auth.require_permission("smm_projects.access")),
 ):
     proj = _get_accessible_project(db, project, current_user)
-    q = db.query(SmmContent).filter(SmmContent.project_id == proj.id)
+    q = (
+        db.query(SmmContent)
+        .outerjoin(
+            SmmContentPlanItem,
+            or_(
+                SmmContentPlanItem.id == SmmContent.plan_item_id,
+                SmmContentPlanItem.generated_content_id == SmmContent.id,
+            ),
+        )
+        .filter(SmmContent.project_id == proj.id)
+    )
     if status_filter:
         q = q.filter(SmmContent.status == status_filter)
-    items = q.order_by(SmmContent.created_at.desc()).limit(200).all()
+    # Planned publications must follow the editorial calendar, not the moment
+    # when AI happened to finish generating them. Standalone materials remain
+    # after planned ones and are ordered oldest-first as a review queue.
+    items = q.order_by(
+        SmmContentPlanItem.publish_date.is_(None),
+        SmmContentPlanItem.publish_date.asc(),
+        SmmContentPlanItem.position.asc(),
+        SmmContent.created_at.asc(),
+        SmmContent.id.asc(),
+    ).limit(200).all()
     return ContentList(items=items, total=len(items))
 
 
@@ -592,7 +612,7 @@ async def transform_content(
         content = await generation.transform(db, current_user, project=project, source=source, action=payload.action, channel=payload.channel)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
-    log_action(db, current_user.id, "create", "smm_content", content.id, {"source": content_id, "action": payload.action})
+    log_action(db, current_user.id, "update", "smm_content", content.id, {"action": payload.action})
     return content
 
 
@@ -650,9 +670,26 @@ async def render_content_image(
     content = _get_content_or_404(db, content_id)
     project = _project_for_content(db, content, current_user)
     try:
-        asset = await assets_svc.render_image(db, current_user, project=project, content=content, prompt=payload.prompt)
+        content_format = str((content.input_json or {}).get("content_format") or "").lower()
+        is_carousel = "карусел" in content_format or "carousel" in content_format
+        current_assets = db.query(SmmContentAsset).filter(SmmContentAsset.content_id == content.id).count()
+        assets_to_create = max(1, 5 - current_assets) if is_carousel else 1
+        asset = None
+        for slide_index in range(current_assets, current_assets + assets_to_create):
+            prompt = payload.prompt
+            if is_carousel:
+                prompt = f"{prompt or content.output_text or content.title or 'Публикация'}\n\nСлайд {slide_index + 1} из 5. Создай отдельное изображение для карусели."
+            asset = await assets_svc.render_image(
+                db,
+                current_user,
+                project=project,
+                content=content,
+                prompt=prompt,
+                meta={"slide": slide_index + 1, "slides_total": 5, "content_format": "Карусель"} if is_carousel else None,
+            )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    assert asset is not None
     log_action(db, current_user.id, "create", "smm_content_asset", asset.id, {"content_id": content_id})
     return asset
 

@@ -3,7 +3,8 @@ from datetime import date, datetime, time as dt_time
 from io import BytesIO
 from typing import Dict, List, Optional, Tuple
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
+import httpx
 from fastapi.responses import StreamingResponse
 from openpyxl import Workbook, load_workbook
 from sqlalchemy import Text, cast, func, or_, update as sa_update
@@ -78,6 +79,29 @@ TILDA_SOURCE_START = "Тильда_Первый Шаг"
 TILDA_SOURCE_BASE = "Тильда_Специалист"
 TILDA_SOURCE_PRO = "Тильда_Эксперт"
 _SEND_INFO_TASK_MARKER = "отправить информацию"
+
+
+def _client_ip(request: Request) -> Optional[str]:
+    forwarded = request.headers.get("x-forwarded-for")
+    raw = forwarded.split(",", 1)[0].strip() if forwarded else (request.client.host if request.client else None)
+    return raw if raw and raw not in {"127.0.0.1", "::1", "localhost"} else None
+
+
+async def _attach_ip_geo(lead: Lead, request: Request) -> None:
+    """Save the source IP and best-effort city lookup for public lead forms."""
+    ip = _client_ip(request)
+    if not ip:
+        return
+    lead.ip_address = ip
+    try:
+        async with httpx.AsyncClient(timeout=1.5) as client:
+            response = await client.get(f"https://ipwho.is/{ip}")
+        data = response.json() if response.is_success else {}
+        if data.get("success", True):
+            lead.ip_city = data.get("city") or data.get("region")
+    except Exception:
+        # Geolocation must never make a lead submission fail.
+        pass
 
 
 def _lead_eager_options():
@@ -640,6 +664,7 @@ async def dismiss_questionnaire_attempt(
 @router.post("/public/leads/specialist-questionnaire", response_model=SpecialistQuestionnaireResponse, status_code=status.HTTP_201_CREATED)
 async def submit_specialist_questionnaire(
     payload: SpecialistQuestionnaireRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ):
     owner = (
@@ -765,6 +790,7 @@ async def submit_specialist_questionnaire(
 
     db.flush()
     sync_lead_person(db, lead)
+    await _attach_ip_geo(lead, request)
     db.commit()
     db.refresh(lead)
     return SpecialistQuestionnaireResponse(lead_id=lead.id)
@@ -773,6 +799,7 @@ async def submit_specialist_questionnaire(
 @router.post("/public/leads/ege-trial-questionnaire", response_model=EgeTrialQuestionnaireResponse, status_code=status.HTTP_201_CREATED)
 async def submit_ege_trial_questionnaire(
     payload: EgeTrialQuestionnaireRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ):
     owner = (
@@ -848,6 +875,7 @@ async def submit_ege_trial_questionnaire(
 
     db.flush()
     sync_lead_person(db, lead)
+    await _attach_ip_geo(lead, request)
     db.commit()
     db.refresh(lead)
     return EgeTrialQuestionnaireResponse(lead_id=lead.id)
@@ -860,6 +888,7 @@ async def submit_ege_trial_questionnaire(
 )
 async def submit_individual_lessons_questionnaire(
     payload: IndividualLessonsQuestionnaireRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ):
     owner = (
@@ -967,6 +996,7 @@ async def submit_individual_lessons_questionnaire(
 
     db.flush()
     sync_lead_person(db, lead)
+    await _attach_ip_geo(lead, request)
     db.commit()
     db.refresh(lead)
     return IndividualLessonsQuestionnaireResponse(lead_id=lead.id)
@@ -979,6 +1009,7 @@ async def submit_individual_lessons_questionnaire(
 )
 async def submit_pixelforge_questionnaire(
     payload: PixelForgeQuestionnaireRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ):
     owner = (
@@ -1086,6 +1117,7 @@ async def submit_pixelforge_questionnaire(
 
     db.flush()
     sync_lead_person(db, lead)
+    await _attach_ip_geo(lead, request)
     db.commit()
     db.refresh(lead)
     return PixelForgeQuestionnaireResponse(lead_id=lead.id)
@@ -1098,6 +1130,7 @@ async def submit_pixelforge_questionnaire(
 )
 async def submit_programmer_questionnaire(
     payload: ProgrammerQuestionnaireRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ):
     owner = (
@@ -1205,6 +1238,7 @@ async def submit_programmer_questionnaire(
 
     db.flush()
     sync_lead_person(db, lead)
+    await _attach_ip_geo(lead, request)
     db.commit()
     db.refresh(lead)
     return ProgrammerQuestionnaireResponse(lead_id=lead.id)
@@ -1217,6 +1251,7 @@ async def submit_programmer_questionnaire(
 )
 async def submit_expert_questionnaire(
     payload: ExpertQuestionnaireRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ):
     owner = (
@@ -1324,6 +1359,7 @@ async def submit_expert_questionnaire(
 
     db.flush()
     sync_lead_person(db, lead)
+    await _attach_ip_geo(lead, request)
     db.commit()
     db.refresh(lead)
     return ExpertQuestionnaireResponse(lead_id=lead.id)
@@ -1336,6 +1372,7 @@ async def submit_expert_questionnaire(
 )
 async def submit_oge_informatika_questionnaire(
     payload: OgeInformatikaQuestionnaireRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ):
     owner = (
@@ -1443,6 +1480,7 @@ async def submit_oge_informatika_questionnaire(
 
     db.flush()
     sync_lead_person(db, lead)
+    await _attach_ip_geo(lead, request)
     db.commit()
     db.refresh(lead)
     return OgeInformatikaQuestionnaireResponse(lead_id=lead.id)
@@ -1451,6 +1489,7 @@ async def submit_oge_informatika_questionnaire(
 @router.post("/public/leads/tilda-lead", response_model=TildaLeadResponse, status_code=status.HTTP_201_CREATED)
 async def submit_tilda_lead(
     payload: TildaLeadRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ):
     parent_name = (payload.parent_full_name or "").strip()
@@ -1524,6 +1563,7 @@ async def submit_tilda_lead(
 
     db.flush()
     sync_lead_person(db, lead)
+    await _attach_ip_geo(lead, request)
     db.commit()
     db.refresh(lead)
     return TildaLeadResponse(lead_id=lead.id)

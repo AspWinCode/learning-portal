@@ -32,7 +32,7 @@ export const LeadKanbanCard: React.FC<LeadKanbanCardProps> = ({ lead, draggable,
 
   const createdLabel = (() => {
     const d = parseISO(lead.created_at);
-    return isValid(d) ? format(d, 'dd.MM.yyyy') : null;
+    return isValid(d) ? format(d, 'dd.MM.yyyy HH:mm') : null;
   })();
 
   const nextContactLabel = (() => {
@@ -72,9 +72,9 @@ export const LeadKanbanCard: React.FC<LeadKanbanCardProps> = ({ lead, draggable,
         <Typography variant="caption" color="text.secondary" noWrap>
           {lead.parent_phone || lead.phone || 'нет телефона'}
         </Typography>
-        {(lead.city || lead.school_name || lead.school_class) && (
+        {(lead.ip_city || lead.city || lead.school_name || lead.school_class) && (
           <Typography variant="caption" color="text.secondary" noWrap>
-            {[lead.city, lead.school_name, lead.school_class ? `${lead.school_class} кл.` : null]
+            {[lead.ip_city ? `IP: ${lead.ip_city}` : lead.city, lead.school_name, lead.school_class ? `${lead.school_class} кл.` : null]
               .filter(Boolean)
               .join(' · ')}
           </Typography>

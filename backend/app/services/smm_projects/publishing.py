@@ -36,8 +36,14 @@ def _context(db: Session, project: SmmProject, publication: SmmPublication, asse
     all_assets = []
     if asset:
         all_assets = db.query(SmmContentAsset).filter(SmmContentAsset.content_id == publication.content_id).order_by(SmmContentAsset.created_at, SmmContentAsset.id).all()
+        content = db.query(SmmContent).filter(SmmContent.id == publication.content_id).first()
+        content_format = str((content.input_json or {}).get("content_format") or "").lower() if content else ""
         slides_total = (asset.meta or {}).get("slides_total") if isinstance(asset.meta, dict) else None
-        if slides_total and int(slides_total) > 1:
+        if "карусел" in content_format or "carousel" in content_format:
+            # Legacy carousel assets may not have slides_total metadata. The
+            # content format is authoritative, so send all its images.
+            pass
+        elif slides_total and int(slides_total) > 1:
             all_assets = [candidate for candidate in all_assets if isinstance(candidate.meta, dict) and candidate.meta.get("slides_total") == slides_total]
         else:
             all_assets = [asset]
@@ -63,12 +69,30 @@ def _context(db: Session, project: SmmProject, publication: SmmPublication, asse
 
 def _publication_text(content: SmmContent, channel: Optional[str] = None) -> str:
     """Return readable post text, including for legacy JSON drafts."""
+    content_format = str((content.input_json or {}).get("content_format") or "").lower()
+    if any(marker in content_format for marker in ("карусел", "carousel", "инфограф", "infographic")):
+        # Carousels and infographics are image-only publications. The generated
+        # copy is used to create the image, but must not become a long caption.
+        return ""
     raw = (content.output_text or "").strip()
     if isinstance(content.output_json, dict):
         readable = humanize_structured_output(content.output_json, fallback=raw)
         if readable and readable != raw:
             raw = readable
     return prepare_publication_text(raw, channel=channel)
+
+
+def _is_carousel(content: SmmContent) -> bool:
+    content_format = str((content.input_json or {}).get("content_format") or "").lower()
+    return "карусел" in content_format or "carousel" in content_format
+
+
+def _ensure_carousel_assets(db: Session, content: SmmContent) -> None:
+    if not _is_carousel(content):
+        return
+    count = db.query(SmmContentAsset).filter(SmmContentAsset.content_id == content.id).count()
+    if count < 5:
+        raise ValueError(f"Для карусели нужно минимум 5 изображений (сейчас {count})")
 
 
 async def _deliver(db: Session, project: SmmProject, publication: SmmPublication, asset: Optional[SmmContentAsset]) -> PublisherResult:
@@ -87,9 +111,10 @@ async def publish(db: Session, user, *, project: SmmProject, content: SmmContent
         raise ValueError(f"Канал «{channel}» не поддерживается. Доступны: {', '.join(SUPPORTED_CHANNELS)}")
     if content.status != "approved":
         raise ValueError("Материал можно публиковать только после одобрения")
+    _ensure_carousel_assets(db, content)
     text = _publication_text(content, channel=channel)
-    if not text:
-        raise ValueError("У материала нет текста для публикации")
+    if not text and not getattr(content, "selected_asset_id", None):
+        raise ValueError("У материала нет текста или изображения для публикации")
 
     now = datetime.now(timezone.utc)
     publication = SmmPublication(
@@ -140,12 +165,13 @@ def create_publications(
             raise ValueError("Материал не найден в выбранном проекте")
         if content.status != "approved":
             raise ValueError(f"Материал #{content.id} можно публиковать только после одобрения")
-        text = _publication_text(content, channel=channel)
-        if not text:
-            raise ValueError(f"Материал #{content.id} не содержит текста")
+        _ensure_carousel_assets(db, content)
         asset_id = item.get("asset_id") or getattr(content, "selected_asset_id", None)
         if asset_id and not db.query(SmmContentAsset).filter(SmmContentAsset.id == asset_id, SmmContentAsset.content_id == content.id).first():
             raise ValueError("Выбранный visual не принадлежит материалу")
+        text = _publication_text(content, channel=channel)
+        if not text and not asset_id:
+            raise ValueError(f"Материал #{content.id} не содержит текста или изображения")
         scheduled = publish_at if publish_at and publish_at > now else None
         state = SmmPublicationStatus.SCHEDULED.value if scheduled else SmmPublicationStatus.APPROVED.value
         idem = f"publication:{content.id}:{channel}:{scheduled.isoformat() if scheduled else 'now'}"

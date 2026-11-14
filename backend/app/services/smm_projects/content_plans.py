@@ -15,7 +15,7 @@ from app.services.smm_projects import knowledge as knowledge_svc
 from app.services.smm_projects import assets as assets_svc
 from app.services.smm_projects.prompt_builder import GLOBAL_SAFETY_RULES, _brand_block
 
-DEFAULT_FORMATS = ["Пост", "Карточка", "Карусель", "Видео / Reels / Shorts", "Инфографика"]
+DEFAULT_FORMATS = ["Пост", "Карусель", "Видео / Reels / Shorts", "Инфографика"]
 DEFAULT_GENRES = ["Экспертный", "Образовательный", "Интерактивный", "Юмористический", "История / закулисье", "Анонс / продающий"]
 
 
@@ -75,6 +75,12 @@ def _as_date(value: Any) -> date:
     if isinstance(value, date):
         return value
     return date.fromisoformat(str(value))
+
+
+def _without_card_format(values: Any) -> List[str]:
+    formats = [str(value).strip() for value in (values or []) if str(value).strip()]
+    filtered = [value for value in formats if "карточк" not in value.lower()]
+    return filtered or list(DEFAULT_FORMATS)
 
 
 def _plain_post_text(value: str) -> str:
@@ -168,7 +174,7 @@ async def _generate_item_draft(db: Session, *, plan: SmmContentPlan, item: SmmCo
         plan_item_id=item.id,
         created_by_id=plan.created_by_id,
         title=item.title,
-        input_json={"source": "content_plan", "plan_item_id": item.id, "publish_date": item.publish_date.isoformat(), "content_format": item.content_format},
+        input_json={"source": "content_plan", "plan_item_id": item.id, "publish_date": item.publish_date.isoformat(), "position": item.position, "content_format": item.content_format},
         prompt_text=prompt,
         output_text=output,
         provider=provider,
@@ -236,7 +242,7 @@ def get_plan(db: Session, project: SmmProject, plan_id: int) -> SmmContentPlan |
 def _fallback_items(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
     start = _as_date(payload["date_from"])
     end = _as_date(payload["date_to"])
-    formats = payload.get("formats") or DEFAULT_FORMATS
+    formats = _without_card_format(payload.get("formats"))
     topics = payload.get("_knowledge_titles") or []
     rows: List[Dict[str, Any]] = []
     current = start
@@ -294,7 +300,7 @@ async def generate_plan(db: Session, user, *, project: SmmProject, payload: Dict
     stats = readiness["publication_stats"]
     fallback_payload = {**payload, "_knowledge_titles": [item.title for item in hits if item.title]}
     fallback = _fallback_items(fallback_payload)
-    requested_formats = payload.get("formats") or DEFAULT_FORMATS
+    requested_formats = _without_card_format(payload.get("formats"))
     requested_genres = payload.get("genres") or DEFAULT_GENRES
     system = "\n\n".join(part for part in [GLOBAL_SAFETY_RULES, _brand_block(project), knowledge, (
         "Ты — SMM-планер. Составляй только редакционный план, не готовые тексты. "
@@ -332,6 +338,11 @@ async def generate_plan(db: Session, user, *, project: SmmProject, payload: Dict
         if result.ok and result.text:
             raw = result.text
     items_data = _parse_json(raw, fallback)
+    # The model can still echo an obsolete format from an older prompt.
+    # Normalize it so new plans never create "Карточка" items.
+    for item in items_data:
+        if "карточк" in str(item.get("format") or "").lower():
+            item["format"] = "Инфографика"
     plan = SmmContentPlan(
         project_id=project.id,
         name=f"Контент-план: {start.strftime('%d.%m.%Y')} — {end.strftime('%d.%m.%Y')}",

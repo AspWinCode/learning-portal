@@ -94,6 +94,37 @@ def _plain_post_text(value: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
+def _carousel_thoughts(content: SmmContent) -> List[str]:
+    """Разложить текст поста на пять коротких смыслов для слайдов."""
+    raw = _plain_post_text(content.output_text or "")
+    candidates: List[str] = []
+    for line in raw.splitlines():
+        line = re.sub(r"^\s*(?:[-*•✅✓]\s*|\d+[.)]\s*)", "", line).strip()
+        if line and len(line) >= 12:
+            candidates.append(line)
+    if len(candidates) < 5:
+        candidates = [part.strip() for part in re.split(r"(?<=[.!?])\s+", raw) if len(part.strip()) >= 12]
+
+    result: List[str] = []
+    for candidate in candidates:
+        if candidate not in result:
+            result.append(candidate[:240])
+        if len(result) == 5:
+            break
+    fallbacks = [
+        f"Главная тема: {content.title or 'тема публикации'}",
+        "Одна стратегия — одна понятная цель",
+        "Разбирай идею на простые шаги",
+        "Проверь решение на практике",
+        "Сделай следующий шаг",
+    ]
+    for fallback in fallbacks:
+        if len(result) == 5:
+            break
+        result.append(fallback)
+    return result[:5]
+
+
 async def _materialize_media(db: Session, project: SmmProject, content: SmmContent, item: SmmContentPlanItem) -> str | None:
     format_name = (item.content_format or "").lower()
     # Инфографика — тоже визуальный формат: это одно готовое изображение,
@@ -102,6 +133,7 @@ async def _materialize_media(db: Session, project: SmmProject, content: SmmConte
     if not any(marker in format_name for marker in ("карт", "карусел", "инфограф")):
         return None
     count = 5 if "карусел" in format_name else 1
+    thoughts = _carousel_thoughts(content) if "карусел" in format_name else []
     try:
         for slide in range(1, count + 1):
             if "инфограф" in format_name:
@@ -113,11 +145,15 @@ async def _materialize_media(db: Session, project: SmmProject, content: SmmConte
                     f"Тема: {content.title}. Факты и смысл: {content.output_text}"
                 )
             else:
+                thought = thoughts[slide - 1]
                 slide_hint = (
-                    f"Создай изображение для публикации проекта. Это слайд {slide} из {count}. "
-                    "Не добавляй текст, логотипы, даты или цены на изображение. "
-                    f"Используй нового персонажа, отличающегося от героев других публикаций. "
-                    f"Тема публикации: {content.title}. Факты и смысл: {content.output_text}"
+                    f"Создай информативный слайд карусели для публикации проекта, слайд {slide} из 5. "
+                    "На картинке обязательно размести крупный короткий заголовок и 1–2 строки пояснения "
+                    "ТОЛЬКО на русском языке, кириллицей. Не используй английские слова и буквы. "
+                    "Одна картинка — одна мысль; это не должна быть просто декоративная иллюстрация. "
+                    "Сделай текст хорошо читаемым и визуально связанным с героем. "
+                    f"Мысль этого слайда: {thought}. "
+                    f"Тема карусели: {content.title}. Общий контекст поста: {content.output_text}"
                 )
             await assets_svc.render_image(
                 db,

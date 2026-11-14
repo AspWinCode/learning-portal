@@ -451,6 +451,9 @@ export const listContentAssets = (contentId: number): Promise<GeneratedAsset[]> 
 export const downloadVkPack = (contentId: number): Promise<Blob> =>
   api.get(`${BASE}/content/${contentId}/vk-pack`, { responseType: 'blob' }).then((r) => r.data);
 
+export const downloadContentAsset = (assetId: number): Promise<Blob> =>
+  api.get(`${BASE}/assets/${assetId}/file`, { responseType: 'blob' }).then((r) => r.data);
+
 // ─── Publishing ───────────────────────────────────────────────────────────
 
 export interface PublishLog {

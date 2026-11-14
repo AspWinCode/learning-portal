@@ -528,6 +528,27 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
     }
   };
 
+  const downloadAsset = async (asset: smm.GeneratedAsset) => {
+    setBusyId(asset.content_id);
+    setError(null);
+    try {
+      const blob = asset.storage_key ? await smm.downloadContentAsset(asset.id) : null;
+      const url = blob ? URL.createObjectURL(blob) : asset.url;
+      if (!url) throw new Error('Файл изображения недоступен');
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `smm_${asset.content_id}_${asset.id}.png`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      if (blob) URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(extractApiError(e, 'Не удалось скачать изображение'));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   // Немедленная публикация исполняется фоновой задачей (dramatiq), поэтому
   // ответ publish-bundle приходит со status=approved, когда работа ещё не
   // началась — опрашиваем публикации, пока они не дойдут до success/error,
@@ -678,9 +699,16 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
                 <Button size="small" color="error" onClick={() => removeDraft(item.id)} disabled={busyId === item.id}>
                   Удалить
                 </Button>
-                <Button size="small" variant="outlined" onClick={() => downloadVkPack(item.id)} disabled={busyId === item.id}>
-                  Скачать ZIP для VK
-                </Button>
+                {isCarousel && (
+                  <Button size="small" variant="outlined" onClick={() => downloadVkPack(item.id)} disabled={busyId === item.id}>
+                    Скачать ZIP для VK
+                  </Button>
+                )}
+                {!isCarousel && isImageOnly && assetsByContent[item.id]?.[0] && (
+                  <Button size="small" variant="outlined" onClick={() => downloadAsset(assetsByContent[item.id][0])} disabled={busyId === item.id}>
+                    Скачать картинку для VK
+                  </Button>
+                )}
               </>
             </Stack>
           )}

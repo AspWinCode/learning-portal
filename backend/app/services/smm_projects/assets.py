@@ -18,6 +18,25 @@ from app.services.smm_projects import storage
 
 logger = logging.getLogger(__name__)
 
+# Визуальный вариант выбирается детерминированно по материалу, чтобы разные
+# публикации не получали одного и того же героя. При этом слайды одной
+# карусели сохраняют общий образ — разнообразие нужно между публикациями.
+_CHARACTER_VARIANTS = (
+    "быстрый разведчик в лёгкой броне, динамичный силуэт и светло-синие акценты",
+    "мудрый маг-аналитик в длинной мантии, фиолетово-золотая палитра",
+    "механик-изобретатель с защитными очками и медными деталями",
+    "лучница-стратег с плащом и бирюзовыми световыми эффектами",
+    "робот-тактик с геометричной бронёй и красными сигнальными огнями",
+    "тёмный рыцарь-защитник с массивным щитом и синим свечением",
+    "исследовательница данных с голографическими интерфейсами и зелёными акцентами",
+    "ловкий кибер-ниндзя с чёрно-оранжевой палитрой и другим силуэтом",
+)
+
+
+def _character_variant(content_id: Optional[int]) -> str:
+    index = (int(content_id or 0) - 1) % len(_CHARACTER_VARIANTS)
+    return _CHARACTER_VARIANTS[index]
+
 
 async def build_image_prompt(*, db: Session, project: SmmProject, content: SmmContent, user) -> str:
     structured = content.output_json if isinstance(content.output_json, dict) else {}
@@ -45,11 +64,16 @@ async def build_image_prompt(*, db: Session, project: SmmProject, content: SmmCo
         f"[{item.title}] {(item.content or '')[:1400]}" for item in visual_refs[:12]
     ) if visual_refs else ""
     context_block = knowledge_svc.as_prompt_block(knowledge_items[:12], max_chars=7000) if knowledge_items else ""
+    character_variant = _character_variant(getattr(content, "id", None))
     prompt = (
         f"{base_prompt}\n\n"
         "Это обязательный постоянный контекст проекта. Сохрани узнаваемый мир, персонажей, "
         "цветовую палитру и визуальный язык КодАрены. Не заменяй их абстрактным стоковым дизайном. "
-        "Не добавляй надписи в изображение."
+        f"Для этой публикации используй отдельного героя: {character_variant}. "
+        "Не копируй главного героя с предыдущих публикаций и не повторяй один и тот же силуэт, "
+        "одежду или цветовую комбинацию; разнообразь персонажей между постами. "
+        "Если в изображении есть подписи, заголовки или другие слова, пиши их только на русском языке, "
+        "кириллицей, без английских букв. Не вставляй английский текст. "
         f"{visual_block}{context_block}"
     )
     if not ai_gateway.is_configured("text"):

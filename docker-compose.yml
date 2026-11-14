@@ -25,7 +25,9 @@ x-app-common-env: &app_common_env
   AI_TUNNEL_API_KEY: ${AI_TUNNEL_API_KEY:-}
   AI_TUNNEL_MODEL_TEXT: ${AI_TUNNEL_MODEL_TEXT:-}
   AI_TUNNEL_MODEL_VISION: ${AI_TUNNEL_MODEL_VISION:-}
-  AI_TUNNEL_MODEL_IMAGE: gemini-3.1-flash-lite-image
+  # Qwen лучше держит кириллицу и композицию инфографики; значение можно
+  # переопределить через .env без изменения compose-файла.
+  AI_TUNNEL_MODEL_IMAGE: ${AI_TUNNEL_MODEL_IMAGE:-qwen-image-3}
   AI_TUNNEL_MODEL_EMBED: ${AI_TUNNEL_MODEL_EMBED:-}
   SMS_GATEWAY_BASE_URL: ${SMS_GATEWAY_BASE_URL:-}
   SMS_GATEWAY_TOKEN: ${SMS_GATEWAY_TOKEN:-}

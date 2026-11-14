@@ -64,6 +64,18 @@ def run_smm_due_plan_items() -> None:
     _run_db_job("smm_due_plan_items", _job)
 
 
+def run_smm_pending_media() -> None:
+    import asyncio
+    from app.services.smm_projects.content_plans import generate_pending_media
+
+    def _job(db):
+        processed = asyncio.run(generate_pending_media(db, limit=2))
+        if processed:
+            logger.info("smm_pending_media: processed %d draft(s)", processed)
+
+    _run_db_job("smm_pending_media", _job)
+
+
 def run_tochka_auto_import() -> None:
     try:
         from app.services.tochka_client import is_configured

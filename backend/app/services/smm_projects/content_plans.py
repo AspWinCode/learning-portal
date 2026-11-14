@@ -313,6 +313,36 @@ async def generate_due_items(db: Session, *, limit: int = 5) -> int:
     return created
 
 
+async def generate_pending_media(db: Session, *, limit: int = 2) -> int:
+    """Автоматически догенерировать визуалы у уже созданных черновиков.
+
+    Текстовый черновик не должен зависеть от скорости image-провайдера. Если
+    HTTP-запрос генерации плана оборвался, этот фоновый проход всё равно
+    завершит визуалы без ручного клика «Создать визуал».
+    """
+    rows = (
+        db.query(SmmContent, SmmContentPlanItem, SmmProject)
+        .join(SmmContentPlanItem, SmmContentPlanItem.generated_content_id == SmmContent.id)
+        .join(SmmContentPlan, SmmContentPlan.id == SmmContentPlanItem.plan_id)
+        .join(SmmProject, SmmProject.id == SmmContent.project_id)
+        .filter(SmmContent.input_json["media_status"].as_string() == "pending")
+        .order_by(SmmContentPlanItem.publish_date, SmmContentPlanItem.position, SmmContent.id)
+        .limit(limit)
+        .all()
+    )
+    processed = 0
+    for content, item, project in rows:
+        media_error = await _materialize_media(db, project, content, item)
+        content.input_json = {
+            **(content.input_json or {}),
+            "media_status": "error" if media_error else ("ready" if item.content_format in ("Пост", "Пост + карточка") else "generated"),
+            **({"media_error": media_error} if media_error else {}),
+        }
+        db.commit()
+        processed += 1
+    return processed
+
+
 def get_plan(db: Session, project: SmmProject, plan_id: int) -> SmmContentPlan | None:
     return (
         db.query(SmmContentPlan)

@@ -27,6 +27,7 @@ from app.background_jobs import (
     run_smm_publication,
     run_smm_due_publications,
     run_smm_due_plan_items,
+    run_smm_pending_media,
 )
 from app.services.email_broadcast_service import send_broadcast as _send_broadcast
 
@@ -74,6 +75,11 @@ def task_scheduled_messages() -> None:
 @dramatiq.actor(queue_name="periodic")
 def task_smm_due_plan_items() -> None:
     run_smm_due_plan_items()
+
+
+@dramatiq.actor(queue_name="delivery", max_retries=0)
+def task_smm_pending_media() -> None:
+    run_smm_pending_media()
 
 
 @dramatiq.actor(queue_name="delivery")

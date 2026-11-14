@@ -96,7 +96,10 @@ def _plain_post_text(value: str) -> str:
 
 async def _materialize_media(db: Session, project: SmmProject, content: SmmContent, item: SmmContentPlanItem) -> str | None:
     format_name = (item.content_format or "").lower()
-    if "карт" not in format_name and "карусел" not in format_name:
+    # Инфографика — тоже визуальный формат: это одно готовое изображение,
+    # а не текстовый черновик. Раньше здесь учитывались только старый формат
+    # «Карточка» и карусель, поэтому для «Инфографика» визуал не создавался.
+    if not any(marker in format_name for marker in ("карт", "карусел", "инфограф")):
         return None
     count = 5 if "карусел" in format_name else 1
     try:

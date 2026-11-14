@@ -145,7 +145,9 @@ def list_plans(db: Session, project: SmmProject) -> List[SmmContentPlan]:
     )
 
 
-async def _generate_item_draft(db: Session, *, plan: SmmContentPlan, item: SmmContentPlanItem) -> bool:
+async def _generate_item_draft(
+    db: Session, *, plan: SmmContentPlan, item: SmmContentPlanItem, materialize_media: bool = True,
+) -> bool:
     """Create one editable draft from a content-plan row."""
     if item.generated_content_id is not None or item.status != "planned":
         return False
@@ -198,14 +200,26 @@ async def _generate_item_draft(db: Session, *, plan: SmmContentPlan, item: SmmCo
     )
     db.add(content)
     db.flush()
+    # Сначала фиксируем сам черновик и связь с планом. Генерация картинки может
+    # занимать минуты или завершиться ошибкой провайдера, но это не должно
+    # блокировать остальные публикации плана.
+    item.generated_content_id = content.id
+    item.status = "generated"
+    content.input_json = {
+        **(content.input_json or {}),
+        "media_status": "pending" if materialize_media else "pending",
+    }
+    db.commit()
+
+    if not materialize_media:
+        return True
+
     media_error = await _materialize_media(db, project, content, item)
     content.input_json = {
         **(content.input_json or {}),
         "media_status": "error" if media_error else ("ready" if item.content_format in ("Пост", "Пост + карточка") else "generated"),
         **({"media_error": media_error} if media_error else {}),
     }
-    item.generated_content_id = content.id
-    item.status = "generated"
     db.commit()
     return True
 
@@ -213,9 +227,29 @@ async def _generate_item_draft(db: Session, *, plan: SmmContentPlan, item: SmmCo
 async def generate_plan_items(db: Session, *, plan: SmmContentPlan) -> int:
     """Immediately materialize all rows of a newly created plan as drafts."""
     created = 0
+    # Phase 1: persist every text draft first. This keeps the whole editorial
+    # queue visible even if image generation is slow or unavailable.
     for item in sorted(plan.items, key=lambda row: (row.publish_date, row.position)):
-        if await _generate_item_draft(db, plan=plan, item=item):
+        if await _generate_item_draft(db, plan=plan, item=item, materialize_media=False):
             created += 1
+
+    # Phase 2: enrich already persisted drafts with media. A failure is stored
+    # on the individual draft and never prevents the remaining rows from being
+    # created or shown.
+    for item in sorted(plan.items, key=lambda row: (row.publish_date, row.position)):
+        if not item.generated_content_id:
+            continue
+        content = db.query(SmmContent).filter(SmmContent.id == item.generated_content_id).first()
+        project = db.query(SmmProject).filter(SmmProject.id == plan.project_id).first()
+        if content is None or project is None:
+            continue
+        media_error = await _materialize_media(db, project, content, item)
+        content.input_json = {
+            **(content.input_json or {}),
+            "media_status": "error" if media_error else ("ready" if item.content_format in ("Пост", "Пост + карточка") else "generated"),
+            **({"media_error": media_error} if media_error else {}),
+        }
+        db.commit()
     return created
 
 

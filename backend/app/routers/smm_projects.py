@@ -551,6 +551,10 @@ def update_content(
     updates = payload.model_dump(exclude_unset=True)
     if "status" in updates and updates["status"] not in ("draft", "approved", "archived"):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Недопустимый статус")
+    # После ручного редактирования текст больше не соответствует исходной
+    # структурированной версии AI — показываем и публикуем именно правку.
+    if "output_text" in updates:
+        content.output_json = None
     for field, value in updates.items():
         setattr(content, field, value)
     db.commit()

@@ -388,6 +388,8 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
   const [scheduleAt, setScheduleAt] = useState<Record<number, string>>({});
   const [assetsByContent, setAssetsByContent] = useState<Record<number, smm.GeneratedAsset[]>>({});
   const [publications, setPublications] = useState<Record<number, smm.Publication[]>>({});
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editText, setEditText] = useState('');
 
   const stageLabel = (item: smm.GeneratedContent) => {
     const mediaStatus = item.input_json?.media_status;
@@ -476,6 +478,35 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
     if (status === 'approved') await smm.approveContent(id);
     else await smm.updateContent(id, { status });
     await reload();
+  };
+
+  const startEditing = (item: smm.GeneratedContent) => {
+    setEditingId(item.id);
+    setEditText(item.output_text || '');
+    setError(null);
+  };
+
+  const cancelEditing = () => {
+    setEditingId(null);
+    setEditText('');
+  };
+
+  const saveEditing = async (id: number) => {
+    if (!editText.trim()) {
+      setError('Текст публикации не может быть пустым');
+      return;
+    }
+    setBusyId(id);
+    setError(null);
+    try {
+      await smm.updateContent(id, { output_text: editText, status: 'draft' });
+      cancelEditing();
+      await reload();
+    } catch (e) {
+      setError(extractApiError(e, 'Не удалось сохранить текст'));
+    } finally {
+      setBusyId(null);
+    }
   };
 
   const removeDraft = async (id: number) => {
@@ -595,7 +626,18 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
               color={item.status === 'approved' ? 'success' : item.status === 'archived' ? 'default' : item.input_json?.media_status === 'error' ? 'error' : 'warning'}
             />
           </Stack>
-          {!isImageOnly && (
+          {!isImageOnly && editingId === item.id && (
+            <TextField
+              fullWidth
+              multiline
+              minRows={8}
+              value={editText}
+              onChange={(e) => setEditText(e.target.value)}
+              sx={{ mt: 1 }}
+              label="Текст публикации"
+            />
+          )}
+          {!isImageOnly && editingId !== item.id && (
             <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', mt: 1 }}>
               {readableSmmText(item.output_text, item.output_json)}
             </Typography>
@@ -670,7 +712,22 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
               </Typography>
               <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
               <>
-                <Button size="small" onClick={() => setStatus(item.id, 'approved')} disabled={item.status === 'approved'}>
+                {!isImageOnly && editingId !== item.id && (
+                  <Button size="small" variant="outlined" onClick={() => startEditing(item)} disabled={busyId === item.id}>
+                    Редактировать текст
+                  </Button>
+                )}
+                {!isImageOnly && editingId === item.id && (
+                  <>
+                    <Button size="small" variant="contained" onClick={() => void saveEditing(item.id)} disabled={busyId === item.id}>
+                      Сохранить текст
+                    </Button>
+                    <Button size="small" onClick={cancelEditing} disabled={busyId === item.id}>
+                      Отмена
+                    </Button>
+                  </>
+                )}
+                <Button size="small" onClick={() => setStatus(item.id, 'approved')} disabled={item.status === 'approved' || editingId === item.id}>
                   Одобрить
                 </Button>
                 <Button size="small" onClick={() => setStatus(item.id, 'archived')} disabled={item.status === 'archived'}>

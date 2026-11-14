@@ -700,7 +700,11 @@ const TrainerLessonsPage: React.FC = () => {
     return format(d, 'd MMMM yyyy г.', { locale: ru });
   })() : '';
   const displayWeekday = viewDate ? WEEKDAY_NAMES[(new Date(viewDate + 'T12:00:00').getDay() + 6) % 7] : '';
-  const customLessonsForViewDate = customLessons.filter((lesson) => lesson.lesson_date === viewDate);
+  // Прошедшие ручные уроки не должны оставаться в нижнем блоке расписания.
+  // Сравниваем календарные даты в локальной таймзоне браузера, без UTC-сдвигов.
+  const todayIso = format(new Date(), 'yyyy-MM-dd');
+  const upcomingCustomLessons = customLessons.filter((lesson) => lesson.lesson_date >= todayIso);
+  const customLessonsForViewDate = upcomingCustomLessons.filter((lesson) => lesson.lesson_date === viewDate);
   const timelineItems = [
     ...slots.map((slot) => ({ kind: 'slot' as const, sortTime: slot.start_time || '', slot })),
     ...customLessonsForViewDate.map((lesson) => ({ kind: 'custom' as const, sortTime: lesson.start_time || '', lesson })),
@@ -1442,11 +1446,11 @@ const TrainerLessonsPage: React.FC = () => {
               </Typography>
               {customLessonsLoading ? (
                 <Typography variant="body2" color="text.secondary">Загрузка…</Typography>
-              ) : customLessons.length === 0 ? (
+              ) : upcomingCustomLessons.length === 0 ? (
                 <Typography variant="body2" color="text.secondary">Нет ручных уроков на эту неделю.</Typography>
               ) : (
                 <Stack spacing={1} sx={{ mt: 1 }}>
-                  {customLessons.map((lesson) => (
+                  {upcomingCustomLessons.map((lesson) => (
                     <Stack key={lesson.id} direction="row" alignItems="center" spacing={2} flexWrap="wrap">
                       <Typography variant="body2">
                         {format(new Date(lesson.lesson_date + 'T12:00:00'), 'd MMM', { locale: ru })} {lesson.start_time}

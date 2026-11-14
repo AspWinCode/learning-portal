@@ -346,7 +346,6 @@ const ContentPlanTab: React.FC<{ projectCode: string; canGenerate: boolean }> = 
               {plan.genres?.length ? <Typography variant="caption" display="block" color="text.secondary">Жанры: {plan.genres.join(' · ')}</Typography> : null}
             </Box>
             <Stack direction="row" spacing={1} alignItems="center">
-              <Chip size="small" label="Черновик плана" />
               <Button size="small" color="error" onClick={() => removePlan(plan.id)} disabled={busy}>Удалить</Button>
             </Stack>
           </Stack>

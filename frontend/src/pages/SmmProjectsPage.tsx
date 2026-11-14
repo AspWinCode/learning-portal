@@ -383,7 +383,6 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
   const [busyId, setBusyId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [imageErrors, setImageErrors] = useState<Record<number, string>>({});
-  const [variantChannel, setVariantChannel] = useState<Record<number, string>>({});
   const [publishChannels, setPublishChannels] = useState<smm.ChannelStatus[]>([]);
   const [selectedChannels, setSelectedChannels] = useState<Record<number, string[]>>({});
   const [scheduleAt, setScheduleAt] = useState<Record<number, string>>({});
@@ -465,21 +464,6 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
     setError(null);
     try {
       await smm.transformContent(id, action);
-      await reload();
-    } catch (e) {
-      setError(extractApiError(e, 'Ошибка'));
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  const runVariant = async (id: number) => {
-    const channel = variantChannel[id];
-    if (!channel) return;
-    setBusyId(id);
-    setError(null);
-    try {
-      await smm.createContentVariant(id, channel);
       await reload();
     } catch (e) {
       setError(extractApiError(e, 'Ошибка'));
@@ -643,24 +627,6 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
           )}
           {canGenerate && (
             <Stack direction="row" spacing={1} sx={{ mt: 1 }} alignItems="center">
-              <FormControl size="small" sx={{ minWidth: 170 }}>
-                <InputLabel id={`variant-channel-${item.id}`}>Версия для канала</InputLabel>
-                <Select
-                  labelId={`variant-channel-${item.id}`}
-                  label="Версия для канала"
-                  value={variantChannel[item.id] || ''}
-                  onChange={(e) => setVariantChannel((v) => ({ ...v, [item.id]: e.target.value }))}
-                >
-                  {smm.VARIANT_CHANNELS.map((ch) => (
-                    <MenuItem key={ch} value={ch}>
-                      {ch}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              <Button size="small" disabled={!variantChannel[item.id] || busyId === item.id} onClick={() => runVariant(item.id)}>
-                Сделать версию
-              </Button>
               <Button
                 size="small"
                 disabled={busyId === item.id}

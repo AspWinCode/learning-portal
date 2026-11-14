@@ -611,31 +611,41 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
             </Alert>
           )}
           {canGenerate && (
-            <Stack direction="row" spacing={1} sx={{ mt: 1 }} flexWrap="wrap" useFlexGap>
-              {(Object.keys(smm.TRANSFORM_ACTION_LABELS) as smm.TransformAction[]).map((action) => (
-                <Chip
-                  key={action}
-                  size="small"
-                  variant="outlined"
-                  clickable
-                  disabled={busyId === item.id}
-                  label={smm.TRANSFORM_ACTION_LABELS[action]}
-                  onClick={() => runTransform(item.id, action)}
-                />
-              ))}
-            </Stack>
+            <Box sx={{ mt: 1, p: 1, border: '1px solid', borderColor: 'divider', borderRadius: 1.5, bgcolor: 'action.hover' }}>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>
+                Редактирование текста
+              </Typography>
+              <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                {(Object.keys(smm.TRANSFORM_ACTION_LABELS) as smm.TransformAction[]).map((action) => (
+                  <Chip
+                    key={action}
+                    size="small"
+                    variant="outlined"
+                    clickable
+                    disabled={busyId === item.id}
+                    sx={{ bgcolor: 'background.paper' }}
+                    label={smm.TRANSFORM_ACTION_LABELS[action]}
+                    onClick={() => runTransform(item.id, action)}
+                  />
+                ))}
+              </Stack>
+            </Box>
           )}
           {canGenerate && (
-            <Stack direction="row" spacing={1} sx={{ mt: 1 }} alignItems="center">
+            <Box sx={{ mt: 1, p: 1, border: '1px solid', borderColor: 'divider', borderRadius: 1.5 }}>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                Визуал
+              </Typography>
               <Button
                 size="small"
+                variant="outlined"
                 disabled={busyId === item.id}
                 onClick={() => renderImage(item.id)}
                 startIcon={busyId === item.id ? <CircularProgress size={14} /> : undefined}
               >
                 {busyId === item.id ? 'Генерация визуала…' : 'Создать визуал'}
               </Button>
-            </Stack>
+            </Box>
           )}
           {imageErrors[item.id] && (
             <Alert severity="error" sx={{ mt: 1 }}>
@@ -654,7 +664,11 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
             </Box>
           ))}
           {canManage && (
-            <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+            <Box sx={{ mt: 1, p: 1, borderTop: '1px solid', borderColor: 'divider' }}>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                Статус и файлы
+              </Typography>
+              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
               <>
                 <Button size="small" onClick={() => setStatus(item.id, 'approved')} disabled={item.status === 'approved'}>
                   Одобрить
@@ -676,7 +690,8 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
                   </Button>
                 )}
               </>
-            </Stack>
+              </Stack>
+            </Box>
           )}
           {canPublish && (
             <Stack direction="row" spacing={1} sx={{ mt: 1 }} alignItems="center" flexWrap="wrap" useFlexGap>

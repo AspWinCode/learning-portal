@@ -5,7 +5,8 @@ import {
   Snackbar, Stack, Tab, Table, TableBody, TableCell, TableHead, TableRow, Tabs, TextField, Typography,
 } from '@mui/material';
 import {
-  Delete as DeleteIcon, DragIndicator as DragIndicatorIcon, MoreVert as MoreVertIcon,
+  Delete as DeleteIcon, DragIndicator as DragIndicatorIcon, ExpandLess as ExpandLessIcon,
+  ExpandMore as ExpandMoreIcon, MoreVert as MoreVertIcon,
   Publish as PublishIcon, UnpublishedOutlined as UnpublishIcon,
 } from '@mui/icons-material';
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
@@ -154,6 +155,10 @@ function TreeItemRow({ item, depth, canManage, isFirst, isLast, onAddChild, onEd
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   const isStructural = STRUCTURAL_TYPE_SET.has(item.type);
   const childStructType = isStructural ? CODELAB_CHILD_STRUCTURAL_TYPE[item.type as CodelabStructuralType] : null;
+  const hasChildren = item.children.length > 0;
+  // Развёрнуто по умолчанию — старое поведение (все узлы всегда видны)
+  // не меняется, стрелка только добавляет возможность свернуть ветку.
+  const [open, setOpen] = useState(true);
   const close = () => setAnchorEl(null);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id, disabled: !canManage });
 
@@ -185,6 +190,11 @@ function TreeItemRow({ item, depth, canManage, isFirst, isLast, onAddChild, onEd
           <Typography className="tree-item-title" sx={{ flex: 1 }}>{item.title}</Typography>
         </Stack>
         {item.is_archived && <Chip size="small" label="в архиве" />}
+        {hasChildren && (
+          <IconButton size="small" onClick={() => setOpen((v) => !v)}>
+            {open ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
+          </IconButton>
+        )}
         <IconButton size="small" onClick={(e) => setAnchorEl(e.currentTarget)}>
           <MoreVertIcon fontSize="small" />
         </IconButton>
@@ -210,17 +220,19 @@ function TreeItemRow({ item, depth, canManage, isFirst, isLast, onAddChild, onEd
           <MenuItem onClick={() => { onDelete(item); close(); }} sx={{ color: 'error.main' }}>Удалить</MenuItem>
         </Menu>
       </Stack>
-      <SiblingsList
-        items={item.children}
-        depth={depth + 1}
-        parentId={item.id}
-        canManage={canManage}
-        onReorder={onReorder}
-        onAddChild={onAddChild}
-        onEdit={onEdit}
-        onArchive={onArchive}
-        onDelete={onDelete}
-      />
+      {hasChildren && open && (
+        <SiblingsList
+          items={item.children}
+          depth={depth + 1}
+          parentId={item.id}
+          canManage={canManage}
+          onReorder={onReorder}
+          onAddChild={onAddChild}
+          onEdit={onEdit}
+          onArchive={onArchive}
+          onDelete={onDelete}
+        />
+      )}
     </Box>
   );
 }

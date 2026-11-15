@@ -354,6 +354,20 @@ const TrainerLessonsPage: React.FC = () => {
     }
   };
 
+  const openCustomAttendance = (lesson: any) => {
+    const draft: Record<number, { attended: boolean; reason: string; comment: string }> = {};
+    (lesson.students || []).forEach((student: any) => {
+      draft[student.id] = {
+        attended: student.attended ?? false,
+        reason: student.absence_reason || 'not_was',
+        comment: student.absence_comment || '',
+      };
+    });
+    setManualLessonDialogOpen(false);
+    setCustomAttendanceLesson(lesson);
+    setCustomAttendanceDraft(draft);
+  };
+
   const handleCreateLesson = async () => {
     if (!createGroupId || !createDate || !createStartTime || !createEndTime) {
       setCreateError('Заполните группу, дату и время');
@@ -800,16 +814,7 @@ const TrainerLessonsPage: React.FC = () => {
                             variant="outlined"
                             onClick={(event) => {
                               event.stopPropagation();
-                              setCustomAttendanceLesson(lesson);
-                              const draft: Record<number, { attended: boolean; reason: string; comment: string }> = {};
-                              (lesson.students || []).forEach((student: any) => {
-                                draft[student.id] = {
-                                  attended: student.attended ?? false,
-                                  reason: student.absence_reason || 'not_was',
-                                  comment: student.absence_comment || '',
-                                };
-                              });
-                              setCustomAttendanceDraft(draft);
+                              openCustomAttendance(lesson);
                             }}
                           >
                             Посещаемость
@@ -1443,6 +1448,11 @@ const TrainerLessonsPage: React.FC = () => {
           )}
         </DialogContent>
         <DialogActions>
+          {manualEditingLesson && canMarkAttendance && (
+            <Button variant="outlined" onClick={() => openCustomAttendance(manualEditingLesson)} disabled={manualCreateLoading}>
+              Посещаемость
+            </Button>
+          )}
           <Button onClick={() => setManualLessonDialogOpen(false)} disabled={manualCreateLoading}>
             Отмена
           </Button>

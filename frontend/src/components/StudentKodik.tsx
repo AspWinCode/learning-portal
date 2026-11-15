@@ -50,6 +50,12 @@ const StudentKodik: React.FC<StudentKodikProps> = ({ coursesCount, scheduleCount
     return () => window.clearInterval(timer);
   }, [messages]);
 
+  const kodikImage = feedbackDone
+    ? '/kodik-celebrate.png'
+    : feedbackOpen
+      ? '/kodik-thinking.png'
+      : '/kodik-mascot.png';
+
   return (
     <Box sx={{ position: 'fixed', left: { xs: 10, sm: 24 }, bottom: { xs: 10, sm: 24 }, zIndex: 1190 }}>
       {open && (
@@ -88,7 +94,15 @@ const StudentKodik: React.FC<StudentKodikProps> = ({ coursesCount, scheduleCount
         </Box>
       )}
       <Box sx={{ position: 'relative', width: { xs: 58, sm: 70 }, height: { xs: 58, sm: 70 } }}>
-          <Box component="img" src="/kodik-mascot.png" alt="Кодик — помощник ученика" onClick={() => setOpen((value) => !value)} sx={{ position: 'absolute', width: { xs: 88, sm: 108 }, height: { xs: 88, sm: 108 }, objectFit: 'contain', left: { xs: -14, sm: -18 }, bottom: -7, cursor: 'pointer', filter: 'drop-shadow(0 8px 12px rgba(0,0,0,0.35))', animation: 'kodikFloat 3.2s ease-in-out infinite', transition: 'transform 0.2s ease', '&:hover': { animation: 'none', transform: 'translateY(-5px) rotate(-3deg) scale(1.04)' }, '@keyframes kodikFloat': { '0%, 100%': { transform: 'translateY(0) rotate(0)' }, '50%': { transform: 'translateY(-5px) rotate(1deg)' } }, '@media (prefers-reduced-motion: reduce)': { animation: 'none' } }} />
+        <Box component="img" src={kodikImage} alt="Кодик — помощник ученика" onClick={() => setOpen((value) => !value)} sx={{
+          position: 'absolute', width: { xs: 88, sm: 108 }, height: { xs: 88, sm: 108 }, objectFit: 'contain', left: { xs: -14, sm: -18 }, bottom: -7, cursor: 'pointer', filter: 'drop-shadow(0 8px 12px rgba(0,0,0,0.35))',
+          animation: feedbackDone ? 'kodikCelebrate 700ms ease-in-out 2' : feedbackOpen ? 'kodikThink 2.2s ease-in-out infinite' : 'kodikFloat 3.2s ease-in-out infinite',
+          transition: 'transform 0.2s ease', '&:hover': { animation: 'none', transform: 'translateY(-5px) rotate(-3deg) scale(1.04)' },
+          '@keyframes kodikFloat': { '0%, 100%': { transform: 'translateY(0) rotate(0)' }, '50%': { transform: 'translateY(-5px) rotate(1deg)' } },
+          '@keyframes kodikThink': { '0%, 100%': { transform: 'translateY(0) rotate(-2deg)' }, '35%': { transform: 'translateY(-4px) rotate(4deg)' }, '70%': { transform: 'translateY(-1px) rotate(-4deg)' } },
+          '@keyframes kodikCelebrate': { '0%, 100%': { transform: 'translateY(0) scale(1) rotate(0)' }, '35%': { transform: 'translateY(-14px) scale(1.05) rotate(-5deg)' }, '70%': { transform: 'translateY(-5px) scale(1.02) rotate(5deg)' } },
+          '@media (prefers-reduced-motion: reduce)': { animation: 'none' },
+        }} />
         {!open && <IconButton aria-label="Открыть сообщение Кодика" onClick={() => setOpen(true)} sx={{ position: 'absolute', right: -4, top: -4, width: 24, height: 24, bgcolor: '#7F23CC', color: '#fff', '&:hover': { bgcolor: '#AB67E5' } }}><ChatBubbleOutlineIcon sx={{ fontSize: 14 }} /></IconButton>}
       </Box>
     </Box>

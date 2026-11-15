@@ -23,6 +23,7 @@ import { studentPortalApi, StudentPortalProfile, UpcomingLesson, StudentGrade } 
 import { CourseCatalogItemOut } from '../types';
 import { useManifestOverride } from '../hooks/useManifestOverride';
 import PwaInstallButton from '../components/PwaInstallButton';
+import StudentKodik from '../components/StudentKodik';
 
 const DAY_NAMES = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
 const MONTH_NAMES = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
@@ -548,6 +549,7 @@ const StudentPortalCabinetPage: React.FC = () => {
       </Box>
 
       <PwaInstallButton />
+      <StudentKodik coursesCount={courses.length} scheduleCount={schedule.length} progress={overallPct} />
     </Box>
   );
 };

@@ -75,7 +75,11 @@ def _ensure_lessons_access(current_user: User) -> UserRole:
 
 
 def _ensure_lessons_mark_attendance(current_user: User) -> UserRole:
-    auth.ensure_permission(current_user, "lessons.mark_attendance")
+    # Создатель ручного урока должен иметь возможность закрыть его посещаемость.
+    # Это также поддерживает пользователей с персональным набором прав, в котором
+    # старое отдельное право lessons.mark_attendance ещё не было добавлено.
+    if not auth.has_permission(current_user, "lessons.mark_attendance"):
+        auth.ensure_permission(current_user, "lessons.manual_create")
     return _lessons_effective_role(current_user)
 
 

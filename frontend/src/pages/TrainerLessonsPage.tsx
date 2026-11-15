@@ -66,7 +66,7 @@ const TrainerLessonsPage: React.FC = () => {
   const canAddStudentToLesson = hasPermission(user, 'lessons.manage_roster');
   const canRemoveStudentFromLesson = hasPermission(user, 'lessons.override');
   const canCreateManualLesson = hasPermission(user, 'lessons.manual_create');
-  const canMarkAttendance = hasPermission(user, 'lessons.mark_attendance');
+  const canMarkAttendance = hasPermission(user, 'lessons.mark_attendance') || canCreateManualLesson;
   const [searchParams] = useSearchParams();
   const [viewDate, setViewDate] = useState(() => format(startOfDay(new Date()), 'yyyy-MM-dd'));
   const [slots, setSlots] = useState<TrainerLessonSlot[]>([]);

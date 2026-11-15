@@ -955,19 +955,33 @@ def _attach_project_and_asset(db: Session, rows: List[SmmPublication]) -> List[S
     if not rows:
         return []
     project_codes = {p.id: p.code for p in db.query(SmmProject).filter(SmmProject.id.in_({r.project_id for r in rows})).all()}
-    asset_ids = {r.asset_id for r in rows if r.asset_id}
+    content_ids = {r.content_id for r in rows}
+    contents = db.query(SmmContent).filter(SmmContent.id.in_(content_ids)).all()
+    content_by_id = {content.id: content for content in contents}
+    all_assets = (
+        db.query(SmmContentAsset)
+        .filter(SmmContentAsset.content_id.in_(content_ids))
+        .order_by(SmmContentAsset.created_at, SmmContentAsset.id)
+        .all()
+    )
+    assets_by_content = {}
     asset_urls = {}
-    if asset_ids:
-        for asset in db.query(SmmContentAsset).filter(SmmContentAsset.id.in_(asset_ids)).all():
-            # Generated images are commonly stored locally as b64 data and do
-            # not have a provider URL. Expose the authenticated-app-independent
-            # file endpoint so scheduled publications can render their preview.
-            asset_urls[asset.id] = asset.url or (
-                f"/api/v1/smm-projects/assets/{asset.id}/file" if asset.storage_key else None
-            )
+    for asset in all_assets:
+        # Generated images are commonly stored locally as b64 data and do not
+        # have a provider URL. Expose the file endpoint for previews.
+        url = asset.url or (f"/api/v1/smm-projects/assets/{asset.id}/file" if asset.storage_key else None)
+        if url:
+            asset_urls[asset.id] = url
+            assets_by_content.setdefault(asset.content_id, []).append(url)
     for row in rows:
         row.project_code = project_codes.get(row.project_id, "")
         row.asset_url = asset_urls.get(row.asset_id) if row.asset_id else None
+        content = content_by_id.get(row.content_id)
+        content_format = str((content.input_json or {}).get("content_format") or "").lower() if content else ""
+        is_carousel = "карусел" in content_format or "carousel" in content_format
+        row.asset_urls = assets_by_content.get(row.content_id, []) if is_carousel and row.asset_id else (
+            [row.asset_url] if row.asset_url else []
+        )
     return rows
 
 

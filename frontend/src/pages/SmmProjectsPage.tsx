@@ -1768,7 +1768,13 @@ const PublicationsListTab: React.FC<{ state: 'scheduled' | 'sent'; reloadKey: nu
                   : ''}
               </Typography>
             </Stack>
-            {p.asset_url && <Box component="img" src={p.asset_url} alt="" sx={{ maxWidth: 160, maxHeight: 160, borderRadius: 1, mt: 1 }} />}
+            {(p.asset_urls?.length ? p.asset_urls : p.asset_url ? [p.asset_url] : []).length > 0 && (
+              <Stack direction="row" spacing={1} sx={{ mt: 1, overflowX: 'auto' }}>
+                {(p.asset_urls?.length ? p.asset_urls : p.asset_url ? [p.asset_url] : []).map((url, index) => (
+                  <Box key={`${p.id}-asset-${index}`} component="img" src={url} alt="" sx={{ width: 160, height: 160, objectFit: 'cover', borderRadius: 1, flex: '0 0 auto' }} />
+                ))}
+              </Stack>
+            )}
             <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', mt: 1 }}>
                   {readableSmmText(p.text_snapshot)}
             </Typography>

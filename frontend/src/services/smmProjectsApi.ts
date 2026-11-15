@@ -389,6 +389,7 @@ export interface PublicationWithProject {
   channel: string;
   asset_id: number | null;
   asset_url: string | null;
+  asset_urls: string[];
   text_snapshot: string;
   status: string;
   scheduled_at: string | null;

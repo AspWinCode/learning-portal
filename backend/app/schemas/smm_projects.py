@@ -369,5 +369,6 @@ class PublicationWithProjectOut(PublicationOut):
     картинки (join по asset_id делается в роутере, не в ORM-relationship)."""
     project_code: str
     asset_url: Optional[str] = None
+    asset_urls: List[str] = Field(default_factory=list)
 
     model_config = _ORM

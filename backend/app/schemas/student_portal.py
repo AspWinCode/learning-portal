@@ -231,6 +231,26 @@ class StudentAbonementOut(BaseModel):
     training_start_date: Optional[date] = None
 
 
+class KodikFeedbackRequest(BaseModel):
+    answer: Literal["enjoying", "difficult", "need_help", "not_really"]
+
+
+class KodikFeedbackStatus(BaseModel):
+    should_prompt: bool
+    period_label: str
+
+
+class KodikFeedbackSummaryRow(BaseModel):
+    answer: str
+    count: int
+
+
+class KodikFeedbackSummary(BaseModel):
+    period_label: str
+    total: int
+    rows: List[KodikFeedbackSummaryRow]
+
+
 class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str = Field(..., min_length=6)

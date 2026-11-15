@@ -327,6 +327,20 @@ class StudentCredential(Base):
     student = relationship("Student", back_populates="credential")
 
 
+class KodikStudentFeedback(Base):
+    """Monthly answer to Kodik's student experience check-in."""
+
+    __tablename__ = "kodik_student_feedback"
+    __table_args__ = (UniqueConstraint("student_id", "period_label", name="uq_kodik_feedback_student_period"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True)
+    period_label = Column(String(16), nullable=False, index=True)
+    answer = Column(String(32), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    student = relationship("Student")
+
+
 class CourseCatalogItemKind(str, enum.Enum):
     INTERNAL = "internal"
     EXTERNAL = "external"

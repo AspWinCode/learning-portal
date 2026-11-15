@@ -2,7 +2,7 @@
 import hashlib
 import hmac
 import re
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -33,6 +33,7 @@ from app.models import (
     StudentCourseAccessStatus,
     StudentCourseProgress,
     StudentCredential,
+    KodikStudentFeedback,
     Topic,
     User,
     UserRole,
@@ -66,6 +67,10 @@ from app.schemas.student_portal import (
     StudentPortalAdminView,
     StudentProfileOut,
     UpcomingLessonOut,
+    KodikFeedbackRequest,
+    KodikFeedbackStatus,
+    KodikFeedbackSummary,
+    KodikFeedbackSummaryRow,
 )
 from app.services.kodex_sso import SSO_KODEX_SHARED_SECRET, build_launch_redirect_url
 from app.student_display import get_student_first_name
@@ -213,6 +218,58 @@ def _verify_kodex_signature(raw_body: bytes, signature_header: str) -> bool:
     return hmac.compare_digest(expected, signature_header)
 
 router = APIRouter()
+
+
+def _kodik_period_label(now: datetime) -> str:
+    return f"{now.year:04d}-{now.month:02d}"
+
+
+@router.get("/kodik-feedback/status", response_model=KodikFeedbackStatus)
+async def get_kodik_feedback_status(
+    current_student: Student = Depends(auth.get_current_student),
+    db: Session = Depends(get_db),
+):
+    period_label = _kodik_period_label(datetime.now(timezone.utc))
+    existing = db.query(KodikStudentFeedback.id).filter(
+        KodikStudentFeedback.student_id == current_student.id,
+        KodikStudentFeedback.period_label == period_label,
+    ).first()
+    return KodikFeedbackStatus(should_prompt=existing is None, period_label=period_label)
+
+
+@router.post("/kodik-feedback", response_model=KodikFeedbackStatus)
+async def submit_kodik_feedback(
+    payload: KodikFeedbackRequest,
+    current_student: Student = Depends(auth.get_current_student),
+    db: Session = Depends(get_db),
+):
+    period_label = _kodik_period_label(datetime.now(timezone.utc))
+    row = db.query(KodikStudentFeedback).filter(
+        KodikStudentFeedback.student_id == current_student.id,
+        KodikStudentFeedback.period_label == period_label,
+    ).first()
+    if row:
+        row.answer = payload.answer
+    else:
+        db.add(KodikStudentFeedback(student_id=current_student.id, period_label=period_label, answer=payload.answer))
+    db.commit()
+    return KodikFeedbackStatus(should_prompt=False, period_label=period_label)
+
+
+@router.get("/admin/kodik-feedback/summary", response_model=KodikFeedbackSummary)
+async def get_kodik_feedback_summary(
+    current_user: User = Depends(_analytics_permission),
+    db: Session = Depends(get_db),
+):
+    period_label = _kodik_period_label(datetime.now(timezone.utc))
+    rows = db.query(KodikStudentFeedback.answer, func.count(KodikStudentFeedback.id)).filter(
+        KodikStudentFeedback.period_label == period_label,
+    ).group_by(KodikStudentFeedback.answer).all()
+    return KodikFeedbackSummary(
+        period_label=period_label,
+        total=sum(int(count) for _, count in rows),
+        rows=[KodikFeedbackSummaryRow(answer=answer, count=int(count)) for answer, count in rows],
+    )
 
 
 # ─── Вход ученика ────────────────────────────────────────────────────────────

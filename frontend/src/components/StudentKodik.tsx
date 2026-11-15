@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Box, IconButton, Typography } from '@mui/material';
+import { Box, Button, IconButton, Stack, Typography } from '@mui/material';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import CloseIcon from '@mui/icons-material/Close';
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
+import { studentPortalApi } from '../services/studentPortalApi';
 
 interface StudentKodikProps {
   coursesCount: number;
@@ -20,6 +21,26 @@ const StudentKodik: React.FC<StudentKodikProps> = ({ coursesCount, scheduleCount
   }, [coursesCount, progress, scheduleCount]);
   const [messageIndex, setMessageIndex] = useState(0);
   const [open, setOpen] = useState(true);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedbackDone, setFeedbackDone] = useState(false);
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
+
+  useEffect(() => {
+    studentPortalApi.getKodikFeedbackStatus()
+      .then((status) => setFeedbackOpen(status.should_prompt))
+      .catch(() => undefined);
+  }, []);
+
+  const submitFeedback = async (answer: 'enjoying' | 'difficult' | 'need_help' | 'not_really') => {
+    setFeedbackSubmitting(true);
+    try {
+      await studentPortalApi.submitKodikFeedback(answer);
+      setFeedbackDone(true);
+      window.setTimeout(() => setFeedbackOpen(false), 2200);
+    } finally {
+      setFeedbackSubmitting(false);
+    }
+  };
 
   useEffect(() => setMessageIndex(0), [messages]);
 
@@ -37,15 +58,33 @@ const StudentKodik: React.FC<StudentKodikProps> = ({ coursesCount, scheduleCount
             <CloseIcon sx={{ fontSize: 16 }} />
           </IconButton>
           <Typography sx={{ color: '#AB67E5', fontSize: '0.68rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: 0.6, mb: 0.45 }}>Кодик</Typography>
-          <Typography key={messageIndex} sx={{ color: 'rgba(255,255,255,0.88)', fontSize: '0.82rem', lineHeight: 1.4, pr: 1.5, animation: 'kodikMessageIn 260ms ease-out', '@keyframes kodikMessageIn': { from: { opacity: 0, transform: 'translateY(5px)' }, to: { opacity: 1, transform: 'translateY(0)' } } }}>{messages[messageIndex]}</Typography>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
-            <Box sx={{ display: 'flex', gap: 0.45 }}>
-              {messages.map((_, index) => <Box key={index} sx={{ width: 5, height: 5, borderRadius: '50%', bgcolor: index === messageIndex ? '#AB67E5' : 'rgba(255,255,255,0.25)' }} />)}
-            </Box>
-            <Typography component="button" onClick={() => setMessageIndex((index) => (index + 1) % messages.length)} sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.6, border: 0, bgcolor: 'transparent', color: '#C99AF2', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 800, p: 0, transition: 'transform 160ms ease, color 160ms ease', '&:hover': { color: '#fff', transform: 'translateX(3px)' } }}>
-              Ещё <ArrowForwardIosIcon sx={{ fontSize: 9 }} />
-            </Typography>
-          </Box>
+          {feedbackOpen ? (
+            feedbackDone ? (
+              <Typography sx={{ color: 'rgba(255,255,255,0.88)', fontSize: '0.82rem', lineHeight: 1.4, animation: 'kodikMessageIn 260ms ease-out' }}>Спасибо! Я передам твоё мнение команде 💜</Typography>
+            ) : (
+              <>
+                <Typography sx={{ color: 'rgba(255,255,255,0.88)', fontSize: '0.82rem', lineHeight: 1.4, mb: 1.1 }}>Как идёт твоё обучение? Всё нравится?</Typography>
+                <Stack spacing={0.65}>
+                  {[
+                    ['enjoying', 'Да, всё нравится'],
+                    ['difficult', 'Нравится, но иногда сложно'],
+                    ['need_help', 'Нужна помощь'],
+                    ['not_really', 'Пока не очень'],
+                  ].map(([answer, label]) => (
+                    <Button key={answer} size="small" disabled={feedbackSubmitting} onClick={() => submitFeedback(answer as 'enjoying' | 'difficult' | 'need_help' | 'not_really')} sx={{ justifyContent: 'flex-start', color: 'rgba(255,255,255,0.84)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 1.5, px: 1, py: 0.35, fontSize: '0.7rem', textTransform: 'none', '&:hover': { bgcolor: 'rgba(171,103,229,0.18)', borderColor: '#AB67E5' } }}>{label}</Button>
+                  ))}
+                </Stack>
+              </>
+            )
+          ) : (
+            <>
+              <Typography key={messageIndex} sx={{ color: 'rgba(255,255,255,0.88)', fontSize: '0.82rem', lineHeight: 1.4, pr: 1.5, animation: 'kodikMessageIn 260ms ease-out', '@keyframes kodikMessageIn': { from: { opacity: 0, transform: 'translateY(5px)' }, to: { opacity: 1, transform: 'translateY(0)' } } }}>{messages[messageIndex]}</Typography>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
+                <Box sx={{ display: 'flex', gap: 0.45 }}>{messages.map((_, index) => <Box key={index} sx={{ width: 5, height: 5, borderRadius: '50%', bgcolor: index === messageIndex ? '#AB67E5' : 'rgba(255,255,255,0.25)' }} />)}</Box>
+                <Typography component="button" onClick={() => setMessageIndex((index) => (index + 1) % messages.length)} sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.6, border: 0, bgcolor: 'transparent', color: '#C99AF2', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 800, p: 0, transition: 'transform 160ms ease, color 160ms ease', '&:hover': { color: '#fff', transform: 'translateX(3px)' } }}>Ещё <ArrowForwardIosIcon sx={{ fontSize: 9 }} /></Typography>
+              </Box>
+            </>
+          )}
         </Box>
       )}
       <Box sx={{ position: 'relative', width: { xs: 58, sm: 70 }, height: { xs: 58, sm: 70 } }}>

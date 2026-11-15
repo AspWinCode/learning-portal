@@ -67,6 +67,14 @@ export const studentPortalApi = {
       return null;
     }
   },
+  getKodikFeedbackStatus: async (): Promise<{ should_prompt: boolean; period_label: string }> => {
+    const response = await studentPortalClient.get('/api/student-portal/kodik-feedback/status');
+    return response.data;
+  },
+  submitKodikFeedback: async (answer: 'enjoying' | 'difficult' | 'need_help' | 'not_really') => {
+    const response = await studentPortalClient.post('/api/student-portal/kodik-feedback', { answer });
+    return response.data as { should_prompt: boolean; period_label: string };
+  },
   saveToken: (token: string) => localStorage.setItem(STUDENT_PORTAL_TOKEN_KEY, token),
   getToken: (): string | null => localStorage.getItem(STUDENT_PORTAL_TOKEN_KEY),
   logout: () => localStorage.removeItem(STUDENT_PORTAL_TOKEN_KEY),

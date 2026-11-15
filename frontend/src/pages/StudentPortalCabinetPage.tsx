@@ -9,14 +9,8 @@ import {
   Stack,
   LinearProgress,
   Chip,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
   IconButton,
 } from '@mui/material';
-import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import LogoutIcon from '@mui/icons-material/Logout';
 import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
 import MilitaryTechIcon from '@mui/icons-material/MilitaryTech';
@@ -61,13 +55,6 @@ const StudentPortalCabinetPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [launchingId, setLaunchingId] = useState<number | null>(null);
-  const [pwOpen, setPwOpen] = useState(false);
-  const [pwCurrent, setPwCurrent] = useState('');
-  const [pwNew, setPwNew] = useState('');
-  const [pwConfirm, setPwConfirm] = useState('');
-  const [pwLoading, setPwLoading] = useState(false);
-  const [pwError, setPwError] = useState<string | null>(null);
-  const [pwSuccess, setPwSuccess] = useState(false);
   const navigate = useNavigate();
   useManifestOverride('/manifest-student.webmanifest');
 
@@ -96,17 +83,6 @@ const StudentPortalCabinetPage: React.FC = () => {
   };
 
   const handleLogout = () => { studentPortalApi.logout(); navigate('/student-portal/login', { replace: true }); };
-  const handlePwOpen = () => { setPwOpen(true); setPwError(null); setPwSuccess(false); setPwCurrent(''); setPwNew(''); setPwConfirm(''); };
-  const handlePwClose = () => { if (!pwLoading) setPwOpen(false); };
-  const handlePwSubmit = async () => {
-    setPwError(null);
-    if (pwNew.length < 6) { setPwError('Новый пароль — минимум 6 символов'); return; }
-    if (pwNew !== pwConfirm) { setPwError('Пароли не совпадают'); return; }
-    setPwLoading(true);
-    try { await studentPortalApi.changePassword(pwCurrent, pwNew); setPwSuccess(true); setTimeout(() => setPwOpen(false), 1500); }
-    catch (err: any) { setPwError(err.response?.data?.detail || 'Ошибка смены пароля'); }
-    finally { setPwLoading(false); }
-  };
 
   if (loading) {
     return (
@@ -193,14 +169,6 @@ const StudentPortalCabinetPage: React.FC = () => {
           {/* Actions */}
           <Stack direction="row" gap={1} sx={{ flexShrink: 0 }}>
             <IconButton
-              onClick={handlePwOpen}
-              size="small"
-              sx={{ color: 'rgba(255,255,255,0.6)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', '&:hover': { color: '#fff', borderColor: 'rgba(255,255,255,0.3)', bgcolor: 'rgba(255,255,255,0.08)' } }}
-              title="Сменить пароль"
-            >
-              <LockOutlinedIcon fontSize="small" />
-            </IconButton>
-            <IconButton
               onClick={handleLogout}
               size="small"
               sx={{ color: 'rgba(255,255,255,0.6)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '10px', '&:hover': { color: '#FF6B6B', borderColor: 'rgba(255,107,107,0.3)', bgcolor: 'rgba(255,107,107,0.08)' } }}
@@ -263,7 +231,7 @@ const StudentPortalCabinetPage: React.FC = () => {
           <Stack gap={2}>
 
             {/* Schedule */}
-            <Box>
+            <Box sx={{ order: 2 }}>
               <Typography sx={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.68rem', fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', mb: 1 }}>
                 📅 Расписание занятий
               </Typography>
@@ -371,7 +339,7 @@ const StudentPortalCabinetPage: React.FC = () => {
             </Box>
 
             {/* Courses */}
-            <Box>
+            <Box sx={{ order: 1 }}>
               <Typography sx={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.68rem', fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', mb: 1 }}>
                 🚀 Мои курсы
               </Typography>
@@ -507,7 +475,7 @@ const StudentPortalCabinetPage: React.FC = () => {
           </Stack>
 
           {/* ── Right column: Grades ──────────────────────────────────────── */}
-          <Box>
+          <Box sx={{ order: { xs: 3, lg: 2 } }}>
             <Typography sx={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.68rem', fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', mb: 1 }}>
               ⭐ Последние оценки
             </Typography>
@@ -579,58 +547,6 @@ const StudentPortalCabinetPage: React.FC = () => {
         </Box>
       </Box>
 
-      {/* ── Change password dialog ────────────────────────────────────────── */}
-      <Dialog open={pwOpen} onClose={handlePwClose} maxWidth="xs" fullWidth
-        PaperProps={{ sx: { bgcolor: '#2A2348', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 3, backgroundImage: 'none' } }}
-      >
-        <DialogTitle sx={{ color: '#fff', fontWeight: 800 }}>Сменить пароль</DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ mt: 1 }}>
-            {pwSuccess ? (
-              <Alert severity="success" sx={{ borderRadius: 2 }}>Пароль успешно изменён!</Alert>
-            ) : (
-              <>
-                {pwError && <Alert severity="error" sx={{ borderRadius: 2 }}>{pwError}</Alert>}
-                {[
-                  { label: 'Текущий пароль', value: pwCurrent, onChange: setPwCurrent },
-                  { label: 'Новый пароль', value: pwNew, onChange: setPwNew, helper: 'Минимум 6 символов' },
-                  { label: 'Повторите новый пароль', value: pwConfirm, onChange: setPwConfirm },
-                ].map(f => (
-                  <TextField
-                    key={f.label}
-                    label={f.label}
-                    type="password"
-                    size="small"
-                    fullWidth
-                    value={f.value}
-                    onChange={(e) => f.onChange(e.target.value)}
-                    disabled={pwLoading}
-                    helperText={f.helper}
-                    sx={{
-                      '& .MuiOutlinedInput-root': { borderRadius: 2, color: '#fff', '& fieldset': { borderColor: 'rgba(255,255,255,0.15)' }, '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.3)' } },
-                      '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.5)' },
-                      '& .MuiFormHelperText-root': { color: 'rgba(255,255,255,0.3)' },
-                    }}
-                  />
-                ))}
-              </>
-            )}
-          </Stack>
-        </DialogContent>
-        {!pwSuccess && (
-          <DialogActions sx={{ px: 3, pb: 3, gap: 1 }}>
-            <Button onClick={handlePwClose} disabled={pwLoading} sx={{ color: 'rgba(255,255,255,0.5)', borderRadius: 2 }}>Отмена</Button>
-            <Button
-              variant="contained"
-              onClick={handlePwSubmit}
-              disabled={pwLoading || !pwCurrent || !pwNew || !pwConfirm}
-              sx={{ background: 'linear-gradient(135deg,#7F23CC,#AB67E5)', borderRadius: 2, fontWeight: 700, boxShadow: '0 4px 12px rgba(127,35,204,0.4)' }}
-            >
-              {pwLoading ? 'Сохраняем…' : 'Сохранить'}
-            </Button>
-          </DialogActions>
-        )}
-      </Dialog>
       <PwaInstallButton />
     </Box>
   );

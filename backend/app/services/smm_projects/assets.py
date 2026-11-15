@@ -40,6 +40,14 @@ _IMAGE_TEXT_GUARD = (
     "букв или логотипов."
 )
 
+_VISUAL_REFERENCE_GUARD = (
+    "ОБЯЗАТЕЛЬНО СОХРАНИ СВЯЗЬ С РЕФЕРЕНСАМИ КОДАРЕНЫ: приложенные изображения — это "
+    "главный источник персонажей, силуэтов, костюмов, цветовой палитры, материалов, "
+    "света и художественного стиля. Не создавай абстрактный киберпанк, стоковую "
+    "иллюстрацию или новый несвязанный мир. Измени только сцену под тему публикации, "
+    "сохрани узнаваемый визуальный язык референса."
+)
+
 
 def _with_image_text_guard(prompt: str) -> str:
     return prompt if _IMAGE_TEXT_GUARD in prompt else f"{prompt}\n\n{_IMAGE_TEXT_GUARD}"
@@ -171,6 +179,8 @@ async def render_image(
     # AITunnel принимает до нескольких input_references для image-to-image.
     # Передаём именно загруженные изображения персонажей/стиля, а не только их OCR/AI-описания.
     references = _visual_input_references(db, project, content_id=getattr(content, "id", None))
+    if references and _VISUAL_REFERENCE_GUARD not in final_prompt:
+        final_prompt = f"{final_prompt}\n\n{_VISUAL_REFERENCE_GUARD}"
     result = await ai_gateway.generate_image(
         feature=f"smm_projects:{project.code}:render_image", prompt=final_prompt,
         input_references=references or None, user_id=getattr(user, "id", None),
@@ -179,12 +189,12 @@ async def render_image(
         # Gemini иногда отвечает finish_reason=STOP без картинки и без явного
         # block_reason — не блокировка по политике, а отказ именно совмещать
         # запрос с переданными референсами (часто это реальные фото людей на
-        # турнирных фотографиях). Явного флага для этого нет, поэтому просто
-        # пробуем тот же промпт без референсов, прежде чем показывать ошибку.
-        logger.warning("smm render_image retrying without references after provider error: %s", result.error)
+        # Не теряем связь с брендом при повторе: уменьшаем набор до одного
+        # референса, но не запускаем нерелевантную генерацию без визуального якоря.
+        logger.warning("smm render_image retrying with one reference after provider error: %s", result.error)
         result = await ai_gateway.generate_image(
             feature=f"smm_projects:{project.code}:render_image", prompt=final_prompt,
-            user_id=getattr(user, "id", None),
+            input_references=references[:1], user_id=getattr(user, "id", None),
         )
     if not result.ok or not result.data:
         raise ValueError(result.error or "Генератор изображений вернул пустой ответ")

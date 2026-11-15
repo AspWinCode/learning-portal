@@ -173,27 +173,28 @@ def _png_bytes() -> bytes:
 
 
 @pytest.mark.asyncio
-async def test_render_image_retries_without_references_when_provider_refuses(monkeypatch):
+async def test_render_image_retries_with_one_reference_when_provider_refuses(monkeypatch):
     """Gemini can answer finish_reason=STOP with no image and no explicit
-    block_reason when given reference photos it won't blend into the result
-    (commonly real people in the project's own reference images) — the fix is
-    to retry the same prompt without references rather than surfacing a dead
-    end to the editor."""
+    block_reason when given several reference photos — retry with one visual
+    anchor instead of generating an unrelated image without references."""
     monkeypatch.setattr(ai_gateway, "is_configured", lambda purpose: True)
 
-    knowledge_item = SmmKnowledgeItem()
-    knowledge_item.source_type = "image_reference"
-    knowledge_item.storage_key = "ref_key.png"
-    knowledge_item.content_type = "image/png"
-    knowledge_item.original_filename = "ref.png"
-    monkeypatch.setattr(assets.knowledge_svc, "list_items", lambda db, project: [knowledge_item])
+    knowledge_items = []
+    for index in range(2):
+        knowledge_item = SmmKnowledgeItem()
+        knowledge_item.source_type = "image_reference"
+        knowledge_item.storage_key = f"ref_key_{index}.png"
+        knowledge_item.content_type = "image/png"
+        knowledge_item.original_filename = f"ref_{index}.png"
+        knowledge_items.append(knowledge_item)
+    monkeypatch.setattr(assets.knowledge_svc, "list_items", lambda db, project: knowledge_items)
     monkeypatch.setattr(assets.storage, "read_bytes", lambda key: _png_bytes())
 
     calls = []
 
     async def fake_generate_image(**kwargs):
         calls.append(kwargs)
-        if kwargs.get("input_references"):
+        if kwargs.get("input_references") and len(kwargs["input_references"]) > 1:
             return ai_gateway.GatewayResult(ok=False, provider="tunnel", error="Google: Gemini could not generate an image (STOP)")
         return ai_gateway.GatewayResult(ok=True, provider="tunnel", model="gemini", data=[{"url": "https://cdn.example/retry.png"}])
 
@@ -206,7 +207,8 @@ async def test_render_image_retries_without_references_when_provider_refuses(mon
 
     assert len(calls) == 2
     assert calls[0]["input_references"]
-    assert "input_references" not in calls[1] or not calls[1]["input_references"]
+    assert assets._VISUAL_REFERENCE_GUARD in calls[0]["prompt"]
+    assert len(calls[1]["input_references"]) == 1
     assert asset.url == "https://cdn.example/retry.png"
     assert content.selected_asset_id == asset.id
 

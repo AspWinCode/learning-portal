@@ -11,9 +11,9 @@ const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
   parent: ['programs.access', 'groups.access', 'grades.access', 'characteristics.access', 'student_accounts.access', 'student_accounts.payment', 'parent_dashboard.access'],
   guest: ['programs.access'],
   seo_manager: ['seo.access', 'seo.manage'],
-  methodist: ['kodex.access', 'kodex.manage', 'technolab.access', 'technolab.manage', 'pixelforge.access', 'pixelforge.manage', 'codelab.access', 'codelab.manage', 'programs.access', 'programs.manage', 'lessons.access', 'lessons.manual_create'],
+  methodist: ['kodex.access', 'kodex.manage', 'technolab.access', 'technolab.manage', 'pixelforge.access', 'pixelforge.manage', 'codelab.access', 'codelab.manage', 'programs.access', 'programs.manage', 'lessons.access', 'lessons.mark_attendance', 'lessons.manual_create'],
   developer: ['agile.access', 'agile.manage', 'tasks.access', 'projects.access', 'owner_workspace.access'],
-  manager: ['students.access', 'student_portal.manage', 'groups.access', 'groups.manage', 'lessons.access', 'lessons.manual_create'],
+  manager: ['students.access', 'student_portal.manage', 'groups.access', 'groups.manage', 'lessons.access', 'lessons.mark_attendance', 'lessons.manual_create'],
 };
 
 export const getEffectiveRole = (user: User | null | undefined): string | null => {

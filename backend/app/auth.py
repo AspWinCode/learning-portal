@@ -132,6 +132,7 @@ DEFAULT_ROLE_PERMISSIONS: Dict[str, Set[str]] = {
         "groups.access",
         "groups.manage",
         "lessons.access",
+        "lessons.mark_attendance",
         "lessons.manual_create",
     },
 }

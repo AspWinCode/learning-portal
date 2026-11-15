@@ -5,6 +5,7 @@ import base64
 import io
 import mimetypes
 import logging
+import os
 from typing import Any, Dict, Optional
 
 import httpx
@@ -86,20 +87,45 @@ async def build_image_prompt(*, db: Session, project: SmmProject, content: SmmCo
     return (result.text or prompt).strip() if result.ok else prompt
 
 
-def _visual_input_references(db: Session, project: SmmProject) -> list[dict[str, object]]:
-    """Подготовить реальные изображения проекта для AITunnel image-to-image."""
+def _visual_input_references(
+    db: Session, project: SmmProject, *, content_id: Optional[int] = None,
+) -> list[dict[str, object]]:
+    """Подготовить разнообразный набор изображений проекта для image-to-image.
+
+    Провайдер принимает ограниченное число референсов. Не следует каждый раз
+    отправлять одну и ту же первую картинку (например, чумного доктора):
+    циклическое окно меняет набор персонажей между публикациями, сохраняя
+    детерминированность и повторяемость для одной публикации.
+    """
     references: list[dict[str, object]] = []
     total_bytes = 0
+    candidates = []
     for item in knowledge_svc.list_items(db, project):
-        if len(references) >= 4:
-            break
-        if item.source_type != "image_reference" and not (item.content_type or "").startswith("image/"):
+        content_type = (item.content_type or "").lower()
+        filename = (item.original_filename or "").lower()
+        suffix = os.path.splitext(filename)[1]
+        is_image = (
+            item.source_type == "image_reference"
+            or content_type.startswith("image/")
+            or suffix in {".jpg", ".jpeg", ".png", ".webp"}
+        )
+        if not is_image:
             continue
         if not item.storage_key:
             continue
+        candidates.append(item)
+
+    if candidates:
+        max_references = 4
+        start = (max(int(content_id or 1), 1) - 1) % len(candidates)
+        candidates = [candidates[(start + index) % len(candidates)] for index in range(min(max_references, len(candidates)))]
+
+    for item in candidates:
         content_type = (item.content_type or mimetypes.guess_type(item.original_filename or "")[0] or "").lower()
         if content_type == "image/jpg":
             content_type = "image/jpeg"
+        if not content_type.startswith("image/"):
+            content_type = mimetypes.guess_type(item.original_filename or "")[0] or "image/png"
         if content_type not in {"image/png", "image/jpeg", "image/webp"}:
             continue
         raw = storage.read_bytes(item.storage_key)
@@ -133,7 +159,7 @@ async def render_image(
 
     # AITunnel принимает до нескольких input_references для image-to-image.
     # Передаём именно загруженные изображения персонажей/стиля, а не только их OCR/AI-описания.
-    references = _visual_input_references(db, project)
+    references = _visual_input_references(db, project, content_id=getattr(content, "id", None))
     result = await ai_gateway.generate_image(
         feature=f"smm_projects:{project.code}:render_image", prompt=final_prompt,
         input_references=references or None, user_id=getattr(user, "id", None),

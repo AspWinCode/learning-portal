@@ -700,11 +700,12 @@ const TrainerLessonsPage: React.FC = () => {
     return format(d, 'd MMMM yyyy г.', { locale: ru });
   })() : '';
   const displayWeekday = viewDate ? WEEKDAY_NAMES[(new Date(viewDate + 'T12:00:00').getDay() + 6) % 7] : '';
-  // Прошедшие ручные уроки не должны оставаться в нижнем блоке расписания.
+  // Прошедшие ручные уроки не должны оставаться в нижнем блоке расписания,
+  // но при просмотре самой даты урока должны отображаться в таймлайне.
   // Сравниваем календарные даты в локальной таймзоне браузера, без UTC-сдвигов.
   const todayIso = format(new Date(), 'yyyy-MM-dd');
   const upcomingCustomLessons = customLessons.filter((lesson) => lesson.lesson_date >= todayIso);
-  const customLessonsForViewDate = upcomingCustomLessons.filter((lesson) => lesson.lesson_date === viewDate);
+  const customLessonsForViewDate = customLessons.filter((lesson) => lesson.lesson_date === viewDate);
   const timelineItems = [
     ...slots.map((slot) => ({ kind: 'slot' as const, sortTime: slot.start_time || '', slot })),
     ...customLessonsForViewDate.map((lesson) => ({ kind: 'custom' as const, sortTime: lesson.start_time || '', lesson })),

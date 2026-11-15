@@ -33,6 +33,17 @@ _CHARACTER_VARIANTS = (
     "ловкий кибер-ниндзя с чёрно-оранжевой палитрой и другим силуэтом",
 )
 
+_IMAGE_TEXT_GUARD = (
+    "КРИТИЧЕСКОЕ ПРАВИЛО ДЛЯ НАДПИСЕЙ: используй только русский язык и кириллицу. "
+    "Запрещены английские слова, латинские буквы и псевдотекст. Если не получается "
+    "написать надпись правильно по-русски, не добавляй на изображение никаких слов, "
+    "букв или логотипов."
+)
+
+
+def _with_image_text_guard(prompt: str) -> str:
+    return prompt if _IMAGE_TEXT_GUARD in prompt else f"{prompt}\n\n{_IMAGE_TEXT_GUARD}"
+
 
 def _character_variant(content_id: Optional[int]) -> str:
     index = (int(content_id or 0) - 1) % len(_CHARACTER_VARIANTS)
@@ -81,10 +92,10 @@ async def build_image_prompt(*, db: Session, project: SmmProject, content: SmmCo
         return prompt
     result = await ai_gateway.complete_text(
         feature=f"smm_projects:{project.code}:image_prompt",
-        system="Верни только короткий промпт для генератора изображений без пояснений.",
+        system="Верни только короткий промпт для генератора изображений без пояснений. Не используй латиницу в надписях.",
         prompt=prompt, user_id=getattr(user, "id", None), temperature=0.4, max_tokens=500,
     )
-    return (result.text or prompt).strip() if result.ok else prompt
+    return _with_image_text_guard((result.text or prompt).strip()) if result.ok else _with_image_text_guard(prompt)
 
 
 def _visual_input_references(
@@ -151,7 +162,7 @@ async def render_image(
     db: Session, user, *, project: SmmProject, content: SmmContent, prompt: Optional[str] = None,
     meta: Optional[Dict[str, Any]] = None,
 ) -> SmmContentAsset:
-    final_prompt = (prompt or await build_image_prompt(db=db, project=project, content=content, user=user)).strip()
+    final_prompt = _with_image_text_guard((prompt or await build_image_prompt(db=db, project=project, content=content, user=user)).strip())
     if not final_prompt:
         raise ValueError("Нет промпта для генерации изображения")
     if not ai_gateway.is_configured("image"):

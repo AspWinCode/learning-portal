@@ -8,6 +8,14 @@ from app.services import ai_gateway
 from app.services.smm_projects import assets
 
 
+def test_image_prompt_always_contains_russian_text_guard():
+    prompt = assets._with_image_text_guard("draw a social media character")
+
+    assert "только русский язык и кириллицу" in prompt
+    assert "латинские буквы" in prompt
+    assert assets._with_image_text_guard(prompt) == prompt
+
+
 def _project(code="test_project"):
     p = SmmProject()
     p.id = 1

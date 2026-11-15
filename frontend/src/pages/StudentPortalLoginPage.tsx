@@ -7,10 +7,9 @@ import {
   Typography,
   Alert,
 } from '@mui/material';
-import InstallMobileIcon from '@mui/icons-material/InstallMobile';
 import { studentPortalApi } from '../services/studentPortalApi';
-import { usePwaInstall } from '../hooks/usePwaInstall';
 import { useManifestOverride } from '../hooks/useManifestOverride';
+import PwaInstallButton from '../components/PwaInstallButton';
 
 const StudentPortalLoginPage: React.FC = () => {
   const [phone, setPhone] = useState('');
@@ -18,7 +17,6 @@ const StudentPortalLoginPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   useManifestOverride('/manifest-student.webmanifest');
-  const { canInstall, promptInstall, isInstalled, isIos } = usePwaInstall();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,25 +64,8 @@ const StudentPortalLoginPage: React.FC = () => {
           </Button>
         </Box>
 
-        {!isInstalled && canInstall && (
-          <Button
-            fullWidth
-            variant="outlined"
-            size="large"
-            startIcon={<InstallMobileIcon />}
-            onClick={promptInstall}
-            sx={{ mt: 2 }}
-          >
-            Установить приложение
-          </Button>
-        )}
-
-        {!isInstalled && !canInstall && isIos && (
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', mt: 2 }}>
-            Чтобы установить приложение на экран «Домой»: нажмите кнопку «Поделиться» в Safari и выберите «На экран «Домой»».
-          </Typography>
-        )}
       </Box>
+      <PwaInstallButton />
     </Box>
   );
 };

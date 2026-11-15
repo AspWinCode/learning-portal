@@ -36,7 +36,10 @@ const StudentKodik: React.FC<StudentKodikProps> = ({ coursesCount, scheduleCount
     try {
       await studentPortalApi.submitKodikFeedback(answer);
       setFeedbackDone(true);
-      window.setTimeout(() => setFeedbackOpen(false), 2200);
+      window.setTimeout(() => {
+        setFeedbackOpen(false);
+        setFeedbackDone(false);
+      }, 2200);
     } finally {
       setFeedbackSubmitting(false);
     }

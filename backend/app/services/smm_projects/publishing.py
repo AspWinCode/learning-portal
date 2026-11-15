@@ -24,6 +24,10 @@ from app.services.smm_projects.publishers.base import PublicationContext, Publis
 
 SUPPORTED_CHANNELS = channels_svc.SUPPORTED_CHANNELS
 PUBLISHERS = channels_svc.PUBLISHERS
+# VK is intentionally text-only in this pipeline: community tokens cannot
+# reliably upload wall photos. Other channels should retain the selected image
+# all the way through scheduling and delivery.
+CHANNELS_WITHOUT_ASSETS = {"vk"}
 
 logger = logging.getLogger(__name__)
 
@@ -167,6 +171,8 @@ def create_publications(
             raise ValueError(f"Материал #{content.id} можно публиковать только после одобрения")
         _ensure_carousel_assets(db, content)
         asset_id = item.get("asset_id") or getattr(content, "selected_asset_id", None)
+        if channel in CHANNELS_WITHOUT_ASSETS:
+            asset_id = None
         if asset_id and not db.query(SmmContentAsset).filter(SmmContentAsset.id == asset_id, SmmContentAsset.content_id == content.id).first():
             raise ValueError("Выбранный visual не принадлежит материалу")
         text = _publication_text(content, channel=channel)

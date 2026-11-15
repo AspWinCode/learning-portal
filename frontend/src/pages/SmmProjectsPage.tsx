@@ -585,7 +585,13 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
     try {
       const rows = await smm.publishBundle(
         id,
-        channels.map((channel) => ({ channel, content_id: id })),
+        channels.map((channel) => ({
+          channel,
+          content_id: id,
+          // VK cannot accept the generated image; every other channel keeps
+          // the selected visual attached to the scheduled publication.
+          asset_id: channel === 'vk' ? null : (assetsByContent[id]?.find((asset) => asset.is_selected)?.id || assetsByContent[id]?.[0]?.id || null),
+        })),
         scheduleAt[id] ? new Date(scheduleAt[id]).toISOString() : null
       );
       setPublications((r) => ({ ...r, [id]: rows }));

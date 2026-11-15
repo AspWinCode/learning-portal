@@ -956,7 +956,15 @@ def _attach_project_and_asset(db: Session, rows: List[SmmPublication]) -> List[S
         return []
     project_codes = {p.id: p.code for p in db.query(SmmProject).filter(SmmProject.id.in_({r.project_id for r in rows})).all()}
     asset_ids = {r.asset_id for r in rows if r.asset_id}
-    asset_urls = {a.id: a.url for a in db.query(SmmContentAsset).filter(SmmContentAsset.id.in_(asset_ids)).all()} if asset_ids else {}
+    asset_urls = {}
+    if asset_ids:
+        for asset in db.query(SmmContentAsset).filter(SmmContentAsset.id.in_(asset_ids)).all():
+            # Generated images are commonly stored locally as b64 data and do
+            # not have a provider URL. Expose the authenticated-app-independent
+            # file endpoint so scheduled publications can render their preview.
+            asset_urls[asset.id] = asset.url or (
+                f"/api/v1/smm-projects/assets/{asset.id}/file" if asset.storage_key else None
+            )
     for row in rows:
         row.project_code = project_codes.get(row.project_id, "")
         row.asset_url = asset_urls.get(row.asset_id) if row.asset_id else None

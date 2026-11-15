@@ -208,6 +208,8 @@ async def test_render_image_retries_with_one_reference_when_provider_refuses(mon
     assert len(calls) == 2
     assert calls[0]["input_references"]
     assert assets._VISUAL_REFERENCE_GUARD in calls[0]["prompt"]
+    assert "Не копируй автоматически персонажа" in calls[0]["prompt"]
+    assert "не делай его главным героем" in calls[0]["prompt"]
     assert len(calls[1]["input_references"]) == 1
     assert asset.url == "https://cdn.example/retry.png"
     assert content.selected_asset_id == asset.id

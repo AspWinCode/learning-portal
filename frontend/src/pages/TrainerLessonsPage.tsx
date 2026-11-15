@@ -746,6 +746,9 @@ const TrainerLessonsPage: React.FC = () => {
                 const lesson = item.lesson;
                 const startLabel = (lesson.start_time || '').slice(0, 5);
                 const endLabel = (lesson.end_time || '').slice(0, 5);
+                const lessonStudents = lesson.students || [];
+                const markedStudents = lessonStudents.filter((student: any) => student.attended || student.absence_reason).length;
+                const attendedStudents = lessonStudents.filter((student: any) => student.attended).length;
                 return (
                   <Card
                     key={`custom-${lesson.id}`}
@@ -779,6 +782,17 @@ const TrainerLessonsPage: React.FC = () => {
                           Тренер: {lesson.trainer_name}
                         </Typography>
                       )}
+                      <Chip
+                        size="small"
+                        label={
+                          markedStudents === 0
+                            ? 'Посещаемость: не отмечена'
+                            : `Посещаемость: ${markedStudents}/${lessonStudents.length} (были: ${attendedStudents})`
+                        }
+                        color={markedStudents === 0 ? 'default' : markedStudents === lessonStudents.length ? 'success' : 'warning'}
+                        variant="outlined"
+                        sx={{ mt: 1 }}
+                      />
                       <Stack direction="row" spacing={1} sx={{ mt: 1 }} flexWrap="wrap">
                         {canMarkAttendance && (
                           <Button

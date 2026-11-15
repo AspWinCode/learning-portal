@@ -388,6 +388,7 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
   const [scheduleAt, setScheduleAt] = useState<Record<number, string>>({});
   const [assetsByContent, setAssetsByContent] = useState<Record<number, smm.GeneratedAsset[]>>({});
   const [publications, setPublications] = useState<Record<number, smm.Publication[]>>({});
+  const [hiddenScheduledCount, setHiddenScheduledCount] = useState(0);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editText, setEditText] = useState('');
 
@@ -432,8 +433,19 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
           if (!aDate && bDate) return 1;
           return a.id - b.id;
         });
-        setItems(orderedItems);
-        const generated = await Promise.all(orderedItems.map(async (item) => [item.id, await smm.listContentAssets(item.id)] as const));
+        const publicationEntries = await Promise.all(
+          orderedItems.map(async (item) => [item.id, await smm.listPublications(item.id)] as const)
+        );
+        const activePublicationIds = new Set(
+          publicationEntries
+            .filter(([, rows]) => rows.some((row) => ['approved', 'scheduled', 'publishing'].includes(row.status)))
+            .map(([id]) => id)
+        );
+        const visibleItems = orderedItems.filter((item) => !activePublicationIds.has(item.id));
+        setHiddenScheduledCount(orderedItems.length - visibleItems.length);
+        setItems(visibleItems);
+        setPublications(Object.fromEntries(publicationEntries));
+        const generated = await Promise.all(visibleItems.map(async (item) => [item.id, await smm.listContentAssets(item.id)] as const));
         setAssetsByContent(Object.fromEntries(generated));
       })
       .catch(() => setItems([]));
@@ -597,6 +609,7 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
       setPublications((r) => ({ ...r, [id]: rows }));
       const pendingIds = rows.filter((row) => !['success', 'error', 'cancelled'].includes(row.status)).map((row) => row.id);
       if (pendingIds.length) await pollUntilSettled(id, pendingIds);
+      await reload();
     } catch (e) {
       setError(extractApiError(e, 'Ошибка'));
     } finally {
@@ -605,7 +618,15 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
   };
 
   if (!items) return <CircularProgress size={24} />;
-  if (items.length === 0) return <Alert severity="info">Пока нет черновиков — создайте материал на вкладке «Новый материал».</Alert>;
+  if (items.length === 0) {
+    return (
+      <Alert severity="info">
+        {hiddenScheduledCount
+          ? 'Все одобренные материалы уже запланированы и находятся во вкладке «Запланированные».'
+          : 'Пока нет черновиков — создайте материал на вкладке «Новый материал».'}
+      </Alert>
+    );
+  }
 
   return (
     <Stack spacing={2}>

@@ -1462,9 +1462,10 @@ const TrainerLessonsPage: React.FC = () => {
         </DialogActions>
       </Dialog>
 
-      {canAccessLessons && customLessonsForViewDate.length === 0 && (
+      {canAccessLessons && (
         <>
-          <Card variant="outlined" sx={{ mt: 2 }}>
+          {customLessonsForViewDate.length === 0 && (
+            <Card variant="outlined" sx={{ mt: 2 }}>
             <CardContent>
               <Typography variant="subtitle1" gutterBottom>
                 Ручные уроки (без группы)
@@ -1535,7 +1536,8 @@ const TrainerLessonsPage: React.FC = () => {
                 </Stack>
               )}
             </CardContent>
-          </Card>
+            </Card>
+          )}
 
           <Dialog open={!!customAttendanceLesson} onClose={() => setCustomAttendanceLesson(null)} maxWidth="sm" fullWidth>
             <DialogTitle>{customAttendanceLesson?.title} — посещаемость</DialogTitle>

@@ -8,6 +8,7 @@ import LegoLessonsPage from './LegoLessonsPage';
 import LegoDebtsPage from './LegoDebtsPage';
 import LegoPaymentsPage from './LegoPaymentsPage';
 import LegoEventsPage from './LegoEventsPage';
+import LegoStudentsSummaryPage from './LegoStudentsSummaryPage';
 
 const SECTIONS = [
   { id: 'lego-today', label: 'Сегодня', Page: LegoTodayPage },
@@ -17,6 +18,7 @@ const SECTIONS = [
   { id: 'lego-events', label: 'Мастер-классы', Page: LegoEventsPage },
   { id: 'lego-debts', label: 'Долги', Page: LegoDebtsPage },
   { id: 'lego-payments', label: 'Оплаты', Page: LegoPaymentsPage },
+  { id: 'lego-students-summary', label: 'Сводка учеников', Page: LegoStudentsSummaryPage },
 ];
 
 // Единая страница LEGO для владельца: все разделы на одном экране.

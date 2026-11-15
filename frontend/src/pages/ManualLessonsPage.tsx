@@ -26,7 +26,7 @@ import {
 import { format, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import Layout from '../components/Layout';
-import { salesApi, studentsApi } from '../services/api';
+import { salesApi, studentsApi, usersApi } from '../services/api';
 import { Student } from '../types';
 import { extractApiError } from '../utils/extractApiError';
 import type { AbsenceFollowUp } from '../types';
@@ -63,6 +63,8 @@ const ManualLessonsPage: React.FC = () => {
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
   const [trainerId, setTrainerId] = useState<string>('');
+  const [trainerOptions, setTrainerOptions] = useState<Array<{ id: number; full_name: string }>>([]);
+  const [trainersLoading, setTrainersLoading] = useState(false);
   const [lessonType, setLessonType] = useState<ManualLessonType>('makeup');
   const [comment, setComment] = useState('');
   const [studentQuery, setStudentQuery] = useState('');
@@ -131,6 +133,16 @@ const ManualLessonsPage: React.FC = () => {
     }, 300);
     return () => clearTimeout(t);
   }, [studentQuery]);
+
+  useEffect(() => {
+    if (!createOpen) return;
+    setTrainersLoading(true);
+    usersApi
+      .getAll('trainer')
+      .then((list) => setTrainerOptions(list.map((user) => ({ id: user.id, full_name: user.full_name || `Тренер #${user.id}` }))))
+      .catch(() => setTrainerOptions([]))
+      .finally(() => setTrainersLoading(false));
+  }, [createOpen]);
 
   // Загрузить открытые пропуски для выбранных учеников при типе «Отработка»
   useEffect(() => {
@@ -328,12 +340,24 @@ const ManualLessonsPage: React.FC = () => {
               />
             </Box>
             <Box sx={{ display: 'flex', gap: 2, mt: 2, flexWrap: 'wrap' }}>
-              <TextField
-                label="ID тренера *"
-                size="small"
-                value={trainerId}
-                onChange={(e) => setTrainerId(e.target.value)}
-              />
+              <FormControl size="small" sx={{ minWidth: 220 }} required>
+                <InputLabel>Тренер *</InputLabel>
+                <Select
+                  label="Тренер *"
+                  value={trainerId}
+                  onChange={(e) => setTrainerId(e.target.value)}
+                  disabled={trainersLoading}
+                >
+                  <MenuItem value="">
+                    <em>{trainersLoading ? 'Загрузка тренеров…' : 'Выберите тренера'}</em>
+                  </MenuItem>
+                  {trainerOptions.map((trainer) => (
+                    <MenuItem key={trainer.id} value={String(trainer.id)}>
+                      {trainer.full_name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
               <FormControl size="small" sx={{ minWidth: 180 }}>
                 <InputLabel>Тип урока</InputLabel>
                 <Select

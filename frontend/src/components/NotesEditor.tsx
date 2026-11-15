@@ -63,6 +63,7 @@ import CodeIcon from '@mui/icons-material/Code';
 import IntegrationInstructionsIcon from '@mui/icons-material/IntegrationInstructions';
 import LinkIcon from '@mui/icons-material/Link';
 import ImageIcon from '@mui/icons-material/Image';
+import AttachFileIcon from '@mui/icons-material/AttachFile';
 import TableChartIcon from '@mui/icons-material/TableChart';
 import CheckBoxOutlineBlankIcon from '@mui/icons-material/CheckBoxOutlineBlank';
 import TextFieldsIcon from '@mui/icons-material/TextFields';
@@ -215,6 +216,7 @@ const NotesEditor: React.FC<NotesEditorProps> = ({
   const isInternalChange = useRef(false);
   const editorRef = useRef<Editor | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Color picker
   const [colorAnchor, setColorAnchor] = useState<HTMLElement | null>(null);
@@ -393,6 +395,20 @@ const NotesEditor: React.FC<NotesEditorProps> = ({
     } catch (_) {}
   };
 
+  // Прикрепить произвольный файл (не только картинку) — вставляется ссылкой
+  // с именем файла, а не инлайн-картинкой; та же загрузка (onUploadImage —
+  // по факту generic uploadFile), просто другой способ вставки в контент.
+  const handleAttachFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !onUploadImage) return;
+    try {
+      const url = await onUploadImage(file);
+      const safeName = file.name.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      editor?.chain().focus().insertContent(`<a href="${url}" target="_blank" rel="noopener">📎 ${safeName}</a>&nbsp;`).run();
+    } catch (_) {}
+  };
+
   const handleInsertTable = () => {
     if (!editor) return;
     editor.chain().focus().insertTable({ rows: tableRows, cols: tableCols, withHeaderRow: true }).run();
@@ -510,6 +526,8 @@ const NotesEditor: React.FC<NotesEditorProps> = ({
             <>
               <input ref={imageInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageFile} />
               {btn('Загрузить изображение', false, () => imageInputRef.current?.click(), <ImageIcon fontSize="small" />)}
+              <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={handleAttachFile} />
+              {btn('Прикрепить файл', false, () => fileInputRef.current?.click(), <AttachFileIcon fontSize="small" />)}
             </>
           )}
         </Stack>

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Box, IconButton, Typography } from '@mui/material';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import CloseIcon from '@mui/icons-material/Close';
+import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
 
 interface StudentKodikProps {
   coursesCount: number;
@@ -11,11 +12,11 @@ interface StudentKodikProps {
 
 const StudentKodik: React.FC<StudentKodikProps> = ({ coursesCount, scheduleCount, progress }) => {
   const messages = useMemo(() => {
-    if (coursesCount === 0) return ['Пока курсов нет, но это ненадолго! Я рядом, если нужна помощь.', 'Загляни сюда позже — я первым замечу новые материалы.'];
-    if (scheduleCount > 0) return ['У тебя есть ближайшее занятие. Не забудь заглянуть в расписание!', 'Подготовься к занятию заранее — так будет легче стартовать.'];
-    if (progress >= 80) return ['Вау, почти финиш! Ещё немного — и все задачи будут покорены.', 'Так держать! Твой прогресс уже впечатляет.'];
-    if (progress > 0) return ['Отличный старт! Давай продолжим с того курса, где остановились.', 'Каждая решённая задача приближает тебя к следующему уровню.'];
-    return ['Привет! Выбери курс — я помогу не потеряться в обучении.', 'Начни с любого курса: я буду рядом и подскажу следующий шаг.'];
+    if (coursesCount === 0) return ['Пока курсов нет, но это ненадолго! Я рядом, если нужна помощь.', 'Загляни сюда позже — я первым замечу новые материалы.', 'А пока можешь познакомиться с кабинетом и расписанием.'];
+    if (scheduleCount > 0) return ['У тебя есть ближайшее занятие. Не забудь заглянуть в расписание!', 'Подготовься к занятию заранее — так будет легче стартовать.', 'Если что-то непонятно, спроси тренера на занятии.'];
+    if (progress >= 80) return ['Вау, почти финиш! Ещё немного — и все задачи будут покорены.', 'Так держать! Твой прогресс уже впечатляет.', 'После завершения курса не забудь открыть следующий уровень.'];
+    if (progress > 0) return ['Отличный старт! Давай продолжим с того курса, где остановились.', 'Каждая решённая задача приближает тебя к следующему уровню.', 'Попробуй сегодня решить ещё одну задачу — маленькими шагами быстрее.'];
+    return ['Привет! Выбери курс — я помогу не потеряться в обучении.', 'Начни с любого курса: я буду рядом и подскажу следующий шаг.', 'Нажми «Открыть курс», чтобы начать обучение.'];
   }, [coursesCount, progress, scheduleCount]);
   const [messageIndex, setMessageIndex] = useState(0);
   const [open, setOpen] = useState(true);
@@ -24,7 +25,7 @@ const StudentKodik: React.FC<StudentKodikProps> = ({ coursesCount, scheduleCount
 
   useEffect(() => {
     if (messages.length < 2) return undefined;
-    const timer = window.setInterval(() => setMessageIndex((index) => (index + 1) % messages.length), 12000);
+    const timer = window.setInterval(() => setMessageIndex((index) => (index + 1) % messages.length), 8000);
     return () => window.clearInterval(timer);
   }, [messages]);
 
@@ -37,6 +38,14 @@ const StudentKodik: React.FC<StudentKodikProps> = ({ coursesCount, scheduleCount
           </IconButton>
           <Typography sx={{ color: '#AB67E5', fontSize: '0.68rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: 0.6, mb: 0.45 }}>Кодик</Typography>
           <Typography sx={{ color: 'rgba(255,255,255,0.88)', fontSize: '0.82rem', lineHeight: 1.4, pr: 1.5 }}>{messages[messageIndex]}</Typography>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
+            <Box sx={{ display: 'flex', gap: 0.45 }}>
+              {messages.map((_, index) => <Box key={index} sx={{ width: 5, height: 5, borderRadius: '50%', bgcolor: index === messageIndex ? '#AB67E5' : 'rgba(255,255,255,0.25)' }} />)}
+            </Box>
+            <Typography component="button" onClick={() => setMessageIndex((index) => (index + 1) % messages.length)} sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.6, border: 0, bgcolor: 'transparent', color: '#C99AF2', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 800, p: 0 }}>
+              Ещё <ArrowForwardIosIcon sx={{ fontSize: 9 }} />
+            </Typography>
+          </Box>
         </Box>
       )}
       <Box sx={{ position: 'relative', width: { xs: 58, sm: 70 }, height: { xs: 58, sm: 70 } }}>

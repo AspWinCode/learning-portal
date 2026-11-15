@@ -365,6 +365,7 @@ const StudentPortalCabinetPage: React.FC = () => {
                         flexDirection: 'column',
                         transition: 'all 0.25s',
                         '&:hover': { border: '1px solid rgba(127,35,204,0.4)', boxShadow: '0 6px 24px rgba(127,35,204,0.18)', transform: 'translateY(-2px)' },
+                        '@media (prefers-reduced-motion: reduce)': { transition: 'none', '&:hover': { transform: 'none' } },
                       }}>
                         {course.cover_image_url ? (
                           <Box sx={{ position: 'relative', height: 120, overflow: 'hidden' }}>

@@ -322,6 +322,8 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
   const [nodeTitle, setNodeTitle] = useState('');
   const [nodeContent, setNodeContent] = useState('');
   const [ogeAnswer, setOgeAnswer] = useState('');
+  const [ogeAttachments, setOgeAttachments] = useState<TaskAttachment[]>([]);
+  const [ogeAttachmentLoading, setOgeAttachmentLoading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<CodelabLearningItem | null>(null);
   const [showArchivedCourses, setShowArchivedCourses] = useState(false);
   const [courseMenuAnchor, setCourseMenuAnchor] = useState<{ el: HTMLElement; course: CodelabCourse } | null>(null);
@@ -392,6 +394,7 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
     setNodeTitle('');
     setNodeContent('');
     setOgeAnswer('');
+    setOgeAttachments([]);
     setTaskStatement('');
     setTaskInputFormat('');
     setTaskOutputFormat('');
@@ -409,6 +412,7 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
     setNodeTitle(item.title);
     setNodeContent(item.content || '');
     setOgeAnswer(item.oge_answer?.answer || '');
+    if (item.type === 'oge_task') setOgeAttachments(extractTaskAttachments(item.content || ''));
     if (item.type === 'task' && item.problem_revision_id) {
       setTaskLoading(true);
       api.getTask(item.problem_revision_id)
@@ -568,7 +572,7 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
           onToast({ msg: 'Тест добавлен' });
         }
       } else if (nodeDialog.type === 'oge_task') {
-        const patch = { title: nodeTitle, content: nodeContent, oge_answer: ogeAnswer.trim() };
+        const patch = { title: nodeTitle, content: withTaskAttachments(nodeContent, ogeAttachments), oge_answer: ogeAnswer.trim() };
         if (nodeDialog.editing) {
           await api.updateItem(nodeDialog.editing.id, patch);
           onToast({ msg: 'Задание ОГЭ обновлено' });
@@ -918,6 +922,46 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
             placeholder="Условие задания ОГЭ — форматирование, изображения, формулы…"
             onUploadImage={async (file) => (await api.uploadFile(file)).url}
           />
+          <Stack spacing={1} sx={{ mt: 2 }}>
+            <Typography variant="subtitle2">Файлы к заданию ОГЭ</Typography>
+            <input
+              type="file" multiple disabled={ogeAttachmentLoading}
+              aria-label="Прикрепить файл к заданию ОГЭ"
+              onChange={async (event) => {
+                const files = Array.from(event.target.files || []);
+                if (!files.length) return;
+                setOgeAttachmentLoading(true);
+                try {
+                  const uploaded = await Promise.all(files.map(async (file) => ({
+                    ...(await api.uploadTaskAttachment(file)),
+                    filename: file.name, contentType: file.type || 'application/octet-stream', size: file.size,
+                  })));
+                  setOgeAttachments((prev) => [...prev, ...uploaded]);
+                } catch (e: any) {
+                  onToast({ msg: errMsg(e), err: true });
+                } finally {
+                  setOgeAttachmentLoading(false);
+                  event.target.value = '';
+                }
+              }}
+            />
+            {!!ogeAttachments.length && (
+              <Stack spacing={0.5}>
+                {ogeAttachments.map((file) => (
+                  <Stack key={`${file.url}-${file.filename}`} direction="row" alignItems="center" spacing={1}>
+                    <AttachFileIcon fontSize="small" color="action" />
+                    <Typography variant="body2" sx={{ flex: 1 }}>{file.filename}</Typography>
+                    <IconButton size="small" onClick={() => setOgeAttachments((prev) => prev.filter((item) => item.url !== file.url))}>
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Stack>
+                ))}
+              </Stack>
+            )}
+            <Typography variant="caption" color="text.secondary">
+              Word, PowerPoint, Excel, PDF, RAR, ZIP и другие файлы.
+            </Typography>
+          </Stack>
           <TextField
             fullWidth required label="Правильный ответ" value={ogeAnswer}
             onChange={(e) => setOgeAnswer(e.target.value)}

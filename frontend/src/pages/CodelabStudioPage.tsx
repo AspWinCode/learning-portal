@@ -7,7 +7,7 @@ import {
 import {
   Delete as DeleteIcon, DragIndicator as DragIndicatorIcon, ExpandLess as ExpandLessIcon,
   ExpandMore as ExpandMoreIcon, MoreVert as MoreVertIcon,
-  Publish as PublishIcon, UnpublishedOutlined as UnpublishIcon,
+  Publish as PublishIcon, UnpublishedOutlined as UnpublishIcon, AttachFile as AttachFileIcon,
 } from '@mui/icons-material';
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -156,9 +156,9 @@ function TreeItemRow({ item, depth, canManage, isFirst, isLast, onAddChild, onEd
   const isStructural = STRUCTURAL_TYPE_SET.has(item.type);
   const childStructType = isStructural ? CODELAB_CHILD_STRUCTURAL_TYPE[item.type as CodelabStructuralType] : null;
   const hasChildren = item.children.length > 0;
-  // Развёрнуто по умолчанию — старое поведение (все узлы всегда видны)
-  // не меняется, стрелка только добавляет возможность свернуть ветку.
-  const [open, setOpen] = useState(true);
+  // Методист начинает работу со свернутым деревом курса; нужную ветку можно
+  // раскрыть стрелкой.
+  const [open, setOpen] = useState(false);
   const close = () => setAnchorEl(null);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id, disabled: !canManage });
 
@@ -240,6 +240,34 @@ function TreeItemRow({ item, depth, canManage, isFirst, isLast, onAddChild, onEd
 export type Toast = { msg: string; err?: boolean } | null;
 type TabKey = 'courses' | 'submissions' | 'analytics' | 'status';
 
+type TaskAttachment = { filename: string; url: string; contentType: string; size: number };
+
+const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (char) => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+}[char] || char));
+
+function extractTaskAttachments(html: string): TaskAttachment[] {
+  const result: TaskAttachment[] = [];
+  const re = /<a[^>]+data-codelab-attachment="true"[^>]+href="([^"]+)"[^>]+data-filename="([^"]*)"[^>]+data-content-type="([^"]*)"[^>]+data-size="(\d+)"[^>]*>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(html))) {
+    result.push({ url: match[1], filename: match[2], contentType: match[3], size: Number(match[4]) || 0 });
+  }
+  return result;
+}
+
+function withTaskAttachments(statement: string, attachments: TaskAttachment[]): string {
+  const withoutBlock = statement.replace(/<div data-codelab-attachments="true">[\s\S]*?<\/div>/gi, '').trim();
+  if (!attachments.length) return withoutBlock;
+  const links = attachments.map((file) => (
+    `<li><a data-codelab-attachment="true" href="${escapeHtml(file.url)}" ` +
+    `data-filename="${escapeHtml(file.filename)}" data-content-type="${escapeHtml(file.contentType)}" ` +
+    `data-size="${file.size}" target="_blank" rel="noreferrer">${escapeHtml(file.filename)}</a>` +
+    ` <small>(${(file.size / 1024).toFixed(1)} КБ)</small></li>`
+  )).join('');
+  return `${withoutBlock}${withoutBlock ? '<p><br></p>' : ''}<div data-codelab-attachments="true"><p><strong>Файлы к заданию</strong></p><ul>${links}</ul></div>`;
+}
+
 /** Студия методиста (создание/публикация курсов), кабинет преподавателя
  * (просмотр и оценка посылок), аналитика курса и эксплуатационный статус
  * (ADM-004, только admin/owner) — всё через прокси в Codelab, из своего
@@ -308,6 +336,8 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
   const [taskInputFormat, setTaskInputFormat] = useState('');
   const [taskOutputFormat, setTaskOutputFormat] = useState('');
   const [taskTests, setTaskTests] = useState<CodelabProblemTest[]>([{ input: '', expected: '', is_hidden: false }]);
+  const [taskAttachments, setTaskAttachments] = useState<TaskAttachment[]>([]);
+  const [taskAttachmentLoading, setTaskAttachmentLoading] = useState(false);
   const [taskLoading, setTaskLoading] = useState(false);
 
   // Snap!-задание: пошаговая инструкция слева (см. CoursePage в Codelab),
@@ -366,6 +396,7 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
     setTaskInputFormat('');
     setTaskOutputFormat('');
     setTaskTests([{ input: '', expected: '', is_hidden: false }]);
+    setTaskAttachments([]);
     setSnapSteps([{ title: '', content: '' }]);
     setQuizQuestions([{ text: '', options: [{ text: '', correct: false }, { text: '', correct: false }] }]);
     setQuizImportOpen(false);
@@ -383,6 +414,7 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
       api.getTask(item.problem_revision_id)
         .then((task) => {
           setTaskStatement(task.statement || '');
+          setTaskAttachments(extractTaskAttachments(task.statement || ''));
           setTaskInputFormat(task.input_format || '');
           setTaskOutputFormat(task.output_format || '');
           setTaskTests(task.tests.length > 0 ? task.tests : [{ input: '', expected: '', is_hidden: false }]);
@@ -493,6 +525,7 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
           // этого любое решение получало Wrong Answer.
           checker: 'trimmed',
         };
+        payload.statement = withTaskAttachments(taskStatement, taskAttachments);
         if (nodeDialog.editing) {
           if (nodeDialog.editing.problem_revision_id) {
             await api.updateTask(nodeDialog.editing.problem_revision_id, payload);
@@ -914,6 +947,52 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
                 placeholder="Условие задачи — форматирование, изображения (Ctrl+V), видео, ссылки…"
                 onUploadImage={async (file) => (await api.uploadFile(file)).url}
               />
+
+              <Stack spacing={1} sx={{ mt: 2 }}>
+                <Typography variant="subtitle2">Файлы к заданию</Typography>
+                <Button
+                  component="label" variant="outlined" size="small" startIcon={<AttachFileIcon />}
+                  disabled={taskAttachmentLoading}
+                >
+                  {taskAttachmentLoading ? 'Загрузка…' : 'Прикрепить файл'}
+                  <input
+                    hidden type="file" multiple
+                    onChange={async (event) => {
+                      const files = Array.from(event.target.files || []);
+                      if (!files.length) return;
+                      setTaskAttachmentLoading(true);
+                      try {
+                        const uploaded = await Promise.all(files.map(async (file) => ({
+                          ...(await api.uploadFile(file)),
+                          filename: file.name, contentType: file.type || 'application/octet-stream', size: file.size,
+                        })));
+                        setTaskAttachments((prev) => [...prev, ...uploaded]);
+                      } catch (e: any) {
+                        onToast({ msg: errMsg(e), err: true });
+                      } finally {
+                        setTaskAttachmentLoading(false);
+                        event.target.value = '';
+                      }
+                    }}
+                  />
+                </Button>
+                {!!taskAttachments.length && (
+                  <Stack spacing={0.5}>
+                    {taskAttachments.map((file) => (
+                      <Stack key={`${file.url}-${file.filename}`} direction="row" alignItems="center" spacing={1}>
+                        <AttachFileIcon fontSize="small" color="action" />
+                        <Typography variant="body2" sx={{ flex: 1 }}>{file.filename}</Typography>
+                        <IconButton size="small" onClick={() => setTaskAttachments((prev) => prev.filter((item) => item.url !== file.url))}>
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Stack>
+                    ))}
+                  </Stack>
+                )}
+                <Typography variant="caption" color="text.secondary">
+                  Можно прикреплять Word, PowerPoint, Excel, PDF, архивы и другие файлы.
+                </Typography>
+              </Stack>
 
               <Stack direction="row" spacing={2} sx={{ mt: 2 }}>
                 <TextField fullWidth label="Формат ввода" value={taskInputFormat} onChange={(e) => setTaskInputFormat(e.target.value)} />

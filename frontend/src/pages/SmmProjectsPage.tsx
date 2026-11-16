@@ -456,7 +456,11 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
         );
         const activePublicationIds = new Set(
           publicationEntries
-            .filter(([, rows]) => rows.some((row) => ['approved', 'scheduled', 'publishing'].includes(row.status)))
+            // A content item must leave the drafts queue as soon as it is
+            // approved, scheduled, being published, or already published.
+            // Keep error/cancelled publications visible so they can be retried
+            // or edited by the content manager.
+            .filter(([, rows]) => rows.some((row) => ['approved', 'scheduled', 'publishing', 'success'].includes(row.status)))
             .map(([id]) => id)
         );
         const visibleItems = orderedItems.filter((item) => !activePublicationIds.has(item.id));

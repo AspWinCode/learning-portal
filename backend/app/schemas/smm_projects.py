@@ -146,6 +146,7 @@ class ContentPlanGenerateRequest(BaseModel):
     genres: List[str] = Field(default_factory=list)
     posts_per_week: int = Field(default=3, ge=1, le=14)
     extra_context: Optional[str] = None
+    news_items: List[str] = Field(default_factory=list)
 
 
 class ContentPlanItemOut(BaseModel):
@@ -178,6 +179,7 @@ class ContentPlanOut(BaseModel):
     channels: Optional[List[str]]
     formats: Optional[List[str]]
     genres: Optional[List[str]]
+    news_items: Optional[List[str]] = None
     posts_per_week: int
     status: str
     created_by_id: Optional[int]

@@ -4676,6 +4676,7 @@ class SmmContentPlan(Base):
     channels = Column(JSON, nullable=True)
     formats = Column(JSON, nullable=True)
     genres = Column(JSON, nullable=True)
+    news_items = Column(JSON, nullable=True)
     posts_per_week = Column(Integer, nullable=False, default=3)
     status = Column(String(16), nullable=False, default="draft", index=True)
     created_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)

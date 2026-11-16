@@ -206,6 +206,7 @@ const ContentPlanTab: React.FC<{ projectCode: string; canGenerate: boolean }> = 
   const [customObjective, setCustomObjective] = useState('');
   const [audience, setAudience] = useState('');
   const [extraContext, setExtraContext] = useState('');
+  const [newsItemsText, setNewsItemsText] = useState('');
   const [postsPerWeek, setPostsPerWeek] = useState(3);
   const [channels, setChannels] = useState<string[]>(['vk', 'telegram']);
   const [formats, setFormats] = useState<string[]>(PLAN_FORMATS);
@@ -238,6 +239,7 @@ const ContentPlanTab: React.FC<{ projectCode: string; canGenerate: boolean }> = 
         channels,
         formats,
         genres,
+        news_items: newsItemsText.split(/\n\s*\n/).map((s) => s.trim()).filter(Boolean),
         posts_per_week: postsPerWeek,
       });
       await reload();
@@ -334,6 +336,18 @@ const ContentPlanTab: React.FC<{ projectCode: string; canGenerate: boolean }> = 
               {PLAN_GENRES.map((genre) => <Chip key={genre} label={genre} clickable onClick={() => toggle(genre, setGenres)} color={genres.includes(genre) ? 'secondary' : 'default'} variant={genres.includes(genre) ? 'filled' : 'outlined'} />)}
             </Stack>
           </Box>
+          {genres.includes('Новости программирования и геймдева') && (
+            <TextField
+              size="small"
+              label="Новости для жанра «Новости программирования и геймдева»"
+              helperText="Вставьте реальные новости по одной, разделяя пустой строкой — планировщик не ищет новости сам и не придумывает их. Сколько новостей вставите, столько публикаций этого жанра и создастся."
+              value={newsItemsText}
+              onChange={(e) => setNewsItemsText(e.target.value)}
+              multiline
+              minRows={3}
+              fullWidth
+            />
+          )}
           {error && <Alert severity="error">{error}</Alert>}
           <Button variant="contained" onClick={generate} disabled={busy || !canGenerate || !dateFrom || !dateTo || !formats.length || !genres.length || (objective === 'Другая цель' && !customObjective.trim())}>
             {busy ? 'Планируем…' : 'Создать контент-план'}

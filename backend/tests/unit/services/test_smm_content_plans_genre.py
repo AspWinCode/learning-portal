@@ -52,11 +52,13 @@ def _plan_item(genre=None):
     return item
 
 
-def _plan():
+def _plan(news_items=None, items=None):
     plan = SmmContentPlan()
     plan.id = 1
     plan.project_id = 1
     plan.created_by_id = None
+    plan.news_items = news_items
+    plan.items = items if items is not None else []
     return plan
 
 
@@ -96,6 +98,46 @@ class _FakeDB:
 
 async def _async_empty(*a, **k):
     return []
+
+
+def test_pick_news_item_cycles_across_programming_news_siblings():
+    other = _plan_item(genre="Экспертный")
+    other.id, other.position = 2, 0
+    first = _plan_item(genre=content_plans.GENRE_PROGRAMMING_NEWS)
+    first.id, first.position = 3, 1
+    second = _plan_item(genre=content_plans.GENRE_PROGRAMMING_NEWS)
+    second.id, second.position = 4, 2
+    plan = _plan(news_items=["Новость A", "Новость Б"], items=[other, first, second])
+
+    assert content_plans._pick_news_item(plan, other) is None
+    assert content_plans._pick_news_item(plan, first) == "Новость A"
+    assert content_plans._pick_news_item(plan, second) == "Новость Б"
+
+
+def test_pick_news_item_none_when_plan_has_no_news():
+    item = _plan_item(genre=content_plans.GENRE_PROGRAMMING_NEWS)
+    assert content_plans._pick_news_item(_plan(news_items=None, items=[item]), item) is None
+
+
+@pytest.mark.asyncio
+async def test_generate_item_draft_grounds_programming_news_in_pasted_item(monkeypatch):
+    monkeypatch.setattr(content_plans.knowledge_svc, "list_items", lambda db, project: [])
+    captured = {}
+
+    async def fake_complete_text(**kwargs):
+        captured.update(kwargs)
+        return ai_gateway.GatewayResult(ok=True, text="готовый текст")
+
+    monkeypatch.setattr(content_plans.ai_gateway, "is_configured", lambda purpose="text": True)
+    monkeypatch.setattr(content_plans.ai_gateway, "complete_text", fake_complete_text)
+
+    db = _FakeDB(_project())
+    item = _plan_item(genre=content_plans.GENRE_PROGRAMMING_NEWS)
+    plan = _plan(news_items=["Unity выпустила новую версию движка"], items=[item])
+    await content_plans._generate_item_draft(db, plan=plan, item=item, materialize_media=False)
+
+    assert "Unity выпустила новую версию движка" in captured["prompt"]
+    assert "бери факты ТОЛЬКО отсюда" in captured["prompt"]
 
 
 @pytest.mark.asyncio

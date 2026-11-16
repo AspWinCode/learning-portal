@@ -44,6 +44,26 @@ GENRE_DRAFT_INSTRUCTIONS = {
 }
 
 
+def _pick_news_item(plan: SmmContentPlan, item: SmmContentPlanItem) -> str | None:
+    """Вернуть вручную вставленную новость для этого item жанра
+    "Новости программирования и геймдева" — своя на каждый такой item по
+    порядку, с переходом по кругу, если новостей вставили меньше, чем items.
+    Автопоиска по интернету нет: нет оплаченного search API, и выдумывать
+    "новость" без реального источника LLM запрещено общими правилами."""
+    news_items = [str(n).strip() for n in (plan.news_items or []) if str(n).strip()]
+    if not news_items or item.genre != GENRE_PROGRAMMING_NEWS:
+        return None
+    siblings = sorted(
+        (i for i in plan.items if i.genre == GENRE_PROGRAMMING_NEWS),
+        key=lambda i: (i.position, i.id or 0),
+    )
+    try:
+        index = siblings.index(item)
+    except ValueError:
+        index = 0
+    return news_items[index % len(news_items)]
+
+
 def plan_readiness(db: Session, project: SmmProject) -> Dict[str, Any]:
     knowledge_items = knowledge_svc.list_items(db, project)
     publications = (
@@ -217,6 +237,7 @@ async def _generate_item_draft(
         return False
     knowledge = knowledge_svc.as_prompt_block(knowledge_svc.list_items(db, project), max_chars=12000)
     genre_hint = GENRE_DRAFT_INSTRUCTIONS.get(item.genre)
+    news_item = _pick_news_item(plan, item)
     system = "\n\n".join(part for part in [GLOBAL_SAFETY_RULES, _brand_block(project), knowledge, genre_hint, (
         "Ты — редактор SMM-проекта. Создай готовый черновик публикации по брифу. "
         "Не выдумывай факты, даты, цены и характеристики, которых нет в контексте. "
@@ -231,6 +252,7 @@ async def _generate_item_draft(
         f"Канал: {item.channel or 'универсальный'}\n"
         f"Бриф: {item.brief or 'раскрой тему через подтверждённые факты проекта'}\n"
         f"Механика удержания: {item.retention_mechanic or 'вопрос аудитории в конце'}"
+        + (f"\n\nРеальная новость, вставленная редактором (бери факты ТОЛЬКО отсюда, не из общих знаний):\n{news_item}" if news_item else "")
     )
     raw = ""
     provider = model = None
@@ -444,6 +466,12 @@ async def generate_plan(db: Session, user, *, project: SmmProject, payload: Dict
     fallback = _fallback_items(fallback_payload)
     requested_formats = _without_card_format(payload.get("formats"))
     requested_genres = payload.get("genres") or DEFAULT_GENRES
+    requested_news_items = [str(n).strip() for n in (payload.get("news_items") or []) if str(n).strip()]
+    news_block = (
+        "Реальные новости программирования/геймдева, вставленные редактором (их ровно "
+        f"{len(requested_news_items)}): " + " ||| ".join(requested_news_items)
+        if requested_news_items else ""
+    )
     system = "\n\n".join(part for part in [GLOBAL_SAFETY_RULES, _brand_block(project), knowledge, (
         "Ты — SMM-планер. Составляй только редакционный план, не готовые тексты. "
         "Опирайся на контекст проекта и не выдумывай факты. Верни ТОЛЬКО JSON вида "
@@ -459,7 +487,15 @@ async def generate_plan(db: Session, user, *, project: SmmProject, payload: Dict
         f"Предпочтительные форматы: {', '.join(requested_formats)}.\n"
         f"Жанры и тон публикаций: {', '.join(requested_genres)}. Распредели их по плану разнообразно, не делай все "
         "публикации экспертными, и укажи выбранный жанр для каждого item в поле genre.\n"
-        f"Публикаций в неделю: {payload.get('posts_per_week')}.\n"
+        + (
+            f"{news_block}\nДля жанра «{GENRE_PROGRAMMING_NEWS}» используй ровно {len(requested_news_items)} "
+            "item(ов) (по одному на новость) — rubric/title/brief должны отражать именно эту новость, без "
+            "придуманных деталей сверх неё.\n"
+            if requested_news_items else
+            f"Если выбран жанр «{GENRE_PROGRAMMING_NEWS}», но реальных новостей не передано — не создавай для "
+            "него items вообще, не придумывай новость.\n"
+        )
+        + f"Публикаций в неделю: {payload.get('posts_per_week')}.\n"
         f"Дополнительный контекст: {payload.get('extra_context') or 'нет'}.\n"
         f"Статистика прошлых публикаций: всего {stats['total']}, успешно {stats['successful']}, ошибок {stats['failed']}; "
         f"по каналам: {json.dumps(stats['by_channel'], ensure_ascii=False)}; "
@@ -497,6 +533,7 @@ async def generate_plan(db: Session, user, *, project: SmmProject, payload: Dict
         channels=payload.get("channels") or [],
         formats=requested_formats,
         genres=requested_genres,
+        news_items=requested_news_items,
         posts_per_week=payload.get("posts_per_week") or 3,
         created_by_id=getattr(user, "id", None),
     )

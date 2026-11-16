@@ -157,6 +157,7 @@ class ContentPlanItemOut(BaseModel):
     title: str
     brief: Optional[str]
     retention_mechanic: Optional[str]
+    genre: Optional[str] = None
     content_format: str
     channel: Optional[str]
     status: str

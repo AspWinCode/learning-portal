@@ -198,6 +198,7 @@ export interface ContentPlanItem {
   title: string;
   brief: string | null;
   retention_mechanic: string | null;
+  genre: string | null;
   content_format: string;
   channel: string | null;
   status: string;

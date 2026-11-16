@@ -4699,6 +4699,7 @@ class SmmContentPlanItem(Base):
     title = Column(String(256), nullable=False)
     brief = Column(Text, nullable=True)
     retention_mechanic = Column(Text, nullable=True)
+    genre = Column(String(128), nullable=True)
     content_format = Column(String(128), nullable=False, default="post")
     channel = Column(String(32), nullable=True)
     status = Column(String(16), nullable=False, default="planned", index=True)

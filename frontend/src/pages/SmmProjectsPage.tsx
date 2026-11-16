@@ -179,7 +179,10 @@ const NewContentTab: React.FC<{ projectCode: string; canGenerate: boolean; onGen
 // ─── Месячный контент-план ──────────────────────────────────────────────────
 
 const PLAN_FORMATS = ['Пост', 'Карусель', 'Видео / Reels / Shorts', 'Инфографика'];
-const PLAN_GENRES = ['Экспертный', 'Образовательный', 'Интерактивный', 'Юмористический', 'История / закулисье', 'Анонс / продающий'];
+const PLAN_GENRES = [
+  'Экспертный', 'Образовательный', 'Интерактивный', 'Юмористический', 'История / закулисье',
+  'Анонс / продающий', 'Размышления организаторов', 'Новости программирования и геймдева',
+];
 const PLAN_OBJECTIVES = [
   'Повысить вовлечённость и привести аудиторию к следующему действию',
   'Повысить узнаваемость проекта',
@@ -358,6 +361,7 @@ const ContentPlanTab: React.FC<{ projectCode: string; canGenerate: boolean }> = 
                 <Typography variant="body2" color="text.secondary">{item.retention_mechanic || '—'}</Typography>
                 <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
                   <Chip size="small" label={item.content_format} />
+                  {item.genre && <Chip size="small" color="secondary" variant="outlined" label={item.genre} />}
                   {item.channel && <Chip size="small" variant="outlined" label={item.channel} />}
                 </Stack>
               </Box>

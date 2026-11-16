@@ -351,7 +351,7 @@ export const codelabStudioApi = {
   uploadTaskAttachment: (file: File): Promise<{ url: string }> => {
     const form = new FormData();
     form.append('file', file);
-    return api.post('/media/upload', form).then((r) => r.data);
+    return api.post(`${B}/uploads`, form).then((r) => r.data);
   },
 
   // Для карточки на MethodistHubPage — статусов "на ревью"/"правки" у Codelab нет, всегда 0.

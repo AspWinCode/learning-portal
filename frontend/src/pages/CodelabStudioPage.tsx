@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Alert, Box, Button, Card, CardActionArea, CardContent, Checkbox, Chip, CircularProgress, Dialog, DialogActions, DialogContent,
   DialogTitle, Divider, FormControlLabel, IconButton, List, ListItemText, Menu, MenuItem, Paper, Select,
@@ -338,7 +338,6 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
   const [taskTests, setTaskTests] = useState<CodelabProblemTest[]>([{ input: '', expected: '', is_hidden: false }]);
   const [taskAttachments, setTaskAttachments] = useState<TaskAttachment[]>([]);
   const [taskAttachmentLoading, setTaskAttachmentLoading] = useState(false);
-  const taskAttachmentInputRef = useRef<HTMLInputElement>(null);
   const [taskLoading, setTaskLoading] = useState(false);
 
   // Snap!-задание: пошаговая инструкция слева (см. CoursePage в Codelab),
@@ -951,16 +950,9 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
 
               <Stack spacing={1} sx={{ mt: 2 }}>
                 <Typography variant="subtitle2">Файлы к заданию</Typography>
-                <Button
-                  type="button" variant="outlined" size="small" startIcon={<AttachFileIcon />}
-                  disabled={taskAttachmentLoading}
-                  onClick={() => taskAttachmentInputRef.current?.click()}
-                >
-                  {taskAttachmentLoading ? 'Загрузка…' : 'Прикрепить файл'}
-                </Button>
                 <input
-                    ref={taskAttachmentInputRef} type="file" multiple
-                    style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
+                    type="file" multiple disabled={taskAttachmentLoading}
+                    aria-label="Прикрепить файл к заданию"
                     onChange={async (event) => {
                       const files = Array.from(event.target.files || []);
                       if (!files.length) return;

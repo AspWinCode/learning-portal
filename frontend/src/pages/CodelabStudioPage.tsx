@@ -69,7 +69,12 @@ function reorderChildrenOf(
 // "Request failed with status code 404" — это generic axios e.message, а не
 // то, что реально ответил Codelab); показываем detail, если он есть.
 function errMsg(e: any): string {
-  return e?.response?.data?.detail || e?.message || 'Неизвестная ошибка';
+  const detail = e?.response?.data?.detail;
+  if (typeof detail === 'string') return detail;
+  if (detail !== undefined) {
+    try { return JSON.stringify(detail); } catch { return 'Ошибка API'; }
+  }
+  return typeof e?.message === 'string' ? e.message : 'Неизвестная ошибка';
 }
 
 /** Список siblings одного parent_id (null — корень курса) — своя пара

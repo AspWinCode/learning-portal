@@ -963,7 +963,7 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
                       setTaskAttachmentLoading(true);
                       try {
                         const uploaded = await Promise.all(files.map(async (file) => ({
-                          ...(await api.uploadFile(file)),
+                          ...(await api.uploadTaskAttachment(file)),
                           filename: file.name, contentType: file.type || 'application/octet-stream', size: file.size,
                         })));
                         setTaskAttachments((prev) => [...prev, ...uploaded]);

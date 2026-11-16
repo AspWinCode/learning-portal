@@ -24,24 +24,37 @@ MEDIA_ROOT = _DISK_ROOT / "media"
 MAX_IMAGE_BYTES = 10 * 1024 * 1024  # 10 MB
 MAX_AUDIO_BYTES = 60 * 1024 * 1024  # 60 MB
 MAX_VIDEO_BYTES = 100 * 1024 * 1024  # 100 MB
-MAX_DOC_BYTES = 20 * 1024 * 1024  # 20 MB
+MAX_DOC_BYTES = 100 * 1024 * 1024  # 100 MB
 IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif", "image/svg+xml"}
 AUDIO_TYPES = {"audio/wav", "audio/x-wav", "audio/mpeg", "audio/mp3", "audio/ogg"}
 VIDEO_TYPES = {"video/mp4", "video/quicktime", "video/webm"}
-DOC_TYPES = {"application/pdf"}
+DOC_TYPES = {
+    "application/pdf", "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-powerpoint", "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "text/plain", "text/csv", "application/rtf", "application/zip", "application/x-rar-compressed",
+    "application/vnd.rar", "application/x-7z-compressed", "application/octet-stream",
+}
 ALLOWED_TYPES = IMAGE_TYPES | AUDIO_TYPES | VIDEO_TYPES | DOC_TYPES
 EXT_MAP = {
     "jpeg": "jpg", "jpg": "jpg", "png": "png", "webp": "webp", "gif": "gif", "svg": "svg",
     "wav": "wav", "mp3": "mp3", "ogg": "ogg",
     "mp4": "mp4", "mov": "mov", "webm": "webm",
-    "pdf": "pdf",
+    "pdf": "pdf", "doc": "doc", "docx": "docx", "ppt": "ppt", "pptx": "pptx",
+    "xls": "xls", "xlsx": "xlsx", "txt": "txt", "csv": "csv", "rtf": "rtf",
+    "zip": "zip", "rar": "rar", "7z": "7z",
 }
 CONTENT_TYPE_MAP = {
     "jpg": "image/jpeg", "png": "image/png", "webp": "image/webp",
     "gif": "image/gif", "svg": "image/svg+xml",
     "wav": "audio/wav", "mp3": "audio/mpeg", "ogg": "audio/ogg",
     "mp4": "video/mp4", "mov": "video/quicktime", "webm": "video/webm",
-    "pdf": "application/pdf",
+    "pdf": "application/pdf", "doc": "application/msword", "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "ppt": "application/vnd.ms-powerpoint", "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "xls": "application/vnd.ms-excel", "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "txt": "text/plain", "csv": "text/csv", "rtf": "application/rtf",
+    "zip": "application/zip", "rar": "application/x-rar-compressed", "7z": "application/x-7z-compressed",
 }
 DEFAULT_EXT_BY_CONTENT_TYPE = {v: k for k, v in CONTENT_TYPE_MAP.items()}
 DEFAULT_EXT_BY_CONTENT_TYPE["audio/x-wav"] = "wav"
@@ -59,17 +72,20 @@ async def upload_media(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(
-        require_any_permission("seo.manage", "kodex.manage", "technolab.manage", "media.upload")
+        require_any_permission("seo.manage", "kodex.manage", "technolab.manage", "codelab.manage", "media.upload")
     ),
 ):
-    if file.content_type not in ALLOWED_TYPES:
-        raise HTTPException(status_code=415, detail=f"Неподдерживаемый тип файла: {file.content_type}. Разрешены: JPEG, PNG, WebP, GIF, SVG, WAV, MP3, OGG, MP4, MOV, WebM, PDF")
+    content_type = file.content_type or "application/octet-stream"
+    raw_ext = (file.filename or "").rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else ""
+    if content_type not in ALLOWED_TYPES:
+        if not raw_ext:
+            raise HTTPException(status_code=415, detail=f"Неподдерживаемый тип файла: {content_type}")
 
-    if file.content_type in VIDEO_TYPES:
+    if content_type in VIDEO_TYPES:
         max_bytes = MAX_VIDEO_BYTES
-    elif file.content_type in AUDIO_TYPES:
+    elif content_type in AUDIO_TYPES:
         max_bytes = MAX_AUDIO_BYTES
-    elif file.content_type in DOC_TYPES:
+    elif content_type in DOC_TYPES or raw_ext not in {"jpg", "jpeg", "png", "webp", "gif", "svg"}:
         max_bytes = MAX_DOC_BYTES
     else:
         max_bytes = MAX_IMAGE_BYTES
@@ -81,8 +97,7 @@ async def upload_media(
 
     MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
 
-    raw_ext = (file.filename or "").rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else ""
-    ext = EXT_MAP.get(raw_ext) or DEFAULT_EXT_BY_CONTENT_TYPE.get(file.content_type, "bin")
+    ext = EXT_MAP.get(raw_ext) or raw_ext or DEFAULT_EXT_BY_CONTENT_TYPE.get(content_type, "bin")
     key = f"{uuid4().hex}.{ext}"
 
     dest = (MEDIA_ROOT / key).resolve()

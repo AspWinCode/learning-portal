@@ -17,6 +17,7 @@ from app.background_tasks import (
     task_owner_workspace_notification_email_dispatch,
     task_owner_workspace_notification_web_push_dispatch,
     task_owner_workspace_task_reminders,
+    task_owner_workspace_task_recurrence,
     task_parent_weekly_digests,
     task_payment_overdue_tasks,
     task_payment_reminder_notifications,
@@ -36,6 +37,8 @@ logger = logging.getLogger(__name__)
 def _enqueue_fast_cycle_jobs() -> None:
     task_scheduled_messages.send()
     task_communication_queue.send()
+    # Roll over old recurring tasks immediately after scheduler restart too.
+    task_owner_workspace_task_recurrence.send()
     task_owner_workspace_notification_email_dispatch.send()
     task_owner_workspace_notification_web_push_dispatch.send()
 
@@ -55,6 +58,7 @@ def main() -> None:
     scheduler.add_job(lambda: task_owner_workspace_notification_email_dispatch.send(), "interval", minutes=1, id="owner_workspace_notification_email_dispatch", max_instances=1)
     scheduler.add_job(lambda: task_owner_workspace_notification_web_push_dispatch.send(), "interval", minutes=1, id="owner_workspace_notification_web_push_dispatch", max_instances=1)
     scheduler.add_job(lambda: task_owner_workspace_task_reminders.send(), "interval", minutes=1, id="owner_workspace_task_reminders", max_instances=1)
+    scheduler.add_job(lambda: task_owner_workspace_task_recurrence.send(), "interval", minutes=15, id="owner_workspace_task_recurrence", max_instances=1)
     scheduler.add_job(lambda: task_student_class_autopromo.send(), "cron", month=9, day=1, hour=3, id="student_class_autopromo", max_instances=1)
     scheduler.add_job(lambda: task_absence_link_tasks.send(), "cron", hour=8, minute=0, id="absence_link_tasks", max_instances=1)
     scheduler.add_job(lambda: task_lesson_deduction_reconcile.send(), "interval", hours=1, id="lesson_deduction_reconcile", max_instances=1)

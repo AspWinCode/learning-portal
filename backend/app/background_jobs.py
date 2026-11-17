@@ -37,6 +37,17 @@ def run_smm_publication(publication_id: int) -> None:
     _run_db_job(f"smm_publication:{publication_id}", _job)
 
 
+def run_owner_workspace_task_recurrence() -> None:
+    from app.services.owner_workspace_task_recurrence import rollover_overdue_recurring_tasks
+
+    def _job(db):
+        count = rollover_overdue_recurring_tasks(db)
+        if count:
+            logger.info("owner_workspace_task_recurrence: rolled over %d task(s)", count)
+
+    _run_db_job("owner_workspace_task_recurrence", _job)
+
+
 def run_smm_due_publications() -> None:
     from app.services.smm_projects import publishing
 

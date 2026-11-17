@@ -12,6 +12,7 @@ from app.background_tasks import (
     task_communication_queue,
     task_daily_task_digest,
     task_expire_student_discounts,
+    task_google_contacts_sync,
     task_lesson_deduction_reconcile,
     task_owner_workspace_max_sync,
     task_owner_workspace_notification_email_dispatch,
@@ -55,6 +56,7 @@ def main() -> None:
     scheduler.add_job(lambda: task_smm_pending_media.send(), "interval", minutes=1, id="smm_pending_media", max_instances=1)
     scheduler.add_job(lambda: task_communication_queue.send(), "interval", minutes=1, id="communication_queue", max_instances=1)
     scheduler.add_job(lambda: task_owner_workspace_max_sync.send(), "interval", minutes=30, id="owner_workspace_max_sync", max_instances=1)
+    scheduler.add_job(lambda: task_google_contacts_sync.send(), "interval", minutes=15, id="google_contacts_sync", max_instances=1)
     scheduler.add_job(lambda: task_owner_workspace_notification_email_dispatch.send(), "interval", minutes=1, id="owner_workspace_notification_email_dispatch", max_instances=1)
     scheduler.add_job(lambda: task_owner_workspace_notification_web_push_dispatch.send(), "interval", minutes=1, id="owner_workspace_notification_web_push_dispatch", max_instances=1)
     scheduler.add_job(lambda: task_owner_workspace_task_reminders.send(), "interval", minutes=1, id="owner_workspace_task_reminders", max_instances=1)

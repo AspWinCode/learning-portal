@@ -193,6 +193,12 @@ def run_owner_workspace_max_sync() -> None:
     _run_db_job("owner_workspace_max_sync", _job)
 
 
+def run_google_contacts_sync() -> None:
+    from app.services.google_contacts_sync import run_sync_job
+
+    _run_db_job("google_contacts_sync", run_sync_job)
+
+
 def run_owner_workspace_notification_email_dispatch() -> None:
     if not _env_enabled("OWNER_WORKSPACE_EMAIL_DISPATCH_ENABLED", "1"):
         return

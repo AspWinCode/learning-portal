@@ -7,6 +7,7 @@ from app.background_jobs import (
     run_absence_link_tasks,
     run_communication_queue,
     run_daily_task_digest,
+    run_google_contacts_sync,
     run_lesson_deduction_reconcile,
     run_owner_workspace_max_sync,
     run_owner_workspace_notification_email_dispatch,
@@ -91,6 +92,11 @@ def task_communication_queue() -> None:
 @dramatiq.actor(queue_name="delivery")
 def task_owner_workspace_max_sync() -> None:
     run_owner_workspace_max_sync()
+
+
+@dramatiq.actor(queue_name="delivery", max_retries=0)
+def task_google_contacts_sync() -> None:
+    run_google_contacts_sync()
 
 
 @dramatiq.actor(queue_name="delivery")

@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.encoders import jsonable_encoder
+from fastapi.responses import RedirectResponse
 from sqlalchemy import String, and_, asc, case, cast, desc, exists, func, nullslast, or_
 from sqlalchemy.orm import Session
 from starlette.responses import StreamingResponse
@@ -88,6 +89,8 @@ from app.models import (
     User,
 )
 from app.schemas.owner_workspace import (
+    GoogleContactsSyncConnectResponse,
+    GoogleContactsSyncStatus,
     OwnerWorkspaceAuditLogResponse,
     OwnerWorkspaceHistoryStatsAuthorItem,
     OwnerWorkspaceHistoryStatsCountItem,
@@ -767,11 +770,14 @@ def _contact_to_response(
         full_name=contact.full_name,
         phone=contact.phone,
         email=contact.email,
+        city=contact.city,
         company=contact.company,
         position=contact.position,
         tags=contact.tags,
         comment=contact.comment,
         source=contact.source,
+        responsible_id=contact.responsible_id,
+        status=contact.status or "new",
         linked_project_ids=[x.project_id for x in linked],
         active_tasks_count=active_tasks_count,
         projects_count=projects_count,
@@ -779,6 +785,9 @@ def _contact_to_response(
         created_at=contact.created_at,
         updated_at=contact.updated_at,
         is_archived=getattr(contact, "is_archived", False),
+        google_resource_name=contact.google_resource_name,
+        google_synced_at=contact.google_synced_at,
+        deleted_in_google=bool(contact.deleted_in_google),
     )
 
 
@@ -2287,11 +2296,14 @@ async def create_contact(
         full_name=payload.full_name.strip(),
         phone=payload.phone.strip(),
         email=payload.email,
+        city=payload.city,
         company=payload.company,
         position=payload.position,
         tags=payload.tags,
         comment=payload.comment,
         source=payload.source,
+        responsible_id=payload.responsible_id,
+        status=payload.status or "new",
     )
     db.add(row)
     db.flush()
@@ -2389,6 +2401,78 @@ async def delete_contact(
     db.delete(row)
     db.commit()
     return None
+
+
+@router.get("/contacts/google-sync/status", response_model=GoogleContactsSyncStatus)
+async def get_google_contacts_sync_status(
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    if not ctx.full:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
+    from app.services.google_contacts_sync import get_connection_status
+
+    return get_connection_status(db)
+
+
+@router.get("/contacts/google-sync/connect", response_model=GoogleContactsSyncConnectResponse)
+async def connect_google_contacts_sync(
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    if not ctx.full:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
+    from app.services.google_contacts_sync import build_consent_url
+
+    try:
+        auth_url = build_consent_url(db, ctx.user.id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    return {"auth_url": auth_url}
+
+
+@router.post("/contacts/google-sync/disconnect", status_code=status.HTTP_204_NO_CONTENT)
+async def disconnect_google_contacts_sync(
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    if not ctx.full:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
+    from app.services.google_contacts_sync import disconnect
+
+    disconnect(db)
+    return None
+
+
+@router.post("/contacts/google-sync/run", response_model=GoogleContactsSyncStatus)
+async def trigger_google_contacts_sync(
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    if not ctx.full:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
+    from app.services.google_contacts_sync import get_connection_status, run_sync_job
+
+    run_sync_job(db)
+    return get_connection_status(db)
+
+
+@router.get("/contacts/google-sync/callback", include_in_schema=False)
+async def google_contacts_sync_callback(
+    code: Optional[str] = Query(None),
+    state: Optional[str] = Query(None),
+    error: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
+    from app.services.google_contacts_sync import consume_oauth_callback, get_return_url
+
+    if error or not code or not state:
+        return RedirectResponse(url=f"{get_return_url()}?google_sync=error")
+    try:
+        consume_oauth_callback(db, code=code, state=state)
+    except Exception:
+        return RedirectResponse(url=f"{get_return_url()}?google_sync=error")
+    return RedirectResponse(url=f"{get_return_url()}?google_sync=connected")
 
 
 def _sync_counterparty_project_links(

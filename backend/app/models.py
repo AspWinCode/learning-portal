@@ -2905,12 +2905,20 @@ class OwnerWorkspaceContact(Base):
     custom_fields = Column(JSON, nullable=True)
     linked_persons = Column(JSON, nullable=True)
     counterparty_id = Column(Integer, ForeignKey("owner_workspace_counterparties.id", ondelete="SET NULL"), nullable=True, index=True)
+    city = Column(String(255), nullable=True)
+    responsible_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    status = Column(String(32), nullable=False, server_default="new", index=True)
+    google_resource_name = Column(Text, nullable=True, unique=True)
+    google_etag = Column(Text, nullable=True)
+    google_synced_at = Column(DateTime(timezone=True), nullable=True)
+    deleted_in_google = Column(Boolean, nullable=False, server_default="false")
     is_archived = Column(Boolean, nullable=False, server_default="false", index=True)
     archived_at = Column(DateTime(timezone=True), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     counterparty = relationship("OwnerWorkspaceCounterparty", foreign_keys=[counterparty_id])
+    responsible = relationship("User", foreign_keys=[responsible_id])
 
 
 class OwnerUsefulLinkFolder(Base):

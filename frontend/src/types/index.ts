@@ -1866,11 +1866,14 @@ export interface OwnerWorkspaceContact {
   full_name: string;
   phone?: string | null;
   email?: string | null;
+  city?: string | null;
   company?: string | null;
   position?: string | null;
   tags?: string[] | null;
   comment?: string | null;
   source?: string | null;
+  responsible_id?: number | null;
+  status?: string;
   linked_project_ids: number[];
   active_tasks_count: number;
   projects_count?: number;
@@ -1879,6 +1882,20 @@ export interface OwnerWorkspaceContact {
   created_at?: string | null;
   updated_at?: string | null;
   is_archived?: boolean;
+  google_resource_name?: string | null;
+  google_synced_at?: string | null;
+  deleted_in_google?: boolean;
+}
+
+export interface GoogleContactsSyncStatus {
+  configured: boolean;
+  connected: boolean;
+  connected_user_id?: number | null;
+  connected_at?: string | null;
+  group_name: string;
+  last_sync_at?: string | null;
+  last_sync_stats?: { created: number; updated: number; archived: number; deleted: number; skipped: number } | null;
+  last_sync_error?: string | null;
 }
 
 export interface OwnerWorkspaceTaskTemplate {

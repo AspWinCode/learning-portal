@@ -4,6 +4,21 @@ from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
+class GoogleContactsSyncStatus(BaseModel):
+    configured: bool
+    connected: bool
+    connected_user_id: Optional[int] = None
+    connected_at: Optional[str] = None
+    group_name: str
+    last_sync_at: Optional[str] = None
+    last_sync_stats: Optional[Dict[str, int]] = None
+    last_sync_error: Optional[str] = None
+
+
+class GoogleContactsSyncConnectResponse(BaseModel):
+    auth_url: str
+
+
 class OwnerWorkspaceProjectParticipantAdd(BaseModel):
     user_id: int
     role: Literal["member", "manager", "observer"] = "member"
@@ -252,11 +267,14 @@ class OwnerWorkspaceContactBase(BaseModel):
     type: OwnerWorkspaceContactType = "individual"
     phone: Optional[str] = None
     email: Optional[str] = None
+    city: Optional[str] = None
     company: Optional[str] = None
     position: Optional[str] = None
     tags: Optional[List[str]] = None
     comment: Optional[str] = None
     source: Optional[str] = None
+    responsible_id: Optional[int] = None
+    status: Optional[str] = None
 
 
 class OwnerWorkspaceContactCreate(OwnerWorkspaceContactBase):
@@ -269,12 +287,15 @@ class OwnerWorkspaceContactUpdate(BaseModel):
     type: Optional[OwnerWorkspaceContactType] = None
     phone: Optional[str] = None
     email: Optional[str] = None
+    city: Optional[str] = None
     company: Optional[str] = None
     position: Optional[str] = None
     tags: Optional[List[str]] = None
     comment: Optional[str] = None
     source: Optional[str] = None
     counterparty_id: Optional[int] = None
+    responsible_id: Optional[int] = None
+    status: Optional[str] = None
 
 
 class OwnerWorkspaceContactResponse(BaseModel):
@@ -283,11 +304,14 @@ class OwnerWorkspaceContactResponse(BaseModel):
     full_name: str
     phone: Optional[str] = None
     email: Optional[str] = None
+    city: Optional[str] = None
     company: Optional[str] = None
     position: Optional[str] = None
     tags: Optional[List[str]] = None
     comment: Optional[str] = None
     source: Optional[str] = None
+    responsible_id: Optional[int] = None
+    status: str = "new"
     linked_project_ids: List[int] = []
     active_tasks_count: int = 0
     projects_count: int = 0
@@ -296,6 +320,9 @@ class OwnerWorkspaceContactResponse(BaseModel):
     updated_at: Optional[datetime] = None
     is_archived: bool = False
     counterparty_id: Optional[int] = None
+    google_resource_name: Optional[str] = None
+    google_synced_at: Optional[datetime] = None
+    deleted_in_google: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 

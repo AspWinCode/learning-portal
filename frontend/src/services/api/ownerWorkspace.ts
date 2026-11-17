@@ -5,6 +5,7 @@ import type {
   OwnerWorkspaceCounterpartyCustomField,
   OwnerWorkspaceCounterpartyDocument,
   OwnerWorkspaceContact,
+  GoogleContactsSyncStatus,
   OwnerWorkspaceConversation,
   OwnerWorkspaceDigest,
   OwnerWorkspaceHistoryStats,
@@ -455,6 +456,21 @@ export const ownerWorkspaceApi = {
     project_ids?: number[];
   }): Promise<OwnerWorkspaceContact> => {
     const response = await api.post('/api/owner-workspace/contacts', payload);
+    return response.data;
+  },
+  getGoogleContactsSyncStatus: async (): Promise<GoogleContactsSyncStatus> => {
+    const response = await api.get('/api/owner-workspace/contacts/google-sync/status');
+    return response.data;
+  },
+  connectGoogleContactsSync: async (): Promise<{ auth_url: string }> => {
+    const response = await api.get('/api/owner-workspace/contacts/google-sync/connect');
+    return response.data;
+  },
+  disconnectGoogleContactsSync: async (): Promise<void> => {
+    await api.post('/api/owner-workspace/contacts/google-sync/disconnect');
+  },
+  runGoogleContactsSync: async (): Promise<GoogleContactsSyncStatus> => {
+    const response = await api.post('/api/owner-workspace/contacts/google-sync/run');
     return response.data;
   },
   listTasks: async (params?: {

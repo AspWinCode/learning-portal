@@ -2908,6 +2908,7 @@ class OwnerWorkspaceContact(Base):
     city = Column(String(255), nullable=True)
     responsible_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     status = Column(String(32), nullable=False, server_default="new", index=True)
+    folder_id = Column(Integer, ForeignKey("owner_workspace_contact_folders.id", ondelete="SET NULL"), nullable=True, index=True)
     google_resource_name = Column(Text, nullable=True, unique=True)
     google_etag = Column(Text, nullable=True)
     google_synced_at = Column(DateTime(timezone=True), nullable=True)
@@ -2919,6 +2920,19 @@ class OwnerWorkspaceContact(Base):
 
     counterparty = relationship("OwnerWorkspaceCounterparty", foreign_keys=[counterparty_id])
     responsible = relationship("User", foreign_keys=[responsible_id])
+    folder = relationship("OwnerWorkspaceContactFolder", foreign_keys=[folder_id])
+
+
+class OwnerWorkspaceContactFolder(Base):
+    """Плоская папка/группа для ручной организации контактов (одна папка на контакт)."""
+    __tablename__ = "owner_workspace_contact_folders"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    color = Column(String(32), nullable=True)
+    sort_order = Column(Integer, nullable=False, server_default="0")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
 
 class OwnerUsefulLinkFolder(Base):

@@ -1874,6 +1874,7 @@ export interface OwnerWorkspaceContact {
   source?: string | null;
   responsible_id?: number | null;
   status?: string;
+  folder_id?: number | null;
   linked_project_ids: number[];
   active_tasks_count: number;
   projects_count?: number;
@@ -1885,6 +1886,14 @@ export interface OwnerWorkspaceContact {
   google_resource_name?: string | null;
   google_synced_at?: string | null;
   deleted_in_google?: boolean;
+}
+
+export interface OwnerWorkspaceContactFolder {
+  id: number;
+  name: string;
+  color?: string | null;
+  sort_order: number;
+  contacts_count: number;
 }
 
 export interface GoogleContactsSyncStatus {

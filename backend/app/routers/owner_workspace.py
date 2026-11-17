@@ -61,6 +61,7 @@ from app.services.owner_workspace_task_order import normalize_task_sort_params
 from app.models import (
     OwnerWorkspaceAuditLog,
     OwnerWorkspaceContact,
+    OwnerWorkspaceContactFolder,
     OwnerWorkspaceCounterparty,
     OwnerWorkspaceCounterpartyDocument,
     OwnerWorkspaceConversationRead,
@@ -95,6 +96,9 @@ from app.models import (
 from app.schemas.owner_workspace import (
     GoogleContactsSyncConnectResponse,
     GoogleContactsSyncStatus,
+    OwnerWorkspaceContactFolderCreate,
+    OwnerWorkspaceContactFolderResponse,
+    OwnerWorkspaceContactFolderUpdate,
     OwnerWorkspaceAuditLogResponse,
     OwnerWorkspaceHistoryStatsAuthorItem,
     OwnerWorkspaceHistoryStatsCountItem,
@@ -782,6 +786,7 @@ def _contact_to_response(
         source=contact.source,
         responsible_id=contact.responsible_id,
         status=contact.status or "new",
+        folder_id=contact.folder_id,
         linked_project_ids=[x.project_id for x in linked],
         active_tasks_count=active_tasks_count,
         projects_count=projects_count,
@@ -2308,6 +2313,7 @@ async def create_contact(
         source=payload.source,
         responsible_id=payload.responsible_id,
         status=payload.status or "new",
+        folder_id=payload.folder_id,
     )
     db.add(row)
     db.flush()
@@ -2401,6 +2407,85 @@ async def delete_contact(
         action_type="delete",
         author_id=ctx.user.id,
         old_value={"full_name": row.full_name, "phone": row.phone},
+    )
+    db.delete(row)
+    db.commit()
+    return None
+
+
+def _contact_folder_to_response(db: Session, folder: OwnerWorkspaceContactFolder) -> OwnerWorkspaceContactFolderResponse:
+    contacts_count = db.query(OwnerWorkspaceContact).filter(OwnerWorkspaceContact.folder_id == folder.id).count()
+    return OwnerWorkspaceContactFolderResponse(
+        id=folder.id,
+        name=folder.name,
+        color=folder.color,
+        sort_order=folder.sort_order or 0,
+        contacts_count=contacts_count,
+    )
+
+
+@router.get("/contact-folders", response_model=List[OwnerWorkspaceContactFolderResponse])
+async def list_contact_folders(
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    rows = db.query(OwnerWorkspaceContactFolder).order_by(
+        OwnerWorkspaceContactFolder.sort_order, OwnerWorkspaceContactFolder.name
+    ).all()
+    return [_contact_folder_to_response(db, row) for row in rows]
+
+
+@router.post("/contact-folders", response_model=OwnerWorkspaceContactFolderResponse, status_code=status.HTTP_201_CREATED)
+async def create_contact_folder(
+    payload: OwnerWorkspaceContactFolderCreate,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Укажите название папки")
+    max_sort_order = db.query(func.max(OwnerWorkspaceContactFolder.sort_order)).scalar() or 0
+    row = OwnerWorkspaceContactFolder(name=name, color=payload.color, sort_order=max_sort_order + 1)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return _contact_folder_to_response(db, row)
+
+
+@router.patch("/contact-folders/{folder_id}", response_model=OwnerWorkspaceContactFolderResponse)
+async def update_contact_folder(
+    folder_id: int,
+    payload: OwnerWorkspaceContactFolderUpdate,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    row = db.query(OwnerWorkspaceContactFolder).filter(OwnerWorkspaceContactFolder.id == folder_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Folder not found")
+    data = payload.model_dump(exclude_unset=True)
+    if "name" in data:
+        name = (data["name"] or "").strip()
+        if not name:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Укажите название папки")
+        data["name"] = name
+    for k, v in data.items():
+        setattr(row, k, v)
+    db.commit()
+    db.refresh(row)
+    return _contact_folder_to_response(db, row)
+
+
+@router.delete("/contact-folders/{folder_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_contact_folder(
+    folder_id: int,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    row = db.query(OwnerWorkspaceContactFolder).filter(OwnerWorkspaceContactFolder.id == folder_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Folder not found")
+    db.query(OwnerWorkspaceContact).filter(OwnerWorkspaceContact.folder_id == folder_id).update(
+        {OwnerWorkspaceContact.folder_id: None}, synchronize_session=False
     )
     db.delete(row)
     db.commit()

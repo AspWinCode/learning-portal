@@ -72,6 +72,7 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { useAuth } from '../contexts/AuthContext';
 import { OwnerWorkspaceTaskCreateDialog, type TaskCreatePayload } from '../components/ownerWorkspace/OwnerWorkspaceTaskCreateDialog';
+import { ContactFoldersBar } from '../components/ownerWorkspace/ContactFoldersBar';
 import { mediaApi, ownerWorkspaceApi, salesApi, settingsApi, tasksApi, usersApi } from '../services/api';
 import type {
   OwnerWorkspaceAuditLog,
@@ -91,6 +92,7 @@ import type {
   OwnerWorkspaceSettingsBundleSummary,
   OwnerWorkspaceProjectConfig,
   OwnerWorkspaceProject,
+  OwnerWorkspaceContactFolder,
   OwnerWorkspaceSearchResult,
   OwnerWorkspaceTask,
   OwnerWorkspaceTaskComment,
@@ -1570,9 +1572,12 @@ const OwnerWorkspacePage: React.FC<OwnerWorkspacePageProps> = ({ initialTab, ini
   const [contactEditTags, setContactEditTags] = useState<string[]>([]);
   const [contactEditComment, setContactEditComment] = useState('');
   const [contactEditSource, setContactEditSource] = useState('');
+  const [contactEditFolderId, setContactEditFolderId] = useState<number | ''>('');
   const [contactLinkProjectId, setContactLinkProjectId] = useState<OwnerWorkspaceProject | null>(null);
   const [contactMessages, setContactMessages] = useState<OwnerWorkspaceMessage[]>([]);
   const [newContactMessage, setNewContactMessage] = useState('');
+  const [contactFolders, setContactFolders] = useState<OwnerWorkspaceContactFolder[]>([]);
+  const [contactListFolderId, setContactListFolderId] = useState<number | null | 'unassigned'>(null);
 
   const [taskDialog, setTaskDialog] = useState<OwnerWorkspaceTask | null>(null);
   const [taskPreviousChain, setTaskPreviousChain] = useState<Array<{ id: number; title: string; description?: string | null }>>([]);
@@ -2307,6 +2312,7 @@ const OwnerWorkspacePage: React.FC<OwnerWorkspacePageProps> = ({ initialTab, ini
     setContactEditComment(contactDialog.comment ?? '');
     setContactEditSource(contactDialog.source ?? '');
     setContactEditTags(Array.isArray(contactDialog.tags) ? [...contactDialog.tags] : []);
+    setContactEditFolderId(contactDialog.folder_id ?? '');
   }, [contactDialog]);
 
   useEffect(() => {
@@ -3383,6 +3389,7 @@ const OwnerWorkspacePage: React.FC<OwnerWorkspacePageProps> = ({ initialTab, ini
         comment: contactEditComment.trim() || null,
         source: contactEditSource.trim() || null,
         tags: tagParts,
+        folder_id: contactEditFolderId === '' ? null : contactEditFolderId,
       });
       setContactDialog(updated);
       setError(null);
@@ -5116,6 +5123,14 @@ const OwnerWorkspacePage: React.FC<OwnerWorkspacePageProps> = ({ initialTab, ini
     [contactsCatalog]
   );
 
+  const contactsByFolder = useMemo(() => {
+    if (contactListFolderId === null) return contacts;
+    if (contactListFolderId === 'unassigned') return contacts.filter((c) => !c.folder_id);
+    return contacts.filter((c) => c.folder_id === contactListFolderId);
+  }, [contacts, contactListFolderId]);
+
+  const unassignedContactsCount = useMemo(() => contacts.filter((c) => !c.folder_id).length, [contacts]);
+
   const contactListTagOptions = useMemo(() => {
     const s = new Set<string>();
     for (const c of contactsCatalog) {
@@ -5928,8 +5943,15 @@ const OwnerWorkspacePage: React.FC<OwnerWorkspacePageProps> = ({ initialTab, ini
 
       {tab === OW_TAB_CONTACTS && (
         <Suspense fallback={<OwnerWorkspaceDialogsFallback />}>
+          <ContactFoldersBar
+            selectedFolderId={contactListFolderId}
+            onSelectFolder={setContactListFolderId}
+            onFoldersLoaded={setContactFolders}
+            unassignedCount={unassignedContactsCount}
+            totalCount={contacts.length}
+          />
           <OwnerWorkspaceContactsTab
-            contacts={contacts}
+            contacts={contactsByFolder}
             contactsCatalog={contactsCatalog}
             projectsCatalogSorted={projectsCatalogSorted}
             contactListTagOptions={contactListTagOptions}
@@ -8268,6 +8290,22 @@ const OwnerWorkspacePage: React.FC<OwnerWorkspacePageProps> = ({ initialTab, ini
                 disabled={!canEditContactCardDialogContent}
               />
             </Stack>
+            <TextField
+              fullWidth
+              select
+              label="Папка"
+              value={contactEditFolderId}
+              onChange={(e) => setContactEditFolderId(e.target.value === '' ? '' : Number(e.target.value))}
+              disabled={!canEditContactCardDialogContent}
+              SelectProps={{ native: true }}
+            >
+              <option value="">Без папки</option>
+              {contactFolders.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.name}
+                </option>
+              ))}
+            </TextField>
             <Autocomplete
               multiple
               freeSolo

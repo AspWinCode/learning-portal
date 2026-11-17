@@ -5,6 +5,7 @@ import type {
   OwnerWorkspaceCounterpartyCustomField,
   OwnerWorkspaceCounterpartyDocument,
   OwnerWorkspaceContact,
+  OwnerWorkspaceContactFolder,
   GoogleContactsSyncStatus,
   OwnerWorkspaceConversation,
   OwnerWorkspaceDigest,
@@ -280,10 +281,29 @@ export const ownerWorkspaceApi = {
       tags?: string[];
       comment?: string | null;
       source?: string | null;
+      folder_id?: number | null;
     }
   ): Promise<OwnerWorkspaceContact> => {
     const response = await api.patch(`/api/owner-workspace/contacts/${contactId}`, payload);
     return response.data;
+  },
+  listContactFolders: async (): Promise<OwnerWorkspaceContactFolder[]> => {
+    const response = await api.get('/api/owner-workspace/contact-folders');
+    return response.data;
+  },
+  createContactFolder: async (payload: { name: string; color?: string | null }): Promise<OwnerWorkspaceContactFolder> => {
+    const response = await api.post('/api/owner-workspace/contact-folders', payload);
+    return response.data;
+  },
+  updateContactFolder: async (
+    folderId: number,
+    payload: { name?: string; color?: string | null; sort_order?: number }
+  ): Promise<OwnerWorkspaceContactFolder> => {
+    const response = await api.patch(`/api/owner-workspace/contact-folders/${folderId}`, payload);
+    return response.data;
+  },
+  deleteContactFolder: async (folderId: number): Promise<void> => {
+    await api.delete(`/api/owner-workspace/contact-folders/${folderId}`);
   },
   deleteContact: async (contactId: number): Promise<void> => {
     await api.delete(`/api/owner-workspace/contacts/${contactId}`);

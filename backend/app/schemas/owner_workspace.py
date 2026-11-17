@@ -4,6 +4,27 @@ from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
+class OwnerWorkspaceContactFolderCreate(BaseModel):
+    name: str
+    color: Optional[str] = None
+
+
+class OwnerWorkspaceContactFolderUpdate(BaseModel):
+    name: Optional[str] = None
+    color: Optional[str] = None
+    sort_order: Optional[int] = None
+
+
+class OwnerWorkspaceContactFolderResponse(BaseModel):
+    id: int
+    name: str
+    color: Optional[str] = None
+    sort_order: int = 0
+    contacts_count: int = 0
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class GoogleContactsSyncStatus(BaseModel):
     configured: bool
     connected: bool
@@ -275,6 +296,7 @@ class OwnerWorkspaceContactBase(BaseModel):
     source: Optional[str] = None
     responsible_id: Optional[int] = None
     status: Optional[str] = None
+    folder_id: Optional[int] = None
 
 
 class OwnerWorkspaceContactCreate(OwnerWorkspaceContactBase):
@@ -296,6 +318,7 @@ class OwnerWorkspaceContactUpdate(BaseModel):
     counterparty_id: Optional[int] = None
     responsible_id: Optional[int] = None
     status: Optional[str] = None
+    folder_id: Optional[int] = None
 
 
 class OwnerWorkspaceContactResponse(BaseModel):
@@ -312,6 +335,7 @@ class OwnerWorkspaceContactResponse(BaseModel):
     source: Optional[str] = None
     responsible_id: Optional[int] = None
     status: str = "new"
+    folder_id: Optional[int] = None
     linked_project_ids: List[int] = []
     active_tasks_count: int = 0
     projects_count: int = 0

@@ -15,7 +15,8 @@ import json
 import logging
 import os
 import secrets
-from dataclasses import dataclass, field
+import time
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -219,7 +220,7 @@ def _build_service(db: Session):
 
 def _find_target_group_id(service) -> Optional[str]:
     group_name = _target_group_name()
-    groups = service.contactGroups().list(pageSize=200).execute().get("contactGroups", [])
+    groups = service.contactGroups().list(pageSize=200).execute(num_retries=5).get("contactGroups", [])
     for g in groups:
         if g.get("name") == group_name:
             return g["resourceName"]
@@ -327,7 +328,7 @@ def _run_sync_page(db: Session, service, group_id: Optional[str], sync_token: Op
     while True:
         if next_page_token:
             params["pageToken"] = next_page_token
-        resp = service.people().connections().list(**params).execute()
+        resp = service.people().connections().list(**params).execute(num_retries=5)
 
         for person in resp.get("connections", []):
             resource_name = person["resourceName"]
@@ -417,23 +418,54 @@ def _notify_auth_failed(db: Session, error_message: str) -> None:
     db.commit()
 
 
+NETWORK_RETRY_ATTEMPTS = 3
+NETWORK_RETRY_DELAY_SECONDS = 4
+
+
+def _is_transient_network_error(exc: Exception) -> bool:
+    # Этот сервер видит периодические обрывы до googleapis.com/accounts.google.com
+    # (ENETUNREACH / connect timeout) — не ошибка авторизации, а сетевая
+    # нестабильность, которую стоит просто повторить через пару секунд.
+    if isinstance(exc, (TimeoutError, ConnectionError, OSError)):
+        return True
+    return False
+
+
 def run_sync_job(db: Session) -> None:
     """Обёртка для фонового планировщика: ловит ошибки и шлёт уведомление при обрыве авторизации."""
     if not is_configured():
         return
     if not _get_setting(db, KEY_REFRESH_TOKEN):
         return
-    try:
-        run_sync(db)
-    except Exception as exc:  # noqa: BLE001
-        db.rollback()
-        message = str(exc)
-        logger.exception("Google Contacts sync failed")
-        _set_setting(db, KEY_LAST_SYNC_ERROR, message[:2000])
-        db.commit()
-        is_auth_error = any(
-            marker in message
-            for marker in ("invalid_grant", "unauthorized_client", "401", "403", "invalid_rapt")
-        )
-        if is_auth_error:
-            _notify_auth_failed(db, message)
+
+    last_exc: Optional[Exception] = None
+    for attempt in range(1, NETWORK_RETRY_ATTEMPTS + 1):
+        try:
+            run_sync(db)
+            return
+        except Exception as exc:  # noqa: BLE001
+            db.rollback()
+            last_exc = exc
+            if attempt < NETWORK_RETRY_ATTEMPTS and _is_transient_network_error(exc):
+                logger.warning(
+                    "Google Contacts sync: transient network error (попытка %d/%d), повтор через %ds: %s",
+                    attempt,
+                    NETWORK_RETRY_ATTEMPTS,
+                    NETWORK_RETRY_DELAY_SECONDS,
+                    exc,
+                )
+                time.sleep(NETWORK_RETRY_DELAY_SECONDS)
+                continue
+            break
+
+    assert last_exc is not None
+    message = str(last_exc)
+    logger.error("Google Contacts sync failed", exc_info=last_exc)
+    _set_setting(db, KEY_LAST_SYNC_ERROR, message[:2000])
+    db.commit()
+    is_auth_error = any(
+        marker in message
+        for marker in ("invalid_grant", "unauthorized_client", "401", "403", "invalid_rapt")
+    )
+    if is_auth_error:
+        _notify_auth_failed(db, message)

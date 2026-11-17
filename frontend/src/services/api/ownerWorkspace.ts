@@ -470,7 +470,8 @@ export const ownerWorkspaceApi = {
     await api.post('/api/owner-workspace/contacts/google-sync/disconnect');
   },
   runGoogleContactsSync: async (): Promise<GoogleContactsSyncStatus> => {
-    const response = await api.post('/api/owner-workspace/contacts/google-sync/run');
+    // Сервер сам ретраит до 3 раз на нестабильной сети до Google, может занять больше обычного таймаута.
+    const response = await api.post('/api/owner-workspace/contacts/google-sync/run', undefined, { timeout: 90000 });
     return response.data;
   },
   listTasks: async (params?: {

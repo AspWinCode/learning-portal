@@ -4,9 +4,13 @@ from typing import Dict, List, Optional
 
 from pydantic import BaseModel
 
+import logging
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import RedirectResponse
+
+logger = logging.getLogger(__name__)
 from sqlalchemy import String, and_, asc, case, cast, desc, exists, func, nullslast, or_
 from sqlalchemy.orm import Session
 from starlette.responses import StreamingResponse
@@ -2467,10 +2471,13 @@ async def google_contacts_sync_callback(
     from app.services.google_contacts_sync import consume_oauth_callback, get_return_url
 
     if error or not code or not state:
+        logger.warning("Google Contacts OAuth callback without code/state: error=%s", error)
         return RedirectResponse(url=f"{get_return_url()}?google_sync=error")
     try:
         consume_oauth_callback(db, code=code, state=state)
     except Exception:
+        logger.exception("Google Contacts OAuth callback failed")
+        db.rollback()
         return RedirectResponse(url=f"{get_return_url()}?google_sync=error")
     return RedirectResponse(url=f"{get_return_url()}?google_sync=connected")
 

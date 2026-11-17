@@ -113,11 +113,17 @@ def build_consent_url(db: Session, user_id: int) -> str:
     from google_auth_oauthlib.flow import Flow
 
     state = secrets.token_urlsafe(24)
+    # PKCE: google-auth-oauthlib generates the verifier on the Flow instance that
+    # builds the auth URL, but the token exchange happens on a brand new Flow
+    # instance in a later request — the verifier has to be carried across
+    # ourselves via the stored OAuth state, or Google rejects the exchange with
+    # "invalid_grant: Missing code verifier".
+    code_verifier = secrets.token_urlsafe(96)[:128]
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=OAUTH_STATE_TTL_MINUTES)
     _set_setting(
         db,
         f"{OAUTH_STATE_KEY_PREFIX}{state}",
-        json.dumps({"user_id": user_id, "expires_at": expires_at.isoformat()}),
+        json.dumps({"user_id": user_id, "expires_at": expires_at.isoformat(), "code_verifier": code_verifier}),
     )
     db.commit()
 
@@ -132,6 +138,7 @@ def build_consent_url(db: Session, user_id: int) -> str:
         },
         scopes=SCOPES,
         redirect_uri=_redirect_uri(),
+        code_verifier=code_verifier,
     )
     auth_url, _ = flow.authorization_url(
         access_type="offline",
@@ -166,6 +173,7 @@ def consume_oauth_callback(db: Session, *, code: str, state: str) -> None:
         },
         scopes=SCOPES,
         redirect_uri=_redirect_uri(),
+        code_verifier=payload.get("code_verifier"),
     )
     flow.fetch_token(code=code)
     credentials = flow.credentials

@@ -18,7 +18,8 @@ x-app-common-env: &app_common_env
   GOOGLE_CONTACTS_CLIENT_SECRET: ${GOOGLE_CONTACTS_CLIENT_SECRET:-}
   GOOGLE_CONTACTS_REDIRECT_URI: ${GOOGLE_CONTACTS_REDIRECT_URI:-https://tirskix.space/api/v1/owner-workspace/contacts/google-sync/callback}
   GOOGLE_CONTACTS_RETURN_URL: ${GOOGLE_CONTACTS_RETURN_URL:-https://tirskix.space/owner-workspace/contacts}
-  GOOGLE_CONTACTS_GROUP_NAME: ${GOOGLE_CONTACTS_GROUP_NAME:-Школы}
+  # Пусто по умолчанию = синхронизируются ВСЕ контакты аккаунта, без фильтра по группе.
+  GOOGLE_CONTACTS_GROUP_NAME: ${GOOGLE_CONTACTS_GROUP_NAME:-}
   AI_PROVIDER: ${AI_PROVIDER:-}
   RANVIK_API_KEY: ${RANVIK_API_KEY:-}
   RANVIK_BASE_URL: ${RANVIK_BASE_URL:-https://api.ranvik.ru/v1}

@@ -104,7 +104,7 @@ export const GoogleContactsSyncPanel: React.FC<GoogleContactsSyncPanelProps> = (
       )}
       <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap">
         <Typography variant="body2" color="text.secondary">
-          Google Контакты (группа «{status?.group_name || 'Школы'}»):
+          Google Контакты ({status?.group_name ? `группа «${status.group_name}»` : 'все контакты'}):
         </Typography>
         {loading && !status ? (
           <CircularProgress size={16} />

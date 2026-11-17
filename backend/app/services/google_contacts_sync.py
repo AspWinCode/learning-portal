@@ -56,7 +56,8 @@ def _redirect_uri() -> str:
 
 
 def _target_group_name() -> str:
-    return (os.getenv("GOOGLE_CONTACTS_GROUP_NAME") or "Школы").strip()
+    # Пусто = без фильтра по группе, синхронизируются все контакты аккаунта.
+    return (os.getenv("GOOGLE_CONTACTS_GROUP_NAME") or "").strip()
 
 
 def get_return_url() -> str:
@@ -220,6 +221,8 @@ def _build_service(db: Session):
 
 def _find_target_group_id(service) -> Optional[str]:
     group_name = _target_group_name()
+    if not group_name:
+        return None
     groups = service.contactGroups().list(pageSize=200).execute(num_retries=5).get("contactGroups", [])
     for g in groups:
         if g.get("name") == group_name:
@@ -313,7 +316,14 @@ def _upsert_contact(db: Session, person: dict, stats: SyncStats) -> None:
         stats.updated += 1
 
 
-def _run_sync_page(db: Session, service, group_id: Optional[str], sync_token: Optional[str], stats: SyncStats) -> Optional[str]:
+def _run_sync_page(
+    db: Session,
+    service,
+    group_id: Optional[str],
+    group_filter_active: bool,
+    sync_token: Optional[str],
+    stats: SyncStats,
+) -> Optional[str]:
     params = dict(
         resourceName="people/me",
         personFields="names,phoneNumbers,emailAddresses,addresses,memberships",
@@ -335,15 +345,15 @@ def _run_sync_page(db: Session, service, group_id: Optional[str], sync_token: Op
             if person.get("metadata", {}).get("deleted"):
                 _handle_removed(db, resource_name, stats)
                 continue
-            memberships = [
-                m["contactGroupMembership"]["contactGroupResourceName"]
-                for m in person.get("memberships", [])
-                if "contactGroupMembership" in m
-            ]
-            in_target_group = group_id is not None and group_id in memberships
-            if not in_target_group:
-                _handle_removed(db, resource_name, stats)
-                continue
+            if group_filter_active:
+                memberships = [
+                    m["contactGroupMembership"]["contactGroupResourceName"]
+                    for m in person.get("memberships", [])
+                    if "contactGroupMembership" in m
+                ]
+                if group_id not in memberships:
+                    _handle_removed(db, resource_name, stats)
+                    continue
             _upsert_contact(db, person, stats)
 
         next_page_token = resp.get("nextPageToken")
@@ -359,12 +369,20 @@ def run_sync(db: Session) -> SyncStats:
     if service is None:
         raise RuntimeError("Google Contacts sync is not connected")
 
-    group_id = _find_target_group_id(service)
+    group_name = _target_group_name()
+    group_filter_active = bool(group_name)
+    group_id = _find_target_group_id(service) if group_filter_active else None
+    if group_filter_active and group_id is None:
+        logger.warning(
+            "Google Contacts: группа '%s' не найдена — ни один контакт не будет синхронизирован,"
+            " пока группа не появится или GOOGLE_CONTACTS_GROUP_NAME не очищен",
+            group_name,
+        )
     sync_token = _get_setting(db, KEY_SYNC_TOKEN)
     stats = SyncStats()
 
     try:
-        new_sync_token = _run_sync_page(db, service, group_id, sync_token, stats)
+        new_sync_token = _run_sync_page(db, service, group_id, group_filter_active, sync_token, stats)
     except Exception as exc:  # noqa: BLE001 - re-sync on expired token, re-raise otherwise
         message = str(exc)
         if sync_token and ("EXPIRED_SYNC_TOKEN" in message or "410" in message):
@@ -372,7 +390,7 @@ def run_sync(db: Session) -> SyncStats:
             _set_setting(db, KEY_SYNC_TOKEN, None)
             db.commit()
             stats = SyncStats()
-            new_sync_token = _run_sync_page(db, service, group_id, None, stats)
+            new_sync_token = _run_sync_page(db, service, group_id, group_filter_active, None, stats)
         else:
             raise
 

@@ -37,8 +37,14 @@ KEY_SYNC_TOKEN = "google_contacts_sync_token"
 KEY_LAST_SYNC_AT = "google_contacts_last_sync_at"
 KEY_LAST_SYNC_STATS = "google_contacts_last_sync_stats"
 KEY_LAST_SYNC_ERROR = "google_contacts_last_sync_error"
+KEY_LAST_FULL_SYNC_AT = "google_contacts_last_full_sync_at"
 OAUTH_STATE_KEY_PREFIX = "google_contacts_oauth_state:"
 OAUTH_STATE_TTL_MINUTES = 10
+# Google People API документирует возможную задержку в доставке meta.deleted через
+# incremental sync — периодически форсируем полный проход + сверку с БД, чтобы
+# удаления в Google не "зависали" в системе бесконечно, даже если инкрементальный
+# syncToken их не поймал.
+FULL_RESYNC_INTERVAL_HOURS = 6
 
 KIND_AUTH_FAILED = "google_contacts_auth_failed"
 
@@ -323,7 +329,12 @@ def _run_sync_page(
     group_filter_active: bool,
     sync_token: Optional[str],
     stats: SyncStats,
-) -> Optional[str]:
+) -> tuple[Optional[str], set]:
+    """Возвращает (new_sync_token, seen_resource_names). seen_resource_names
+    заполняется только смыслово для полного (без syncToken) прохода — Google
+    не присылает metadata.deleted в полном списке, только в инкрементальном,
+    поэтому "пропавшие из полного списка" контакты реконсиляцией находит
+    вызывающий код (run_sync), сравнивая с тем, что уже есть в БД."""
     params = dict(
         resourceName="people/me",
         personFields="names,phoneNumbers,emailAddresses,addresses,memberships",
@@ -335,6 +346,7 @@ def _run_sync_page(
 
     next_page_token = None
     new_sync_token = None
+    seen_resource_names = set()
     while True:
         if next_page_token:
             params["pageToken"] = next_page_token
@@ -354,13 +366,31 @@ def _run_sync_page(
                 if group_id not in memberships:
                     _handle_removed(db, resource_name, stats)
                     continue
+            seen_resource_names.add(resource_name)
             _upsert_contact(db, person, stats)
 
         next_page_token = resp.get("nextPageToken")
         if not next_page_token:
             new_sync_token = resp.get("nextSyncToken")
             break
-    return new_sync_token
+    return new_sync_token, seen_resource_names
+
+
+def _reconcile_missing_contacts(db: Session, seen_resource_names: set, stats: SyncStats) -> None:
+    """После полного (без syncToken) прохода: Google не отмечает старые
+    контакты как удалённые в полном списке, он их просто не упоминает —
+    поэтому сверяем с тем, что уже привязано в БД, и чистим пропавшее."""
+    existing = (
+        db.query(OwnerWorkspaceContact.google_resource_name)
+        .filter(
+            OwnerWorkspaceContact.google_resource_name.isnot(None),
+            OwnerWorkspaceContact.deleted_in_google.is_(False),
+        )
+        .all()
+    )
+    for (resource_name,) in existing:
+        if resource_name not in seen_resource_names:
+            _handle_removed(db, resource_name, stats)
 
 
 def run_sync(db: Session) -> SyncStats:
@@ -379,10 +409,19 @@ def run_sync(db: Session) -> SyncStats:
             group_name,
         )
     sync_token = _get_setting(db, KEY_SYNC_TOKEN)
+    last_full_sync_raw = _get_setting(db, KEY_LAST_FULL_SYNC_AT)
+    last_full_sync_at = datetime.fromisoformat(last_full_sync_raw) if last_full_sync_raw else None
+    force_full_resync = (
+        last_full_sync_at is None
+        or datetime.now(timezone.utc) - last_full_sync_at > timedelta(hours=FULL_RESYNC_INTERVAL_HOURS)
+    )
+    if force_full_resync and sync_token:
+        sync_token = None
+    was_full_sync = sync_token is None
     stats = SyncStats()
 
     try:
-        new_sync_token = _run_sync_page(db, service, group_id, group_filter_active, sync_token, stats)
+        new_sync_token, seen_resource_names = _run_sync_page(db, service, group_id, group_filter_active, sync_token, stats)
     except Exception as exc:  # noqa: BLE001 - re-sync on expired token, re-raise otherwise
         message = str(exc)
         if sync_token and ("EXPIRED_SYNC_TOKEN" in message or "410" in message):
@@ -390,9 +429,14 @@ def run_sync(db: Session) -> SyncStats:
             _set_setting(db, KEY_SYNC_TOKEN, None)
             db.commit()
             stats = SyncStats()
-            new_sync_token = _run_sync_page(db, service, group_id, group_filter_active, None, stats)
+            was_full_sync = True
+            new_sync_token, seen_resource_names = _run_sync_page(db, service, group_id, group_filter_active, None, stats)
         else:
             raise
+
+    if was_full_sync:
+        _reconcile_missing_contacts(db, seen_resource_names, stats)
+        _set_setting(db, KEY_LAST_FULL_SYNC_AT, datetime.now(timezone.utc).isoformat())
 
     _set_setting(db, KEY_SYNC_TOKEN, new_sync_token)
     _set_setting(db, KEY_LAST_SYNC_AT, datetime.now(timezone.utc).isoformat())

@@ -5929,7 +5929,6 @@ const OwnerWorkspacePage: React.FC<OwnerWorkspacePageProps> = ({ initialTab, ini
 
       {tab === OW_TAB_CONTACTS && (
         <Suspense fallback={<OwnerWorkspaceDialogsFallback />}>
-          <GoogleContactsSyncPanel isFullAccess={isWorkspaceFullAccess} />
           <OwnerWorkspaceContactsTab
             contacts={contacts}
             contactsCatalog={contactsCatalog}
@@ -7057,6 +7056,16 @@ const OwnerWorkspacePage: React.FC<OwnerWorkspacePageProps> = ({ initialTab, ini
               на других вкладках (вид задач, сводка) сразу видны в интерфейсе; нажмите «Сохранить», чтобы зафиксировать их
               как умолчания.
             </Typography>
+            {isWorkspaceFullAccess && (
+              <Card variant="outlined" sx={{ mb: 3 }}>
+                <CardContent>
+                  <Stack spacing={1.5}>
+                    <Typography variant="subtitle1">Интеграции</Typography>
+                    <GoogleContactsSyncPanel isFullAccess={isWorkspaceFullAccess} />
+                  </Stack>
+                </CardContent>
+              </Card>
+            )}
             <Card variant="outlined" sx={{ mb: 3 }}>
               <CardContent>
                 <Stack spacing={1.5}>

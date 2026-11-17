@@ -73,6 +73,7 @@ type OwnerWorkspaceContactsTabProps = {
   contactListSearchInput: string;
   contactListProjectId: number | '';
   contactListTag: string;
+  contactListFolderId?: number | null | 'unassigned';
   contactListActiveTasksOnly: boolean;
   contactName: string;
   contactPhone: string;
@@ -135,6 +136,7 @@ export function OwnerWorkspaceContactsTab({
   contactListSearchInput,
   contactListProjectId,
   contactListTag,
+  contactListFolderId = null,
   contactListActiveTasksOnly,
   contactName,
   contactPhone,
@@ -240,6 +242,8 @@ export function OwnerWorkspaceContactsTab({
           ].join(' ').toLowerCase();
           if (!haystack.includes(q)) return false;
         }
+        if (contactListFolderId === 'unassigned' && contact.folder_id) return false;
+        if (typeof contactListFolderId === 'number' && contact.folder_id !== contactListFolderId) return false;
         if (projectFilterIds.length > 0 && !projectFilterIds.some((id) => contact.linked_project_ids.includes(id))) return false;
         if (managerFilterIds.length > 0) {
           const ownerId = ownerIdForContact(contact);
@@ -272,6 +276,7 @@ export function OwnerWorkspaceContactsTab({
   }, [
     activeTaskFilter,
     activityFilter,
+    contactListFolderId,
     contactListSearchInput,
     contactsSource,
     managerFilterIds,
@@ -286,7 +291,7 @@ export function OwnerWorkspaceContactsTab({
   React.useEffect(() => {
     setPage(0);
     setSelectedIds([]);
-  }, [contactListSearchInput, projectFilterIds, managerFilterIds, tagFilters, activityFilter, activeTaskFilter, sortBy, sortDir]);
+  }, [contactListSearchInput, contactListFolderId, projectFilterIds, managerFilterIds, tagFilters, activityFilter, activeTaskFilter, sortBy, sortDir]);
 
   const selectedContacts = React.useMemo(
     () => visibleContacts.filter((contact) => selectedIds.includes(contact.id)),

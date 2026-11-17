@@ -5132,12 +5132,6 @@ const OwnerWorkspacePage: React.FC<OwnerWorkspacePageProps> = ({ initialTab, ini
     [contactsCatalog]
   );
 
-  const contactsByFolder = useMemo(() => {
-    if (contactListFolderId === null) return contacts;
-    if (contactListFolderId === 'unassigned') return contacts.filter((c) => !c.folder_id);
-    return contacts.filter((c) => c.folder_id === contactListFolderId);
-  }, [contacts, contactListFolderId]);
-
   const unassignedContactsCount = useMemo(() => contacts.filter((c) => !c.folder_id).length, [contacts]);
 
   const contactListTagOptions = useMemo(() => {
@@ -5960,7 +5954,8 @@ const OwnerWorkspacePage: React.FC<OwnerWorkspacePageProps> = ({ initialTab, ini
             totalCount={contacts.length}
           />
           <OwnerWorkspaceContactsTab
-            contacts={contactsByFolder}
+            contacts={contacts}
+            contactListFolderId={contactListFolderId}
             contactsCatalog={contactsCatalog}
             projectsCatalogSorted={projectsCatalogSorted}
             contactListTagOptions={contactListTagOptions}

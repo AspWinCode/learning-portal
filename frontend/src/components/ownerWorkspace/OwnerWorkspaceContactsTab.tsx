@@ -47,7 +47,7 @@ import MoreVertIcon from '@mui/icons-material/MoreVert';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import PhoneIphoneIcon from '@mui/icons-material/PhoneIphone';
 
-import type { OwnerWorkspaceContact, OwnerWorkspaceProject, User } from '../../types';
+import type { OwnerWorkspaceContact, OwnerWorkspaceContactFolder, OwnerWorkspaceProject, User } from '../../types';
 import { applyPhoneMask, isValidPhone } from '../../utils/phoneMask';
 
 type ContactViewMode = 'table' | 'cards';
@@ -101,6 +101,8 @@ type OwnerWorkspaceContactsTabProps = {
   onDeleteContact: (contact: OwnerWorkspaceContact) => void | Promise<void>;
   onBulkAddTag: (contacts: OwnerWorkspaceContact[], tag: string) => Promise<void>;
   onBulkDelete: (contacts: OwnerWorkspaceContact[]) => Promise<void>;
+  contactFolders: OwnerWorkspaceContactFolder[];
+  onBulkMoveToFolder: (contacts: OwnerWorkspaceContact[], folderId: number | null) => Promise<void>;
   onRetryLoad: () => void | Promise<void>;
 };
 
@@ -161,6 +163,8 @@ export function OwnerWorkspaceContactsTab({
   onDeleteContact,
   onBulkAddTag,
   onBulkDelete,
+  contactFolders,
+  onBulkMoveToFolder,
   onRetryLoad,
 }: OwnerWorkspaceContactsTabProps) {
   const theme = useTheme();
@@ -181,6 +185,7 @@ export function OwnerWorkspaceContactsTab({
   const [activeTaskFilter, setActiveTaskFilter] = React.useState<ActiveTaskFilter>(contactListActiveTasksOnly ? 'has' : 'all');
   const [filtersOpen, setFiltersOpen] = React.useState(false);
   const [selectedIds, setSelectedIds] = React.useState<number[]>([]);
+  const [bulkFolderId, setBulkFolderId] = React.useState<string>('');
   const [actionAnchorEl, setActionAnchorEl] = React.useState<HTMLElement | null>(null);
   const [actionContact, setActionContact] = React.useState<OwnerWorkspaceContact | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = React.useState(false);
@@ -585,6 +590,33 @@ export function OwnerWorkspaceContactsTab({
               <TextField size="small" label="Добавить тег" value={bulkTag} onChange={(e) => setBulkTag(e.target.value)} />
               <Button variant="outlined" disabled={!bulkTag.trim()} onClick={() => void onBulkAddTag(selectedContacts, bulkTag.trim()).then(() => setBulkTag(''))}>
                 Добавить тег
+              </Button>
+              <TextField
+                select
+                size="small"
+                label="Переместить в папку"
+                sx={{ minWidth: 200 }}
+                value={bulkFolderId}
+                onChange={(e) => setBulkFolderId(e.target.value)}
+              >
+                <MenuItem value="">— выберите —</MenuItem>
+                <MenuItem value="none">Без папки</MenuItem>
+                {contactFolders.map((f) => (
+                  <MenuItem key={f.id} value={String(f.id)}>
+                    {f.name}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <Button
+                variant="outlined"
+                disabled={bulkFolderId === ''}
+                onClick={() =>
+                  void onBulkMoveToFolder(selectedContacts, bulkFolderId === 'none' ? null : Number(bulkFolderId)).then(() =>
+                    setBulkFolderId('')
+                  )
+                }
+              >
+                Переместить
               </Button>
               <Button variant="outlined" startIcon={<DownloadIcon />} onClick={exportSelected}>Экспортировать</Button>
               <Button color="error" variant="outlined" onClick={() => setBulkDeleteOpen(true)}>Удалить</Button>

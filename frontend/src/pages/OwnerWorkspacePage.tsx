@@ -2644,6 +2644,15 @@ const OwnerWorkspacePage: React.FC<OwnerWorkspacePageProps> = ({ initialTab, ini
     }
   };
 
+  const bulkMoveContactsToFolder = async (rows: OwnerWorkspaceContact[], folderId: number | null) => {
+    try {
+      await Promise.all(rows.map((contact) => ownerWorkspaceApi.updateContact(contact.id, { folder_id: folderId })));
+      await loadProjectsAndContacts();
+    } catch (e: unknown) {
+      setError(extractApiError(e, 'Не удалось переместить контакты в папку'));
+    }
+  };
+
   const bulkDeleteContacts = async (rows: OwnerWorkspaceContact[]) => {
     try {
       await Promise.all(rows.map((contact) => ownerWorkspaceApi.deleteContact(contact.id)));
@@ -5991,6 +6000,8 @@ const OwnerWorkspacePage: React.FC<OwnerWorkspacePageProps> = ({ initialTab, ini
             onBulkAddTag={bulkAddContactTag}
             onBulkDelete={bulkDeleteContacts}
             onRetryLoad={loadProjectsAndContacts}
+            contactFolders={contactFolders}
+            onBulkMoveToFolder={bulkMoveContactsToFolder}
           />
         </Suspense>
       )}

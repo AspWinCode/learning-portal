@@ -72,7 +72,6 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { useAuth } from '../contexts/AuthContext';
 import { OwnerWorkspaceTaskCreateDialog, type TaskCreatePayload } from '../components/ownerWorkspace/OwnerWorkspaceTaskCreateDialog';
-import { GoogleContactsSyncPanel } from '../components/ownerWorkspace/GoogleContactsSyncPanel';
 import { mediaApi, ownerWorkspaceApi, salesApi, settingsApi, tasksApi, usersApi } from '../services/api';
 import type {
   OwnerWorkspaceAuditLog,
@@ -7056,16 +7055,6 @@ const OwnerWorkspacePage: React.FC<OwnerWorkspacePageProps> = ({ initialTab, ini
               на других вкладках (вид задач, сводка) сразу видны в интерфейсе; нажмите «Сохранить», чтобы зафиксировать их
               как умолчания.
             </Typography>
-            {isWorkspaceFullAccess && (
-              <Card variant="outlined" sx={{ mb: 3 }}>
-                <CardContent>
-                  <Stack spacing={1.5}>
-                    <Typography variant="subtitle1">Интеграции</Typography>
-                    <GoogleContactsSyncPanel isFullAccess={isWorkspaceFullAccess} />
-                  </Stack>
-                </CardContent>
-              </Card>
-            )}
             <Card variant="outlined" sx={{ mb: 3 }}>
               <CardContent>
                 <Stack spacing={1.5}>

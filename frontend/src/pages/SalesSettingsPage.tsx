@@ -37,6 +37,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout';
 import OwnerWorkspaceSettingsSection from '../components/ownerWorkspace/OwnerWorkspaceSettingsSection';
+import { GoogleContactsSyncPanel } from '../components/ownerWorkspace/GoogleContactsSyncPanel';
 import PwaSettingsSection from '../components/PwaSettingsSection';
 import StudentQuestionnairesSettingsSection from '../components/StudentQuestionnairesSettingsSection';
 import TrainerRatesSettingsSection from '../components/TrainerRatesSettingsSection';
@@ -2212,6 +2213,15 @@ const SalesSettingsPage: React.FC = () => {
               )}
             </Box>
           )}
+        </Paper>
+
+        <Paper sx={sectionPaperSx('integrations')}>
+          <Typography variant="h6" mb={1}>Google Контакты — синхронизация</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Контакты из выбранной Google-группы приходят в /owner-workspace/contacts раз в 15 минут. Поток
+            односторонний: Google → система, пустые поля с его стороны уже заполненные значения не затирают.
+          </Typography>
+          <GoogleContactsSyncPanel isFullAccess={true} />
         </Paper>
 
         <Paper sx={sectionPaperSx('leads')}>

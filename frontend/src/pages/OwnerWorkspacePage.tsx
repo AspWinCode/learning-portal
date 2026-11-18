@@ -918,6 +918,7 @@ const OwnerWorkspacePage: React.FC<OwnerWorkspacePageProps> = ({ initialTab, ini
   const { user } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const isCalendarOnly = location.pathname === '/calendar' || initialTaskViewMode === 'calendar';
   const [searchParams, setSearchParams] = useSearchParams();
   const entityRoute = useMemo(() => ownerWorkspaceEntityFromPath(location.pathname), [location.pathname]);
   const skipNextProjectFromUrlEffectRef = useRef(false);
@@ -5384,6 +5385,44 @@ const OwnerWorkspacePage: React.FC<OwnerWorkspacePageProps> = ({ initialTab, ini
 
   return (
     <Layout>
+      {isCalendarOnly && (
+        <Box sx={{ width: '100%', minHeight: 'calc(100vh - 72px)', px: { xs: 0, md: 1 }, py: { xs: 1, md: 1.5 } }}>
+          <Suspense fallback={<OwnerWorkspaceDialogsFallback />}>
+            <OwnerWorkspaceTaskBoardCalendarSection
+              taskViewMode="calendar"
+              tasks={tasks}
+              kanbanColumns={KANBAN_COLUMNS}
+              coerceTaskStatus={coerceTaskStatus}
+              renderTaskCard={renderTaskCard}
+              onKanbanDrop={handleKanbanDrop}
+              calendarMonth={calendarMonth}
+              onCalendarMonthChange={setCalendarMonth}
+              tasksByDeadlineDay={tasksByDeadlineDay}
+              onOpenTask={openTaskDialog}
+              weekdaysShort={WEEKDAYS_SHORT}
+              zones={workZones}
+              onZonesChange={setWorkZones}
+              meetings={calendarMeetings}
+              recurringSlots={calendarRecurringSlots}
+              trainerLessons={calendarTrainerLessons}
+              manualLessons={calendarManualLessons}
+              canCreateMeeting={isWorkspaceFullAccess}
+              fullPage
+              onMeetingsChange={(next) => {
+                setCalendarMeetings(next);
+                setMeetingsCount(next.length);
+              }}
+              onRecurringSlotsChange={setCalendarRecurringSlots}
+              onTaskCreated={(task) => {
+                setTasks((current) => current.some((item) => item.id === task.id) ? current : [...current, task]);
+                setTaskListTotal((current) => current + 1);
+                void loadDigest();
+              }}
+            />
+          </Suspense>
+        </Box>
+      )}
+      <Box sx={{ display: isCalendarOnly ? 'none' : 'block' }}>
       {currentWorkZone && currentZoneRemaining && (
         <Box
           sx={{
@@ -9177,6 +9216,7 @@ const OwnerWorkspacePage: React.FC<OwnerWorkspacePageProps> = ({ initialTab, ini
             : undefined
         }
       />
+      </Box>
     </Layout>
   );
 };

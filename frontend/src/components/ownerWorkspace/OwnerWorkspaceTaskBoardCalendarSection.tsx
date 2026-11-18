@@ -102,6 +102,7 @@ type OwnerWorkspaceTaskBoardCalendarSectionProps = {
   onMeetingsChange: (meetings: OwnerWorkspaceMeeting[]) => void;
   onRecurringSlotsChange: (slots: OwnerWorkspaceRecurringSlot[]) => void;
   onTaskCreated?: (task: OwnerWorkspaceTask) => void;
+  fullPage?: boolean;
 };
 
 function isTaskOverdue(task: OwnerWorkspaceTask): boolean {
@@ -131,6 +132,7 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
   onMeetingsChange,
   onRecurringSlotsChange,
   onTaskCreated,
+  fullPage = false,
 }: OwnerWorkspaceTaskBoardCalendarSectionProps) {
   const [calendarMode, setCalendarMode] = React.useState<'day' | 'week' | 'month'>('week');
   const [zoneDialogOpen, setZoneDialogOpen] = React.useState(false);
@@ -523,8 +525,8 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
   };
 
   return (
-    <Card>
-      <CardContent>
+    <Card sx={fullPage ? { height: 'calc(100vh - 104px)', minHeight: 560 } : undefined}>
+      <CardContent sx={fullPage ? { height: '100%', display: 'flex', flexDirection: 'column' } : undefined}>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }} justifyContent="space-between" sx={{ mb: 2 }}>
           <IconButton
             aria-label="Предыдущий период"
@@ -577,7 +579,7 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
             })}
           </Box>
         ) : (
-          <Box sx={{ overflow: 'auto', maxHeight: 720 }}>
+          <Box sx={{ overflow: 'auto', maxHeight: fullPage ? 'none' : 720, flex: fullPage ? 1 : undefined, minHeight: 0 }}>
             <Box sx={{ minWidth: calendarMode === 'day' ? 620 : 1180 }}>
               <Box sx={{ display: 'grid', gridTemplateColumns: `72px repeat(${timeGridDays.length}, minmax(160px, 1fr))`, position: 'sticky', top: 0, zIndex: 2, bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider' }}>
                 <Box />

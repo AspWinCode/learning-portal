@@ -115,6 +115,7 @@ from app.schemas.owner_workspace import (
     OwnerWorkspaceDigestResponse,
     OwnerWorkspaceContactResponse,
     OwnerWorkspaceContactUpdate,
+    OwnerWorkspaceContactMerge,
     OwnerWorkspaceConversationItem,
     OwnerWorkspaceMessageCreate,
     OwnerWorkspaceMessageCreateTaskRequest,
@@ -2244,6 +2245,7 @@ async def list_contacts(
     if project_id is not None and not ctx.full and not project_visible(ctx, project_id):
         raise HTTPException(status_code=404, detail="Project not found")
     q = db.query(OwnerWorkspaceContact)
+    q = q.filter(OwnerWorkspaceContact.is_archived.is_(False))
     if not ctx.full:
         if not ctx.contact_ids:
             return []
@@ -2281,6 +2283,84 @@ async def list_contacts(
     return [
         _contact_to_response(db, row, message_max_by_id=msg_max, task_max_by_id=task_max) for row in rows
     ]
+
+
+@router.get("/contacts/duplicates")
+async def list_contact_duplicates(
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    """Find visible active contacts sharing the same normalized Russian phone."""
+    rows = db.query(OwnerWorkspaceContact).filter(OwnerWorkspaceContact.is_archived.is_(False)).all()
+    if not ctx.full:
+        rows = [row for row in rows if row.id in ctx.contact_ids]
+    groups: Dict[str, List[OwnerWorkspaceContact]] = {}
+    for row in rows:
+        phone = normalize_ru_phone_display(row.phone)
+        if phone:
+            groups.setdefault(phone, []).append(row)
+    return [
+        {
+            "phone": phone,
+            "contacts": [_contact_to_response(db, row) for row in contacts],
+        }
+        for phone, contacts in groups.items()
+        if len(contacts) > 1
+    ]
+
+
+@router.post("/contacts/merge", response_model=OwnerWorkspaceContactResponse)
+async def merge_contacts(
+    payload: OwnerWorkspaceContactMerge,
+    db: Session = Depends(get_db),
+    ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
+):
+    """Merge contacts into primary, preserving links and archiving duplicates."""
+    duplicate_ids = sorted(set(payload.duplicate_ids) - {payload.primary_id})
+    if not duplicate_ids:
+        raise HTTPException(status_code=422, detail="Выберите хотя бы один дубликат")
+    ids = [payload.primary_id, *duplicate_ids]
+    rows = db.query(OwnerWorkspaceContact).filter(
+        OwnerWorkspaceContact.id.in_(ids),
+        OwnerWorkspaceContact.is_archived.is_(False),
+    ).all()
+    by_id = {row.id: row for row in rows}
+    if len(by_id) != len(ids) or any(not contact_visible(ctx, cid) for cid in ids):
+        raise HTTPException(status_code=404, detail="Контакт не найден или недоступен")
+    primary = by_id[payload.primary_id]
+    duplicates = [by_id[cid] for cid in duplicate_ids]
+    primary_phone = normalize_ru_phone_display(primary.phone)
+    if not primary_phone:
+        raise HTTPException(status_code=422, detail="У основного контакта некорректный телефон")
+
+    # Не теряем заполненные поля основного контакта.
+    for duplicate in duplicates:
+        for field in ("email", "city", "company", "position", "comment", "source"):
+            if not getattr(primary, field) and getattr(duplicate, field):
+                setattr(primary, field, getattr(duplicate, field))
+        primary.tags = list(dict.fromkeys([*(primary.tags or []), *(duplicate.tags or [])])) or None
+
+        for link in db.query(OwnerWorkspaceProjectContact).filter(
+            OwnerWorkspaceProjectContact.contact_id == duplicate.id
+        ).all():
+            already = db.query(OwnerWorkspaceProjectContact).filter(
+                OwnerWorkspaceProjectContact.project_id == link.project_id,
+                OwnerWorkspaceProjectContact.contact_id == primary.id,
+            ).first()
+            if already:
+                db.delete(link)
+            else:
+                link.contact_id = primary.id
+        db.query(OwnerWorkspaceTask).filter(OwnerWorkspaceTask.contact_id == duplicate.id).update(
+            {OwnerWorkspaceTask.contact_id: primary.id}, synchronize_session=False
+        )
+        duplicate.is_archived = True
+        duplicate.archived_at = datetime.now(timezone.utc)
+
+    primary.phone = primary_phone
+    db.commit()
+    db.refresh(primary)
+    return _contact_to_response(db, primary)
 
 
 @router.post("/contacts", response_model=OwnerWorkspaceContactResponse, status_code=status.HTTP_201_CREATED)

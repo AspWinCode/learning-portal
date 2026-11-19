@@ -464,6 +464,17 @@ export const ownerWorkspaceApi = {
     const response = await api.get('/api/owner-workspace/contacts', { params: params || {} });
     return response.data;
   },
+  listContactDuplicates: async (): Promise<Array<{ phone: string; contacts: OwnerWorkspaceContact[] }>> => {
+    const response = await api.get('/api/owner-workspace/contacts/duplicates');
+    return response.data;
+  },
+  mergeContacts: async (primaryId: number, duplicateIds: number[]): Promise<OwnerWorkspaceContact> => {
+    const response = await api.post('/api/owner-workspace/contacts/merge', {
+      primary_id: primaryId,
+      duplicate_ids: duplicateIds,
+    });
+    return response.data;
+  },
   createContact: async (payload: {
     full_name: string;
     phone: string;

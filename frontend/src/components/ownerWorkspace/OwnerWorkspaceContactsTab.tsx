@@ -46,14 +46,17 @@ import FilterListIcon from '@mui/icons-material/FilterList';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import PhoneIphoneIcon from '@mui/icons-material/PhoneIphone';
+import MergeTypeIcon from '@mui/icons-material/MergeType';
 
 import type { OwnerWorkspaceContact, OwnerWorkspaceContactFolder, OwnerWorkspaceProject, User } from '../../types';
+import { ownerWorkspaceApi } from '../../services/api';
 import { applyPhoneMask, isValidPhone } from '../../utils/phoneMask';
 
 type ContactViewMode = 'table' | 'cards';
 type ContactSortBy = 'full_name' | 'company' | 'projects' | 'active_tasks' | 'last_interaction' | 'owner';
 type ActivityFilter = 'all' | 'active' | 'stale_30' | 'stale_90';
 type ActiveTaskFilter = 'all' | 'has' | 'none';
+type ContactDuplicateGroup = { phone: string; contacts: OwnerWorkspaceContact[] };
 
 type ContactCreatePayload = {
   full_name: string;
@@ -196,6 +199,37 @@ export function OwnerWorkspaceContactsTab({
   const [bulkTag, setBulkTag] = React.useState('');
   const [assignManagerId, setAssignManagerId] = React.useState<number | ''>('');
   const [draft, setDraft] = React.useState<ContactCreatePayload>({ full_name: '', phone: '', email: '', company: '', tags: [], comment: '' });
+  const [duplicateDialogOpen, setDuplicateDialogOpen] = React.useState(false);
+  const [duplicateGroups, setDuplicateGroups] = React.useState<ContactDuplicateGroup[]>([]);
+  const [duplicateLoading, setDuplicateLoading] = React.useState(false);
+  const [mergingGroupPhone, setMergingGroupPhone] = React.useState<string | null>(null);
+  const [duplicatePrimaries, setDuplicatePrimaries] = React.useState<Record<string, number>>({});
+
+  const openDuplicateDialog = async () => {
+    setDuplicateDialogOpen(true);
+    setDuplicateLoading(true);
+    try {
+      const groups = await ownerWorkspaceApi.listContactDuplicates();
+      setDuplicateGroups(groups);
+      setDuplicatePrimaries(Object.fromEntries(groups.map((group) => [group.phone, group.contacts[0]?.id]).filter(([, id]) => id != null)));
+    } finally {
+      setDuplicateLoading(false);
+    }
+  };
+
+  const mergeDuplicateGroup = async (group: ContactDuplicateGroup) => {
+    const primaryId = duplicatePrimaries[group.phone] ?? group.contacts[0]?.id;
+    if (!primaryId) return;
+    setMergingGroupPhone(group.phone);
+    try {
+      await ownerWorkspaceApi.mergeContacts(primaryId, group.contacts.filter((contact) => contact.id !== primaryId).map((contact) => contact.id));
+      const nextGroups = duplicateGroups.filter((item) => item.phone !== group.phone);
+      setDuplicateGroups(nextGroups);
+      await onRetryLoad();
+    } finally {
+      setMergingGroupPhone(null);
+    }
+  };
 
   React.useEffect(() => {
     const saved = localStorage.getItem('ow_contacts_view_mode');
@@ -541,9 +575,14 @@ export function OwnerWorkspaceContactsTab({
             <ToggleButton value="cards">Карточки</ToggleButton>
           </ToggleButtonGroup>
         </Box>
-        <Button variant="contained" startIcon={<AddIcon />} disabled={!canCreateContactUi} onClick={() => setCreateDialogOpen(true)}>
-          Создать контакт
-        </Button>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+          <Button variant="outlined" startIcon={<MergeTypeIcon />} onClick={() => void openDuplicateDialog()}>
+            Найти дубли
+          </Button>
+          <Button variant="contained" startIcon={<AddIcon />} disabled={!canCreateContactUi} onClick={() => setCreateDialogOpen(true)}>
+            Создать контакт
+          </Button>
+        </Stack>
       </Stack>
 
       <Card variant="outlined">
@@ -821,6 +860,52 @@ export function OwnerWorkspaceContactsTab({
             Создать
           </Button>
         </DialogActions>
+      </Dialog>
+
+      <Dialog open={duplicateDialogOpen} onClose={() => setDuplicateDialogOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Дубли контактов</DialogTitle>
+        <DialogContent>
+          {duplicateLoading ? (
+            <Typography color="text.secondary">Проверяю контакты…</Typography>
+          ) : duplicateGroups.length === 0 ? (
+            <Alert severity="success">Дублей по телефонам не найдено.</Alert>
+          ) : (
+            <Stack spacing={2} sx={{ pt: 1 }}>
+              <Alert severity="warning">Выберите основной контакт. Остальные будут архивированы, а задачи и проекты перенесены в основной.</Alert>
+              {duplicateGroups.map((group) => {
+                const primaryId = duplicatePrimaries[group.phone] ?? group.contacts[0]?.id;
+                return (
+                  <Card key={group.phone} variant="outlined">
+                    <CardContent>
+                      <Typography variant="subtitle2" sx={{ mb: 1 }}>Телефон: {group.phone}</Typography>
+                      <Stack spacing={1}>
+                        {group.contacts.map((contact) => (
+                          <Stack key={contact.id} direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }} justifyContent="space-between">
+                            <FormControlLabel
+                              control={<Checkbox checked={primaryId === contact.id} onChange={() => setDuplicatePrimaries((prev) => ({ ...prev, [group.phone]: contact.id }))} />}
+                              label={`${contact.full_name} · ${contact.phone || 'без телефона'} · задач: ${contact.active_tasks_count ?? 0}`}
+                            />
+                            <Typography variant="caption" color="text.secondary">Проектов: {contact.linked_project_ids?.length ?? 0}</Typography>
+                          </Stack>
+                        ))}
+                      </Stack>
+                      <Button
+                        sx={{ mt: 1 }}
+                        variant="contained"
+                        color="warning"
+                        disabled={mergingGroupPhone === group.phone}
+                        onClick={() => void mergeDuplicateGroup(group)}
+                      >
+                        {mergingGroupPhone === group.phone ? 'Объединение…' : 'Объединить эту группу'}
+                      </Button>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions><Button onClick={() => setDuplicateDialogOpen(false)}>Закрыть</Button></DialogActions>
       </Dialog>
 
       <Dialog open={Boolean(deleteTarget)} onClose={() => setDeleteTarget(null)} maxWidth="xs" fullWidth>

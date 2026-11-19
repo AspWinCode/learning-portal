@@ -321,6 +321,11 @@ class OwnerWorkspaceContactUpdate(BaseModel):
     folder_id: Optional[int] = None
 
 
+class OwnerWorkspaceContactMerge(BaseModel):
+    primary_id: int
+    duplicate_ids: List[int] = Field(..., min_length=1)
+
+
 class OwnerWorkspaceContactResponse(BaseModel):
     id: int
     type: str = "individual"

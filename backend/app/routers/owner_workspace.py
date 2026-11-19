@@ -58,6 +58,7 @@ from app.services.owner_workspace_notifications import (
 )
 from app.services.owner_workspace_preferences import get_preferences_for_user, merge_preferences_for_user
 from app.services.owner_workspace_task_order import normalize_task_sort_params
+from app.utils.phone import normalize_ru_phone_display
 from app.models import (
     OwnerWorkspaceAuditLog,
     OwnerWorkspaceContact,
@@ -2300,10 +2301,13 @@ async def create_contact(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Укажите проект для привязки контакта",
         )
+    normalized_phone = normalize_ru_phone_display(payload.phone)
+    if not normalized_phone:
+        raise HTTPException(status_code=422, detail="Введите российский номер: +7 (900) 123-45-67")
     row = OwnerWorkspaceContact(
         type=getattr(payload, "type", "individual") or "individual",
         full_name=payload.full_name.strip(),
-        phone=payload.phone.strip(),
+        phone=normalized_phone,
         email=payload.email,
         city=payload.city,
         company=payload.company,
@@ -2365,6 +2369,11 @@ async def update_contact(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Недостаточно прав")
     old = {"full_name": row.full_name, "phone": row.phone}
     data = payload.model_dump(exclude_unset=True)
+    if "phone" in data:
+        normalized_phone = normalize_ru_phone_display(data["phone"])
+        if not normalized_phone:
+            raise HTTPException(status_code=422, detail="Введите российский номер: +7 (900) 123-45-67")
+        data["phone"] = normalized_phone
     for k, v in data.items():
         setattr(row, k, v)
     _log_audit(

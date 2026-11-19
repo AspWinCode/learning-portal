@@ -107,6 +107,7 @@ import type {
   User,
 } from '../types';
 import { extractApiError } from '../utils/extractApiError';
+import { applyPhoneMask, isValidPhone } from '../utils/phoneMask';
 import { getEffectiveRole } from '../utils/permissions';
 
 const OwnerWorkspaceSettingsDialogs = React.lazy(
@@ -2306,7 +2307,7 @@ const OwnerWorkspacePage: React.FC<OwnerWorkspacePageProps> = ({ initialTab, ini
   useEffect(() => {
     if (!contactDialog) return;
     setContactEditFullName(contactDialog.full_name);
-    setContactEditPhone(contactDialog.phone ?? '');
+    setContactEditPhone(applyPhoneMask(contactDialog.phone ?? ''));
     setContactEditEmail(contactDialog.email ?? '');
     setContactEditCompany(contactDialog.company ?? '');
     setContactEditPosition(contactDialog.position ?? '');
@@ -2576,11 +2577,14 @@ const OwnerWorkspacePage: React.FC<OwnerWorkspacePageProps> = ({ initialTab, ini
       setError('Для создания контакта выберите проект, к которому он будет привязан.');
       return;
     }
-    if (!contactName.trim() || !contactPhone.trim()) return;
+    if (!contactName.trim() || !isValidPhone(contactPhone)) {
+      setError('Введите телефон в формате +7(900) 123-45-67');
+      return;
+    }
     try {
       await ownerWorkspaceApi.createContact({
         full_name: contactName.trim(),
-        phone: contactPhone.trim(),
+        phone: applyPhoneMask(contactPhone),
         project_ids: newContactProjectId === '' ? undefined : [newContactProjectId],
       });
       setContactName('');
@@ -3383,9 +3387,9 @@ const OwnerWorkspacePage: React.FC<OwnerWorkspacePageProps> = ({ initialTab, ini
   const saveContactDetails = async () => {
     if (!contactDialog) return;
     const fn = contactEditFullName.trim();
-    const ph = contactEditPhone.trim();
-    if (!fn || !ph) {
-      setError('Укажите ФИО и телефон');
+    const ph = applyPhoneMask(contactEditPhone);
+    if (!fn || !isValidPhone(ph)) {
+      setError('Укажите ФИО и корректный телефон: +7(900) 123-45-67');
       return;
     }
     try {
@@ -8309,7 +8313,11 @@ const OwnerWorkspacePage: React.FC<OwnerWorkspacePageProps> = ({ initialTab, ini
               fullWidth
               label="Телефон"
               value={contactEditPhone}
-              onChange={(e) => setContactEditPhone(e.target.value)}
+              onChange={(e) => setContactEditPhone(applyPhoneMask(e.target.value))}
+              onBlur={() => setContactEditPhone((value) => applyPhoneMask(value))}
+              placeholder="+7(900) 123-45-67"
+              inputProps={{ inputMode: 'tel', maxLength: 18 }}
+              error={contactEditPhone.length > 0 && !isValidPhone(contactEditPhone)}
               disabled={!canEditContactCardDialogContent}
             />
             <TextField

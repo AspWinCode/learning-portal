@@ -72,6 +72,7 @@ from app.schemas.sales import (
     SalesSchoolUpdate,
 )
 from app.utils.datetime import utcnow
+from app.utils.phone import normalize_ru_phone_display
 
 router = APIRouter()
 
@@ -995,7 +996,7 @@ def _sync_contact_to_ow(db: Session, contact: SalesSchoolContact, school_name: s
         if ow:
             ow.full_name = contact.full_name
             ow.position = contact.position
-            ow.phone = contact.phone
+            ow.phone = normalize_ru_phone_display(contact.phone) or contact.phone
             ow.email = contact.email
             ow.company = school_name
             ow.comment = comment
@@ -1005,7 +1006,7 @@ def _sync_contact_to_ow(db: Session, contact: SalesSchoolContact, school_name: s
         type="individual",
         full_name=contact.full_name,
         position=contact.position,
-        phone=contact.phone,
+        phone=normalize_ru_phone_display(contact.phone) or contact.phone,
         email=contact.email,
         company=school_name,
         comment=comment,

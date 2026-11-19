@@ -466,6 +466,8 @@ async def delete_task_template(
 async def list_tasks(
     status_filter: Optional[str] = None,
     category: Optional[str] = None,
+    limit: int = Query(50, ge=1, le=200, description="Максимум задач за один запрос"),
+    offset: int = Query(0, ge=0, description="Смещение для постраничной загрузки"),
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_permission("tasks.access")),
 ):
@@ -482,7 +484,9 @@ async def list_tasks(
         q = q.filter(Task.status == status_filter)
     if category and category in ("schools", "parents", "leads"):
         q = q.filter(Task.category == category)
-    tasks = q.all()
+    # Не отдаём весь архив одним ответом: страница задач рендерит каждую
+    # карточку вместе с подзадачами, поэтому большой ответ блокирует UI.
+    tasks = q.offset(offset).limit(limit).all()
     return [_task_to_response(t, db) for t in tasks]
 
 
@@ -627,6 +631,22 @@ async def get_tasks_day_desk(
         db.query(Task)
         .options(joinedload(Task.subtasks), joinedload(Task.students), joinedload(Task.counters))
         .filter(Task.status == TaskStatus.ACTIVE.value)
+        # Для рабочего стола не нужны задачи, которые ни просрочены, ни
+        # относятся к сегодняшнему плану. Это существенно уменьшает выборку
+        # до применения групповых лимитов ниже.
+        .filter(
+            or_(
+                and_(Task.scheduled_for.isnot(None), Task.scheduled_for <= today_msk),
+                and_(Task.due_at.isnot(None), Task.due_at <= today_end_utc),
+                Task.pinned_today.is_(True),
+                and_(
+                    Task.scheduled_for.is_(None),
+                    Task.due_at.is_(None),
+                    Task.pinned_today.is_(False),
+                    Task.created_at >= today_start_utc,
+                ),
+            )
+        )
     )
     # Ограничения по видимости
     if _is_sales_user(current_user):

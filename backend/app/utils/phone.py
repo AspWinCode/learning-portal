@@ -48,6 +48,20 @@ def normalize_phone(raw: Optional[str] = None) -> str:
     return "+" + digits if not digits.startswith("+") else digits
 
 
+def normalize_ru_phone_display(raw: Optional[str] = None) -> str:
+    """Return a validated Russian phone in the contacts display format."""
+    if not raw or not isinstance(raw, str):
+        return ""
+    digits = re.sub(r"\D", "", raw.strip())
+    if len(digits) == 10:
+        digits = "7" + digits
+    elif len(digits) == 11 and digits.startswith("8"):
+        digits = "7" + digits[1:]
+    if len(digits) != 11 or not digits.startswith("7"):
+        return ""
+    return f"+7({digits[1:4]}) {digits[4:7]}-{digits[7:9]}-{digits[9:11]}"
+
+
 def validate_phone_for_lead(raw: Optional[str] = None) -> Tuple[str, Optional[str]]:
     """
     Валидация телефона для лид-формы с учётом страны.

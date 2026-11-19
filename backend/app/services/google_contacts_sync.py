@@ -23,6 +23,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.models import AppSetting, OwnerWorkspaceContact, OwnerWorkspaceNotification, OwnerWorkspaceTask
+from app.utils.phone import normalize_ru_phone_display
 
 logger = logging.getLogger(__name__)
 
@@ -300,7 +301,7 @@ def _upsert_contact(db: Session, person: dict, stats: SyncStats) -> None:
     if names.get("displayName"):
         contact.full_name = names["displayName"]
     if phones and phones[0].get("value"):
-        contact.phone = phones[0]["value"]
+        contact.phone = normalize_ru_phone_display(phones[0]["value"]) or phones[0]["value"]
     if emails and emails[0].get("value"):
         contact.email = emails[0]["value"]
     if addresses and addresses[0].get("city"):

@@ -14,7 +14,6 @@ import {
   DialogContent,
   Divider,
   IconButton,
-  LinearProgress,
   MenuItem,
   Select,
   Stack,
@@ -126,26 +125,6 @@ function avatarColor(id: number): string {
 
 function uid(): string {
   return Math.random().toString(36).slice(2);
-}
-
-function completionPercent(
-  title: string,
-  description: string,
-  priority: Priority,
-  assigneeId: number | null,
-  deadline: string,
-  tags: string[],
-  checklist: ChecklistItem[],
-): number {
-  let filled = 0;
-  const total = 6;
-  if (title.trim()) filled++;
-  if (description.trim()) filled++;
-  if (priority) filled++;
-  if (assigneeId !== null) filled++;
-  if (deadline) filled++;
-  if (tags.length > 0 || checklist.length > 0) filled++;
-  return Math.round((filled / total) * 100);
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -369,8 +348,6 @@ export function OwnerWorkspaceTaskCreateDialog({
     } finally { setSubmitting(false); }
   };
 
-  const completion = completionPercent(title, description, priority, assigneeId, deadline, tags, checklist);
-
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3, overflow: 'hidden' } }} sx={{ zIndex: 1400 }}>
       <DialogContent sx={{ p: 0 }}>
@@ -388,60 +365,6 @@ export function OwnerWorkspaceTaskCreateDialog({
         <Divider />
 
         <Box sx={{ px: 3, py: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
-
-          {/* Template selector */}
-          <Stack direction="row" spacing={1} alignItems="center">
-            <BookmarkBorderIcon sx={{ color: 'text.secondary', fontSize: 18 }} />
-            <Select
-              size="small"
-              displayEmpty
-              value={selectedTemplateId}
-              onChange={(e) => handleTemplateChange(e.target.value as number | '')}
-              sx={{ flex: 1, fontSize: '0.875rem' }}
-              renderValue={(val) => {
-                if (!val) return <Typography color="text.secondary" variant="body2">Из шаблона...</Typography>;
-                const tpl = templates.find((t) => t.id === val);
-                return tpl?.name ?? '';
-              }}
-              disabled={templatesLoading}
-            >
-              <MenuItem value=""><em>Без шаблона</em></MenuItem>
-              {templates.map((tpl) => (
-                <MenuItem key={tpl.id} value={tpl.id} sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>{tpl.name}</span>
-                  <IconButton
-                    size="small"
-                    onClick={(e) => { e.stopPropagation(); void handleDeleteTemplate(tpl.id); }}
-                    sx={{ ml: 1, opacity: 0.5, '&:hover': { opacity: 1, color: 'error.main' } }}
-                  >
-                    <DeleteOutlineIcon fontSize="small" />
-                  </IconButton>
-                </MenuItem>
-              ))}
-            </Select>
-            <Tooltip title="Сохранить текущие поля как шаблон">
-              <IconButton size="small" onClick={() => setShowSaveTemplate((v) => !v)}>
-                <SaveAltIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-          </Stack>
-
-          {/* Save template form */}
-          <Collapse in={showSaveTemplate}>
-            <Stack direction="row" spacing={1}>
-              <TextField
-                size="small"
-                fullWidth
-                placeholder="Название шаблона"
-                value={saveTemplateName}
-                onChange={(e) => setSaveTemplateName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && void handleSaveTemplate()}
-              />
-              <Button size="small" variant="contained" onClick={() => void handleSaveTemplate()} disabled={savingTemplate || !saveTemplateName.trim()}>
-                {savingTemplate ? <CircularProgress size={16} /> : 'Сохранить'}
-              </Button>
-            </Stack>
-          </Collapse>
 
           {/* Title */}
           <Box>
@@ -471,7 +394,8 @@ export function OwnerWorkspaceTaskCreateDialog({
               minRows={2}
               placeholder="Контекст, ожидаемый результат, ограничения..."
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              onChange={(e) => setDescription(e.currentTarget.value)}
+              onInput={(e) => setDescription(e.currentTarget.value)}
               variant="outlined"
               size="small"
               sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
@@ -665,13 +589,63 @@ export function OwnerWorkspaceTaskCreateDialog({
             }}
           >
             Дополнительные настройки
-            {(watcherIds.length > 0 || tags.length > 0 || checklist.length > 0 || effortHours || effortMinutes || reminderPreset || repeat.enabled) && (
-              <Chip size="small" label="заполнено" sx={{ ml: 'auto', mr: 1 }} />
-            )}
           </Button>
 
           <Collapse in={advancedOpen} timeout="auto">
             <Stack spacing={2}>
+
+          {/* Template selector */}
+          <Stack direction="row" spacing={1} alignItems="center">
+            <BookmarkBorderIcon sx={{ color: 'text.secondary', fontSize: 18 }} />
+            <Select
+              size="small"
+              displayEmpty
+              value={selectedTemplateId}
+              onChange={(e) => handleTemplateChange(e.target.value as number | '')}
+              sx={{ flex: 1, fontSize: '0.875rem' }}
+              renderValue={(val) => {
+                if (!val) return <Typography color="text.secondary" variant="body2">Из шаблона...</Typography>;
+                const tpl = templates.find((t) => t.id === val);
+                return tpl?.name ?? '';
+              }}
+              disabled={templatesLoading}
+            >
+              <MenuItem value=""><em>Без шаблона</em></MenuItem>
+              {templates.map((tpl) => (
+                <MenuItem key={tpl.id} value={tpl.id} sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>{tpl.name}</span>
+                  <IconButton
+                    size="small"
+                    onClick={(e) => { e.stopPropagation(); void handleDeleteTemplate(tpl.id); }}
+                    sx={{ ml: 1, opacity: 0.5, '&:hover': { opacity: 1, color: 'error.main' } }}
+                  >
+                    <DeleteOutlineIcon fontSize="small" />
+                  </IconButton>
+                </MenuItem>
+              ))}
+            </Select>
+            <Tooltip title="Сохранить текущие поля как шаблон">
+              <IconButton size="small" onClick={() => setShowSaveTemplate((v) => !v)}>
+                <SaveAltIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </Stack>
+
+          <Collapse in={showSaveTemplate}>
+            <Stack direction="row" spacing={1}>
+              <TextField
+                size="small"
+                fullWidth
+                placeholder="Название шаблона"
+                value={saveTemplateName}
+                onChange={(e) => setSaveTemplateName(e.currentTarget.value)}
+                onKeyDown={(e) => e.key === 'Enter' && void handleSaveTemplate()}
+              />
+              <Button size="small" variant="contained" onClick={() => void handleSaveTemplate()} disabled={savingTemplate || !saveTemplateName.trim()}>
+                {savingTemplate ? <CircularProgress size={16} /> : 'Сохранить'}
+              </Button>
+            </Stack>
+          </Collapse>
 
           {/* Watchers */}
           {users.length > 0 && (
@@ -1068,15 +1042,6 @@ export function OwnerWorkspaceTaskCreateDialog({
               <Typography variant="caption" color="error.main">{submitError}</Typography>
             </Box>
           )}
-          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }}>
-            <Typography variant="caption" color="text.secondary" sx={{ minWidth: 60 }}>Заполнено</Typography>
-            <LinearProgress
-              variant="determinate"
-              value={completion}
-              sx={{ flex: 1, height: 6, borderRadius: 3, bgcolor: '#E2E8F0', '& .MuiLinearProgress-bar': { borderRadius: 3 } }}
-            />
-            <Typography variant="caption" color="text.secondary">{completion}%</Typography>
-          </Stack>
           <Stack direction="row" justifyContent="flex-end" spacing={1.5}>
             <Button variant="outlined" onClick={onClose} disabled={submitting} sx={{ borderRadius: 2 }}>
               Отмена

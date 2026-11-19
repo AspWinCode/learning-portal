@@ -19,7 +19,7 @@ import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import SchoolIcon from '@mui/icons-material/School';
 import TaskAltIcon from '@mui/icons-material/TaskAlt';
 import StarIcon from '@mui/icons-material/Star';
-import { studentPortalApi, StudentPortalProfile, UpcomingLesson, StudentGrade } from '../services/studentPortalApi';
+import { studentPortalApi, StudentPortalProfile, UpcomingLesson, StudentGrade, StudentNewsItem } from '../services/studentPortalApi';
 import { CourseCatalogItemOut } from '../types';
 import { useManifestOverride } from '../hooks/useManifestOverride';
 import PwaInstallButton from '../components/PwaInstallButton';
@@ -53,6 +53,7 @@ const StudentPortalCabinetPage: React.FC = () => {
   const [schedule, setSchedule] = useState<UpcomingLesson[]>([]);
   const [grades, setGrades] = useState<StudentGrade[]>([]);
   const [abonement, setAbonement] = useState<{ name: string; training_start_date: string | null } | null>(null);
+  const [news, setNews] = useState<StudentNewsItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [launchingId, setLaunchingId] = useState<number | null>(null);
@@ -68,10 +69,11 @@ const StudentPortalCabinetPage: React.FC = () => {
       studentPortalApi.getSchedule(),
       studentPortalApi.getGrades(),
       studentPortalApi.getAbonement(),
+      studentPortalApi.getNews(),
     ])
-      .then(([me, courseList, lessonList, gradeList, abon]) => {
+      .then(([me, courseList, lessonList, gradeList, abon, newsList]) => {
         setProfile(me); setCourses(courseList); setSchedule(lessonList);
-        setGrades(gradeList); setAbonement(abon);
+        setGrades(gradeList); setAbonement(abon); setNews(newsList);
       })
       .catch((err: any) => setError(err.response?.data?.detail || err.message || 'Не удалось загрузить кабинет'))
       .finally(() => setLoading(false));
@@ -478,6 +480,7 @@ const StudentPortalCabinetPage: React.FC = () => {
 
           {/* ── Right column: Grades ──────────────────────────────────────── */}
           <Box sx={{ order: { xs: 3, lg: 2 } }}>
+            <NewsTicker items={news} />
             <Typography sx={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.68rem', fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', mb: 1 }}>
               ⭐ Последние оценки
             </Typography>
@@ -570,5 +573,32 @@ const EmptyCard: React.FC<{ children: React.ReactNode }> = ({ children }) => (
     {children}
   </Box>
 );
+
+const NewsTicker: React.FC<{ items: StudentNewsItem[] }> = ({ items }) => {
+  const viewportRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport || items.length < 2) return;
+    const timer = window.setInterval(() => {
+      const atEnd = viewport.scrollTop + viewport.clientHeight >= viewport.scrollHeight - 4;
+      viewport.scrollTo({ top: atEnd ? 0 : viewport.scrollTop + 1, behavior: atEnd ? 'smooth' : 'auto' });
+    }, 55);
+    return () => window.clearInterval(timer);
+  }, [items.length]);
+  return <Box sx={{ mb: 2 }}>
+    <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+      <Typography sx={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.68rem', fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase' }}>📣 Новости академии</Typography>
+      {items.length > 0 && <Typography sx={{ color: '#AB67E5', fontSize: '0.65rem' }}>свежее сверху</Typography>}
+    </Stack>
+    {items.length === 0 ? <EmptyCard><Typography sx={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.85rem' }}>Новостей пока нет</Typography></EmptyCard> : <Box ref={viewportRef} sx={{ maxHeight: 360, overflow: 'hidden', pr: .5, scrollbarWidth: 'thin' }}>
+      <Stack gap={1}>
+        {items.map((item) => <Box key={item.id} sx={{ p: 1.5, bgcolor: 'rgba(255,255,255,0.055)', border: '1px solid rgba(171,103,229,0.2)', borderRadius: '14px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }}>
+          <Stack direction="row" gap={1} alignItems="flex-start"><Typography sx={{ fontSize: '1.35rem', lineHeight: 1 }}>{item.emoji}</Typography><Box sx={{ minWidth: 0, flex: 1 }}><Typography sx={{ color: '#fff', fontSize: '.9rem', fontWeight: 800, lineHeight: 1.25 }}>{item.title}</Typography><Typography sx={{ color: 'rgba(255,255,255,.3)', fontSize: '.65rem', mt: .35 }}>{new Date(item.published_at).toLocaleDateString('ru-RU')}</Typography></Box></Stack>
+          <Box sx={{ mt: 1, color: 'rgba(255,255,255,.7)', fontSize: '.78rem', lineHeight: 1.55, '& p': { m: 0, mb: .65 }, '& strong': { color: '#fff' }, '& em': { color: '#D8B4FE' }, '& ul': { pl: 2, my: .5 } }} dangerouslySetInnerHTML={{ __html: item.content_html }} />
+        </Box>)}
+      </Stack>
+    </Box>}
+  </Box>;
+};
 
 export default StudentPortalCabinetPage;

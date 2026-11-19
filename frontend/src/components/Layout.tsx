@@ -481,6 +481,7 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
     // LEGO — изолированный модуль: пункт только при lego.access (backend всё равно проверяет права).
     if (canAccessLego) items.push({ text: 'LEGO — Ленинец', icon: <Group />, path: '/lego' });
     if (canAccessSettings) items.push({ text: 'Настройки', icon: <Settings />, path: '/admin/settings' });
+    if (hasPermission(user, 'student_portal.manage')) items.push({ text: 'Новости ученикам', icon: <Notifications />, path: '/student-portal/news' });
     if (canAccessCommunications) items.push({ text: 'Communication Hub', icon: <Notifications />, path: '/settings/communications' });
     if (canAccessRoles) items.push({ text: 'Роли и доступы', icon: <People />, path: '/roles' });
     if (role === 'owner' && canAccessOwnerWorkspace) {

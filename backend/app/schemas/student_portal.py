@@ -226,6 +226,19 @@ class StudentPortalSettings(BaseModel):
     show_abonement: bool = False
 
 
+class StudentNewsItem(BaseModel):
+    id: int
+    title: str
+    content_html: str
+    emoji: str = "📣"
+    published_at: datetime
+    is_published: bool = True
+
+
+class StudentNewsUpdate(BaseModel):
+    items: List[StudentNewsItem] = Field(default_factory=list)
+
+
 class StudentAbonementOut(BaseModel):
     name: str
     training_start_date: Optional[date] = None

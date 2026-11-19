@@ -17,6 +17,7 @@ const LoginPage = React.lazy(() => import('./pages/LoginPage'));
 const SetPasswordPage = React.lazy(() => import('./pages/SetPasswordPage'));
 const StudentPortalLoginPage = React.lazy(() => import('./pages/StudentPortalLoginPage'));
 const StudentPortalCabinetPage = React.lazy(() => import('./pages/StudentPortalCabinetPage'));
+const StudentPortalNewsPage = React.lazy(() => import('./pages/StudentPortalNewsPage'));
 const MobileHomePage = React.lazy(() => import('./pages/MobileHomePage'));
 const MobileContactsPage = React.lazy(() => import('./pages/MobileContactsPage'));
 const MobileTrainerCockpitPage = React.lazy(() => import('./pages/MobileTrainerCockpitPage'));
@@ -193,6 +194,7 @@ function App() {
             <Route path="/set-password" element={<SetPasswordPage />} />
             <Route path="/student-portal/login" element={<StudentPortalLoginPage />} />
             <Route path="/student-portal" element={<StudentPortalCabinetPage />} />
+            <Route path="/student-portal/news" element={<PrivateRoute requiredPermission="student_portal.manage"><StudentPortalNewsPage /></PrivateRoute>} />
             <Route path="/methodist-studio/login" element={<MethodistStudioLoginPage />} />
             <Route path="/methodist-studio" element={<MethodistStudioPage />} />
             <Route

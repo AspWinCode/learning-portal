@@ -71,6 +71,8 @@ from app.schemas.student_portal import (
     KodikFeedbackStatus,
     KodikFeedbackSummary,
     KodikFeedbackSummaryRow,
+    StudentNewsItem,
+    StudentNewsUpdate,
 )
 from app.services.kodex_sso import SSO_KODEX_SHARED_SECRET, build_launch_redirect_url
 from app.student_display import get_student_first_name
@@ -323,6 +325,58 @@ async def get_student_me(current_student: Student = Depends(auth.get_current_stu
 
 
 _PORTAL_SETTINGS_KEY = "student_portal.settings"
+_PORTAL_NEWS_KEY = "student_portal.news"
+
+
+def _load_news(db: Session) -> list[StudentNewsItem]:
+    row = db.query(AppSetting).filter(AppSetting.key == _PORTAL_NEWS_KEY).first()
+    if not row or not row.value:
+        return []
+    import json as _json
+    try:
+        values = _json.loads(row.value)
+        return sorted(
+            [StudentNewsItem.model_validate(item) for item in values],
+            key=lambda item: item.published_at,
+            reverse=True,
+        )
+    except Exception:
+        return []
+
+
+@router.get("/news", response_model=List[StudentNewsItem])
+async def get_student_news(
+    current_student: Student = Depends(auth.get_current_student),
+    db: Session = Depends(get_db),
+):
+    return [item for item in _load_news(db) if item.is_published]
+
+
+@router.get("/admin/news", response_model=List[StudentNewsItem])
+async def get_admin_student_news(
+    current_user: User = Depends(auth.require_permission("student_portal.manage")),
+    db: Session = Depends(get_db),
+):
+    return _load_news(db)
+
+
+@router.put("/admin/news", response_model=List[StudentNewsItem])
+async def update_admin_student_news(
+    payload: StudentNewsUpdate,
+    current_user: User = Depends(auth.require_permission("student_portal.manage")),
+    db: Session = Depends(get_db),
+):
+    import json as _json
+    items = sorted(payload.items, key=lambda item: item.published_at, reverse=True)
+    row = db.query(AppSetting).filter(AppSetting.key == _PORTAL_NEWS_KEY).first()
+    serialized = _json.dumps([item.model_dump(mode="json") for item in items], ensure_ascii=False)
+    if not row:
+        db.add(AppSetting(key=_PORTAL_NEWS_KEY, value=serialized))
+    else:
+        row.value = serialized
+    db.commit()
+    log_action(db, current_user.id, "update", "student_portal_news", None, {"count": len(items)})
+    return items
 
 
 def _load_portal_settings(db: Session) -> StudentPortalSettings:

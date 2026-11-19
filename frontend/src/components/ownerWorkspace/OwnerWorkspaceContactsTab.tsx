@@ -53,7 +53,7 @@ import { ownerWorkspaceApi } from '../../services/api';
 import { applyPhoneMask, isValidPhone } from '../../utils/phoneMask';
 
 type ContactViewMode = 'table' | 'cards';
-type ContactSortBy = 'full_name' | 'company' | 'projects' | 'active_tasks' | 'last_interaction' | 'owner';
+type ContactSortBy = 'full_name' | 'company' | 'position' | 'projects' | 'active_tasks' | 'last_interaction' | 'owner';
 type ActivityFilter = 'all' | 'active' | 'stale_30' | 'stale_90';
 type ActiveTaskFilter = 'all' | 'has' | 'none';
 type ContactDuplicateGroup = { phone: string; contacts: OwnerWorkspaceContact[] };
@@ -257,6 +257,7 @@ export function OwnerWorkspaceContactsTab({
     const valueOf = (contact: OwnerWorkspaceContact): string | number => {
       if (sortBy === 'full_name') return contact.full_name.toLowerCase();
       if (sortBy === 'company') return String(contact.company || '').toLowerCase();
+      if (sortBy === 'position') return String(contact.position || '').toLowerCase();
       if (sortBy === 'projects') return contact.linked_project_ids?.length ?? contact.projects_count ?? 0;
       if (sortBy === 'active_tasks') return contact.active_tasks_count ?? 0;
       if (sortBy === 'owner') return userName(ownerIdForContact(contact)).toLowerCase();
@@ -353,7 +354,7 @@ export function OwnerWorkspaceContactsTab({
       setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'));
     } else {
       setSortBy(column);
-      setSortDir(column === 'full_name' || column === 'company' || column === 'owner' ? 'asc' : 'desc');
+      setSortDir(column === 'full_name' || column === 'company' || column === 'position' || column === 'owner' ? 'asc' : 'desc');
     }
   };
 
@@ -386,7 +387,7 @@ export function OwnerWorkspaceContactsTab({
 
   const exportSelected = () => {
     const rows = selectedContacts.length > 0 ? selectedContacts : visibleContacts;
-    const header = ['ФИО', 'Телефон', 'Email', 'Компания', 'Проекты', 'Активные задачи', 'Последнее взаимодействие', 'Ответственный', 'Теги'];
+    const header = ['ФИО', 'Телефон', 'Email', 'Компания', 'Должность', 'Проекты', 'Активные задачи', 'Последнее взаимодействие', 'Ответственный', 'Теги'];
     const csv = [
       header.join(';'),
       ...rows.map((contact) => [
@@ -394,6 +395,7 @@ export function OwnerWorkspaceContactsTab({
         contact.phone || '',
         contact.email || '',
         contact.company || '',
+        contact.position || '',
         String(contact.linked_project_ids?.length ?? 0),
         String(contact.active_tasks_count ?? 0),
         contact.last_interaction_at || '',
@@ -420,6 +422,28 @@ export function OwnerWorkspaceContactsTab({
       </Stack>
     );
   };
+
+  const renderContactPreview = (contact: OwnerWorkspaceContact) => (
+    <Box sx={{ p: 0.5, maxWidth: 320 }}>
+      <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 0.75 }}>
+        {contact.full_name}
+      </Typography>
+      <Stack spacing={0.35}>
+        <Typography variant="caption"><strong>Должность:</strong> {contact.position || '—'}</Typography>
+        <Typography variant="caption"><strong>Компания:</strong> {contact.company || '—'}</Typography>
+        <Typography variant="caption"><strong>Телефон:</strong> {contact.phone || '—'}</Typography>
+        <Typography variant="caption"><strong>Email:</strong> {contact.email || '—'}</Typography>
+        {contact.city && <Typography variant="caption"><strong>Город:</strong> {contact.city}</Typography>}
+        {contact.comment && (
+          <Typography variant="caption" sx={{ mt: 0.35, whiteSpace: 'pre-wrap' }}>
+            <strong>Комментарий:</strong> {contact.comment}
+          </Typography>
+        )}
+        <Typography variant="caption"><strong>Проекты:</strong> {contact.linked_project_ids?.length ?? 0} · <strong>Задачи:</strong> {contact.active_tasks_count ?? 0}</Typography>
+        {contact.tags && contact.tags.length > 0 && <Typography variant="caption"><strong>Теги:</strong> {contact.tags.join(', ')}</Typography>}
+      </Stack>
+    </Box>
+  );
 
   const renderActionMenuButton = (contact: OwnerWorkspaceContact) => (
     <IconButton
@@ -450,6 +474,7 @@ export function OwnerWorkspaceContactsTab({
                 <Typography variant="body2" color="text.secondary">{contact.phone || '—'}</Typography>
                 <Typography variant="body2" color="text.secondary">{contact.email || '—'}</Typography>
                 {contact.company && <Typography variant="body2" color="text.secondary">{contact.company}</Typography>}
+                {contact.position && <Typography variant="body2" color="text.secondary">{contact.position}</Typography>}
               </Box>
               {renderActionMenuButton(contact)}
             </Stack>
@@ -688,6 +713,7 @@ export function OwnerWorkspaceContactsTab({
                   {[
                     ['full_name', 'Контакт'],
                     ['company', 'Компания'],
+                    ['position', 'Должность'],
                     ['projects', 'Проекты'],
                     ['active_tasks', 'Активные задачи'],
                     ['last_interaction', 'Последнее взаимодействие'],
@@ -717,10 +743,21 @@ export function OwnerWorkspaceContactsTab({
                         />
                       </TableCell>
                       <TableCell>
-                        <Typography variant="body2" fontWeight={700}>{contact.full_name}</Typography>
-                        <Typography variant="caption" color="text.secondary">{contact.email || '—'}</Typography>
+                        <Tooltip
+                          arrow
+                          placement="right-start"
+                          enterDelay={250}
+                          title={renderContactPreview(contact)}
+                          slotProps={{ tooltip: { sx: { bgcolor: 'grey.900', maxWidth: 360, p: 1.25 }, arrow: { sx: { color: 'grey.900' } } } }}
+                        >
+                          <Box sx={{ display: 'inline-flex', flexDirection: 'column', cursor: 'help' }}>
+                            <Typography variant="body2" fontWeight={700}>{contact.full_name}</Typography>
+                            <Typography variant="caption" color="text.secondary">{contact.email || '—'}</Typography>
+                          </Box>
+                        </Tooltip>
                       </TableCell>
                       <TableCell>{contact.company || '—'}</TableCell>
+                      <TableCell>{contact.position || '—'}</TableCell>
                       <TableCell>{contact.linked_project_ids?.length ?? 0}</TableCell>
                       <TableCell>{contact.active_tasks_count ?? 0}</TableCell>
                       <TableCell>

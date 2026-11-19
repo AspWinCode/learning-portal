@@ -1477,6 +1477,21 @@ async def submit_student_success_story(
         raise HTTPException(status_code=400, detail="Некорректный формат фотографии")
     if isinstance(photo_data, str) and len(photo_data) > 12 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="Фотография слишком большая (максимум 8 МБ)")
+    proofs = answers.get("proof_data_urls") or []
+    if not isinstance(proofs, list) or len(proofs) > 10:
+        raise HTTPException(status_code=400, detail="Можно прикрепить не больше 10 подтверждений")
+    total_proofs_size = 0
+    for proof in proofs:
+        if not isinstance(proof, dict) or not isinstance(proof.get("data"), str):
+            raise HTTPException(status_code=400, detail="Некорректный файл подтверждения")
+        data_url = proof["data"]
+        if not (data_url.startswith("data:image/") or data_url.startswith("data:application/pdf")):
+            raise HTTPException(status_code=400, detail="Поддерживаются изображения и PDF-файлы")
+        if len(data_url) > 12 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="Один файл подтверждения не может быть больше 8 МБ")
+        total_proofs_size += len(data_url)
+    if total_proofs_size > 32 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Общий размер подтверждений не может быть больше 24 МБ")
 
     import secrets
     from datetime import datetime, timezone

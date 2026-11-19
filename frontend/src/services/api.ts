@@ -1896,7 +1896,7 @@ export type StudentSuccessStory = {
   id: string;
   created_at: string;
   status: string;
-  answers: Record<string, string | null>;
+  answers: Record<string, string | Array<{ name: string; data: string }> | null>;
 };
 
 export const studentSuccessStoriesApi = {

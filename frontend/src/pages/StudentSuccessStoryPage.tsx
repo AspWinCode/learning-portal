@@ -48,6 +48,7 @@ const sections: Array<{ title: string; questions: Question[] }> = [
 const StudentSuccessStoryPage: React.FC = () => {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [photo, setPhoto] = useState('');
+  const [proofs, setProofs] = useState<Array<{ name: string; data: string }>>([]);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -62,12 +63,23 @@ const StudentSuccessStoryPage: React.FC = () => {
     reader.readAsDataURL(file);
   };
 
+  const addProofs = (files: FileList | null) => {
+    if (!files) return;
+    const selected = Array.from(files);
+    if (proofs.length + selected.length > 10) { setError('Можно прикрепить не больше 10 подтверждений.'); return; }
+    if (selected.some((file) => !file.type.startsWith('image/') && file.type !== 'application/pdf')) { setError('Подтверждения должны быть изображениями или PDF-файлами.'); return; }
+    if (selected.some((file) => file.size > 8 * 1024 * 1024)) { setError('Каждый файл подтверждения должен быть не больше 8 МБ.'); return; }
+    Promise.all(selected.map((file) => new Promise<{ name: string; data: string }>((resolve, reject) => {
+      const reader = new FileReader(); reader.onload = () => resolve({ name: file.name, data: String(reader.result || '') }); reader.onerror = reject; reader.readAsDataURL(file);
+    }))).then((loaded) => setProofs((prev) => [...prev, ...loaded])).catch(() => setError('Не удалось прочитать файл.'));
+  };
+
   const submit = async () => {
     const missing = questions.filter((question) => question.required && !answers[question.key]?.trim());
     if (missing.length) { setError('Заполните обязательные поля — они отмечены звёздочкой.'); return; }
     setSaving(true);
     try {
-      await studentSuccessStoriesApi.submit({ ...answers, photo_data_url: photo || null });
+      await studentSuccessStoriesApi.submit({ ...answers, photo_data_url: photo || null, proof_data_urls: proofs });
       setSubmitted(true); setError('');
     } catch (err) { setError(extractApiError(err, 'Не удалось отправить анкету')); }
     finally { setSaving(false); }
@@ -79,7 +91,7 @@ const StudentSuccessStoryPage: React.FC = () => {
         <Box><Typography variant="h3" sx={{ fontSize: { xs: 28, md: 42 }, fontWeight: 800 }}>История моего успеха</Typography><Typography color="text.secondary" sx={{ mt: 1 }}>Расскажи о своём пути — это поможет другим ученикам поверить в себя.</Typography></Box>
         {error && <Alert severity="error">{error}</Alert>}
         {sections.map((section) => <Box key={section.title}><Typography variant="h5" sx={{ mb: 2, fontWeight: 700 }}>{section.title}</Typography><Stack spacing={2.2}>{section.questions.map((question) => <TextField key={question.key} fullWidth multiline minRows={question.key === 'student_info' ? 1 : 3} label={question.label} required={question.required} value={answers[question.key] || ''} onChange={(event) => setAnswers((prev) => ({ ...prev, [question.key]: event.target.value }))} />)}</Stack><Divider sx={{ mt: 3 }} /></Box>)}
-        <Box><Typography variant="h6" sx={{ fontWeight: 700 }}>Фотография для публикации</Typography><Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>Необязательно. Подойдёт портрет, фото с олимпиады, награждения или с преподавателем.</Typography><Button component="label" variant="outlined">{photo ? 'Фотография прикреплена' : 'Прикрепить фотографию'}<input hidden type="file" accept="image/*" onChange={(event) => changePhoto(event.target.files?.[0])} /></Button>{photo && <Typography variant="body2" color="success.main" sx={{ ml: 2, display: 'inline' }}>Готово</Typography>}</Box>
+        <Box><Typography variant="h6" sx={{ fontWeight: 700 }}>Материалы для публикации</Typography><Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>Можно прикрепить несколько дипломов, сертификатов или подтверждений в формате PDF/изображения. До 10 файлов по 8 МБ.</Typography><Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap"><Button component="label" variant="outlined">{photo ? 'Фотография прикреплена' : 'Прикрепить фотографию'}<input hidden type="file" accept="image/*" onChange={(event) => changePhoto(event.target.files?.[0])} /></Button><Button component="label" variant="outlined">Прикрепить дипломы и подтверждения<input hidden type="file" multiple accept="image/*,application/pdf" onChange={(event) => addProofs(event.target.files)} /></Button></Stack>{photo && <Typography variant="body2" color="success.main">Фото готово</Typography>}{proofs.length > 0 && <Typography variant="body2" color="success.main">Прикреплено подтверждений: {proofs.length}</Typography>}</Box>
         <Button variant="contained" size="large" onClick={() => void submit()} disabled={saving}>{saving ? 'Отправка...' : 'Отправить историю'}</Button>
       </Stack>}
     </Paper>

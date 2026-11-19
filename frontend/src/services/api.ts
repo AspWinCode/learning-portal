@@ -1892,6 +1892,24 @@ export const publicStudentQuestionnairesApi = {
   },
 };
 
+export type StudentSuccessStory = {
+  id: string;
+  created_at: string;
+  status: string;
+  answers: Record<string, string | null>;
+};
+
+export const studentSuccessStoriesApi = {
+  submit: async (answers: Record<string, unknown>): Promise<{ ok: boolean }> => {
+    const response = await api.post('/api/settings/public/student-success-stories/submit', { answers });
+    return response.data;
+  },
+  list: async (): Promise<StudentSuccessStory[]> => {
+    const response = await api.get('/api/settings/student-success-stories');
+    return response.data.items || [];
+  },
+};
+
 // Урок на сегодня для раздела «Позвать детей на занятие»
 export type LessonTaskStudent = {
   student_id: number;

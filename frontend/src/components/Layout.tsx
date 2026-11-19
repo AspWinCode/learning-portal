@@ -452,6 +452,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       if (canAccessAbonements) items.push({ text: 'Абонементы', icon: <LocalOffer />, path: '/abonements' });
       items.push({ text: 'Оплаты', icon: <ReceiptLong />, path: '/finance/payments' });
       items.push({ text: 'Сверка оплат и занятий', icon: <ReceiptLong />, path: '/owner/student-payment-audit' });
+      items.push({ text: 'Истории успеха', icon: <Description />, path: '/owner/student-success-stories' });
       if (canAccessOwnerCalculations) items.push({ text: 'Расчёты', icon: <ReceiptLong />, path: '/calculations' });
       items.push({ text: 'Путешествия', icon: <FlightTakeoff />, path: '/travel' });
     }

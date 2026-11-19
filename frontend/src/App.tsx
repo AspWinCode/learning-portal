@@ -97,6 +97,8 @@ const ExpertQuestionnairePage = React.lazy(() => import('./pages/ExpertQuestionn
 const EgeTrialQuestionnairePage = React.lazy(() => import('./pages/EgeTrialQuestionnairePage'));
 const OgeInformatikaQuestionnairePage = React.lazy(() => import('./pages/OgeInformatikaQuestionnairePage'));
 const PublicStudentQuestionnairePage = React.lazy(() => import('./pages/PublicStudentQuestionnairePage'));
+const StudentSuccessStoryPage = React.lazy(() => import('./pages/StudentSuccessStoryPage'));
+const StudentSuccessStoriesPage = React.lazy(() => import('./pages/StudentSuccessStoriesPage'));
 const TildaLeadPage = React.lazy(() => import('./pages/TildaLeadPage'));
 const StartLeadPage = React.lazy(() => import('./pages/StartLeadPage'));
 const BaseLeadPage = React.lazy(() => import('./pages/BaseLeadPage'));
@@ -302,6 +304,7 @@ function App() {
             <Route path="/anketa/ege-trial" element={<EgeTrialQuestionnairePage />} />
             <Route path="/anketa/oge-informatika" element={<OgeInformatikaQuestionnairePage />} />
             <Route path="/anketa/student/:questionnaireId" element={<PublicStudentQuestionnairePage />} />
+            <Route path="/anketa/istoriya-uspeha" element={<StudentSuccessStoryPage />} />
             <Route path="/anketa/lego-leninets" element={<LegoQuestionnairePage />} />
             <Route
               path="/anketa/tilda_lead"
@@ -731,6 +734,14 @@ function App() {
               element={
                 <PrivateRoute requiredPermission="owner_dashboard.access">
                   <StudentPaymentAuditPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/owner/student-success-stories"
+              element={
+                <PrivateRoute requiredPermission="owner_dashboard.access">
+                  <StudentSuccessStoriesPage />
                 </PrivateRoute>
               }
             />

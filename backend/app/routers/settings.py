@@ -100,6 +100,7 @@ LEAD_PIPELINE_STAGES_KEY = "sales_lead_pipeline_stages"
 LEARNING_LINKS_KEY = "learning_links"
 PAYMENT_LINKS_KEY = "payment_links"
 STUDENT_QUESTIONNAIRES_KEY = "student_questionnaires"
+STUDENT_SUCCESS_STORIES_KEY = "student_success_stories"
 OWNER_WS_TASK_CONFIG_KEY = "owner_workspace_task_config"
 OWNER_WS_PROJECT_CONFIG_KEY = "owner_workspace_project_config"
 OWNER_WS_PERMISSION_POLICY_KEY = "owner_workspace_permission_policy"
@@ -1452,6 +1453,55 @@ async def submit_public_student_questionnaire(
     db.refresh(card)
     log_action(db, None, "submit", "student_card", card.id, {"questionnaire_id": questionnaire_id, "source": card.source})
     return {"ok": True, "card_id": int(card.id)}
+
+
+@router.post("/public/student-success-stories/submit")
+async def submit_student_success_story(
+    body: Dict[str, Any],
+    db: Session = Depends(get_db),
+):
+    """Публичная анкета историй успеха. Ответы хранятся отдельно от CRM-карточек."""
+    answers = body.get("answers") if isinstance(body, dict) else None
+    if not isinstance(answers, dict):
+        raise HTTPException(status_code=400, detail="answers must be an object")
+    required = [
+        "student_info", "achievements", "most_important_achievement", "started_when",
+        "before_start", "goal", "training_format", "what_helped", "breakthrough",
+        "result_story", "school_role", "new_opportunities", "advice", "recommendation",
+    ]
+    missing = [key for key in required if not str(answers.get(key) or "").strip()]
+    if missing:
+        raise HTTPException(status_code=422, detail={"errors": ["Заполните все обязательные поля анкеты."]})
+    photo_data = answers.get("photo_data_url")
+    if photo_data and (not isinstance(photo_data, str) or not photo_data.startswith("data:image/")):
+        raise HTTPException(status_code=400, detail="Некорректный формат фотографии")
+    if isinstance(photo_data, str) and len(photo_data) > 12 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Фотография слишком большая (максимум 8 МБ)")
+
+    import secrets
+    from datetime import datetime, timezone
+    stories = _get_json_setting(db, STUDENT_SUCCESS_STORIES_KEY) or []
+    if not isinstance(stories, list):
+        stories = []
+    stories.insert(0, {
+        "id": secrets.token_urlsafe(12),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "status": "new",
+        "answers": answers,
+    })
+    _set_json_setting(db, STUDENT_SUCCESS_STORIES_KEY, stories[:1000])
+    db.commit()
+    log_action(db, None, "submit", "student_success_story", stories[0]["id"], {"has_photo": bool(photo_data)})
+    return {"ok": True}
+
+
+@router.get("/student-success-stories")
+async def list_student_success_stories(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("owner_dashboard.access")),
+):
+    stories = _get_json_setting(db, STUDENT_SUCCESS_STORIES_KEY) or []
+    return {"items": stories if isinstance(stories, list) else []}
 
 
 @router.get("/parent-weekly-digest", response_model=ParentWeeklyDigestSettingsResponse)

@@ -168,6 +168,7 @@ export function OwnerWorkspaceTaskCreateDialog({
   const [deadline, setDeadline] = useState('');
   const [assigneeId, setAssigneeId] = useState<number | null>(null);
   const [watcherIds, setWatcherIds] = useState<number[]>([]);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
@@ -224,6 +225,7 @@ export function OwnerWorkspaceTaskCreateDialog({
       setTitle(''); setDescription(''); setTaskStatus('new'); setPriority('medium');
       setZone('');
       setStartDate(''); setDeadline(''); setAssigneeId(null); setWatcherIds([]); setTags([]); setTagInput('');
+      setAdvancedOpen(false);
       setReminderPreset(''); setReminderCustom('');
       setChecklist([]); setChecklistOpen(false); setNewCheckItem('');
       setEffortOpen(false); setEffortHours(''); setEffortMinutes('');
@@ -466,7 +468,7 @@ export function OwnerWorkspaceTaskCreateDialog({
             <TextField
               fullWidth
               multiline
-              minRows={3}
+              minRows={2}
               placeholder="Контекст, ожидаемый результат, ограничения..."
               value={description}
               onChange={(e) => setDescription(e.target.value)}
@@ -644,6 +646,32 @@ export function OwnerWorkspaceTaskCreateDialog({
               </Stack>
             </Box>
           )}
+
+          <Button
+            variant="text"
+            color="inherit"
+            onClick={() => setAdvancedOpen((value) => !value)}
+            endIcon={advancedOpen ? <ExpandMoreIcon /> : <ChevronRightIcon />}
+            sx={{
+              justifyContent: 'space-between',
+              px: 1.5,
+              py: 1,
+              border: '1px solid',
+              borderColor: 'divider',
+              borderRadius: 2,
+              textTransform: 'none',
+              fontWeight: 600,
+              color: 'text.primary',
+            }}
+          >
+            Дополнительные настройки
+            {(watcherIds.length > 0 || tags.length > 0 || checklist.length > 0 || effortHours || effortMinutes || reminderPreset || repeat.enabled) && (
+              <Chip size="small" label="заполнено" sx={{ ml: 'auto', mr: 1 }} />
+            )}
+          </Button>
+
+          <Collapse in={advancedOpen} timeout="auto">
+            <Stack spacing={2}>
 
           {/* Watchers */}
           {users.length > 0 && (
@@ -1025,6 +1053,9 @@ export function OwnerWorkspaceTaskCreateDialog({
               </Box>
             </Collapse>
           </Box>
+
+            </Stack>
+          </Collapse>
 
         </Box>
 

@@ -786,6 +786,7 @@ def _contact_to_response(
         tags=contact.tags,
         comment=contact.comment,
         source=contact.source,
+        counterparty_id=contact.counterparty_id,
         responsible_id=contact.responsible_id,
         status=contact.status or "new",
         folder_id=contact.folder_id,
@@ -2395,6 +2396,7 @@ async def create_contact(
         tags=payload.tags,
         comment=payload.comment,
         source=payload.source,
+        counterparty_id=payload.counterparty_id,
         responsible_id=payload.responsible_id,
         status=payload.status or "new",
         folder_id=payload.folder_id,
@@ -2454,6 +2456,13 @@ async def update_contact(
         if not normalized_phone:
             raise HTTPException(status_code=422, detail="Введите российский номер: +7 (900) 123-45-67")
         data["phone"] = normalized_phone
+    if "counterparty_id" in data and data["counterparty_id"] is not None:
+        cp = db.query(OwnerWorkspaceCounterparty).filter(
+            OwnerWorkspaceCounterparty.id == data["counterparty_id"],
+            OwnerWorkspaceCounterparty.is_archived.is_(False),
+        ).first()
+        if not cp or not counterparty_visible(ctx, cp.id):
+            raise HTTPException(status_code=404, detail="Организация не найдена или недоступна")
     for k, v in data.items():
         setattr(row, k, v)
     _log_audit(

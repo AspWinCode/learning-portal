@@ -93,6 +93,7 @@ import type {
   OwnerWorkspaceProjectConfig,
   OwnerWorkspaceProject,
   OwnerWorkspaceContactFolder,
+  OwnerWorkspaceCounterparty,
   OwnerWorkspaceSearchResult,
   OwnerWorkspaceTask,
   OwnerWorkspaceTaskComment,
@@ -948,6 +949,7 @@ const OwnerWorkspacePage: React.FC<OwnerWorkspacePageProps> = ({ initialTab, ini
   const [projectsCatalog, setProjectsCatalog] = useState<OwnerWorkspaceProject[]>([]);
   const [contacts, setContacts] = useState<OwnerWorkspaceContact[]>([]);
   const [contactsCatalog, setContactsCatalog] = useState<OwnerWorkspaceContact[]>([]);
+  const [counterpartiesCatalog, setCounterpartiesCatalog] = useState<OwnerWorkspaceCounterparty[]>([]);
   const [tasks, setTasks] = useState<OwnerWorkspaceTask[]>([]);
   const [meetingsCount, setMeetingsCount] = useState(0);
   const [calendarMeetings, setCalendarMeetings] = useState<OwnerWorkspaceMeeting[]>([]);
@@ -1570,6 +1572,7 @@ const OwnerWorkspacePage: React.FC<OwnerWorkspacePageProps> = ({ initialTab, ini
   const [contactEditPhone, setContactEditPhone] = useState('');
   const [contactEditEmail, setContactEditEmail] = useState('');
   const [contactEditCompany, setContactEditCompany] = useState('');
+  const [contactEditCounterpartyId, setContactEditCounterpartyId] = useState<number | null>(null);
   const [contactEditPosition, setContactEditPosition] = useState('');
   const [contactEditTags, setContactEditTags] = useState<string[]>([]);
   const [contactEditComment, setContactEditComment] = useState('');
@@ -1806,6 +1809,8 @@ const OwnerWorkspacePage: React.FC<OwnerWorkspacePageProps> = ({ initialTab, ini
       setProjectsCatalog(pAll);
       setContacts(cFiltered);
       setContactsCatalog(cAll);
+      const counterparties = await ownerWorkspaceApi.listCounterparties({ archived: false });
+      setCounterpartiesCatalog(counterparties);
     } catch (e: unknown) {
       setError(extractApiError(e, 'Не удалось загрузить проекты/контакты'));
     }
@@ -2310,6 +2315,7 @@ const OwnerWorkspacePage: React.FC<OwnerWorkspacePageProps> = ({ initialTab, ini
     setContactEditPhone(applyPhoneMask(contactDialog.phone ?? ''));
     setContactEditEmail(contactDialog.email ?? '');
     setContactEditCompany(contactDialog.company ?? '');
+    setContactEditCounterpartyId(contactDialog.counterparty_id ?? null);
     setContactEditPosition(contactDialog.position ?? '');
     setContactEditComment(contactDialog.comment ?? '');
     setContactEditSource(contactDialog.source ?? '');
@@ -3393,12 +3399,31 @@ const OwnerWorkspacePage: React.FC<OwnerWorkspacePageProps> = ({ initialTab, ini
       return;
     }
     try {
+      let counterpartyId = contactEditCounterpartyId;
+      const companyName = contactEditCompany.trim();
+      if (companyName && !counterpartyId) {
+        const existing = counterpartiesCatalog.find(
+          (item) => item.full_name.trim().toLocaleLowerCase() === companyName.toLocaleLowerCase()
+            || (item.company || '').trim().toLocaleLowerCase() === companyName.toLocaleLowerCase()
+        );
+        if (existing) {
+          counterpartyId = existing.id;
+        } else {
+          const created = await ownerWorkspaceApi.createCounterparty({
+            full_name: companyName,
+            company: companyName,
+          });
+          counterpartyId = created.id;
+          setCounterpartiesCatalog((items) => [...items, created]);
+        }
+      }
       const tagParts = contactEditTags.map((s) => s.trim()).filter(Boolean);
       const updated = await ownerWorkspaceApi.updateContact(contactDialog.id, {
         full_name: fn,
         phone: ph,
         email: contactEditEmail.trim() || null,
-        company: contactEditCompany.trim() || null,
+        company: companyName || null,
+        counterparty_id: counterpartyId,
         position: contactEditPosition.trim() || null,
         comment: contactEditComment.trim() || null,
         source: contactEditSource.trim() || null,
@@ -3406,6 +3431,7 @@ const OwnerWorkspacePage: React.FC<OwnerWorkspacePageProps> = ({ initialTab, ini
         folder_id: contactEditFolderId === '' ? null : contactEditFolderId,
       });
       setContactDialog(updated);
+      setContactEditCounterpartyId(updated.counterparty_id ?? null);
       setError(null);
       await loadProjectsAndContacts();
     } catch (e: unknown) {
@@ -8328,12 +8354,53 @@ const OwnerWorkspacePage: React.FC<OwnerWorkspacePageProps> = ({ initialTab, ini
               disabled={!canEditContactCardDialogContent}
             />
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-              <TextField
+              <Autocomplete<OwnerWorkspaceCounterparty | string, false, false, true>
                 fullWidth
-                label="Компания"
-                value={contactEditCompany}
-                onChange={(e) => setContactEditCompany(e.target.value)}
+                freeSolo
+                options={counterpartiesCatalog}
+                value={
+                  contactEditCounterpartyId
+                    ? counterpartiesCatalog.find((item) => item.id === contactEditCounterpartyId) || contactEditCompany
+                    : contactEditCompany
+                }
+                getOptionLabel={(option) => typeof option === 'string' ? option : (option.company || option.full_name)}
+                isOptionEqualToValue={(option, value) => typeof option !== 'string' && typeof value !== 'string' && option.id === value.id}
+                onChange={(_, value) => {
+                  if (typeof value === 'string') {
+                    setContactEditCompany(value);
+                    setContactEditCounterpartyId(null);
+                  } else if (value) {
+                    setContactEditCompany(value.company || value.full_name);
+                    setContactEditCounterpartyId(value.id);
+                  } else {
+                    setContactEditCompany('');
+                    setContactEditCounterpartyId(null);
+                  }
+                }}
+                onInputChange={(_, value, reason) => {
+                  if (reason === 'input') {
+                    setContactEditCompany(value);
+                    setContactEditCounterpartyId(null);
+                  }
+                }}
                 disabled={!canEditContactCardDialogContent}
+                renderOption={(props, option) => (
+                  <li {...props} key={typeof option === 'string' ? option : option.id}>
+                    <span>{typeof option === 'string' ? option : (option.company || option.full_name)}</span>
+                    {typeof option !== 'string' && option.company && option.full_name !== option.company ? (
+                      <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                        {option.full_name}
+                      </Typography>
+                    ) : null}
+                  </li>
+                )}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Компания / школа"
+                    helperText="Выберите существующую организацию или введите новое название — она создастся автоматически"
+                  />
+                )}
               />
               <TextField
                 fullWidth

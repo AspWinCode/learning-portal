@@ -1883,6 +1883,7 @@ export interface OwnerWorkspaceContact {
   created_at?: string | null;
   updated_at?: string | null;
   is_archived?: boolean;
+  counterparty_id?: number | null;
   google_resource_name?: string | null;
   google_synced_at?: string | null;
   deleted_in_google?: boolean;

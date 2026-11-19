@@ -281,6 +281,7 @@ export const ownerWorkspaceApi = {
       tags?: string[];
       comment?: string | null;
       source?: string | null;
+      counterparty_id?: number | null;
       folder_id?: number | null;
     }
   ): Promise<OwnerWorkspaceContact> => {

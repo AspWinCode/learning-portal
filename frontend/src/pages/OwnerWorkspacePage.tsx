@@ -1812,8 +1812,6 @@ const OwnerWorkspacePage: React.FC<OwnerWorkspacePageProps> = ({ initialTab, ini
       setContactsCatalog(cAll);
       const counterparties = await ownerWorkspaceApi.listCounterparties({ archived: false });
       setCounterpartiesCatalog(counterparties);
-      const schools = await salesApi.listSalesSchools(true, undefined, 500);
-      setSchoolsCatalog(schools);
     } catch (e: unknown) {
       setError(extractApiError(e, 'Не удалось загрузить проекты/контакты'));
     }
@@ -1827,6 +1825,26 @@ const OwnerWorkspacePage: React.FC<OwnerWorkspacePageProps> = ({ initialTab, ini
     contactListActiveTasksOnly,
     contactListTag,
   ]);
+
+  useEffect(() => {
+    const query = contactEditCompany.trim();
+    if (query.length < 2) {
+      setSchoolsCatalog([]);
+      return undefined;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void salesApi.listSalesSchools(true, query, 100).then((schools) => {
+        if (!cancelled) setSchoolsCatalog(schools);
+      }).catch(() => {
+        if (!cancelled) setSchoolsCatalog([]);
+      });
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [contactEditCompany]);
 
   const loadMeetingsCount = useCallback(async () => {
     try {

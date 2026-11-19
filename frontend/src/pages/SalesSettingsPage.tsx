@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  Autocomplete,
   Box,
   Button,
   Chip,
@@ -44,7 +45,7 @@ import TrainerRatesSettingsSection from '../components/TrainerRatesSettingsSecti
 import { useAuth } from '../contexts/AuthContext';
 import { PersonRegistryContent } from './PersonRegistryPage';
 import { ProgramMakeupContent } from './SalesProgramMakeupPage';
-import { abonementsApi, campaignsApi, financeApi, maxApi, salesApi, settingsApi, studentPortalAdminApi } from '../services/api';
+import { abonementsApi, campaignsApi, financeApi, maxApi, ownerWorkspaceApi, salesApi, settingsApi, studentPortalAdminApi } from '../services/api';
 import { extractApiError } from '../utils/extractApiError';
 import { hasPermission } from '../utils/permissions';
 import { applyPhoneMask, isValidPhone } from '../utils/phoneMask';
@@ -72,6 +73,7 @@ import {
   LearningLink,
   PaymentLink,
   LeadPipelineStage,
+  OwnerWorkspaceContact,
 } from '../types';
 
 const ALL_LEAD_STATUSES: LeadStatus[] = [
@@ -228,6 +230,9 @@ const SalesSettingsPage: React.FC = () => {
   const [editingContact, setEditingContact] = useState<SalesSchoolContact | null>(null);
   const [contactSaving, setContactSaving] = useState(false);
   const [contactError, setContactError] = useState('');
+  const [contactInputValue, setContactInputValue] = useState('');
+  const [contactSuggestions, setContactSuggestions] = useState<OwnerWorkspaceContact[]>([]);
+  const [contactSuggestionsLoading, setContactSuggestionsLoading] = useState(false);
   const [schoolImportResult, setSchoolImportResult] = useState<{
     created: number;
     updated: number;
@@ -709,19 +714,60 @@ const SalesSettingsPage: React.FC = () => {
 
   const emptyContactForm = () => ({ full_name: '', position: '', phone: '', phone_extra: '', email: '', note: '' });
 
+  useEffect(() => {
+    if (!contactForm || editingContact || contactInputValue.trim().length < 2) {
+      setContactSuggestions([]);
+      return undefined;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      setContactSuggestionsLoading(true);
+      try {
+        const result = await ownerWorkspaceApi.listContacts({ search: contactInputValue.trim() });
+        if (!cancelled) setContactSuggestions(result.slice(0, 8));
+      } catch {
+        if (!cancelled) setContactSuggestions([]);
+      } finally {
+        if (!cancelled) setContactSuggestionsLoading(false);
+      }
+    }, 250);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [contactForm, contactInputValue, editingContact]);
+
   const openAddContact = () => {
     setEditingContact(null);
     setContactForm(emptyContactForm());
+    setContactInputValue('');
+    setContactSuggestions([]);
     setContactError('');
   };
 
   const openEditContact = (c: SalesSchoolContact) => {
     setEditingContact(c);
     setContactForm({ full_name: c.full_name, position: c.position || '', phone: c.phone || '', phone_extra: c.phone_extra || '', email: c.email || '', note: c.note || '' });
+    setContactInputValue(c.full_name);
+    setContactSuggestions([]);
     setContactError('');
   };
 
-  const cancelContactForm = () => { setContactForm(null); setEditingContact(null); setContactError(''); };
+  const cancelContactForm = () => { setContactForm(null); setEditingContact(null); setContactInputValue(''); setContactSuggestions([]); setContactError(''); };
+
+  const selectExistingContact = (contact: OwnerWorkspaceContact) => {
+    setContactInputValue(contact.full_name);
+    setContactForm((form) => form ? {
+      ...form,
+      full_name: contact.full_name,
+      position: contact.position || '',
+      phone: contact.phone ? applyPhoneMask(contact.phone) : '',
+      phone_extra: '',
+      email: contact.email || '',
+      note: contact.comment || '',
+    } : form);
+    setContactSuggestions([]);
+  };
 
   const saveContact = async () => {
     if (!editingSchool || !contactForm) return;
@@ -2643,9 +2689,41 @@ const SalesSettingsPage: React.FC = () => {
                   {editingContact ? 'Редактировать контакт' : 'Новый контакт'}
                 </Typography>
                 <Stack spacing={1.5}>
-                  <TextField size="small" label="ФИО *" fullWidth value={contactForm.full_name}
-                    onChange={(e) => setContactForm(f => f ? { ...f, full_name: e.target.value } : f)}
-                    disabled={contactSaving} />
+                  {editingContact ? (
+                    <TextField size="small" label="ФИО *" fullWidth value={contactForm.full_name}
+                      onChange={(e) => setContactForm(f => f ? { ...f, full_name: e.target.value } : f)}
+                      disabled={contactSaving} />
+                  ) : (
+                    <Autocomplete
+                      freeSolo
+                      fullWidth
+                      options={contactSuggestions}
+                      loading={contactSuggestionsLoading}
+                      value={null}
+                      inputValue={contactInputValue}
+                      getOptionLabel={(option) => typeof option === 'string' ? option : option.full_name}
+                      filterOptions={(options) => options}
+                      onInputChange={(_, value, reason) => {
+                        if (reason === 'reset') return;
+                        setContactInputValue(value);
+                        setContactForm(f => f ? { ...f, full_name: value } : f);
+                      }}
+                      onChange={(_, value) => {
+                        if (value && typeof value !== 'string') selectExistingContact(value);
+                      }}
+                      renderOption={(props, option) => (
+                        <Box component="li" {...props} key={option.id} sx={{ display: 'block !important' }}>
+                          <Typography variant="body2" fontWeight={600}>{option.full_name}</Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {[option.position, option.company, option.phone].filter(Boolean).join(' · ') || 'Контакт без дополнительных данных'}
+                          </Typography>
+                        </Box>
+                      )}
+                      renderInput={(params) => (
+                        <TextField {...params} size="small" label="ФИО *" placeholder="Начните вводить ФИО из контактов…" disabled={contactSaving} />
+                      )}
+                    />
+                  )}
                   <TextField size="small" label="Должность" fullWidth value={contactForm.position}
                     placeholder="Завуч, Учитель, Менеджер…"
                     onChange={(e) => setContactForm(f => f ? { ...f, position: e.target.value } : f)}

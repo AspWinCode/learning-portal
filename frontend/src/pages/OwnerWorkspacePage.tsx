@@ -950,6 +950,7 @@ const OwnerWorkspacePage: React.FC<OwnerWorkspacePageProps> = ({ initialTab, ini
   const [contacts, setContacts] = useState<OwnerWorkspaceContact[]>([]);
   const [contactsCatalog, setContactsCatalog] = useState<OwnerWorkspaceContact[]>([]);
   const [counterpartiesCatalog, setCounterpartiesCatalog] = useState<OwnerWorkspaceCounterparty[]>([]);
+  const [schoolsCatalog, setSchoolsCatalog] = useState<import('../types').SalesSchool[]>([]);
   const [tasks, setTasks] = useState<OwnerWorkspaceTask[]>([]);
   const [meetingsCount, setMeetingsCount] = useState(0);
   const [calendarMeetings, setCalendarMeetings] = useState<OwnerWorkspaceMeeting[]>([]);
@@ -1811,6 +1812,8 @@ const OwnerWorkspacePage: React.FC<OwnerWorkspacePageProps> = ({ initialTab, ini
       setContactsCatalog(cAll);
       const counterparties = await ownerWorkspaceApi.listCounterparties({ archived: false });
       setCounterpartiesCatalog(counterparties);
+      const schools = await salesApi.listSalesSchools(true, undefined, 500);
+      setSchoolsCatalog(schools);
     } catch (e: unknown) {
       setError(extractApiError(e, 'Не удалось загрузить проекты/контакты'));
     }
@@ -8401,6 +8404,25 @@ const OwnerWorkspacePage: React.FC<OwnerWorkspacePageProps> = ({ initialTab, ini
                     helperText="Выберите существующую организацию или введите новое название — она создастся автоматически"
                   />
                 )}
+              />
+              <Autocomplete
+                fullWidth
+                options={schoolsCatalog}
+                value={schoolsCatalog.find((school) => school.name === contactEditCompany) || null}
+                getOptionLabel={(school) => school.name}
+                isOptionEqualToValue={(option, value) => option.id === value.id}
+                onChange={(_, school) => {
+                  setContactEditCompany(school?.name ?? '');
+                  setContactEditCounterpartyId(null);
+                }}
+                onInputChange={(_, value) => {
+                  if (value !== contactEditCompany) {
+                    setContactEditCompany(value);
+                    setContactEditCounterpartyId(null);
+                  }
+                }}
+                disabled={!canEditContactCardDialogContent}
+                renderInput={(params) => <TextField {...params} label="Школа из справочника" />}
               />
               <TextField
                 fullWidth

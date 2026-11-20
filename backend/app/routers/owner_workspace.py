@@ -2527,7 +2527,10 @@ async def delete_contact(
 
 
 def _contact_folder_to_response(db: Session, folder: OwnerWorkspaceContactFolder) -> OwnerWorkspaceContactFolderResponse:
-    contacts_count = db.query(OwnerWorkspaceContact).filter(OwnerWorkspaceContact.folder_id == folder.id).count()
+    contacts_count = db.query(OwnerWorkspaceContact).filter(
+        OwnerWorkspaceContact.folder_id == folder.id,
+        OwnerWorkspaceContact.is_archived.is_(False),
+    ).count()
     return OwnerWorkspaceContactFolderResponse(
         id=folder.id,
         name=folder.name,

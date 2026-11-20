@@ -986,6 +986,26 @@ def _build_ow_comment(phone_extra: Optional[str], note: Optional[str]) -> Option
     return "\n".join(parts) if parts else None
 
 
+def _archive_school_contact_duplicates(
+    db: Session,
+    keep: OwnerWorkspaceContact,
+    normalized_phone: Optional[str],
+    school_name: str,
+) -> None:
+    """Hide mirror rows created by earlier syncs for the same school contact."""
+    if not normalized_phone:
+        return
+    duplicates = db.query(OwnerWorkspaceContact).filter(
+        OwnerWorkspaceContact.id != keep.id,
+        OwnerWorkspaceContact.phone == normalized_phone,
+        OwnerWorkspaceContact.is_archived.is_(False),
+    ).all()
+    for duplicate in duplicates:
+        if duplicate.source == "sales_school" or duplicate.company == school_name:
+            duplicate.is_archived = True
+            duplicate.archived_at = utcnow()
+
+
 def _sync_contact_to_ow(db: Session, contact: SalesSchoolContact, school_name: str) -> None:
     """Create or update the mirrored OwnerWorkspaceContact."""
     comment = _build_ow_comment(contact.phone_extra, contact.note)
@@ -995,6 +1015,21 @@ def _sync_contact_to_ow(db: Session, contact: SalesSchoolContact, school_name: s
         ow = db.query(OwnerWorkspaceContact).filter(
             OwnerWorkspaceContact.id == contact.owner_workspace_contact_id
         ).first()
+        if ow and ow.is_archived:
+            # A previous reconciliation may have archived this mirror as a
+            # duplicate. Re-select the active canonical owner contact below.
+            ow = None
+    if ow and ow.source == "sales_school" and normalized_phone:
+        # Prefer a pre-existing general contact over a mirror row created by
+        # the old sync. This repairs the exact duplicate pattern from legacy
+        # school-contact additions.
+        canonical = db.query(OwnerWorkspaceContact).filter(
+            OwnerWorkspaceContact.phone == normalized_phone,
+            OwnerWorkspaceContact.source != "sales_school",
+            OwnerWorkspaceContact.is_archived.is_(False),
+        ).order_by(OwnerWorkspaceContact.id.asc()).first()
+        if canonical:
+            ow = canonical
     # Контакт мог быть создан в общем справочнике раньше, чем его добавили
     # в карточку школы. В таком случае переиспользуем существующую запись,
     # иначе в общем списке появляются две строки: одна без компании и одна с ней.
@@ -1016,6 +1051,7 @@ def _sync_contact_to_ow(db: Session, contact: SalesSchoolContact, school_name: s
         ow.email = contact.email
         ow.company = school_name
         ow.comment = comment
+        _archive_school_contact_duplicates(db, ow, normalized_phone, school_name)
         return
     # No linked OW contact — create one
     ow = OwnerWorkspaceContact(
@@ -1055,6 +1091,26 @@ async def create_sales_school_contact(
     school = db.query(SalesSchool).filter(SalesSchool.id == school_id).first()
     if not school:
         raise HTTPException(status_code=404, detail="School not found")
+    incoming_phone = normalize_ru_phone_display(payload.phone) or payload.phone
+    incoming_name = payload.full_name.strip().lower()
+    existing_contacts = db.query(SalesSchoolContact).filter(
+        SalesSchoolContact.school_id == school_id,
+    ).all()
+    duplicate = next(
+        (
+            item for item in existing_contacts
+            if (incoming_phone and normalize_ru_phone_display(item.phone) == incoming_phone)
+            or item.full_name.strip().lower() == incoming_name
+        ),
+        None,
+    )
+    if duplicate:
+        for field, value in payload.dict(exclude_unset=True).items():
+            setattr(duplicate, field, value)
+        _sync_contact_to_ow(db, duplicate, school.name)
+        db.commit()
+        db.refresh(duplicate)
+        return duplicate
     contact = SalesSchoolContact(school_id=school_id, **payload.dict())
     db.add(contact)
     db.flush()

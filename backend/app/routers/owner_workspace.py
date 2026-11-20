@@ -86,6 +86,8 @@ from app.models import (
     OwnerWorkspaceTaskTemplate,
     OwnerWorkspaceTaskWatcher,
     OwnerWorkspaceWebPushSubscription,
+    SalesSchool,
+    SalesSchoolContact,
     OwnerUsefulLink,
     OwnerUsefulLinkFolder,
     Group,
@@ -2243,6 +2245,20 @@ async def list_contacts(
     db: Session = Depends(get_db),
     ctx: OwnerWorkspaceAccessContext = Depends(get_owner_workspace_access),
 ):
+    # Repair legacy school contacts created before the school-to-workspace
+    # matching logic: the contact should show its school in the Company column.
+    if ctx.full:
+        from app.routers.sales_admin import _sync_contact_to_ow
+        unlinked_school_contacts = (
+            db.query(SalesSchoolContact, SalesSchool.name)
+            .join(SalesSchool, SalesSchool.id == SalesSchoolContact.school_id)
+            .filter(SalesSchoolContact.owner_workspace_contact_id.is_(None))
+            .all()
+        )
+        if unlinked_school_contacts:
+            for school_contact, school_name in unlinked_school_contacts:
+                _sync_contact_to_ow(db, school_contact, school_name)
+            db.commit()
     if project_id is not None and not ctx.full and not project_visible(ctx, project_id):
         raise HTTPException(status_code=404, detail="Project not found")
     q = db.query(OwnerWorkspaceContact)

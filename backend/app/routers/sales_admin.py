@@ -5,7 +5,7 @@ from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
 from openpyxl import load_workbook
-from sqlalchemy import Text, cast, or_
+from sqlalchemy import Text, cast, func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app import auth
@@ -989,24 +989,40 @@ def _build_ow_comment(phone_extra: Optional[str], note: Optional[str]) -> Option
 def _sync_contact_to_ow(db: Session, contact: SalesSchoolContact, school_name: str) -> None:
     """Create or update the mirrored OwnerWorkspaceContact."""
     comment = _build_ow_comment(contact.phone_extra, contact.note)
+    normalized_phone = normalize_ru_phone_display(contact.phone) or contact.phone
+    ow = None
     if contact.owner_workspace_contact_id:
         ow = db.query(OwnerWorkspaceContact).filter(
             OwnerWorkspaceContact.id == contact.owner_workspace_contact_id
         ).first()
-        if ow:
-            ow.full_name = contact.full_name
-            ow.position = contact.position
-            ow.phone = normalize_ru_phone_display(contact.phone) or contact.phone
-            ow.email = contact.email
-            ow.company = school_name
-            ow.comment = comment
-            return
+    # Контакт мог быть создан в общем справочнике раньше, чем его добавили
+    # в карточку школы. В таком случае переиспользуем существующую запись,
+    # иначе в общем списке появляются две строки: одна без компании и одна с ней.
+    if not ow and normalized_phone:
+        ow = db.query(OwnerWorkspaceContact).filter(
+            OwnerWorkspaceContact.phone == normalized_phone,
+            OwnerWorkspaceContact.is_archived.is_(False),
+        ).order_by(OwnerWorkspaceContact.id.asc()).first()
+    if not ow:
+        ow = db.query(OwnerWorkspaceContact).filter(
+            func.lower(OwnerWorkspaceContact.full_name) == contact.full_name.strip().lower(),
+            OwnerWorkspaceContact.is_archived.is_(False),
+        ).order_by(OwnerWorkspaceContact.id.asc()).first()
+    if ow:
+        contact.owner_workspace_contact_id = ow.id
+        ow.full_name = contact.full_name
+        ow.position = contact.position
+        ow.phone = normalized_phone
+        ow.email = contact.email
+        ow.company = school_name
+        ow.comment = comment
+        return
     # No linked OW contact — create one
     ow = OwnerWorkspaceContact(
         type="individual",
         full_name=contact.full_name,
         position=contact.position,
-        phone=normalize_ru_phone_display(contact.phone) or contact.phone,
+        phone=normalized_phone,
         email=contact.email,
         company=school_name,
         comment=comment,

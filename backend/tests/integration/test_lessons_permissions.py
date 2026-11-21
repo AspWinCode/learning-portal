@@ -4,7 +4,7 @@ object-level scoping of regular-group attendance and of CustomLesson by
 trainer_id. Real HTTP through TestClient + a real JWT, real DB.
 """
 import uuid
-from datetime import date, time
+from datetime import date
 
 import pytest
 from fastapi.testclient import TestClient

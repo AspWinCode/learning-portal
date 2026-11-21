@@ -35,11 +35,14 @@ function renderGrid(overrides: Partial<React.ComponentProps<typeof Grid>> = {}) 
       onResizeRow={noop}
       onFormatRange={noop}
       onSetConditionalFormat={noop}
+      onSetColumnType={noop}
+      onSetDirectory={noop}
       onSortColumn={noop}
       onPasteRange={onPasteRange}
       onOpenSmartLink={noop}
       onEditSmartLink={noop}
       onClearSmartLink={noop}
+      onOpenMaxChat={noop}
       {...overrides}
     />
   );

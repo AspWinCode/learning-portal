@@ -1,7 +1,6 @@
 import hashlib
 import hmac
 import logging
-import os
 from typing import Any, Dict
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status

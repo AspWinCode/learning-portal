@@ -7,7 +7,7 @@
 в конце каждого теста.
 """
 import uuid
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 
 import pytest
 

@@ -1,5 +1,5 @@
 """Сводка для домашней страницы администратора (учебные операции)."""
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Dict
 
 from sqlalchemy.orm import Session

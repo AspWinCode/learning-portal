@@ -75,7 +75,6 @@ from app.schemas.academy_ai import (
     SearchResponse,
 )
 from app.services.academy_ai import business_profile as business_profile_svc
-from app.services.academy_ai import content_examples
 from app.services.academy_ai import content_gen
 from app.services.academy_ai import proactivity
 from app.services.academy_ai import scheduler as post_scheduler

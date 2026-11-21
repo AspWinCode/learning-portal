@@ -8,7 +8,6 @@ LEGO: интеграционные тесты на реальной PostgreSQL (
 import os
 import uuid
 from datetime import date, timedelta
-from decimal import Decimal
 
 import pytest
 
@@ -76,7 +75,7 @@ def cleanup(db):
     if tx_ids:
         db.query(FinanceTransaction).filter(FinanceTransaction.id.in_(tx_ids)).delete(synchronize_session=False)
     if group_ids:
-        lesson_ids = [l.id for l in db.query(LegoLesson.id).filter(LegoLesson.group_id.in_(group_ids)).all()]
+        lesson_ids = [lesson.id for lesson in db.query(LegoLesson.id).filter(LegoLesson.group_id.in_(group_ids)).all()]
         if lesson_ids:
             from app.models import LegoAttendance
 

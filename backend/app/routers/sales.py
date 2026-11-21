@@ -15,7 +15,6 @@ from app import auth
 from app.database import get_db
 from app.student_display import get_student_display_name, get_students_display_names
 from app.services.parent_invite import create_parent_with_invite
-from app.services.finance_ledger import ensure_finance_transaction_for_bank_transaction
 from app.services.student_card_conversion import (
     convert_student_card_to_student as student_card_convert,
     StudentCardConvertConflict,
@@ -69,7 +68,6 @@ from app.models import (
     StudentAccount,
     StudentAccountTransaction,
     StudentAccountTransactionKind,
-    TochkaAppliedPayment,
     BankTransaction,
     BankTransactionStatus,
     PhonePaymentBinding,

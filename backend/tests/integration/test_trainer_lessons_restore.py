@@ -469,10 +469,11 @@ async def test_restore_does_not_bill_and_billing_happens_once_on_save(db, owner_
     await _restore(db, owner_user, ctx.group, MON, "10:00", "12:00")
 
     account = db.query(StudentAccount).filter(StudentAccount.student_id == student.id).one()
-    deductions = lambda: db.query(StudentAccountTransaction).filter(
-        StudentAccountTransaction.account_id == account.id,
-        StudentAccountTransaction.kind == StudentAccountTransactionKind.LESSON_DEDUCTION,
-    ).count()
+    def deductions():
+        return db.query(StudentAccountTransaction).filter(
+            StudentAccountTransaction.account_id == account.id,
+            StudentAccountTransaction.kind == StudentAccountTransactionKind.LESSON_DEDUCTION,
+        ).count()
     assert deductions() == 0  # restore сам не списывает
     assert db.query(StudentAccount).get(account.id).balance == 0.0
 

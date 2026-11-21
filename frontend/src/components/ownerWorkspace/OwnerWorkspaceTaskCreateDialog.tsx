@@ -395,7 +395,6 @@ export function OwnerWorkspaceTaskCreateDialog({
               placeholder="Контекст, ожидаемый результат, ограничения..."
               value={description}
               onChange={(e) => setDescription(e.currentTarget.value)}
-              onInput={(e) => setDescription(e.currentTarget.value)}
               variant="outlined"
               size="small"
               sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}

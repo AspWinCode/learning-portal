@@ -227,7 +227,8 @@ export function OwnerWorkspaceTaskBoardCalendarSection({
       if (slot.recurrence_type === 'weekdays') return weekday < 5;
       if (slot.recurrence_type === 'monthly') {
         if (slot.weekdays?.length) return slot.weekdays.includes(weekday);
-        return Boolean(slot.start_date) && day.getDate() === Number(slot.start_date.slice(8, 10));
+        const startDate = slot.start_date;
+        return startDate != null && day.getDate() === Number(startDate.slice(8, 10));
       }
       return slot.weekdays?.includes(weekday) ?? false;
     };

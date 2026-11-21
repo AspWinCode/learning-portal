@@ -10,7 +10,6 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import RedirectResponse
 
-logger = logging.getLogger(__name__)
 from sqlalchemy import String, and_, asc, case, cast, desc, exists, func, nullslast, or_
 from sqlalchemy.orm import Session
 from starlette.responses import StreamingResponse
@@ -185,6 +184,7 @@ from app.services.owner_workspace_counterparties import (
 )
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def _useful_link_folder_response(folder: OwnerUsefulLinkFolder) -> OwnerUsefulLinkFolderResponse:

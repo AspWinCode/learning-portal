@@ -19,7 +19,6 @@ from sqlalchemy.orm import Session
 from app.models import (
     Group,
     GroupStudent,
-    LessonAttendance,
     Student,
     StudentAccount,
     StudentAccountTransaction,

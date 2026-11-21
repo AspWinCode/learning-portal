@@ -1,12 +1,10 @@
-from datetime import date, datetime, timezone
+from datetime import date
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from datetime import date, datetime, timezone
-from typing import Dict
 
 from app import auth
 from app.database import get_db

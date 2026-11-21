@@ -6,7 +6,6 @@ import re
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List
 
-from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.models import SmmContent, SmmContentPlan, SmmContentPlanItem, SmmProject, SmmPublication, SmmPublicationStatus

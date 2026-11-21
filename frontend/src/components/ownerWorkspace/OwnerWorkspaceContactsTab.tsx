@@ -748,7 +748,7 @@ export function OwnerWorkspaceContactsTab({
                           placement="right-start"
                           enterDelay={250}
                           title={renderContactPreview(contact)}
-                          slotProps={{ tooltip: { sx: { bgcolor: 'grey.900', maxWidth: 360, p: 1.25 }, arrow: { sx: { color: 'grey.900' } } } }}
+                          slotProps={{ tooltip: { sx: { bgcolor: 'grey.900', maxWidth: 360, p: 1.25 } } }}
                         >
                           <Box sx={{ display: 'inline-flex', flexDirection: 'column', cursor: 'help' }}>
                             <Typography variant="body2" fontWeight={700}>{contact.full_name}</Typography>

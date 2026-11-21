@@ -4,7 +4,6 @@
 тренеру). Real HTTP через TestClient + реальный JWT, реальная БД.
 """
 import uuid
-from datetime import date
 
 import pytest
 from fastapi.testclient import TestClient

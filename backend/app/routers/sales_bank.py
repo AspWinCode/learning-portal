@@ -50,6 +50,8 @@ from app.services.bank_operation import apply_bank_operation_to_student as bank_
 from app.services.bank_reconcile import reconcile_generic_income
 from app.services.finance_ledger import ensure_finance_transaction_for_bank_transaction
 from app.services.student_account_payment import resolve_payment_format
+from app.student_display import get_student_display_name
+from app.utils.phone import normalize_phone
 
 logger = logging.getLogger(__name__)
 
@@ -58,9 +60,6 @@ def _sync_ft(db, bank_tx, description: str = "") -> None:
     ft = ensure_finance_transaction_for_bank_transaction(db, bank_tx, bank_source="tochka")
     if description and ft and not ft.description_raw:
         ft.description_raw = description
-from app.student_display import get_student_display_name
-from app.utils.phone import normalize_phone
-
 router = APIRouter()
 
 

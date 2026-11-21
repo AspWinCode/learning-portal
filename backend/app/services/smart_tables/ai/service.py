@@ -24,7 +24,6 @@ from sqlalchemy.orm import Session
 
 from app.models import SmartTableColumn, SmartTableRow, SmartTableSheet, User
 from app.schemas.smart_tables import (
-    AiAction,
     AiAddColumn,
     AiAppliedSummary,
     AiCommandResponse,
@@ -43,7 +42,7 @@ from app.schemas.smart_tables import (
     OpSortRows,
 )
 from app.services import ai_gateway
-from app.services.smart_tables.executor import OperationError, OperationExecutor
+from app.services.smart_tables.executor import OperationExecutor
 
 SYSTEM_PROMPT = """Ты — ассистент внутри spreadsheet-модуля (как Google Sheets). Тебе дают схему
 листа и выборку строк в <sheet_data>...</sheet_data> и команду пользователя на русском.

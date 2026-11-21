@@ -104,11 +104,11 @@ from app.dependencies import require_finance_access as dep_require_finance_acces
 from app.dependencies import require_finance_manage as dep_require_finance_manage
 from app.student_display import get_student_display_name
 
-logger = logging.getLogger(__name__)
 from app.routers.action_log import log_action
 
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def _require_finance_access(user: User) -> None:

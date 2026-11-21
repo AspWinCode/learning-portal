@@ -1,7 +1,6 @@
 """Regression coverage for group rate persistence in owner calculations."""
 
 import uuid
-from datetime import date
 
 import pytest
 

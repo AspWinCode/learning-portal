@@ -24,7 +24,6 @@ from sqlalchemy.orm import Session
 from app.models import SmartTableCell, SmartTableColumn, SmartTableRow, SmartTableSheet
 from app.services.smart_tables.formula.functions import (
     EAGER_FUNCTIONS,
-    LAZY_FUNCTIONS,
     FormulaValueError,
     RangeValue,
     _truthy,

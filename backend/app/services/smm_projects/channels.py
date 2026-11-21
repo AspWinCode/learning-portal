@@ -28,7 +28,7 @@ PUBLISHERS = {
 }
 
 REQUIRED_FIELDS: Dict[str, List[str]] = {
-    "vk": ["token", "group_id", "photo_token"],
+    "vk": ["token", "group_id"],
     "telegram": ["token", "chat_id"],
     "instagram": ["token", "account_id"],
     "max": ["token", "chat_id"],

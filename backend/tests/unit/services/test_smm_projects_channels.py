@@ -45,10 +45,8 @@ def _project():
 
 def test_set_channel_config_rejects_missing_required_fields(monkeypatch):
     db = _FakeDB()
-    with pytest.raises(ValueError, match="photo_token"):
-        channels.set_channel_config(
-            db, _project(), object(), "vk", {"token": "abc", "group_id": "1"},
-        )
+    with pytest.raises(ValueError, match="group_id"):
+        channels.set_channel_config(db, _project(), object(), "vk", {"token": "abc"})
 
 
 def test_set_channel_config_rejects_unsupported_channel():

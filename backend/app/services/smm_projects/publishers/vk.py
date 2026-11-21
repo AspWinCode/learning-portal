@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 import os
 from typing import Dict, List, Optional
 
 import httpx
 
 from .base import PublicationContext, Publisher, PublisherResult, VerifyResult
+
+logger = logging.getLogger(__name__)
 
 VK_API = "https://api.vk.com/method"
 VK_API_VERSION = "5.199"
@@ -15,8 +18,18 @@ VK_API_VERSION = "5.199"
 _VK_ERROR_MESSAGES = {
     5: "Недействительный токен VK",
     15: "Токен не имеет доступа к этому сообществу",
-    27: "VK отклонил загрузку фото. Для photo_token нужен личный токен "
-        "администратора сообщества с доступом к фотографиям",
+    # Официальный текст VK — "Group authorization failed: method is unavailable
+    # with group auth" — встречается на photos.getWallUploadServer /
+    # photos.saveWallPhoto. Это НЕ про недостающее право «Фотографии»: метод
+    # в принципе недоступен для ключа доступа сообщества, даже если «Стена» и
+    # «Фотографии» отмечены (проверено живым вызовом с ключом, где оба права
+    # были включены — error_code=27 всё равно). wall.post при этом с ключом
+    # сообщества работает нормально, поэтому ошибка всплывает только когда к
+    # посту прикладывают картинку/карусель.
+    27: "Для загрузки фото на стену VK ключ сообщества не подходит ни при "
+        "каких правах — нужен личный токен администратора сообщества "
+        "(пользовательский, с правами wall и photos), полученный через "
+        "OAuth-авторизацию, а не «Ключи доступа» в настройках сообщества",
     100: "Сообщество не найдено: неверный ID",
     113: "Сообщество не найдено: неверный ID",
 }
@@ -42,19 +55,16 @@ class VkPublisher(Publisher):
         suffix = project_code.upper()
         token = _env(f"SMM_VK_TOKEN_{suffix}")
         group_id = _env(f"SMM_VK_GROUP_ID_{suffix}")
-        photo_token = _env(f"SMM_VK_PHOTO_TOKEN_{suffix}")
-        return {"token": token, "group_id": group_id, "photo_token": photo_token} if token and group_id and photo_token else None
+        return {"token": token, "group_id": group_id} if token and group_id else None
 
     def is_configured(self, project_code: str, config: Optional[Dict[str, str]] = None) -> bool:
         resolved = config or self._env_config(project_code)
-        return bool(resolved and resolved.get("token") and resolved.get("group_id") and resolved.get("photo_token"))
+        return bool(resolved and resolved.get("token") and resolved.get("group_id"))
 
     async def verify(self, project_code: str, config: Optional[Dict[str, str]] = None) -> VerifyResult:
         resolved = config or self._env_config(project_code)
         if not resolved or not resolved.get("token") or not resolved.get("group_id"):
-            return VerifyResult(ok=False, error="VK не настроен: отсутствует ключ доступа или ID сообщества")
-        if not resolved.get("photo_token"):
-            return VerifyResult(ok=False, error="Для публикации картинок добавьте личный токен администратора в поле загрузки фото")
+            return VerifyResult(ok=False, error="VK не настроен: отсутствует токен или ID сообщества")
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
                 group_resp = await client.get(
@@ -74,27 +84,17 @@ class VkPublisher(Publisher):
                     params={"access_token": resolved["token"], "v": VK_API_VERSION},
                 )
                 perms_data = perms_resp.json()
-                error = _vk_error(perms_data)
-                if error:
-                    return VerifyResult(ok=False, error=error)
-                permissions = {p.get("name") for p in ((perms_data.get("response") or {}).get("permissions") or [])}
-                if "wall" not in permissions:
-                    return VerifyResult(ok=False, error="У токена нет права «wall» — публикация на стене сообщества запрещена")
-                photo_resp = await client.get(
-                    f"{VK_API}/photos.getWallUploadServer",
-                    params={"group_id": resolved["group_id"], "access_token": resolved["photo_token"], "v": VK_API_VERSION},
-                )
-                photo_data = photo_resp.json()
         except httpx.RequestError as exc:
             return VerifyResult(ok=False, error=f"VK API недоступен: {exc}")
         except ValueError:
             return VerifyResult(ok=False, error="VK API вернул некорректный JSON")
 
-        error = _vk_error(photo_data)
+        error = _vk_error(perms_data)
         if error:
-            return VerifyResult(ok=False, error=f"Токен для загрузки фото не прошёл проверку: {error}")
-        if not (photo_data.get("response") or {}).get("upload_url"):
-            return VerifyResult(ok=False, error="VK не вернул адрес загрузки фото. Проверьте личный токен и право photos")
+            return VerifyResult(ok=False, error=error)
+        permissions = {p.get("name") for p in ((perms_data.get("response") or {}).get("permissions") or [])}
+        if "wall" not in permissions:
+            return VerifyResult(ok=False, error="У токена нет права «wall» — публикация на стене сообщества запрещена")
 
         groups = (group_data.get("response") or {})
         group_list = groups.get("groups") if isinstance(groups, dict) else groups
@@ -103,16 +103,17 @@ class VkPublisher(Publisher):
         return VerifyResult(ok=True, detail={"chat_id": str(group.get("id") or resolved["group_id"]), "chat_title": name})
 
     async def _upload_slides(self, client: httpx.AsyncClient, config: Dict[str, str], slide_bytes: List[bytes]) -> List[str]:
-        """Загрузить фотографии личным токеном администратора и сохранить их на стене."""
-        photo_token = config.get("photo_token")
-        if not photo_token:
-            raise ValueError("Для публикации изображения во VK настройте личный токен администратора для загрузки фото")
+        """Загрузить слайды на стену. Возвращает [] и логирует, а не падает,
+        если именно ЭТА часть не удалась (error_code=27 — ключ сообщества не
+        может грузить фото на стену ни при каких правах, см. _VK_ERROR_MESSAGES) —
+        wall.post с ключом сообщества работает сам по себе, так что пост всё
+        равно должен уйти, просто без картинки, вместо провала всей публикации."""
         attachments_list: List[str] = []
         for slide_index, slide_bytes_item in enumerate(slide_bytes):
             try:
                 upload = await client.post(
                     f"{VK_API}/photos.getWallUploadServer",
-                    params={"group_id": config["group_id"], "access_token": photo_token, "v": VK_API_VERSION},
+                    params={"group_id": config["group_id"], "access_token": config["token"], "v": VK_API_VERSION},
                 )
                 upload_data = upload.json()
                 error = _vk_error(upload_data)
@@ -126,7 +127,7 @@ class VkPublisher(Publisher):
                     raise ValueError(error)
                 saved = await client.post(
                     f"{VK_API}/photos.saveWallPhoto",
-                    data={"group_id": config["group_id"], "server": uploaded_data.get("server"), "photo": uploaded_data.get("photo"), "hash": uploaded_data.get("hash"), "access_token": photo_token, "v": VK_API_VERSION},
+                    data={"group_id": config["group_id"], "server": uploaded_data.get("server"), "photo": uploaded_data.get("photo"), "hash": uploaded_data.get("hash"), "access_token": config["token"], "v": VK_API_VERSION},
                 )
                 saved_data = saved.json()
                 error = _vk_error(saved_data)
@@ -135,10 +136,9 @@ class VkPublisher(Publisher):
                 photo = (saved_data.get("response") or [{}])[0]
                 if photo.get("owner_id") and photo.get("id"):
                     attachments_list.append(f"photo{photo['owner_id']}_{photo['id']}")
-                else:
-                    raise ValueError("VK не вернул идентификатор загруженного фото")
             except ValueError as exc:
-                raise ValueError(f"Не удалось загрузить изображение во VK: {exc}") from exc
+                logger.warning("vk wall photo upload failed, publishing text-only: %s", exc)
+                return []
         return attachments_list
 
     async def publish(self, context: PublicationContext) -> PublisherResult:
@@ -148,8 +148,6 @@ class VkPublisher(Publisher):
         owner_id = f"-{config['group_id']}"
         async with httpx.AsyncClient(timeout=30.0) as client:
             slide_bytes = context.asset_bytes_list or ([context.asset_bytes] if context.asset_bytes else [])
-            if context.asset_url and not slide_bytes:
-                raise ValueError("У визуала VK нет локального файла для загрузки. Создайте визуал заново и повторите публикацию")
             attachments_list = await self._upload_slides(client, config, slide_bytes) if slide_bytes else []
             if attachments_list:
                 attachments = ",".join(attachments_list)

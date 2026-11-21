@@ -177,9 +177,8 @@ export interface ChannelVerifyResult {
 
 export const CHANNEL_FIELD_SPECS: Record<string, { key: string; label: string }[]> = {
   vk: [
-    { key: 'token', label: 'Ключ доступа сообщества (публикация записи)' },
+    { key: 'token', label: 'Access token (сообщество)' },
     { key: 'group_id', label: 'ID сообщества' },
-    { key: 'photo_token', label: 'Личный токен администратора (загрузка фото, право photos)' },
   ],
   telegram: [
     { key: 'token', label: 'Bot token' },

@@ -867,8 +867,9 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
         channels.map((channel) => ({
           channel,
           content_id: id,
-          // Use the visual generated for the target channel when available.
-          asset_id: channelAsset(channel),
+          // VK remains text-only in the direct pipeline; other channels use
+          // their channel-specific visual, then fall back to a generic one.
+          asset_id: channel === 'vk' ? null : channelAsset(channel),
         })),
         scheduleAt[id] ? new Date(scheduleAt[id]).toISOString() : null
       );
@@ -1029,6 +1030,11 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
                   </Typography>
                 );
               })()}
+              {!isCarousel && (asset.meta?.visual_format as { target_channel?: string } | undefined)?.target_channel === 'vk' && (
+                <Button size="small" sx={{ mt: 0.5 }} onClick={() => void downloadAsset(asset)} disabled={busyId === item.id}>
+                  Скачать изображение для ручной загрузки в VK
+                </Button>
+              )}
               {(() => {
                 const usage = asset.meta?.visual_references as {
                   references?: Array<{ title?: string; role_label?: string }>;
@@ -1095,11 +1101,6 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
                     Скачать ZIP для VK
                   </Button>
                 )}
-                {!isCarousel && isImageOnly && assetsByContent[item.id]?.[0] && (
-                  <Button size="small" variant="outlined" onClick={() => downloadAsset(assetsByContent[item.id][0])} disabled={busyId === item.id}>
-                    Скачать картинку для VK
-                  </Button>
-                )}
               </>
               </Stack>
             </Box>
@@ -1127,6 +1128,11 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
                   </MenuItem>
                 ))}
               </Select>
+              {(selectedChannels[item.id] || []).includes('vk') && (
+                <Typography variant="caption" color="text.secondary">
+                  Во VK автоматически отправится текст. Скачайте визуал выше и добавьте его к записи вручную.
+                </Typography>
+              )}
               <TextField
                 size="small"
                 type="datetime-local"

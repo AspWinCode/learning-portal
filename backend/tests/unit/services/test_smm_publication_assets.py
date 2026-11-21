@@ -50,7 +50,7 @@ class _DB:
         pass
 
 
-def test_scheduled_publication_keeps_assets_for_vk_and_other_channels():
+def test_scheduled_publication_keeps_assets_except_for_vk():
     content = SmmContent(id=1, project_id=1, status="approved", output_text="Текст", selected_asset_id=7)
     asset = SmmContentAsset(id=7, content_id=1, storage_key="content_1.png")
     db = _DB(content, asset)
@@ -66,7 +66,7 @@ def test_scheduled_publication_keeps_assets_for_vk_and_other_channels():
     )
 
     assert rows[0].asset_id == 7
-    assert rows[1].asset_id == 7
+    assert rows[1].asset_id is None
 
 
 def test_publication_uses_visual_created_for_its_channel():

@@ -24,6 +24,11 @@ from app.services.smm_projects.publishers.base import PublicationContext, Publis
 
 SUPPORTED_CHANNELS = channels_svc.SUPPORTED_CHANNELS
 PUBLISHERS = channels_svc.PUBLISHERS
+# VK is intentionally text-only in this pipeline: community tokens cannot
+# reliably upload wall photos. Other channels should retain the selected image
+# all the way through scheduling and delivery.
+CHANNELS_WITHOUT_ASSETS = {"vk"}
+
 logger = logging.getLogger(__name__)
 
 
@@ -50,6 +55,8 @@ def _assets_for_channel(db: Session, content_id: int, channel: str) -> List[SmmC
 
 
 def _asset_id_for_channel(db: Session, content: SmmContent, channel: str) -> Optional[int]:
+    if channel in CHANNELS_WITHOUT_ASSETS:
+        return None
     assets = _assets_for_channel(db, content.id, channel)
     if assets:
         # A carousel uses all matching assets; the first one anchors its publication.
@@ -205,6 +212,8 @@ def create_publications(
         asset_id = item.get("asset_id")
         if asset_id is None:
             asset_id = _asset_id_for_channel(db, content, channel)
+        if channel in CHANNELS_WITHOUT_ASSETS:
+            asset_id = None
         if asset_id:
             selected_asset = db.query(SmmContentAsset).filter(SmmContentAsset.id == asset_id, SmmContentAsset.content_id == content.id).first()
             if not selected_asset:

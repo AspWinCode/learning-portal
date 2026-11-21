@@ -162,11 +162,17 @@ def _visual_input_references(
     candidates = archived_candidates + candidates
 
     for item in candidates:
-        content_type = (item.content_type or mimetypes.guess_type(item.original_filename or "")[0] or "").lower()
+        item_meta = getattr(item, "meta", None)
+        content_type = (
+            getattr(item, "content_type", None)
+            or (item_meta.get("content_type") if isinstance(item_meta, dict) else None)
+            or mimetypes.guess_type(getattr(item, "original_filename", None) or "")[0]
+            or ("image/png" if isinstance(item, SmmContentAsset) else "")
+        ).lower()
         if content_type == "image/jpg":
             content_type = "image/jpeg"
         if not content_type.startswith("image/"):
-            content_type = mimetypes.guess_type(item.original_filename or "")[0] or "image/png"
+            content_type = mimetypes.guess_type(getattr(item, "original_filename", None) or "")[0] or "image/png"
         if content_type not in {"image/png", "image/jpeg", "image/webp"}:
             continue
         try:

@@ -44,6 +44,8 @@ export const listProjects = (): Promise<ProjectListItem[]> => api.get(`${BASE}/p
 export const createProject = (payload: { name: string; description?: string }): Promise<Project> =>
   api.post(`${BASE}/projects`, payload).then((r) => r.data);
 
+export const deleteProject = (code: string): Promise<void> => api.delete(`${BASE}/projects/${code}`);
+
 export const getProject = (code: string): Promise<Project> => api.get(`${BASE}/projects/${code}`).then((r) => r.data);
 
 export const updateProject = (code: string, payload: ProjectUpdate): Promise<Project> =>

@@ -1895,6 +1895,7 @@ const ProjectSettingsTab: React.FC = () => {
   const [selected, setSelected] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [deletingCode, setDeletingCode] = useState<string | null>(null);
 
   const reload = () =>
     smm
@@ -1920,6 +1921,24 @@ const ProjectSettingsTab: React.FC = () => {
       setSelected(project.code);
     } catch (e) {
       setError(extractApiError(e, 'Ошибка'));
+    }
+  };
+
+  const removeProject = async (project: smm.ProjectListItem) => {
+    const confirmation = window.prompt(
+      `Проект «${project.name}» будет удалён вместе с черновиками, архивом, настройками и материалами базы знаний. Это действие необратимо. Чтобы продолжить, введите название проекта:`,
+    );
+    if (confirmation !== project.name) return;
+    setDeletingCode(project.code);
+    setError(null);
+    try {
+      await smm.deleteProject(project.code);
+      await reload();
+      setSelected((current) => (current === project.code ? null : current));
+    } catch (e) {
+      setError(extractApiError(e, 'Не удалось удалить проект'));
+    } finally {
+      setDeletingCode(null);
     }
   };
 
@@ -1956,6 +1975,8 @@ const ProjectSettingsTab: React.FC = () => {
               color={selected === p.code ? 'secondary' : 'default'}
               variant={selected === p.code ? 'filled' : 'outlined'}
               onClick={() => setSelected(p.code)}
+              onDelete={canManageProject ? () => void removeProject(p) : undefined}
+              disabled={deletingCode === p.code}
             />
           ))}
         </Stack>

@@ -132,6 +132,47 @@ def create_project(
     return project
 
 
+@router.delete("/projects/{code}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_project(
+    code: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("smm_projects.manage_project")),
+):
+    project = _get_accessible_project(db, code, current_user)
+    active_publication = db.query(SmmPublication).filter(
+        SmmPublication.project_id == project.id,
+        SmmPublication.status.notin_(("success", "error", "cancelled")),
+    ).first()
+    if active_publication:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Сначала отмените запланированные или выполняющиеся публикации проекта",
+        )
+
+    storage_keys = [
+        key for (key,) in db.query(SmmKnowledgeItem.storage_key).filter(
+            SmmKnowledgeItem.project_id == project.id,
+            SmmKnowledgeItem.storage_key.isnot(None),
+        ).all()
+    ]
+    content_ids = [row.id for row in db.query(SmmContent.id).filter(SmmContent.project_id == project.id).all()]
+    if content_ids:
+        storage_keys.extend(
+            key for (key,) in db.query(SmmContentAsset.storage_key).filter(
+                SmmContentAsset.content_id.in_(content_ids),
+                SmmContentAsset.storage_key.isnot(None),
+            ).all()
+        )
+
+    project_id = project.id
+    project_name = project.name
+    db.delete(project)
+    db.commit()
+    for storage_key in storage_keys:
+        storage_svc.delete(storage_key)
+    log_action(db, current_user.id, "delete", "smm_project", project_id, {"code": code, "name": project_name})
+
+
 @router.get("/projects/{code}", response_model=ProjectOut)
 def get_project(
     code: str,

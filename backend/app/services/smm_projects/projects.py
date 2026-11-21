@@ -75,7 +75,8 @@ def can_use_cross_project_content(project: SmmProject) -> bool:
     identity = f"{project.code or ''} {project.name or ''}".casefold()
     personal_marker = any(marker in identity for marker in ("личн", "собствен", "personal", "own_", "own social"))
     social_marker = any(marker in identity for marker in ("соц", "social", "smm"))
-    return personal_marker and social_marker
+    personal_brand = "личн" in identity and "бренд" in identity
+    return personal_marker and (social_marker or personal_brand)
 
 
 def content_source_projects(db: Session, project: SmmProject) -> List[SmmProject]:

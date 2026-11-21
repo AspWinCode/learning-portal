@@ -713,6 +713,37 @@ def list_content_assets(
     return assets
 
 
+@router.delete("/content/{content_id}/assets/{asset_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_content_asset(
+    content_id: int,
+    asset_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("smm_projects.manage_content")),
+):
+    content = _get_content_or_404(db, content_id)
+    project = _project_for_content(db, content, current_user)
+    if content.status != "draft":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Удалять визуалы можно только у черновиков")
+    asset = db.query(SmmContentAsset).filter(
+        SmmContentAsset.id == asset_id, SmmContentAsset.content_id == content_id,
+    ).first()
+    if asset is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Изображение не найдено в этом черновике")
+    if asset.storage_key:
+        storage_svc.delete(asset.storage_key)
+    db.delete(asset)
+    db.flush()
+    remaining = db.query(SmmContentAsset).filter(
+        SmmContentAsset.content_id == content_id,
+    ).order_by(SmmContentAsset.created_at.desc(), SmmContentAsset.id.desc()).all()
+    if content.selected_asset_id == asset_id:
+        content.selected_asset_id = remaining[0].id if remaining else None
+    if remaining and not any(row.is_selected for row in remaining):
+        remaining[0].is_selected = True
+    db.commit()
+    log_action(db, current_user.id, "delete", "smm_content_asset", asset_id, {"content_id": content_id, "project": project.code})
+
+
 @router.get("/content/{content_id}/vk-pack")
 def download_vk_pack(
     content_id: int,

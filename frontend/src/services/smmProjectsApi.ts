@@ -460,6 +460,9 @@ export const selectContentAsset = (contentId: number, assetId: number): Promise<
 export const listContentAssets = (contentId: number): Promise<GeneratedAsset[]> =>
   api.get(`${BASE}/content/${contentId}/assets`).then((r) => r.data);
 
+export const deleteContentAsset = (contentId: number, assetId: number): Promise<void> =>
+  api.delete(`${BASE}/content/${contentId}/assets/${assetId}`);
+
 export const downloadVkPack = (contentId: number): Promise<Blob> =>
   api.get(`${BASE}/content/${contentId}/vk-pack`, { responseType: 'blob' }).then((r) => r.data);
 

@@ -569,6 +569,21 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
     }
   };
 
+  const removeDraftImage = async (contentId: number, assetId: number) => {
+    if (!window.confirm('Удалить это изображение? Черновик и его текст останутся.')) return;
+    setBusyId(contentId);
+    setError(null);
+    try {
+      await smm.deleteContentAsset(contentId, assetId);
+      const assets = await smm.listContentAssets(contentId);
+      setAssetsByContent((current) => ({ ...current, [contentId]: assets }));
+    } catch (e) {
+      setError(extractApiError(e, 'Не удалось удалить изображение'));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const downloadVkPack = async (id: number) => {
     setBusyId(id);
     setError(null);
@@ -763,6 +778,11 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
                 <Typography variant="caption" color="text.secondary">
                   Визуал сохранён (storage_key: {asset.storage_key})
                 </Typography>
+              )}
+              {canManage && item.status === 'draft' && (
+                <Button size="small" color="error" onClick={() => void removeDraftImage(item.id, asset.id)} disabled={busyId === item.id}>
+                  Удалить картинку
+                </Button>
               )}
             </Box>
           ))}

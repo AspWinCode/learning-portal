@@ -4815,6 +4815,8 @@ class SmmPublication(Base):
     published_at = Column(DateTime(timezone=True), nullable=True)
     external_id = Column(String(256), nullable=True)
     external_url = Column(String(1024), nullable=True)
+    metrics_json = Column(JSON, nullable=True)
+    metrics_updated_at = Column(DateTime(timezone=True), nullable=True)
     attempt_count = Column(Integer, nullable=False, default=0)
     last_error = Column(Text, nullable=True)
     idempotency_key = Column(String(128), nullable=False, unique=True, index=True)

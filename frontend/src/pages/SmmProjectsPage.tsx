@@ -282,9 +282,13 @@ const ContentPlanTab: React.FC<{ projectCode: string; canGenerate: boolean }> = 
                   Контекст: {readiness.context.active_items} активных источников · {readiness.context.total_chars.toLocaleString('ru-RU')} знаков
                   {' · '}прошлые публикации: {readiness.publication_stats.total} (успешно {readiness.publication_stats.successful}, ошибок {readiness.publication_stats.failed})
                 </Typography>
-                {!readiness.publication_stats.engagement_metrics_available && readiness.publication_stats.total > 0 && (
-                  <Typography variant="caption">Лайки, просмотры и комментарии пока не подключены к API каналов.</Typography>
-                )}
+                {readiness.publication_stats.engagement_metrics_available ? (
+                  <Typography variant="caption">
+                    Метрики VK ({readiness.publication_stats.metrics_publications} постов): просмотры {readiness.publication_stats.metrics_totals.views.toLocaleString('ru-RU')} · лайки {readiness.publication_stats.metrics_totals.likes.toLocaleString('ru-RU')} · комментарии {readiness.publication_stats.metrics_totals.comments.toLocaleString('ru-RU')} · репосты {readiness.publication_stats.metrics_totals.reposts.toLocaleString('ru-RU')}
+                  </Typography>
+                ) : readiness.publication_stats.total > 0 ? (
+                  <Typography variant="caption">Сбор метрик подключён для VK; первый сбор выполняется в течение 6 часов после деплоя.</Typography>
+                ) : null}
               </Stack>
             </Alert>
           )}
@@ -1811,6 +1815,23 @@ const PublicationsListTab: React.FC<{ state: 'scheduled' | 'sent'; reloadKey: nu
                   {p.external_url}
                 </a>
               </Typography>
+            )}
+            {p.metrics_json && Object.keys(p.metrics_json).length > 0 && (
+              <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 1 }}>
+                {[
+                  ['Просмотры', p.metrics_json.views],
+                  ['Лайки', p.metrics_json.likes],
+                  ['Комментарии', p.metrics_json.comments],
+                  ['Репосты', p.metrics_json.reposts],
+                ].filter(([, value]) => typeof value === 'number').map(([label, value]) => (
+                  <Chip key={label} size="small" variant="outlined" label={`${label}: ${(value as number).toLocaleString('ru-RU')}`} />
+                ))}
+                {p.metrics_updated_at && (
+                  <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center' }}>
+                    Обновлено {new Date(p.metrics_updated_at).toLocaleString('ru-RU')}
+                  </Typography>
+                )}
+              </Stack>
             )}
             <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
               {['approved', 'scheduled'].includes(p.status) && (

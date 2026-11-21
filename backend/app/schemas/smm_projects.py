@@ -344,6 +344,8 @@ class PublicationOut(BaseModel):
     published_at: Optional[datetime]
     external_id: Optional[str]
     external_url: Optional[str]
+    metrics_json: Optional[Dict[str, int]] = None
+    metrics_updated_at: Optional[datetime] = None
     attempt_count: int
     last_error: Optional[str]
     created_at: Optional[datetime]

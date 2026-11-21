@@ -75,6 +75,8 @@ def plan_readiness(db: Session, project: SmmProject) -> Dict[str, Any]:
     by_channel: Dict[str, int] = {}
     by_format: Dict[str, int] = {}
     successful = failed = scheduled = 0
+    metrics_publications = 0
+    metrics_totals = {"views": 0, "likes": 0, "comments": 0, "reposts": 0}
     last_published_at = None
     for publication, content, plan_item in publications:
         by_channel[publication.channel] = by_channel.get(publication.channel, 0) + 1
@@ -91,6 +93,13 @@ def plan_readiness(db: Session, project: SmmProject) -> Dict[str, Any]:
             fmt = plan_item.content_format
         fmt = fmt or ((content.input_json or {}).get("content_format") if content else None) or "Не указан"
         by_format[fmt] = by_format.get(fmt, 0) + 1
+        metrics = publication.metrics_json if isinstance(publication.metrics_json, dict) else {}
+        if metrics:
+            metrics_publications += 1
+            for key in metrics_totals:
+                value = metrics.get(key)
+                if isinstance(value, (int, float)):
+                    metrics_totals[key] += int(value)
     return {
         "ai": ai_gateway.configuration_status("text"),
         "context": {
@@ -110,7 +119,9 @@ def plan_readiness(db: Session, project: SmmProject) -> Dict[str, Any]:
             "by_channel": by_channel,
             "by_format": by_format,
             "last_published_at": last_published_at.isoformat() if last_published_at else None,
-            "engagement_metrics_available": False,
+            "engagement_metrics_available": metrics_publications > 0,
+            "metrics_publications": metrics_publications,
+            "metrics_totals": metrics_totals,
         },
     }
 
@@ -580,6 +591,8 @@ async def generate_plan(db: Session, user, *, project: SmmProject, payload: Dict
         f"Статистика прошлых публикаций: всего {stats['total']}, успешно {stats['successful']}, ошибок {stats['failed']}; "
         f"по каналам: {json.dumps(stats['by_channel'], ensure_ascii=False)}; "
         f"по форматам: {json.dumps(stats['by_format'], ensure_ascii=False)}.\n"
+        f"Метрики VK собраны для {stats['metrics_publications']} публикаций: "
+        f"{json.dumps(stats['metrics_totals'], ensure_ascii=False)}. Если метрик нет — не делай выводов об эффективности. "
         f"В архиве {len(archive)} последних опубликованных материалов; смотри их тексты выше. "
         f"Темы, опубликованные за последние 90 дней (с датой и каналом): {json.dumps(recent_topics, ensure_ascii=False)}. "
         "Не предлагай совпадающую тему первые 90 дней. Для более старых повторов добавляй новый практический угол, "

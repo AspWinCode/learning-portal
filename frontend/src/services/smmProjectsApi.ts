@@ -235,7 +235,7 @@ export const deleteContentPlan = (code: string, planId: number): Promise<void> =
 export interface ContentPlanReadiness {
   ai: { configured: boolean; provider: string | null; model: string | null; purpose: string };
   context: { active_items: number; indexed_items: number; total_chars: number; items: Array<{ id: number; title: string; source_type: string; filename: string | null }> };
-  publication_stats: { total: number; successful: number; failed: number; scheduled: number; by_channel: Record<string, number>; by_format: Record<string, number>; last_published_at: string | null; engagement_metrics_available: boolean };
+  publication_stats: { total: number; successful: number; failed: number; scheduled: number; by_channel: Record<string, number>; by_format: Record<string, number>; last_published_at: string | null; engagement_metrics_available: boolean; metrics_publications: number; metrics_totals: Record<string, number> };
 }
 
 export const getContentPlanReadiness = (code: string): Promise<ContentPlanReadiness> =>
@@ -401,6 +401,8 @@ export interface PublicationWithProject {
   published_at: string | null;
   external_id: string | null;
   external_url: string | null;
+  metrics_json: Record<string, number> | null;
+  metrics_updated_at: string | null;
   attempt_count: number;
   last_error: string | null;
   created_at: string | null;
@@ -489,6 +491,8 @@ export interface Publication {
   published_at: string | null;
   external_id: string | null;
   external_url: string | null;
+  metrics_json: Record<string, number> | null;
+  metrics_updated_at: string | null;
   attempt_count: number;
   last_error: string | null;
   created_at: string | null;

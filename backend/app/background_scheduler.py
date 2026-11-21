@@ -27,6 +27,7 @@ from app.background_tasks import (
     task_tochka_auto_import,
     task_smm_due_publications,
     task_smm_due_plan_items,
+    task_smm_metrics_collection,
     task_smm_pending_media,
 )
 from app.logging_config import configure_logging
@@ -52,6 +53,7 @@ def main() -> None:
     scheduler.add_job(lambda: task_parent_weekly_digests.send(), "interval", minutes=15, id="parent_weekly_digests", max_instances=1)
     scheduler.add_job(lambda: task_scheduled_messages.send(), "interval", minutes=1, id="scheduled_messages", max_instances=1)
     scheduler.add_job(lambda: task_smm_due_publications.send(), "interval", minutes=1, id="smm_due_publications", max_instances=1)
+    scheduler.add_job(lambda: task_smm_metrics_collection.send(), "interval", hours=6, id="smm_metrics_collection", max_instances=1)
     scheduler.add_job(lambda: task_smm_due_plan_items.send(), "interval", minutes=15, id="smm_due_plan_items", max_instances=1)
     scheduler.add_job(lambda: task_smm_pending_media.send(), "interval", minutes=1, id="smm_pending_media", max_instances=1)
     scheduler.add_job(lambda: task_communication_queue.send(), "interval", minutes=1, id="communication_queue", max_instances=1)

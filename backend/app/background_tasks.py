@@ -28,6 +28,7 @@ from app.background_jobs import (
     run_transcription,
     run_smm_publication,
     run_smm_due_publications,
+    run_smm_metrics_collection,
     run_smm_due_plan_items,
     run_smm_pending_media,
 )
@@ -162,6 +163,11 @@ def task_smm_publication(publication_id: int) -> None:
 @dramatiq.actor(queue_name="periodic")
 def task_smm_due_publications() -> None:
     run_smm_due_publications()
+
+
+@dramatiq.actor(queue_name="periodic", max_retries=0)
+def task_smm_metrics_collection() -> None:
+    run_smm_metrics_collection()
 
 
 @dramatiq.actor(queue_name="delivery", max_retries=0)

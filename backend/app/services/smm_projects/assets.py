@@ -204,9 +204,10 @@ def _visual_input_references(
     candidates = list(archived_candidates)
     item_offset = max(int(content_id or 1), 1) - 1
     role_order = ("character", "style", "composition", "example") if wants_character else ("style", "composition", "example")
+    style_limit = 2 if wants_character or candidates_by_role["composition"] or candidates_by_role["example"] else 4
     for role in role_order:
         role_items = candidates_by_role[role]
-        role_limit = 2 if role == "style" else 1
+        role_limit = style_limit if role == "style" else 1
         for index in range(min(role_limit, len(role_items))):
             candidates.append(role_items[(item_offset + index) % len(role_items)])
 

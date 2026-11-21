@@ -77,6 +77,10 @@ def _performance_breakdown(publications) -> Dict[str, List[Dict[str, Any]]]:
         views = metrics.get("views")
         if not isinstance(views, (int, float)) or views <= 0:
             continue
+        # Some APIs (currently MAX) expose views without likes/comments/reposts.
+        # Treating absent counters as zero would create a false 0% engagement rate.
+        if not any(key in metrics for key in ("likes", "comments", "reposts")):
+            continue
         interactions = sum(
             int(metrics.get(key) or 0) for key in ("likes", "comments", "reposts")
             if isinstance(metrics.get(key), (int, float))

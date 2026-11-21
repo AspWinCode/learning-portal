@@ -44,3 +44,10 @@ def test_performance_breakdown_uses_view_weighted_rates_and_minimum_sample():
     assert post["enough_data"] is True
     assert carousel["engagement_rate"] == 80.0
     assert carousel["enough_data"] is False
+
+
+def test_performance_breakdown_does_not_treat_views_only_as_zero_engagement():
+    publication = SimpleNamespace(status="success", channel="max", metrics_json={"views": 120})
+    result = _performance_breakdown([(publication, None, None)])
+
+    assert result == {"by_channel_format": [], "by_channel_genre": []}

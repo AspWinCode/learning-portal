@@ -26,14 +26,14 @@ def _count(post: dict, key: str) -> int | None:
         return None
 
 
-async def collect_due_vk_metrics(db: Session, *, limit: int = 200) -> int:
-    """Refresh recent VK post counters once a day; unsupported channels stay null."""
+async def collect_due_metrics(db: Session, *, limit: int = 200) -> int:
+    """Refresh counters for channels whose publishing APIs expose post stats."""
     now = datetime.now(timezone.utc)
     cutoff = now - METRICS_REFRESH_INTERVAL
     rows = (
         db.query(SmmPublication)
         .filter(
-            SmmPublication.channel == "vk",
+            SmmPublication.channel.in_(("vk", "max")),
             SmmPublication.status == SmmPublicationStatus.SUCCESS.value,
             SmmPublication.external_id.isnot(None),
             or_(SmmPublication.metrics_updated_at.is_(None), SmmPublication.metrics_updated_at < cutoff),
@@ -42,16 +42,21 @@ async def collect_due_vk_metrics(db: Session, *, limit: int = 200) -> int:
         .limit(limit)
         .all()
     )
-    grouped: dict[int, list[SmmPublication]] = {}
+    grouped: dict[tuple[int, str], list[SmmPublication]] = {}
     for row in rows:
-        grouped.setdefault(row.project_id, []).append(row)
+        grouped.setdefault((row.project_id, row.channel), []).append(row)
 
     updated = 0
     async with httpx.AsyncClient(timeout=20.0) as client:
-        for project_id, publications in grouped.items():
+        for (project_id, channel), publications in grouped.items():
             project = db.query(SmmProject).filter(SmmProject.id == project_id).first()
-            config = channels.get_channel_config(db, project, "vk") if project else None
-            if not config or not config.get("token") or not config.get("group_id"):
+            config = channels.get_channel_config(db, project, channel) if project else None
+            if not config or not config.get("token"):
+                continue
+            if channel == "max":
+                updated += await _collect_max_metrics(client, project_id, publications, config, now)
+                continue
+            if not config.get("group_id"):
                 continue
             owner_id = -abs(int(config["group_id"]))
             for offset in range(0, len(publications), 100):
@@ -88,3 +93,39 @@ async def collect_due_vk_metrics(db: Session, *, limit: int = 200) -> int:
         db.commit()
         logger.info("SMM metrics refreshed for %d publication(s)", updated)
     return updated
+
+
+async def _collect_max_metrics(client, project_id, publications, config, now) -> int:
+    """MAX exposes view counts for channel posts, but not interaction counts."""
+    updated = 0
+    for offset in range(0, len(publications), 100):
+        batch = publications[offset:offset + 100]
+        try:
+            response = await client.get(
+                "https://platform-api2.max.ru/messages",
+                params={"message_ids": ",".join(str(row.external_id) for row in batch)},
+                headers={"Authorization": config["token"]},
+            )
+            response.raise_for_status()
+            payload = response.json()
+            messages = payload.get("messages", []) if isinstance(payload, dict) else []
+            by_id = {
+                str((item.get("body") or {}).get("mid")): item
+                for item in messages if isinstance(item, dict)
+            }
+            for row in batch:
+                message = by_id.get(str(row.external_id))
+                stat = message.get("stat") if isinstance(message, dict) else None
+                views = _count(stat, "views") if isinstance(stat, dict) else None
+                if views is None:
+                    continue
+                row.metrics_json = {"views": views}
+                row.metrics_updated_at = now
+                updated += 1
+        except (httpx.HTTPError, ValueError, TypeError) as exc:
+            logger.warning("SMM MAX metrics request failed for project %s: %s", project_id, exc)
+    return updated
+
+
+# Keep the old import path for deployments or scripts that still reference it.
+collect_due_vk_metrics = collect_due_metrics

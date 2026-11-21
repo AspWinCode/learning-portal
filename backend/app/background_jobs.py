@@ -65,10 +65,10 @@ def run_smm_due_publications() -> None:
 
 def run_smm_metrics_collection() -> None:
     import asyncio
-    from app.services.smm_projects.metrics import collect_due_vk_metrics
+    from app.services.smm_projects.metrics import collect_due_metrics
 
     def _job(db):
-        asyncio.run(collect_due_vk_metrics(db))
+        asyncio.run(collect_due_metrics(db))
 
     _run_db_job("smm_metrics_collection", _job)
 

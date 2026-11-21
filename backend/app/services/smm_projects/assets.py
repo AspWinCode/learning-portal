@@ -88,7 +88,7 @@ def _format_visual_rules(content: SmmContent) -> tuple[str, str]:
 
 
 async def build_image_prompt(*, db: Session, project: SmmProject, content: SmmContent, user,
-                             prompt_override: Optional[str] = None) -> str:
+                             prompt_override: Optional[str] = None, include_knowledge: bool = True) -> str:
     structured = content.output_json if isinstance(content.output_json, dict) else {}
     input_data = content.input_json if isinstance(content.input_json, dict) else {}
     brand = project.brand_context if isinstance(project.brand_context, dict) else {}
@@ -106,7 +106,7 @@ async def build_image_prompt(*, db: Session, project: SmmProject, content: SmmCo
     # Контекст проекта должен влиять и на визуалы. При загрузке изображений их
     # содержание сохраняется в SmmKnowledgeItem как image_reference, поэтому
     # передаём генератору не бинарник, а подготовленное описание референса.
-    knowledge_items = knowledge_svc.list_items(db, project)
+    knowledge_items = knowledge_svc.list_items(db, project) if include_knowledge else []
     # Visual identity is intentionally project-local even when a personal
     # social account is allowed to use facts from the other projects.
     wants_character = _requests_character_reference(content)
@@ -120,7 +120,7 @@ async def build_image_prompt(*, db: Session, project: SmmProject, content: SmmCo
         f"[{_VISUAL_ROLE_LABELS.get(getattr(item, 'visual_role', None) or 'style', 'Визуальный ориентир')}: {item.title}] {(item.content or '')[:1400]}"
         for item in visual_refs[:12]
     ) if visual_refs else ""
-    content_sources = knowledge_svc.content_items(db, project)
+    content_sources = knowledge_svc.content_items(db, project) if include_knowledge else []
     context_block = knowledge_svc.as_prompt_block(content_sources[:12], max_chars=7000) if content_sources else ""
     brand = project.brand_context if isinstance(project.brand_context, dict) else {}
     visual_profile = "\n".join(
@@ -283,7 +283,7 @@ async def render_image(
     meta: Optional[Dict[str, Any]] = None,
 ) -> SmmContentAsset:
     final_prompt = _with_image_text_guard((await build_image_prompt(
-        db=db, project=project, content=content, user=user, prompt_override=prompt,
+        db=db, project=project, content=content, user=user, prompt_override=prompt, include_knowledge=not bool(prompt),
     )).strip())
     if not final_prompt:
         raise ValueError("Нет промпта для генерации изображения")

@@ -553,7 +553,17 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
         delete next[id];
         return next;
       });
-      setNotice(`Создана новая версия черновика${revised.title ? ` «${revised.title}»` : ''}. Исходный текст сохранён.`);
+      let reviewNotice = '';
+      try {
+        const revisedReview = await smm.reviewContentText(revised.id);
+        setTextReviews((current) => ({ ...current, [revised.id]: revisedReview }));
+        reviewNotice = revisedReview.status === 'ok'
+          ? ' Автопроверка новой версии не нашла замечаний.'
+          : ' Новая версия автоматически проверена — посмотрите замечания в её карточке.';
+      } catch {
+        reviewNotice = ' Автоматическая проверка новой версии не завершилась; её можно проверить вручную.';
+      }
+      setNotice(`Создана новая версия черновика${revised.title ? ` «${revised.title}»` : ''}. Исходный текст сохранён.${reviewNotice}`);
       await reload();
     } catch (e) {
       setError(extractApiError(e, 'Не удалось создать улучшенную версию'));

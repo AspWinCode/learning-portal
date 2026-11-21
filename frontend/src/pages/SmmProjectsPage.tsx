@@ -867,9 +867,8 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
         channels.map((channel) => ({
           channel,
           content_id: id,
-          // VK remains text-only in the direct pipeline; other channels use
-          // their channel-specific visual, then fall back to a generic one.
-          asset_id: channel === 'vk' ? null : channelAsset(channel),
+          // Use the visual generated for the target channel when available.
+          asset_id: channelAsset(channel),
         })),
         scheduleAt[id] ? new Date(scheduleAt[id]).toISOString() : null
       );

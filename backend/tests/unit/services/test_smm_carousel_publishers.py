@@ -62,12 +62,13 @@ async def test_vk_attaches_all_slides_to_one_wall_post(monkeypatch):
 
     result = await VkPublisher().publish(PublicationContext(
         project_code="kodarena", channel="vk", text="Текст",
-        asset_bytes_list=[b"one", b"two"], config={"token": "token", "group_id": "1"},
+        asset_bytes_list=[b"one", b"two"], config={"token": "token", "group_id": "1", "photo_token": "user-token"},
     ))
 
     assert result.external_id == "99"
     wall_call = client.calls[-1]
     assert wall_call[1]["data"]["attachments"] == "photo-1_11,photo-1_22"
+    assert client.calls[0][1]["params"]["access_token"] == "user-token"
 
 
 @pytest.mark.asyncio

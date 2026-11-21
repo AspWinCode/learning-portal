@@ -28,6 +28,12 @@ class _Query:
     def filter(self, *a, **k):
         return self
 
+    def order_by(self, *a, **k):
+        return self
+
+    def all(self):
+        return []
+
     def first(self):
         return self._result
 
@@ -125,6 +131,12 @@ class _BundleQuery:
 
     def first(self):
         return self._items[0] if self._items else None
+
+    def order_by(self, *args):
+        return self
+
+    def all(self):
+        return self._items
 
 
 class _BundleDB:

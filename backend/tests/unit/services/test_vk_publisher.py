@@ -41,8 +41,9 @@ def publisher():
     return VkPublisher()
 
 
-def test_is_configured_requires_token_and_group_id(publisher):
-    assert publisher.is_configured("kodarena", {"token": "t", "group_id": "1"}) is True
+def test_is_configured_requires_tokens_and_group_id(publisher):
+    assert publisher.is_configured("kodarena", {"token": "t", "group_id": "1", "photo_token": "p"}) is True
+    assert publisher.is_configured("kodarena", {"token": "t", "group_id": "1"}) is False
     assert publisher.is_configured("kodarena", {"token": "", "group_id": "1"}) is False
     assert publisher.is_configured("kodarena", None) is False
 
@@ -60,7 +61,7 @@ async def test_verify_invalid_token_returns_understandable_error(monkeypatch, pu
         "httpx.AsyncClient",
         _client_factory([_FakeResponse({"error": {"error_code": 5, "error_msg": "User authorization failed"}})]),
     )
-    result = await publisher.verify("kodarena", {"token": "bad", "group_id": "1"})
+    result = await publisher.verify("kodarena", {"token": "bad", "group_id": "1", "photo_token": "p"})
     assert result.ok is False
     assert result.error == "Недействительный токен VK"
 
@@ -71,7 +72,7 @@ async def test_verify_wrong_group_id_returns_understandable_error(monkeypatch, p
         "httpx.AsyncClient",
         _client_factory([_FakeResponse({"error": {"error_code": 100, "error_msg": "One of the parameters specified was missing or invalid"}})]),
     )
-    result = await publisher.verify("kodarena", {"token": "t", "group_id": "999999999"})
+    result = await publisher.verify("kodarena", {"token": "t", "group_id": "999999999", "photo_token": "p"})
     assert result.ok is False
     assert result.error == "Сообщество не найдено: неверный ID"
 
@@ -85,7 +86,7 @@ async def test_verify_token_without_wall_permission_fails(monkeypatch, publisher
             _FakeResponse({"response": {"mask": 8, "permissions": [{"name": "messages", "setting": 8}]}}),
         ]),
     )
-    result = await publisher.verify("kodarena", {"token": "t", "group_id": "1"})
+    result = await publisher.verify("kodarena", {"token": "t", "group_id": "1", "photo_token": "p"})
     assert result.ok is False
     assert "wall" in result.error
 
@@ -97,33 +98,25 @@ async def test_verify_valid_token_and_wall_permission_succeeds(monkeypatch, publ
         _client_factory([
             _FakeResponse({"response": {"groups": [{"id": 1, "name": "КодАрена"}]}}),
             _FakeResponse({"response": {"mask": 8192, "permissions": [{"name": "wall", "setting": 8192}]}}),
+            _FakeResponse({"response": {"upload_url": "https://upload.example"}}),
         ]),
     )
-    result = await publisher.verify("kodarena", {"token": "t", "group_id": "1"})
+    result = await publisher.verify("kodarena", {"token": "t", "group_id": "1", "photo_token": "p"})
     assert result.ok is True
     assert result.detail == {"chat_id": "1", "chat_title": "КодАрена"}
 
 
 @pytest.mark.asyncio
-async def test_publish_falls_back_to_text_only_when_token_cannot_upload_photos(monkeypatch, publisher):
-    """A community access key — even with both "Стена" and "Фотографии"
-    enabled — fails photos.getWallUploadServer with "Group authorization
-    failed: method is unavailable with group auth.": the method is simply
-    unavailable for community/group keys regardless of permissions, and VK
-    has shut down every known way to self-issue a personal token with the
-    needed scopes for a non-business app. Since wall.post itself works fine
-    with the community key, publish() must still post the text instead of
-    failing the whole publication over an attachment VK won't allow."""
+async def test_publish_does_not_silently_drop_image_when_photo_upload_fails(monkeypatch, publisher):
     monkeypatch.setattr(
         "httpx.AsyncClient",
         _client_factory([
             _FakeResponse({"error": {"error_code": 27, "error_msg": "Group authorization failed: method is unavailable with group auth."}}),
-            _FakeResponse({"response": {"post_id": 42}}),
         ]),
     )
     context = PublicationContext(
         project_code="kodarena", channel="vk", text="Текст",
-        asset_bytes=b"one", config={"token": "t", "group_id": "1"},
+        asset_bytes=b"one", config={"token": "t", "group_id": "1", "photo_token": "p"},
     )
-    result = await publisher.publish(context)
-    assert result.external_id == "42"
+    with pytest.raises(ValueError, match="Не удалось загрузить изображение во VK"):
+        await publisher.publish(context)

@@ -63,6 +63,9 @@ jobs:
             set -eu
             echo $GITHUB_TOKEN | docker login ghcr.io -u $GITHUB_ACTOR --password-stdin
             cd /root/learning-portal
+            # Keep every invocation tied to the one production Compose project,
+            # independent of shell or directory environment on the server.
+            export COMPOSE_PROJECT_NAME=learning-portal
             git fetch origin main
             git checkout main
             git pull --ff-only origin main
@@ -74,6 +77,12 @@ jobs:
             # in the project; starting the full stack afterwards can race its
             # recreate and leave duplicate/hash-prefixed service containers.
             docker compose run --rm --no-deps migrator
+
+            # Stop and remove app containers in a separate completed step so
+            # Compose never races old and replacement containers for the same
+            # service names. Named data volumes are not removed.
+            docker compose stop backend app_worker app_scheduler app_delivery_worker web
+            docker compose rm -f backend app_worker app_scheduler app_delivery_worker web
 
             # Bring up all services
             docker compose up -d --no-build

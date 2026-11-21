@@ -6,13 +6,14 @@ import io
 import mimetypes
 import logging
 import os
+import re
 from typing import Any, Dict, Optional
 
 import httpx
 from sqlalchemy.orm import Session
 from PIL import Image
 
-from app.models import SmmContent, SmmContentAsset, SmmProject, SmmPublication, SmmPublicationStatus
+from app.models import SmmContent, SmmContentAsset, SmmKnowledgeItem, SmmProject, SmmPublication, SmmPublicationStatus
 from app.services import ai_gateway
 from app.services.smm_projects import knowledge as knowledge_svc
 from app.services.smm_projects import storage
@@ -30,8 +31,37 @@ _VISUAL_REFERENCE_GUARD = (
     "Используй приложенные референсы только как визуальные ориентиры выбранного проекта: "
     "соблюдай его палитру, художественный стиль и качество. Не копируй референс целиком, "
     "его композицию, людей, персонажей или логотипы. Не добавляй элементы других брендов. "
+    "Не изображай персонажа или маскота, если задание явно этого не просит. "
     "Следуй описанию материала и бренд-профилю именно этого проекта."
 )
+
+_VISUAL_ROLE_LABELS = {
+    "style": "Ориентир по стилю",
+    "character": "Персонаж или маскот",
+    "composition": "Ориентир по композиции",
+    "example": "Пример публикации",
+}
+
+
+def infer_visual_role(description: str) -> str:
+    """Classify an uploaded image description; the project owner can change it."""
+    text = (description or "").casefold()
+    if re.search(r"персонаж|маскот|героин|\bгерой\b|character|mascot|avatar", text):
+        return "character"
+    if re.search(r"композиц|ракурс|макет|расположени[ея]|layout", text):
+        return "composition"
+    if re.search(r"пример публикац|пример поста|готов(?:ая|ый) публикац|готов(?:ая|ый) пост", text):
+        return "example"
+    return "style"
+
+
+def _requests_character_reference(content: SmmContent) -> bool:
+    structured = content.output_json if isinstance(content.output_json, dict) else {}
+    prompt = " ".join((
+        content.title or "",
+        str(structured.get("image_prompt") or ""),
+    )).casefold()
+    return bool(re.search(r"персонаж|маскот|героин|\bгерой\b|character|mascot|avatar", prompt))
 
 
 def _with_image_text_guard(prompt: str) -> str:
@@ -58,12 +88,16 @@ async def build_image_prompt(*, db: Session, project: SmmProject, content: SmmCo
     knowledge_items = knowledge_svc.list_items(db, project)
     # Visual identity is intentionally project-local even when a personal
     # social account is allowed to use facts from the other projects.
+    wants_character = _requests_character_reference(content)
     visual_refs = [
         item for item in knowledge_items
         if item.source_type == "image_reference" or (item.content_type or "").startswith("image/")
+        if (getattr(item, "visual_role", None) or "style") in {"style", "composition", "example"}
+        or (wants_character and getattr(item, "visual_role", None) == "character")
     ]
     visual_block = "\n\n=== РЕФЕРЕНСЫ ВИЗУАЛЬНОГО СТИЛЯ ЭТОГО ПРОЕКТА ===\n" + "\n".join(
-        f"[{item.title}] {(item.content or '')[:1400]}" for item in visual_refs[:12]
+        f"[{_VISUAL_ROLE_LABELS.get(getattr(item, 'visual_role', None) or 'style', 'Визуальный ориентир')}: {item.title}] {(item.content or '')[:1400]}"
+        for item in visual_refs[:12]
     ) if visual_refs else ""
     content_sources = knowledge_svc.content_items(db, project)
     context_block = knowledge_svc.as_prompt_block(content_sources[:12], max_chars=7000) if content_sources else ""
@@ -103,14 +137,13 @@ def _visual_input_references(
 ) -> list[dict[str, object]]:
     """Подготовить разнообразный набор изображений проекта для image-to-image.
 
-    Провайдер принимает ограниченное число референсов. Не следует каждый раз
-    отправлять одну и ту же первую картинку (например, чумного доктора):
-    циклическое окно меняет набор персонажей между публикациями, сохраняя
-    детерминированность и повторяемость для одной публикации.
+    Выбираем разнообразные референсы по размеченным ролям. Персонажные
+    референсы доступны только если тема или image prompt явно просит персонажа.
     """
     references: list[dict[str, object]] = []
     total_bytes = 0
-    candidates = []
+    candidates_by_role: dict[str, list[SmmKnowledgeItem]] = {role: [] for role in _VISUAL_ROLE_LABELS}
+    wants_character: Optional[bool] = None
     for item in knowledge_svc.list_items(db, project):
         content_type = (item.content_type or "").lower()
         filename = (item.original_filename or "").lower()
@@ -124,7 +157,15 @@ def _visual_input_references(
             continue
         if not item.storage_key:
             continue
-        candidates.append(item)
+        role = getattr(item, "visual_role", None) or "style"
+        if role in {"style", "composition", "example"}:
+            candidates_by_role[role].append(item)
+        elif role == "character" and content_id is not None:
+            if wants_character is None:
+                content = db.query(SmmContent).filter(SmmContent.id == content_id).first()
+                wants_character = _requests_character_reference(content) if content else False
+            if wants_character:
+                candidates_by_role[role].append(item)
 
     # Use one visual from a successful publication in this project alongside
     # the project's curated references. This lets the archive inform the look
@@ -151,15 +192,23 @@ def _visual_input_references(
         if db is not None:
             db.rollback()
     archived_candidates = list({asset.id: asset for asset in archived_candidates if asset.id is not None}.values())
-    if archived_candidates:
+    # If curated visual roles exist, use them as the source of style. Otherwise
+    # fall back to this project's own published archive.
+    has_curated_roles = any(candidates_by_role.values())
+    if has_curated_roles:
+        archived_candidates = []
+    elif archived_candidates:
         start = (max(int(content_id or 1), 1) - 1) % len(archived_candidates)
         archived_candidates = [archived_candidates[start]]
 
-    if candidates:
-        start = (max(int(content_id or 1), 1) - 1) % len(candidates)
-        curated_limit = 3 if archived_candidates else 4
-        candidates = [candidates[(start + index) % len(candidates)] for index in range(min(curated_limit, len(candidates)))]
-    candidates = archived_candidates + candidates
+    candidates = list(archived_candidates)
+    item_offset = max(int(content_id or 1), 1) - 1
+    role_order = ("character", "style", "composition", "example") if wants_character else ("style", "composition", "example")
+    for role in role_order:
+        role_items = candidates_by_role[role]
+        role_limit = 2 if role == "style" else 1
+        for index in range(min(role_limit, len(role_items))):
+            candidates.append(role_items[(item_offset + index) % len(role_items)])
 
     for item in candidates:
         item_meta = getattr(item, "meta", None)

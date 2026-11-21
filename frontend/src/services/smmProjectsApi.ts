@@ -66,6 +66,7 @@ export interface KnowledgeItem {
   storage_key: string | null;
   original_filename: string | null;
   content_type: string | null;
+  visual_role: 'style' | 'character' | 'composition' | 'example' | 'other' | null;
   is_active: boolean;
   created_by_id: number | null;
   created_at: string | null;
@@ -124,7 +125,7 @@ export const uploadKnowledgeBatch = (code: string, files: File[]): Promise<Knowl
 export const updateKnowledge = (
   code: string,
   id: number,
-  payload: Partial<{ title: string; content: string; source_type: string; source_url: string; is_active: boolean }>
+  payload: Partial<{ title: string; content: string; source_type: string; source_url: string; is_active: boolean; visual_role: 'style' | 'character' | 'composition' | 'example' | 'other' }>
 ): Promise<KnowledgeItem> => api.patch(`${BASE}/projects/${code}/knowledge/${id}`, payload).then((r) => r.data);
 
 export const deleteKnowledge = (code: string, id: number): Promise<void> =>

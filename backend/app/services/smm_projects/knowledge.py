@@ -52,6 +52,7 @@ def create_item(db: Session, project: SmmProject, data: Dict[str, Any], *, user_
         storage_key=data.get("storage_key"),
         original_filename=data.get("original_filename"),
         content_type=data.get("content_type"),
+        visual_role=data.get("visual_role"),
         created_by_id=user_id,
     )
     db.add(item)
@@ -61,8 +62,8 @@ def create_item(db: Session, project: SmmProject, data: Dict[str, Any], *, user_
 
 
 def update_item(db: Session, item: SmmKnowledgeItem, updates: Dict[str, Any]) -> SmmKnowledgeItem:
-    for field in ("title", "content", "source_type", "source_url", "is_active"):
-        if field in updates and updates[field] is not None:
+    for field in ("title", "content", "source_type", "source_url", "is_active", "visual_role"):
+        if field in updates and (updates[field] is not None or field == "visual_role"):
             setattr(item, field, updates[field])
     db.commit()
     db.refresh(item)

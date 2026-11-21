@@ -4628,6 +4628,7 @@ class SmmKnowledgeItem(Base):
     storage_key = Column(String(512), nullable=True)
     original_filename = Column(String(256), nullable=True)
     content_type = Column(String(128), nullable=True)
+    visual_role = Column(String(24), nullable=True)
     is_active = Column(Boolean, nullable=False, default=True, index=True)
     created_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

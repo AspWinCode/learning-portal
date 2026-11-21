@@ -2,7 +2,7 @@
 проект, база знаний, каналы публикации, шаблоны, генерация, визуалы,
 публикация (вставил текст → выбрал каналы/проект → опубликовал)."""
 from datetime import date, datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -72,6 +72,7 @@ class KnowledgeItemUpdate(BaseModel):
     source_type: Optional[str] = None
     source_url: Optional[str] = Field(None, max_length=1024)
     is_active: Optional[bool] = None
+    visual_role: Optional[Literal["style", "character", "composition", "example", "other"]] = None
 
 
 class KnowledgeItemOut(BaseModel):
@@ -84,6 +85,7 @@ class KnowledgeItemOut(BaseModel):
     storage_key: Optional[str]
     original_filename: Optional[str]
     content_type: Optional[str]
+    visual_role: Optional[str]
     is_active: bool
     created_by_id: Optional[int]
     created_at: Optional[datetime]

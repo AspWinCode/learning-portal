@@ -939,6 +939,16 @@ const KnowledgeTab: React.FC<{ projectCode: string; canManage: boolean }> = ({ p
     await reload();
   };
 
+  const setVisualRole = async (item: smm.KnowledgeItem, role: 'style' | 'character' | 'composition' | 'example' | 'other') => {
+    setError(null);
+    try {
+      await smm.updateKnowledge(projectCode, item.id, { visual_role: role });
+      await reload();
+    } catch (e) {
+      setError(extractApiError(e, 'Не удалось изменить назначение референса'));
+    }
+  };
+
   const reindex = async () => {
     setReindexResult(null);
     try {
@@ -993,6 +1003,9 @@ const KnowledgeTab: React.FC<{ projectCode: string; canManage: boolean }> = ({ p
             <Typography variant="caption" color="text.secondary">
               Можно выбрать несколько файлов сразу или ZIP-архив. Из ZIP будут распакованы и обработаны поддерживаемые документы и изображения.
             </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Для каждого изображения проверьте роль: стиль и композиция задают визуальные ориентиры, а персонаж или маскот добавляется только когда он явно указан в теме или промпте.
+            </Typography>
             {uploadResult && <Alert severity="info">{uploadResult}</Alert>}
             <TextField size="small" label="Заголовок" value={title} onChange={(e) => setTitle(e.target.value)} />
             <TextField size="small" label="Содержание" multiline minRows={3} value={content} onChange={(e) => setContent(e.target.value)} />
@@ -1011,6 +1024,24 @@ const KnowledgeTab: React.FC<{ projectCode: string; canManage: boolean }> = ({ p
               <Stack direction="row" spacing={1} alignItems="center">
                 <Typography variant="subtitle2">{item.title}</Typography>
                 {item.original_filename && <Chip size="small" variant="outlined" label={item.original_filename} />}
+                {(item.source_type === 'image_reference' || Boolean(item.content_type?.startsWith('image/'))) && (
+                  <FormControl size="small" sx={{ minWidth: 210 }}>
+                    <InputLabel id={`visual-role-${item.id}`}>Роль референса</InputLabel>
+                    <Select
+                      labelId={`visual-role-${item.id}`}
+                      label="Роль референса"
+                      value={item.visual_role || 'other'}
+                      disabled={!canManage}
+                      onChange={(event) => void setVisualRole(item, event.target.value as 'style' | 'character' | 'composition' | 'example' | 'other')}
+                    >
+                      <MenuItem value="style">Стиль и палитра</MenuItem>
+                      <MenuItem value="character">Персонаж / маскот</MenuItem>
+                      <MenuItem value="composition">Композиция / макет</MenuItem>
+                      <MenuItem value="example">Пример публикации</MenuItem>
+                      <MenuItem value="other">Другое</MenuItem>
+                    </Select>
+                  </FormControl>
+                )}
               </Stack>
             {canManage && (
               <Button size="small" color="error" onClick={() => remove(item.id)}>

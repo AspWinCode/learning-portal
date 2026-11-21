@@ -283,7 +283,10 @@ def create_knowledge(
     current_user: User = Depends(auth.require_permission("smm_projects.manage_knowledge")),
 ):
     project = _get_accessible_project(db, code, current_user)
-    item = knowledge_svc.create_item(db, project, payload.model_dump(), user_id=current_user.id)
+    data = payload.model_dump()
+    if data.get("source_type") == "image_reference":
+        data["visual_role"] = "style"
+    item = knowledge_svc.create_item(db, project, data, user_id=current_user.id)
     log_action(db, current_user.id, "create", "smm_knowledge_item", item.id, {"project": code, "title": item.title})
     return item
 
@@ -320,6 +323,7 @@ async def upload_knowledge_file(
             "storage_key": storage_key,
             "original_filename": filename,
             "content_type": file.content_type,
+            "visual_role": assets_svc.infer_visual_role(extracted) if (file.content_type or "").startswith("image/") else None,
         },
         user_id=current_user.id,
     )
@@ -357,6 +361,7 @@ async def _create_uploaded_knowledge_item(
             "storage_key": storage_key,
             "original_filename": filename,
             "content_type": content_type,
+            "visual_role": assets_svc.infer_visual_role(extracted) if (content_type or "").startswith("image/") else None,
         },
         user_id=current_user.id,
     )

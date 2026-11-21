@@ -68,11 +68,32 @@ def _with_image_text_guard(prompt: str) -> str:
     return prompt if _IMAGE_TEXT_GUARD in prompt else f"{prompt}\n\n{_IMAGE_TEXT_GUARD}"
 
 
-async def build_image_prompt(*, db: Session, project: SmmProject, content: SmmContent, user) -> str:
+def _format_visual_rules(content: SmmContent) -> tuple[str, str]:
+    data = content.input_json if isinstance(content.input_json, dict) else {}
+    fmt = str(data.get("content_format") or "Пост").casefold()
+    if "карусел" in fmt or "carousel" in fmt:
+        return "visual_carousel_style", (
+            "Карусель: сохраняй общую палитру, типографику и графическую систему между слайдами; "
+            "на каждом слайде одна мысль, достаточно свободного места и короткий читаемый текст."
+        )
+    if "инфограф" in fmt or "infographic" in fmt:
+        return "visual_infographic_style", (
+            "Инфографика: ясная иерархия, ограниченное число подтверждённых материалом фактов, "
+            "короткие подписи и простые схемы; не выдумывай числа и выводы."
+        )
+    return "visual_post_style", (
+        "Одиночный пост: один главный визуальный акцент; текст публикации остаётся в подписи, "
+        "если задание явно не просит надпись на изображении."
+    )
+
+
+async def build_image_prompt(*, db: Session, project: SmmProject, content: SmmContent, user,
+                             prompt_override: Optional[str] = None) -> str:
     structured = content.output_json if isinstance(content.output_json, dict) else {}
+    input_data = content.input_json if isinstance(content.input_json, dict) else {}
     brand = project.brand_context if isinstance(project.brand_context, dict) else {}
     brand_lines = ", ".join(f"{key}: {value}" for key, value in brand.items() if value)
-    base_prompt = str(structured.get("image_prompt") or "").strip()
+    base_prompt = str(prompt_override or structured.get("image_prompt") or "").strip()
     if not base_prompt:
         base_prompt = (
             "Создай визуальный промпт для social media изображения. Не рисуй текст, даты, цены или логотипы. "
@@ -110,10 +131,14 @@ async def build_image_prompt(*, db: Session, project: SmmProject, content: SmmCo
             ("image_composition", "Композиция"),
         ) if brand.get(key)
     )
+    format_key, format_rules = _format_visual_rules(content)
+    format_profile = str(brand.get(format_key) or "").strip()
     prompt = (
         f"{base_prompt}\n\n"
-        "Формат: вертикальная публикация 4:5. Создай один цельный визуал для ленты, "
-        "без встроенных заголовков и псевдотекста; текст публикации размещается отдельно в подписи.\n"
+        f"Формат материала: {str(input_data.get('content_format') or 'Пост')}. "
+        "Размер холста: вертикальный 4:5.\n"
+        f"{format_rules}\n"
+        f"Особые правила этого формата проекта: {format_profile or 'не заданы; следуй общему визуальному профилю проекта'}.\n"
         f"Проект: {project.name}. Следуй его собственному бренд-профилю и не заимствуй "
         "визуальную идентичность других проектов.\n"
         f"{visual_profile}\n"
@@ -257,7 +282,9 @@ async def render_image(
     db: Session, user, *, project: SmmProject, content: SmmContent, prompt: Optional[str] = None,
     meta: Optional[Dict[str, Any]] = None,
 ) -> SmmContentAsset:
-    final_prompt = _with_image_text_guard((prompt or await build_image_prompt(db=db, project=project, content=content, user=user)).strip())
+    final_prompt = _with_image_text_guard((await build_image_prompt(
+        db=db, project=project, content=content, user=user, prompt_override=prompt,
+    )).strip())
     if not final_prompt:
         raise ValueError("Нет промпта для генерации изображения")
     if not ai_gateway.is_configured("image"):
@@ -311,9 +338,46 @@ async def render_image(
         except Exception as exc:  # noqa: BLE001 — остаёмся на url-only, а не роняем генерацию
             logger.warning("smm asset download failed, keeping url-only: %s", exc)
 
+    asset_meta = dict(meta or {})
+    if storage_key:
+        try:
+            brand = project.brand_context if isinstance(project.brand_context, dict) else {}
+            image_bytes = storage.read_bytes(storage_key)
+            if image_bytes:
+                with Image.open(io.BytesIO(image_bytes)) as image:
+                    width, height = image.size
+                ratio = round(width / height, 4) if height else 0
+                check: Dict[str, Any] = {
+                    "width": width, "height": height, "ratio": ratio,
+                    "ratio_ok": bool(height and abs(ratio - 0.8) <= 0.04),
+                    "review_status": "not_configured",
+                }
+                if ai_gateway.is_configured("vision"):
+                    with Image.open(io.BytesIO(image_bytes)) as image:
+                        normalized = io.BytesIO()
+                        image.convert("RGB").save(normalized, format="PNG", optimize=True)
+                    data_uri = f"data:image/png;base64,{base64.b64encode(normalized.getvalue()).decode('ascii')}"
+                    format_key, _ = _format_visual_rules(content)
+                    review = await ai_gateway.analyze_image(
+                        feature=f"smm_projects:{project.code}:visual_review", image_url=data_uri,
+                        prompt=("Кратко оцени изображение для этого поста по соответствию теме, формату и "
+                                "визуальному профилю проекта. Укажи только заметный риск: нечитаемый текст, "
+                                "ошибки/псевдотекст, перегруженность или явное несоответствие. В 1-2 фразах.\n"
+                                f"Тема: {content.title}\nФормат: {format_key}\n"
+                                f"Профиль: {brand.get(format_key, '')}\n"
+                                f"Общие правила: {brand.get('visual_style', '')}; {brand.get('visual_palette', '')}"),
+                        system="Проверяй только видимые свойства изображения. Не додумывай. Если проблем не видно, ответь: Визуально выглядит согласованно.",
+                        max_tokens=140, user_id=getattr(user, "id", None), timeout=15.0,
+                    )
+                    check["review_status"] = "reviewed" if review.ok else "unavailable"
+                    if review.ok:
+                        check["review"] = (review.text or "").strip()[:500]
+                asset_meta["visual_quality_check"] = check
+        except Exception:
+            logger.warning("smm visual quality check failed", exc_info=True)
     asset = SmmContentAsset(
         content_id=content.id, asset_type="image", prompt=final_prompt, provider=result.provider,
-        model=result.model, url=url, storage_key=storage_key, meta=meta,
+        model=result.model, url=url, storage_key=storage_key, meta=asset_meta,
         created_by_id=getattr(user, "id", None),
     )
     db.add(asset)

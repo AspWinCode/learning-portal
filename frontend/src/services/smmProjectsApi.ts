@@ -450,6 +450,7 @@ export interface GeneratedAsset {
   url: string | null;
   storage_key: string | null;
   is_selected: boolean;
+  meta?: Record<string, unknown> | null;
   created_at: string | null;
 }
 

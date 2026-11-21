@@ -309,6 +309,7 @@ class AssetOut(BaseModel):
     url: Optional[str]
     storage_key: Optional[str]
     is_selected: bool
+    meta: Optional[Dict[str, Any]] = None
     created_at: Optional[datetime]
 
     model_config = _ORM

@@ -779,6 +779,15 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
                   Визуал сохранён (storage_key: {asset.storage_key})
                 </Typography>
               )}
+              {(() => {
+                const quality = asset.meta?.visual_quality_check as { review?: string; review_status?: string; ratio_ok?: boolean } | undefined;
+                if (!quality) return null;
+                return (
+                  <Typography variant="caption" color={quality.review_status === 'reviewed' && quality.review && !/согласованно/i.test(quality.review) ? 'warning.main' : 'text.secondary'} sx={{ display: 'block', mt: 0.5 }}>
+                    Проверка визуала: {quality.ratio_ok ? 'формат 4:5' : 'проверьте пропорции'}{quality.review ? ` · ${quality.review}` : ''}
+                  </Typography>
+                );
+              })()}
               {canManage && item.status === 'draft' && (
                 <Button size="small" color="error" onClick={() => void removeDraftImage(item.id, asset.id)} disabled={busyId === item.id}>
                   Удалить картинку
@@ -1231,7 +1240,7 @@ const LegacyBrandSettingsTab: React.FC<{ projectCode: string; canManage: boolean
   return (
     <Stack spacing={2} sx={{ maxWidth: 640 }}>
       <Typography variant="body2" color="text.secondary">
-        Эти поля AI подмешивает в промпт всегда — чтобы не писать общие тексты, а держать позиционирование проекта.
+        AI учитывает общий бренд-профиль и отдельные правила визуала для постов, каруселей и инфографики. Настройки применяются только к этому проекту.
       </Typography>
       {fields.map((f) => (
         <TextField

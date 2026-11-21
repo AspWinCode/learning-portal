@@ -37,6 +37,9 @@ BRAND_CONTEXT_FIELDS: List[Dict[str, str]] = [
     {"key": "forbidden_imagery", "label": "Запрещённые образы"},
     {"key": "people_style", "label": "Стиль изображения людей"},
     {"key": "image_composition", "label": "Композиция изображения"},
+    {"key": "visual_post_style", "label": "Визуал: одиночный пост"},
+    {"key": "visual_carousel_style", "label": "Визуал: карусель"},
+    {"key": "visual_infographic_style", "label": "Визуал: инфографика"},
 ]
 
 _CYRILLIC_TRANSLIT = {

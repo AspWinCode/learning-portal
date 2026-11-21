@@ -275,6 +275,12 @@ class ContentTextReviewOut(BaseModel):
     suggestions: List[str] = Field(default_factory=list)
 
 
+class ImproveTextFromReviewRequest(BaseModel):
+    summary: str = Field(default="", max_length=500)
+    issues: List[str] = Field(default_factory=list, max_length=5)
+    suggestions: List[str] = Field(default_factory=list, max_length=5)
+
+
 class TransformRequest(BaseModel):
     action: str
     channel: Optional[str] = None

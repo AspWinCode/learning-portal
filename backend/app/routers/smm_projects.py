@@ -36,6 +36,7 @@ from app.schemas.smm_projects import (
     ContentPlanReadinessOut,
     ContentOut,
     ContentTextReviewOut,
+    ImproveTextFromReviewRequest,
     ContentUpdate,
     EventPackRequest,
     EventPackResult,
@@ -683,6 +684,30 @@ async def review_content_text(
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
     log_action(db, current_user.id, "review", "smm_content", content_id, {"project": project.code})
     return result
+
+
+@router.post("/content/{content_id}/improve-from-review", response_model=ContentOut)
+async def improve_content_from_review(
+    content_id: int,
+    payload: ImproveTextFromReviewRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("smm_projects.generate")),
+):
+    source = _get_content_or_404(db, content_id)
+    project = _project_for_content(db, source, current_user)
+    try:
+        revised = await generation.improve_from_review(
+            db, current_user, project=project, source=source,
+            summary=payload.summary, issues=payload.issues, suggestions=payload.suggestions,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    log_action(db, current_user.id, "create", "smm_content", revised.id, {
+        "source": content_id, "revision_from_review": True,
+    })
+    return revised
 
 
 @router.post("/content/{content_id}/variant", response_model=ContentOut)

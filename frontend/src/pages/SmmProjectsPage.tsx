@@ -412,6 +412,7 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
   const [items, setItems] = useState<smm.GeneratedContent[] | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [imageErrors, setImageErrors] = useState<Record<number, string>>({});
   const [publishChannels, setPublishChannels] = useState<smm.ChannelStatus[]>([]);
   const [selectedChannels, setSelectedChannels] = useState<Record<number, string[]>>({});
@@ -534,6 +535,28 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
       setTextReviews((current) => ({ ...current, [id]: review }));
     } catch (e) {
       setError(extractApiError(e, 'Не удалось проверить текст'));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const improveFromReview = async (id: number) => {
+    const review = textReviews[id];
+    if (!review) return;
+    setBusyId(id);
+    setError(null);
+    setNotice(null);
+    try {
+      const revised = await smm.improveContentFromReview(id, review);
+      setTextReviews((current) => {
+        const next = { ...current };
+        delete next[id];
+        return next;
+      });
+      setNotice(`Создана новая версия черновика${revised.title ? ` «${revised.title}»` : ''}. Исходный текст сохранён.`);
+      await reload();
+    } catch (e) {
+      setError(extractApiError(e, 'Не удалось создать улучшенную версию'));
     } finally {
       setBusyId(null);
     }
@@ -709,6 +732,7 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
   return (
     <Stack spacing={2}>
       {error && <Alert severity="error">{error}</Alert>}
+      {notice && <Alert severity="success">{notice}</Alert>}
       {items.map((item) => (
         <Paper key={item.id} variant="outlined" sx={{ p: 2 }}>
           {/** Карусель и инфографика публикуются изображениями; текст ниже нужен только для обычных постов. */}
@@ -761,6 +785,11 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
                 </Box>
               )}
               <Typography variant="caption">Проверка справочная: текст не изменён.</Typography>
+              {textReviews[item.id].status === 'needs_review' && canGenerate && (
+                <Button size="small" sx={{ mt: 0.75 }} variant="outlined" onClick={() => void improveFromReview(item.id)} disabled={busyId === item.id}>
+                  {busyId === item.id ? 'Создаю новую версию…' : 'Создать улучшенную версию'}
+                </Button>
+              )}
             </Alert>
           )}
           {item.input_json?.media_error && (

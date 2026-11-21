@@ -386,6 +386,9 @@ export const transformContent = (id: number, action: TransformAction, channel?: 
 export const reviewContentText = (id: number): Promise<ContentTextReview> =>
   api.post(`${BASE}/content/${id}/review-text`, {}, { timeout: 60000 }).then((r) => r.data);
 
+export const improveContentFromReview = (id: number, review: ContentTextReview): Promise<GeneratedContent> =>
+  api.post(`${BASE}/content/${id}/improve-from-review`, review, { timeout: 60000 }).then((r) => r.data);
+
 export const createContentVariant = (id: number, channel: string): Promise<GeneratedContent> =>
   api.post(`${BASE}/content/${id}/variant`, { channel }).then((r) => r.data);
 

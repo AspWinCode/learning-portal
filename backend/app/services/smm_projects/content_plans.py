@@ -63,6 +63,60 @@ def _pick_news_item(plan: SmmContentPlan, item: SmmContentPlanItem) -> str | Non
     return news_items[index % len(news_items)]
 
 
+def _performance_breakdown(publications) -> Dict[str, List[Dict[str, Any]]]:
+    """Aggregate engagement by channel+format and channel+genre.
+
+    Rates are weighted by views; segments with fewer than three measured posts
+    stay visible for context but are marked ineligible for AI recommendations.
+    """
+    grouped: Dict[str, Dict[tuple, Dict[str, int]]] = {"by_channel_format": {}, "by_channel_genre": {}}
+    for publication, content, plan_item in publications:
+        if publication.status != SmmPublicationStatus.SUCCESS.value:
+            continue
+        metrics = publication.metrics_json if isinstance(publication.metrics_json, dict) else {}
+        views = metrics.get("views")
+        if not isinstance(views, (int, float)) or views <= 0:
+            continue
+        interactions = sum(
+            int(metrics.get(key) or 0) for key in ("likes", "comments", "reposts")
+            if isinstance(metrics.get(key), (int, float))
+        )
+        content_format = (
+            (plan_item.content_format if plan_item else None)
+            or ((content.input_json or {}).get("content_format") if content else None)
+            or "Не указан"
+        )
+        genre = (plan_item.genre if plan_item else None) or "Не указан"
+        dimensions = (
+            ("by_channel_format", (publication.channel, content_format)),
+            ("by_channel_genre", (publication.channel, genre)),
+        )
+        for dimension, key in dimensions:
+            group = grouped[dimension].setdefault(key, {"posts": 0, "views": 0, "interactions": 0})
+            group["posts"] += 1
+            group["views"] += int(views)
+            group["interactions"] += interactions
+
+    result: Dict[str, List[Dict[str, Any]]] = {}
+    for dimension, values in grouped.items():
+        rows = []
+        for key, totals in values.items():
+            labels = {"channel": key[0]}
+            labels["format" if dimension == "by_channel_format" else "genre"] = key[1]
+            rows.append({
+                **labels,
+                "sample_size": totals["posts"],
+                "views": totals["views"],
+                "interactions": totals["interactions"],
+                "engagement_rate": round(totals["interactions"] / totals["views"] * 100, 2),
+                "enough_data": totals["posts"] >= 3,
+            })
+        result[dimension] = sorted(
+            rows, key=lambda row: (row["enough_data"], row["sample_size"], row["engagement_rate"]), reverse=True,
+        )[:20]
+    return result
+
+
 def plan_readiness(db: Session, project: SmmProject) -> Dict[str, Any]:
     knowledge_items = knowledge_svc.list_items(db, project)
     publications = (
@@ -77,6 +131,7 @@ def plan_readiness(db: Session, project: SmmProject) -> Dict[str, Any]:
     successful = failed = scheduled = 0
     metrics_publications = 0
     metrics_totals = {"views": 0, "likes": 0, "comments": 0, "reposts": 0}
+    performance_insights = _performance_breakdown(publications)
     last_published_at = None
     for publication, content, plan_item in publications:
         by_channel[publication.channel] = by_channel.get(publication.channel, 0) + 1
@@ -122,6 +177,7 @@ def plan_readiness(db: Session, project: SmmProject) -> Dict[str, Any]:
             "engagement_metrics_available": metrics_publications > 0,
             "metrics_publications": metrics_publications,
             "metrics_totals": metrics_totals,
+            "performance_insights": performance_insights,
         },
     }
 
@@ -593,6 +649,10 @@ async def generate_plan(db: Session, user, *, project: SmmProject, payload: Dict
         f"по форматам: {json.dumps(stats['by_format'], ensure_ascii=False)}.\n"
         f"Метрики VK собраны для {stats['metrics_publications']} публикаций: "
         f"{json.dumps(stats['metrics_totals'], ensure_ascii=False)}. Если метрик нет — не делай выводов об эффективности. "
+        f"Эффективность по каналам/форматам: {json.dumps(stats['performance_insights']['by_channel_format'], ensure_ascii=False)}; "
+        f"по каналам/жанрам: {json.dumps(stats['performance_insights']['by_channel_genre'], ensure_ascii=False)}. "
+        "Учитывай выводы по сегменту только при enough_data=true (не менее трёх публикаций с просмотрами); "
+        "метрики не являются причинным доказательством — используй их как один из сигналов, сохраняя разнообразие плана. "
         f"В архиве {len(archive)} последних опубликованных материалов; смотри их тексты выше. "
         f"Темы, опубликованные за последние 90 дней (с датой и каналом): {json.dumps(recent_topics, ensure_ascii=False)}. "
         "Не предлагай совпадающую тему первые 90 дней. Для более старых повторов добавляй новый практический угол, "

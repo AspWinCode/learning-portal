@@ -39,7 +39,7 @@ def test_assign_makeup_success(mock_create_link):
     mock_absence.student_id = 10
     mock_group = MagicMock()
     mock_group.id = 2
-    db.query.return_value.filter.return_value.first.side_effect = [mock_absence, mock_group]
+    db.query.return_value.filter.return_value.first.side_effect = [mock_absence, mock_group, None, None]
 
     result = assign_makeup_for_absence(
         db, 1, makeup_group_id=2, makeup_lesson_date=date(2025, 2, 15)

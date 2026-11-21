@@ -45,6 +45,7 @@ def test_update_card_payment_dates_default_30_days():
     db = MagicMock()
     card = _make_card()
     db.query.return_value.filter.return_value.first.return_value = card
+    db.query.return_value.filter.return_value.scalar.return_value = None
     payment_date = date(2025, 3, 1)
 
     update_card_payment_dates(db, student_id=1, payment_date=payment_date)
@@ -105,6 +106,7 @@ def test_set_card_from_training_start_default_30_days():
     db = MagicMock()
     card = _make_card()
     db.query.return_value.filter.return_value.first.return_value = card
+    db.query.return_value.filter.return_value.scalar.return_value = None
     start_date = date(2025, 3, 1)
 
     set_card_payment_dates_from_training_start(db, student_id=1, start_date=start_date)
@@ -118,6 +120,7 @@ def test_set_card_from_training_start_with_abonement():
     db = MagicMock()
     card = _make_card(abonement_id=2, lessons_count=12)
     db.query.return_value.filter.return_value.first.return_value = card
+    db.query.return_value.filter.return_value.scalar.return_value = None
     start_date = date(2025, 3, 1)
 
     set_card_payment_dates_from_training_start(db, student_id=1, start_date=start_date)
@@ -130,6 +133,7 @@ def test_set_card_from_training_start_min_1_day():
     db = MagicMock()
     card = _make_card(abonement_id=3, lessons_count=1)
     db.query.return_value.filter.return_value.first.return_value = card
+    db.query.return_value.filter.return_value.scalar.return_value = None
     start_date = date(2025, 3, 1)
 
     set_card_payment_dates_from_training_start(db, student_id=1, start_date=start_date)

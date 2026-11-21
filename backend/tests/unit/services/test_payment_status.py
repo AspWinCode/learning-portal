@@ -27,6 +27,7 @@ def _make_card(student_id, next_payment_date, archived=False):
     card.id = student_id * 10
     card.next_payment_date = next_payment_date
     card.archived = archived
+    card.on_grant = False
     card.learning_period_start = None
     return card
 
@@ -36,12 +37,14 @@ def _make_student(student_id, status=StudentStatus.ACTIVE, full_name="Student"):
     student.id = student_id
     student.status = status
     student.full_name = full_name
+    student.on_grant = False
     return student
 
 
 @patch("app.services.payment_status._has_payments", return_value=True)
+@patch("app.services.payment_status.count_lessons_since_period_start", return_value=1)
 @patch("app.services.payment_status.get_student_display_name", return_value="Student")
-def test_get_payment_status_list_ok_status(mock_name, mock_pay):
+def test_get_payment_status_list_ok_status(mock_name, mock_lessons, mock_pay):
     today = date(2025, 3, 1)
     card = _make_card(1, today + timedelta(days=10))
     student = _make_student(1)
@@ -57,8 +60,9 @@ def test_get_payment_status_list_ok_status(mock_name, mock_pay):
 
 
 @patch("app.services.payment_status._has_payments", return_value=True)
+@patch("app.services.payment_status.count_lessons_since_period_start", return_value=1)
 @patch("app.services.payment_status.get_student_display_name", return_value="Student")
-def test_get_payment_status_list_due_soon(mock_name, mock_pay):
+def test_get_payment_status_list_due_soon(mock_name, mock_lessons, mock_pay):
     today = date(2025, 3, 1)
     card = _make_card(1, today + timedelta(days=1))
     student = _make_student(1)
@@ -72,8 +76,9 @@ def test_get_payment_status_list_due_soon(mock_name, mock_pay):
 
 
 @patch("app.services.payment_status._has_payments", return_value=True)
+@patch("app.services.payment_status.count_lessons_since_period_start", return_value=1)
 @patch("app.services.payment_status.get_student_display_name", return_value="Student")
-def test_get_payment_status_list_overdue(mock_name, mock_pay):
+def test_get_payment_status_list_overdue(mock_name, mock_lessons, mock_pay):
     today = date(2025, 3, 1)
     card = _make_card(1, today - timedelta(days=5))
     student = _make_student(1)
@@ -87,8 +92,9 @@ def test_get_payment_status_list_overdue(mock_name, mock_pay):
 
 
 @patch("app.services.payment_status._has_payments", return_value=False)
+@patch("app.services.payment_status.count_lessons_since_period_start", return_value=1)
 @patch("app.services.payment_status.get_student_display_name", return_value="Student")
-def test_get_payment_status_list_unpaid(mock_name, mock_pay):
+def test_get_payment_status_list_unpaid(mock_name, mock_lessons, mock_pay):
     today = date(2025, 3, 1)
     card = _make_card(1, today + timedelta(days=5))
     student = _make_student(1)
@@ -159,8 +165,9 @@ def test_get_payment_status_list_no_cards():
 
 
 @patch("app.services.payment_status._has_payments", return_value=True)
+@patch("app.services.payment_status.count_lessons_since_period_start", return_value=1)
 @patch("app.services.payment_status.get_student_display_name")
-def test_get_payment_status_list_sorted_by_date_then_name(mock_name, mock_pay):
+def test_get_payment_status_list_sorted_by_date_then_name(mock_name, mock_lessons, mock_pay):
     today = date(2025, 3, 1)
     card_late = _make_card(2, today + timedelta(days=10))
     card_early_b = _make_card(1, today + timedelta(days=2))
@@ -180,8 +187,9 @@ def test_get_payment_status_list_sorted_by_date_then_name(mock_name, mock_pay):
 
 
 @patch("app.services.payment_status._has_payments", return_value=True)
+@patch("app.services.payment_status.count_lessons_since_period_start", return_value=1)
 @patch("app.services.payment_status.get_student_display_name", return_value="Student")
-def test_get_payment_status_list_converts_datetime_to_date(mock_name, mock_pay):
+def test_get_payment_status_list_converts_datetime_to_date(mock_name, mock_lessons, mock_pay):
     class FakeDateTime:
         def __init__(self, value):
             self._value = value
@@ -202,8 +210,9 @@ def test_get_payment_status_list_converts_datetime_to_date(mock_name, mock_pay):
 
 
 @patch("app.services.payment_status._has_payments", return_value=True)
+@patch("app.services.payment_status.count_lessons_since_period_start", return_value=1)
 @patch("app.services.payment_status.get_student_display_name", return_value="Student")
-def test_get_payment_status_list_all_filter_does_not_exclude(mock_name, mock_pay):
+def test_get_payment_status_list_all_filter_does_not_exclude(mock_name, mock_lessons, mock_pay):
     today = date(2025, 3, 1)
     card = _make_card(1, today - timedelta(days=1))
     student = _make_student(1)
@@ -260,7 +269,7 @@ def test_get_payment_status_summary_no_cards():
 
     summary = get_payment_status_summary(db, today=date(2025, 3, 1))
 
-    assert summary == {"overdue_3_count": 0, "overdue_10_count": 0}
+    assert summary == {"overdue_3_count": 0, "overdue_10_count": 0, "negative_balance_count": 0}
 
 
 @patch("app.services.payment_status._has_payments", return_value=True)
@@ -275,4 +284,4 @@ def test_get_payment_status_summary_archived_students_excluded(mock_pay):
 
     summary = get_payment_status_summary(db, today=today)
 
-    assert summary == {"overdue_3_count": 0, "overdue_10_count": 0}
+    assert summary == {"overdue_3_count": 0, "overdue_10_count": 0, "negative_balance_count": 0}

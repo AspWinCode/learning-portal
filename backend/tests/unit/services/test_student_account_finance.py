@@ -37,9 +37,12 @@ def test_create_student_account_name_empty():
 def test_create_student_account_success():
     """Успешное создание счёта: db.add вызван с StudentAccount, flush и refresh вызваны."""
     db = MagicMock()
-    mock_student = MagicMock()
-    mock_student.id = 1
-    db.query.return_value.filter.return_value.first.return_value = mock_student
+    student_query = MagicMock()
+    student_query.filter.return_value.first.return_value = MagicMock(id=1)
+    account_query = MagicMock()
+    account_query.filter.return_value.first.return_value = None
+    db.query.side_effect = [student_query, account_query]
+    db.begin_nested.return_value.__enter__.side_effect = db.flush
 
     result = create_student_account(db, 1, "Основной")
 
@@ -49,7 +52,7 @@ def test_create_student_account_success():
     assert result.name == "Основной"
     assert result.balance == 0.0
     db.add.assert_called_once()
-    db.flush.assert_called_once()
+    db.flush.assert_called()
     db.refresh.assert_called_once_with(result)
 
 
@@ -68,9 +71,12 @@ def test_ensure_default_student_account_creates_missing_account():
     db = MagicMock()
     account_query = MagicMock()
     student_query = MagicMock()
+    duplicate_query = MagicMock()
     account_query.filter.return_value.order_by.return_value.first.return_value = None
     student_query.filter.return_value.first.return_value = MagicMock(spec=Student)
-    db.query.side_effect = [account_query, student_query]
+    duplicate_query.filter.return_value.first.return_value = None
+    db.query.side_effect = [account_query, student_query, duplicate_query]
+    db.begin_nested.return_value.__enter__.side_effect = db.flush
 
     result = ensure_default_student_account(db, 1)
 

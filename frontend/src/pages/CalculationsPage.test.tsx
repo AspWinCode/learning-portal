@@ -37,6 +37,7 @@ const makeRows = (rate: number | null) => [
         rate_per_hour: null,
         lessons_count: 1,
         hours_count: 0,
+        lesson_dates: [],
         subtotal: rate || 0,
       },
     ],

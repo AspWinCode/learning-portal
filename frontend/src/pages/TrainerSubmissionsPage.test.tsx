@@ -11,7 +11,7 @@ vi.mock('./CodelabStudioPage', () => ({
   PROJECT_STATUS_LABEL: { submitted: 'На проверке', accepted: 'Принято', needs_revision: 'На доработке' },
   ProjectReviewDialog: () => <div>project-review-dialog</div>,
 }));
-vi.mock('../services/codelabApi', () => ({ codelabStudioApi: { listTrainerSubmissions } }));
+vi.mock('../services/codelabApi', () => ({ codelabStudioApi: { listTrainerSubmissions, getTask: vi.fn().mockResolvedValue({ code: 'print(1)', verdict: 'Accepted' }) } }));
 
 afterEach(() => { vi.clearAllMocks(); });
 

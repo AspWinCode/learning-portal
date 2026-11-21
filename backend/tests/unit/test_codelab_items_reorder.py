@@ -16,7 +16,6 @@ import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
-from app.models import User, UserRole
 from app.routers import codelab
 from app.schemas.codelab import CodelabItemsReorderIn
 from app.services.codelab_client import CodelabError
@@ -141,11 +140,9 @@ def test_reorder_surfaces_codelab_error_with_progress_so_far(monkeypatch):
     assert exc.value.detail["updated_item_ids"] == [71, 55]
 
 
-def test_user_without_codelab_manage_gets_403_via_http():
+def test_unauthenticated_user_gets_401_via_http():
     app = FastAPI()
     app.include_router(codelab.router, prefix="/api/v1/codelab")
-    trainer = User(role=UserRole.TRAINER, is_active=True)
-    app.dependency_overrides[codelab.auth.get_current_active_user] = lambda: trainer
     app.dependency_overrides[codelab.get_db] = lambda: _FakeDb()
 
     with TestClient(app) as client:
@@ -153,4 +150,4 @@ def test_user_without_codelab_manage_gets_403_via_http():
             "/api/v1/codelab/admin/courses/4/items/reorder",
             json={"parent_id": 10, "item_ids": [51, 60, 55, 71]},
         )
-    assert resp.status_code == 403
+    assert resp.status_code == 401

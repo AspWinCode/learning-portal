@@ -13,6 +13,7 @@ from __future__ import annotations
 import base64
 import io
 import os
+import re
 import zipfile
 from typing import Any, Dict, List, Optional
 
@@ -49,7 +50,8 @@ def _strip_html(html: str) -> str:
             tag.decompose()
         return soup.get_text("\n").strip()
     except Exception:  # noqa: BLE001
-        return html
+        without_active = re.sub(r"(?is)<(script|style)\b[^>]*>.*?</\1\s*>", " ", html or "")
+        return re.sub(r"(?s)<[^>]*>", " ", without_active).strip()
 
 
 def _extract_epub(data: bytes) -> str:

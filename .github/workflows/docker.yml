@@ -9,6 +9,10 @@ permissions:
   contents: read
   packages: write
 
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
@@ -53,6 +57,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           envs: GITHUB_ACTOR,GITHUB_TOKEN
           script: |
+            set -eu
             echo $GITHUB_TOKEN | docker login ghcr.io -u $GITHUB_ACTOR --password-stdin
             cd /root/learning-portal
             git fetch origin main
@@ -62,33 +67,66 @@ jobs:
             export AI_TUNNEL_MODEL_IMAGE=gemini-3.1-flash-lite-image
             docker compose pull migrator backend app_worker app_scheduler app_delivery_worker web
 
-            # Run migrations first and wait for them to finish
-            docker compose up -d migrator
-            docker compose wait migrator
+            # This is a one-shot task. `up` leaves a stopped migrator container
+            # in the project; starting the full stack afterwards can race its
+            # recreate and leave duplicate/hash-prefixed service containers.
+            docker compose run --rm --no-deps migrator
 
             # Bring up all services
             docker compose up -d --no-build
 
             # Wait for backend to respond (up to 90 seconds)
             echo "Waiting for backend..."
+            backend_ready=0
             for i in $(seq 1 18); do
               if curl -sf http://localhost:8000/api/v1/health > /dev/null 2>&1; then
                 echo "Backend is up after $((i * 5))s"
+                backend_ready=1
                 break
               fi
               echo "  attempt $i/18..."
               sleep 5
             done
 
-            # If still not responding — force-restart app containers
-            if ! curl -sf http://localhost:8000/api/v1/health > /dev/null 2>&1; then
-              echo "Backend not responding, forcing restart..."
-              docker compose restart backend app_worker app_scheduler app_delivery_worker
-              sleep 15
-              curl -sf http://localhost:8000/api/v1/health > /dev/null 2>&1 \
-                && echo "Backend recovered after restart." \
-                || echo "WARNING: backend still not responding after restart."
+            if [ "$backend_ready" -ne 1 ]; then
+              echo "ERROR: backend health check did not pass. Current services:"
+              docker compose ps
+              docker compose logs --tail=100 backend
+              exit 1
             fi
+
+            # A healthy endpoint can still belong to the previous container.
+            # Compare running container image IDs with the images just pulled.
+            expected_backend_image=$(docker image inspect ghcr.io/aspwincode/learning-portal-backend:latest --format '{{.Id}}')
+            backend_container=$(docker compose ps -q backend)
+            if [ -z "$backend_container" ]; then
+              echo "ERROR: Compose has no backend container after deployment."
+              docker compose ps
+              exit 1
+            fi
+            running_backend_image=$(docker inspect --format '{{.Image}}' "$backend_container")
+            if [ "$running_backend_image" != "$expected_backend_image" ]; then
+              echo "ERROR: the running backend is not using the image pulled in this deployment."
+              echo "Expected: $expected_backend_image"
+              echo "Running:  $running_backend_image"
+              exit 1
+            fi
+
+            expected_frontend_image=$(docker image inspect ghcr.io/aspwincode/learning-portal-frontend:latest --format '{{.Id}}')
+            frontend_container=$(docker compose ps -q web)
+            if [ -z "$frontend_container" ]; then
+              echo "ERROR: Compose has no frontend container after deployment."
+              docker compose ps
+              exit 1
+            fi
+            running_frontend_image=$(docker inspect --format '{{.Image}}' "$frontend_container")
+            if [ "$running_frontend_image" != "$expected_frontend_image" ]; then
+              echo "ERROR: the running frontend is not using the image pulled in this deployment."
+              echo "Expected: $expected_frontend_image"
+              echo "Running:  $running_frontend_image"
+              exit 1
+            fi
+            echo "Verified backend and frontend are running the newly pulled images."
 
             docker image prune -f
             docker logout ghcr.io

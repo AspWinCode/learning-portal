@@ -1,7 +1,8 @@
-"""База знаний проекта: CRUD + 3-уровневый поиск (pgvector → FTS → ILIKE) —
-тот же паттерн, что в app.services.ai_studio.knowledge / academy_ai.retrieval
-(реиспользуем чистые хелперы форматирования вектора/tsquery). Изоляция между
-проектами — фильтр project_id во всех запросах."""
+"""Project knowledge CRUD and retrieval (pgvector → FTS → ILIKE).
+
+Source access is project-local by default. The personal-social workspace may
+read text sources across projects; visual references remain project-local.
+"""
 from __future__ import annotations
 
 import re
@@ -13,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.models import SmmKnowledgeItem, SmmProject
 from app.services import ai_gateway
 from app.services.academy_ai.retrieval import _or_tsquery_text, _vec_literal
+from app.services.smm_projects import projects as projects_svc
 from app.services.smm_projects import storage
 
 _WORD_RE = re.compile(r"[\wа-яёА-ЯЁ]{3,}", re.UNICODE)
@@ -25,6 +27,19 @@ def list_items(db: Session, project: SmmProject, *, active_only: bool = True) ->
     if active_only:
         q = q.filter(SmmKnowledgeItem.is_active.is_(True))
     return q.order_by(SmmKnowledgeItem.created_at.desc()).all()
+
+
+def content_items(db: Session, project: SmmProject, *, active_only: bool = True) -> List[SmmKnowledgeItem]:
+    """Text sources for generation; visual references stay project-local."""
+    source_projects = projects_svc.content_source_projects(db, project)
+    project_ids = [source.id for source in source_projects]
+    q = db.query(SmmKnowledgeItem).filter(SmmKnowledgeItem.project_id.in_(project_ids))
+    if active_only:
+        q = q.filter(SmmKnowledgeItem.is_active.is_(True))
+    return [
+        item for item in q.order_by(SmmKnowledgeItem.created_at.desc()).all()
+        if item.source_type != "image_reference" and not (item.content_type or "").lower().startswith("image/")
+    ]
 
 
 def create_item(db: Session, project: SmmProject, data: Dict[str, Any], *, user_id: Optional[int] = None) -> SmmKnowledgeItem:
@@ -134,7 +149,9 @@ async def index_pending(db: Session, project: SmmProject, *, batch: int = 100, u
     return {"indexed": len(rows), "backend": "vector"}
 
 
-def _fetch_ordered(db: Session, project: SmmProject, ids: List[int]) -> List[SmmKnowledgeItem]:
+def _fetch_ordered(
+    db: Session, project: SmmProject, ids: List[int], *, exclude_visual: bool = False,
+) -> List[SmmKnowledgeItem]:
     if not ids:
         return []
     rows = (
@@ -143,15 +160,26 @@ def _fetch_ordered(db: Session, project: SmmProject, ids: List[int]) -> List[Smm
         .all()
     )
     by_id = {row.id: row for row in rows}
-    return [by_id[i] for i in ids if i in by_id]
+    ordered = [by_id[i] for i in ids if i in by_id]
+    if exclude_visual:
+        ordered = [
+            item for item in ordered
+            if item.source_type != "image_reference" and not (item.content_type or "").lower().startswith("image/")
+        ]
+    return ordered
 
 
-def _ilike_search(db: Session, project: SmmProject, query: str, limit: int) -> List[SmmKnowledgeItem]:
+def _ilike_search(
+    db: Session, project: SmmProject, query: str, limit: int, *, exclude_visual: bool = False,
+) -> List[SmmKnowledgeItem]:
     words = _WORD_RE.findall(query or "")
     base = db.query(SmmKnowledgeItem).filter(
         SmmKnowledgeItem.project_id == project.id,
         SmmKnowledgeItem.is_active.is_(True),
     )
+    if exclude_visual:
+        base = base.filter(SmmKnowledgeItem.source_type != "image_reference")
+        base = base.filter(or_(SmmKnowledgeItem.content_type.is_(None), ~SmmKnowledgeItem.content_type.ilike("image/%")))
     if not words:
         return []
     conditions = []
@@ -162,12 +190,34 @@ def _ilike_search(db: Session, project: SmmProject, query: str, limit: int) -> L
     return base.filter(or_(*conditions)).order_by(SmmKnowledgeItem.created_at.desc()).limit(limit).all()
 
 
-async def search(db: Session, project: SmmProject, query: str, *, limit: int = 5, user_id: Optional[int] = None) -> List[SmmKnowledgeItem]:
+async def search(
+    db: Session, project: SmmProject, query: str, *, limit: int = 5,
+    user_id: Optional[int] = None, _apply_content_scope: bool = True, _exclude_visual: bool = False,
+) -> List[SmmKnowledgeItem]:
     q = (query or "").strip()
     if not q:
         return []
 
+    source_projects = projects_svc.content_source_projects(db, project) if _apply_content_scope else [project]
+    if len(source_projects) > 1:
+        results: List[SmmKnowledgeItem] = []
+        seen: set[int] = set()
+        for source_project in source_projects:
+            hits = await search(
+                db, source_project, q, limit=limit, user_id=user_id, _apply_content_scope=False,
+                _exclude_visual=source_project.id != project.id,
+            )
+            for hit in hits:
+                if hit.id not in seen:
+                    seen.add(hit.id)
+                    results.append(hit)
+        return results[:limit * len(source_projects)]
+
     caps = capabilities(db)
+    text_only_filter = (
+        " AND source_type != 'image_reference' AND (content_type IS NULL OR content_type NOT ILIKE 'image/%')"
+        if _exclude_visual else ""
+    )
 
     if caps["pgvector"]:
         emb = await ai_gateway.embed(feature=f"smm_projects:{project.code}:knowledge_query", inputs=[q], user_id=user_id)
@@ -176,12 +226,13 @@ async def search(db: Session, project: SmmProject, query: str, *, limit: int = 5
             rows = db.execute(
                 text(
                     "SELECT id FROM smm_knowledge_items "
-                    "WHERE project_id = :pid AND is_active AND embedding IS NOT NULL "
+                    "WHERE project_id = :pid AND is_active AND embedding IS NOT NULL"
+                    + text_only_filter + " "
                     "ORDER BY embedding <=> CAST(:q AS vector) LIMIT :k"
                 ),
                 {"pid": project.id, "q": qvec, "k": limit},
             ).all()
-            hits = _fetch_ordered(db, project, [r[0] for r in rows])
+            hits = _fetch_ordered(db, project, [r[0] for r in rows], exclude_visual=_exclude_visual)
             if hits:
                 return hits
 
@@ -191,16 +242,17 @@ async def search(db: Session, project: SmmProject, query: str, *, limit: int = 5
             rows = db.execute(
                 text(
                     "SELECT id, ts_rank(search_tsv, to_tsquery('russian', :q)) AS score FROM smm_knowledge_items "
-                    "WHERE project_id = :pid AND is_active AND search_tsv @@ to_tsquery('russian', :q) "
+                    "WHERE project_id = :pid AND is_active AND search_tsv @@ to_tsquery('russian', :q)"
+                    + text_only_filter + " "
                     "ORDER BY score DESC LIMIT :k"
                 ),
                 {"pid": project.id, "q": or_query, "k": limit},
             ).all()
-            hits = _fetch_ordered(db, project, [r[0] for r in rows])
+            hits = _fetch_ordered(db, project, [r[0] for r in rows], exclude_visual=_exclude_visual)
             if hits:
                 return hits
 
-    return _ilike_search(db, project, q, limit)
+    return _ilike_search(db, project, q, limit, exclude_visual=_exclude_visual)
 
 
 def as_prompt_block(items: List[SmmKnowledgeItem], *, max_chars: int | None = None) -> str:

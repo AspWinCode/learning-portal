@@ -70,6 +70,21 @@ def get_by_code(db: Session, code: str) -> Optional[SmmProject]:
     return db.query(SmmProject).filter(SmmProject.code == code).first()
 
 
+def can_use_cross_project_content(project: SmmProject) -> bool:
+    """Only a clearly identified personal-social project may read other projects."""
+    identity = f"{project.code or ''} {project.name or ''}".casefold()
+    personal_marker = any(marker in identity for marker in ("личн", "собствен", "personal", "own_", "own social"))
+    social_marker = any(marker in identity for marker in ("соц", "social", "smm"))
+    return personal_marker and social_marker
+
+
+def content_source_projects(db: Session, project: SmmProject) -> List[SmmProject]:
+    """Content facts may cross projects only for the personal-social workspace."""
+    if not can_use_cross_project_content(project):
+        return [project]
+    return db.query(SmmProject).filter(SmmProject.is_active.is_(True)).order_by(SmmProject.id).all()
+
+
 def create_project(db: Session, user, *, name: str, description: Optional[str] = None) -> SmmProject:
     base_code = _slugify(name)
     code = base_code

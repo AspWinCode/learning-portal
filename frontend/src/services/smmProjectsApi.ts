@@ -234,7 +234,7 @@ export const deleteContentPlan = (code: string, planId: number): Promise<void> =
 
 export interface ContentPlanReadiness {
   ai: { configured: boolean; provider: string | null; model: string | null; purpose: string };
-  context: { active_items: number; indexed_items: number; total_chars: number; items: Array<{ id: number; title: string; source_type: string; filename: string | null }> };
+  context: { active_items: number; indexed_items: number; total_chars: number; source_projects: Array<{ code: string; name: string }>; items: Array<{ id: number; title: string; source_type: string; filename: string | null }> };
   publication_stats: {
     total: number; successful: number; failed: number; scheduled: number; by_channel: Record<string, number>; by_format: Record<string, number>;
     last_published_at: string | null; engagement_metrics_available: boolean; metrics_publications: number; metrics_totals: Record<string, number>;

@@ -16,6 +16,24 @@ def test_image_prompt_always_contains_russian_text_guard():
     assert assets._with_image_text_guard(prompt) == prompt
 
 
+@pytest.mark.asyncio
+async def test_image_prompt_uses_selected_project_identity_without_kodarena_defaults(monkeypatch):
+    project = _project("tirskix_academy")
+    project.name = "TirSkix Academy"
+    project.brand_context = {"visual_style": "минималистичная образовательная графика", "visual_palette": "синий и белый"}
+    content = _content()
+    monkeypatch.setattr(assets.knowledge_svc, "list_items", lambda db, project: [])
+    monkeypatch.setattr(assets.knowledge_svc, "content_items", lambda db, project: [])
+    monkeypatch.setattr(assets.ai_gateway, "is_configured", lambda purpose: False)
+
+    prompt = await assets.build_image_prompt(db=None, project=project, content=content, user=None)
+
+    assert "TirSkix Academy" in prompt
+    assert "минималистичная образовательная графика" in prompt
+    assert "КодАрена" not in prompt
+    assert "4:5" in prompt
+
+
 def test_visual_input_references_include_successful_project_archive(monkeypatch):
     archived = SmmContentAsset()
     archived.id = 77
@@ -244,8 +262,8 @@ async def test_render_image_retries_with_one_reference_when_provider_refuses(mon
     assert len(calls) == 2
     assert calls[0]["input_references"]
     assert assets._VISUAL_REFERENCE_GUARD in calls[0]["prompt"]
-    assert "Не копируй автоматически персонажа" in calls[0]["prompt"]
-    assert "не делай его главным героем" in calls[0]["prompt"]
+    assert "Не копируй референс целиком" in calls[0]["prompt"]
+    assert "Не добавляй элементы других брендов" in calls[0]["prompt"]
     assert len(calls[1]["input_references"]) == 1
     assert asset.url == "https://cdn.example/retry.png"
     assert content.selected_asset_id == asset.id

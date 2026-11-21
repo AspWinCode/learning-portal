@@ -12,9 +12,10 @@ from app.models import SmmContent, SmmContentPlan, SmmContentPlanItem, SmmProjec
 from app.services import ai_gateway
 from app.services.smm_projects import knowledge as knowledge_svc
 from app.services.smm_projects import assets as assets_svc
+from app.services.smm_projects import projects as projects_svc
 from app.services.smm_projects.prompt_builder import GLOBAL_SAFETY_RULES, _brand_block
 
-DEFAULT_FORMATS = ["Пост", "Карусель", "Видео / Reels / Shorts", "Инфографика"]
+DEFAULT_FORMATS = ["Пост-картинка", "Карусель", "Инфографика"]
 GENRE_ORGANIZER_THOUGHTS = "Размышления организаторов"
 GENRE_PROGRAMMING_NEWS = "Новости программирования и геймдева"
 DEFAULT_GENRES = [
@@ -122,7 +123,7 @@ def _performance_breakdown(publications) -> Dict[str, List[Dict[str, Any]]]:
 
 
 def plan_readiness(db: Session, project: SmmProject) -> Dict[str, Any]:
-    knowledge_items = knowledge_svc.list_items(db, project)
+    knowledge_items = knowledge_svc.content_items(db, project)
     publications = (
         db.query(SmmPublication, SmmContent, SmmContentPlanItem)
         .outerjoin(SmmContent, SmmContent.id == SmmPublication.content_id)
@@ -165,6 +166,10 @@ def plan_readiness(db: Session, project: SmmProject) -> Dict[str, Any]:
             "active_items": len(knowledge_items),
             "indexed_items": sum(1 for item in knowledge_items if item.content),
             "total_chars": sum(len(item.content or "") for item in knowledge_items),
+            "source_projects": [
+                {"code": source.code, "name": source.name}
+                for source in projects_svc.content_source_projects(db, project)
+            ],
             "items": [
                 {"id": item.id, "title": item.title, "source_type": item.source_type, "filename": item.original_filename}
                 for item in knowledge_items
@@ -191,11 +196,13 @@ def recent_publication_archive(
 ) -> List[Dict[str, Any]]:
     """Return successful posts for recent-duplicate checks and editorial examples."""
     cutoff = datetime.now(timezone.utc) - timedelta(days=lookback_days)
+    source_projects = projects_svc.content_source_projects(db, project)
+    source_project_ids = [source.id for source in source_projects]
     rows = (
         db.query(SmmPublication)
         .join(SmmContent, SmmContent.id == SmmPublication.content_id)
         .filter(
-            SmmPublication.project_id == project.id,
+            SmmPublication.project_id.in_(source_project_ids),
             SmmPublication.status == SmmPublicationStatus.SUCCESS.value,
             SmmPublication.published_at >= cutoff,
         )
@@ -211,6 +218,7 @@ def recent_publication_archive(
             continue
         archive.append({
             "title": content.title or "Без названия",
+            "project": next((p.name for p in source_projects if p.id == publication.project_id), project.name),
             "channel": publication.channel,
             "published_at": publication.published_at.date().isoformat() if publication.published_at else None,
             "text": body[:900],
@@ -253,7 +261,8 @@ def _archive_prompt_block(archive: List[Dict[str, Any]], *, max_chars: int = 700
     lines = ["=== АРХИВ УЖЕ ОПУБЛИКОВАННОГО КОНТЕНТА (примеры подачи, не источник фактов) ==="]
     used = len(lines[0])
     for entry in archive:
-        line = f"[{entry.get('published_at') or 'дата неизвестна'}; {entry.get('channel')}] {entry['title']}: {entry['text']}"
+        project = f"; {entry['project']}" if entry.get("project") else ""
+        line = f"[{entry.get('published_at') or 'дата неизвестна'}{project}; {entry.get('channel')}] {entry['title']}: {entry['text']}"
         if used + len(line) + 1 > max_chars:
             break
         lines.append(line)
@@ -380,7 +389,7 @@ async def _generate_item_draft(
     project = db.query(SmmProject).filter(SmmProject.id == plan.project_id).first()
     if project is None:
         return False
-    knowledge = knowledge_svc.as_prompt_block(knowledge_svc.list_items(db, project), max_chars=12000)
+    knowledge = knowledge_svc.as_prompt_block(knowledge_svc.content_items(db, project), max_chars=12000)
     archive = _archive_prompt_block(recent_publication_archive(db, project)) if hasattr(db, "query") and hasattr(db.query(SmmPublication), "join") else ""
     genre_hint = GENRE_DRAFT_INSTRUCTIONS.get(item.genre)
     news_item = _pick_news_item(plan, item)
@@ -606,7 +615,7 @@ async def generate_plan(db: Session, user, *, project: SmmProject, payload: Dict
     # Контекст плана должен быть постоянным и полным: при генерации месячного
     # плана читаем все активные факты/файлы проекта, а не только совпадения по
     # короткому запросу формы.
-    hits = knowledge_svc.list_items(db, project)
+    hits = knowledge_svc.content_items(db, project)
     knowledge = knowledge_svc.as_prompt_block(hits, max_chars=18000)
     readiness = plan_readiness(db, project)
     archive = recent_publication_archive(db, project)

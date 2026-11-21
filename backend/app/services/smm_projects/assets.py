@@ -19,20 +19,6 @@ from app.services.smm_projects import storage
 
 logger = logging.getLogger(__name__)
 
-# Визуальный вариант выбирается детерминированно по материалу, чтобы разные
-# публикации не получали одного и того же героя. При этом слайды одной
-# карусели сохраняют общий образ — разнообразие нужно между публикациями.
-_CHARACTER_VARIANTS = (
-    "быстрый разведчик в лёгкой броне, динамичный силуэт и светло-синие акценты",
-    "мудрый маг-аналитик в длинной мантии, фиолетово-золотая палитра",
-    "механик-изобретатель с защитными очками и медными деталями",
-    "лучница-стратег с плащом и бирюзовыми световыми эффектами",
-    "робот-тактик с геометричной бронёй и красными сигнальными огнями",
-    "тёмный рыцарь-защитник с массивным щитом и синим свечением",
-    "исследовательница данных с голографическими интерфейсами и зелёными акцентами",
-    "ловкий кибер-ниндзя с чёрно-оранжевой палитрой и другим силуэтом",
-)
-
 _IMAGE_TEXT_GUARD = (
     "КРИТИЧЕСКОЕ ПРАВИЛО ДЛЯ НАДПИСЕЙ: используй только русский язык и кириллицу. "
     "Запрещены английские слова, латинские буквы и псевдотекст. Если не получается "
@@ -41,24 +27,15 @@ _IMAGE_TEXT_GUARD = (
 )
 
 _VISUAL_REFERENCE_GUARD = (
-    "ОБЯЗАТЕЛЬНО СОХРАНИ СВЯЗЬ С РЕФЕРЕНСАМИ КОДАРЕНЫ: приложенные изображения — это "
-    "якорь мира, художественного стиля, цветовой палитры, материалов, света и качества "
-    "рендера. Не копируй автоматически персонажа, лицо, маску или силуэт с референса: "
-    "главный герой должен соответствовать отдельному варианту героя, указанному в промпте. "
-    "Если среди референсов есть чумной доктор, не делай его главным героем и не добавляй "
-    "его в фон, если это прямо не требуется темой публикации. Не создавай абстрактный "
-    "киберпанк, стоковую иллюстрацию или новый несвязанный мир — сохраняй узнаваемый "
-    "визуальный язык КодАрены, но с новым персонажем и новым силуэтом."
+    "Используй приложенные референсы только как визуальные ориентиры выбранного проекта: "
+    "соблюдай его палитру, художественный стиль и качество. Не копируй референс целиком, "
+    "его композицию, людей, персонажей или логотипы. Не добавляй элементы других брендов. "
+    "Следуй описанию материала и бренд-профилю именно этого проекта."
 )
 
 
 def _with_image_text_guard(prompt: str) -> str:
     return prompt if _IMAGE_TEXT_GUARD in prompt else f"{prompt}\n\n{_IMAGE_TEXT_GUARD}"
-
-
-def _character_variant(content_id: Optional[int]) -> str:
-    index = (int(content_id or 0) - 1) % len(_CHARACTER_VARIANTS)
-    return _CHARACTER_VARIANTS[index]
 
 
 async def build_image_prompt(*, db: Session, project: SmmProject, content: SmmContent, user) -> str:
@@ -79,22 +56,34 @@ async def build_image_prompt(*, db: Session, project: SmmProject, content: SmmCo
     # содержание сохраняется в SmmKnowledgeItem как image_reference, поэтому
     # передаём генератору не бинарник, а подготовленное описание референса.
     knowledge_items = knowledge_svc.list_items(db, project)
+    # Visual identity is intentionally project-local even when a personal
+    # social account is allowed to use facts from the other projects.
     visual_refs = [
         item for item in knowledge_items
         if item.source_type == "image_reference" or (item.content_type or "").startswith("image/")
     ]
-    visual_block = "\n\n=== ВИЗУАЛЬНЫЕ РЕФЕРЕНСЫ КОДАРЕНЫ ===\n" + "\n".join(
+    visual_block = "\n\n=== РЕФЕРЕНСЫ ВИЗУАЛЬНОГО СТИЛЯ ЭТОГО ПРОЕКТА ===\n" + "\n".join(
         f"[{item.title}] {(item.content or '')[:1400]}" for item in visual_refs[:12]
     ) if visual_refs else ""
-    context_block = knowledge_svc.as_prompt_block(knowledge_items[:12], max_chars=7000) if knowledge_items else ""
-    character_variant = _character_variant(getattr(content, "id", None))
+    content_sources = knowledge_svc.content_items(db, project)
+    context_block = knowledge_svc.as_prompt_block(content_sources[:12], max_chars=7000) if content_sources else ""
+    brand = project.brand_context if isinstance(project.brand_context, dict) else {}
+    visual_profile = "\n".join(
+        f"{label}: {brand[key]}" for key, label in (
+            ("visual_palette", "Палитра"), ("visual_style", "Стиль"),
+            ("logo_usage", "Правила логотипа"), ("allowed_imagery", "Разрешённые образы"),
+            ("forbidden_imagery", "Запрещённые образы"), ("people_style", "Стиль изображения людей"),
+            ("image_composition", "Композиция"),
+        ) if brand.get(key)
+    )
     prompt = (
         f"{base_prompt}\n\n"
-        "Это обязательный постоянный контекст проекта. Сохрани узнаваемый мир, персонажей, "
-        "цветовую палитру и визуальный язык КодАрены. Не заменяй их абстрактным стоковым дизайном. "
-        f"Для этой публикации используй отдельного героя: {character_variant}. "
-        "Не копируй главного героя с предыдущих публикаций и не повторяй один и тот же силуэт, "
-        "одежду или цветовую комбинацию; разнообразь персонажей между постами. "
+        "Формат: вертикальная публикация 4:5. Создай один цельный визуал для ленты, "
+        "без встроенных заголовков и псевдотекста; текст публикации размещается отдельно в подписи.\n"
+        f"Проект: {project.name}. Следуй его собственному бренд-профилю и не заимствуй "
+        "визуальную идентичность других проектов.\n"
+        f"{visual_profile}\n"
+        "Используй только образы, уместные теме и разрешённые брендом. "
         "Если в изображении есть подписи, заголовки или другие слова, пиши их только на русском языке, "
         "кириллицей, без английских букв. Не вставляй английский текст. "
         f"{visual_block}{context_block}"
@@ -211,7 +200,7 @@ async def render_image(
         final_prompt = f"{final_prompt}\n\n{_VISUAL_REFERENCE_GUARD}"
     result = await ai_gateway.generate_image(
         feature=f"smm_projects:{project.code}:render_image", prompt=final_prompt,
-        input_references=references or None, user_id=getattr(user, "id", None),
+        aspect_ratio="4:5", input_references=references or None, user_id=getattr(user, "id", None),
     )
     if not result.ok and references:
         # Gemini иногда отвечает finish_reason=STOP без картинки и без явного
@@ -222,7 +211,7 @@ async def render_image(
         logger.warning("smm render_image retrying with one reference after provider error: %s", result.error)
         result = await ai_gateway.generate_image(
             feature=f"smm_projects:{project.code}:render_image", prompt=final_prompt,
-            input_references=references[:1], user_id=getattr(user, "id", None),
+            aspect_ratio="4:5", input_references=references[:1], user_id=getattr(user, "id", None),
         )
     if not result.ok or not result.data:
         raise ValueError(result.error or "Генератор изображений вернул пустой ответ")

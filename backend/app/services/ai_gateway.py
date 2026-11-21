@@ -467,6 +467,7 @@ async def generate_image(
     feature: str,
     prompt: str,
     size: Optional[str] = None,
+    aspect_ratio: Optional[str] = None,
     input_references: Optional[List[Dict[str, Any]]] = None,
     user_id: Optional[int] = None,
     timeout: float = 180.0,
@@ -493,7 +494,7 @@ async def generate_image(
             payload["size"] = size
         if name == "tunnel":
             payload["resolution"] = os.getenv("AI_TUNNEL_IMAGE_RESOLUTION", "1K")
-            payload["aspect_ratio"] = os.getenv("AI_TUNNEL_IMAGE_ASPECT_RATIO", "1:1")
+            payload["aspect_ratio"] = aspect_ratio or os.getenv("AI_TUNNEL_IMAGE_ASPECT_RATIO", "1:1")
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.post(f"{cfg['base_url']}/images/generations", headers=headers, json=payload)

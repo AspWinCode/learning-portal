@@ -178,7 +178,7 @@ const NewContentTab: React.FC<{ projectCode: string; canGenerate: boolean; onGen
 
 // ─── Месячный контент-план ──────────────────────────────────────────────────
 
-const PLAN_FORMATS = ['Пост', 'Карусель', 'Видео / Reels / Shorts', 'Инфографика'];
+const PLAN_FORMATS = ['Пост-картинка', 'Карусель', 'Инфографика'];
 const PLAN_GENRES = [
   'Экспертный', 'Образовательный', 'Интерактивный', 'Юмористический', 'История / закулисье',
   'Анонс / продающий', 'Размышления организаторов', 'Новости программирования и геймдева',
@@ -280,6 +280,7 @@ const ContentPlanTab: React.FC<{ projectCode: string; canGenerate: boolean }> = 
                 </Typography>
                 <Typography variant="body2">
                   Контекст: {readiness.context.active_items} активных источников · {readiness.context.total_chars.toLocaleString('ru-RU')} знаков
+                  {' · '}проекты-источники: {readiness.context.source_projects?.map((source) => source.name).join(', ') || 'текущий проект'}
                   {' · '}прошлые публикации: {readiness.publication_stats.total} (успешно {readiness.publication_stats.successful}, ошибок {readiness.publication_stats.failed})
                 </Typography>
                 {readiness.publication_stats.engagement_metrics_available ? (

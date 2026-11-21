@@ -175,6 +175,21 @@ async def test_generate_image_omits_size_by_default(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_generate_image_accepts_per_request_aspect_ratio(monkeypatch):
+    monkeypatch.setenv("AI_TUNNEL_BASE_URL", "https://tunnel.example/v1")
+    monkeypatch.setenv("AI_TUNNEL_API_KEY", "k")
+    monkeypatch.setenv("AI_TUNNEL_MODEL_IMAGE", "qwen-image-3")
+    _FakeAsyncClient.payload = {"data": [{"b64_json": "abc"}]}
+    monkeypatch.setattr(httpx, "AsyncClient", _FakeAsyncClient)
+
+    result = await ai_gateway.generate_image(feature="unit", prompt="картинка", aspect_ratio="4:5")
+
+    assert result.ok is True
+    _, kwargs = _FakeAsyncClient.calls[0]
+    assert kwargs["json"]["aspect_ratio"] == "4:5"
+
+
+@pytest.mark.asyncio
 async def test_generate_image_includes_size_when_requested(monkeypatch):
     monkeypatch.setenv("AI_TUNNEL_BASE_URL", "https://tunnel.example/v1")
     monkeypatch.setenv("AI_TUNNEL_API_KEY", "k")

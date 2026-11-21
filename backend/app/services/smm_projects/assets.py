@@ -158,14 +158,15 @@ async def build_image_prompt(*, db: Session, project: SmmProject, content: SmmCo
 
 
 def _visual_input_references(
-    db: Session, project: SmmProject, *, content_id: Optional[int] = None,
-) -> list[dict[str, object]]:
+    db: Session, project: SmmProject, *, content_id: Optional[int] = None, include_details: bool = False,
+) -> list[dict[str, object]] | tuple[list[dict[str, object]], list[Dict[str, Any]]]:
     """Подготовить разнообразный набор изображений проекта для image-to-image.
 
     Выбираем разнообразные референсы по размеченным ролям. Персонажные
     референсы доступны только если тема или image prompt явно просит персонажа.
     """
     references: list[dict[str, object]] = []
+    reference_details: list[Dict[str, Any]] = []
     total_bytes = 0
     candidates_by_role: dict[str, list[SmmKnowledgeItem]] = {role: [] for role in _VISUAL_ROLE_LABELS}
     wants_character: Optional[bool] = None
@@ -274,8 +275,25 @@ def _visual_input_references(
             continue
         data_uri = f"data:image/png;base64,{base64.b64encode(raw).decode('ascii')}"
         references.append({"type": "image_url", "image_url": {"url": data_uri}})
+        if isinstance(item, SmmContentAsset):
+            reference_details.append({
+                "source": "published_archive",
+                "source_id": item.content_id,
+                "title": f"Архив публикаций · материал #{item.content_id}",
+                "role": "archive",
+                "role_label": "Опубликованный визуал",
+            })
+        else:
+            role = getattr(item, "visual_role", None) or "style"
+            reference_details.append({
+                "source": "project_reference",
+                "source_id": item.id,
+                "title": item.title,
+                "role": role,
+                "role_label": _VISUAL_ROLE_LABELS.get(role, "Визуальный ориентир"),
+            })
         total_bytes += len(raw)
-    return references
+    return (references, reference_details) if include_details else references
 
 
 async def render_image(
@@ -292,13 +310,16 @@ async def render_image(
 
     # AITunnel принимает до нескольких input_references для image-to-image.
     # Передаём именно загруженные изображения персонажей/стиля, а не только их OCR/AI-описания.
-    references = _visual_input_references(db, project, content_id=getattr(content, "id", None))
+    references, reference_details = _visual_input_references(
+        db, project, content_id=getattr(content, "id", None), include_details=True,
+    )
     if references and _VISUAL_REFERENCE_GUARD not in final_prompt:
         final_prompt = f"{final_prompt}\n\n{_VISUAL_REFERENCE_GUARD}"
     result = await ai_gateway.generate_image(
         feature=f"smm_projects:{project.code}:render_image", prompt=final_prompt,
         aspect_ratio="4:5", input_references=references or None, user_id=getattr(user, "id", None),
     )
+    retried_with_one_reference = False
     if not result.ok and references:
         # Gemini иногда отвечает finish_reason=STOP без картинки и без явного
         # block_reason — не блокировка по политике, а отказ именно совмещать
@@ -306,6 +327,7 @@ async def render_image(
         # Не теряем связь с брендом при повторе: уменьшаем набор до одного
         # референса, но не запускаем нерелевантную генерацию без визуального якоря.
         logger.warning("smm render_image retrying with one reference after provider error: %s", result.error)
+        retried_with_one_reference = True
         result = await ai_gateway.generate_image(
             feature=f"smm_projects:{project.code}:render_image", prompt=final_prompt,
             aspect_ratio="4:5", input_references=references[:1], user_id=getattr(user, "id", None),
@@ -339,6 +361,14 @@ async def render_image(
             logger.warning("smm asset download failed, keeping url-only: %s", exc)
 
     asset_meta = dict(meta or {})
+    used_reference_details = reference_details[:1] if retried_with_one_reference else reference_details
+    asset_meta["visual_references"] = {
+        "mode": "project_references" if any(ref["source"] == "project_reference" for ref in used_reference_details)
+        else "published_archive" if used_reference_details else "none",
+        "references": used_reference_details,
+        "sent_count": len(used_reference_details),
+        "retried_with_one_reference": retried_with_one_reference,
+    }
     if storage_key:
         try:
             brand = project.brand_context if isinstance(project.brand_context, dict) else {}

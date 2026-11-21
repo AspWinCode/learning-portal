@@ -37,6 +37,7 @@ async def test_image_prompt_uses_selected_project_identity_without_kodarena_defa
 def test_visual_input_references_include_successful_project_archive(monkeypatch):
     archived = SmmContentAsset()
     archived.id = 77
+    archived.content_id = 42
     archived.storage_key = "archive.png"
     archived.content_type = "image/png"
     archived.original_filename = "archive.png"
@@ -65,9 +66,19 @@ def test_visual_input_references_include_successful_project_archive(monkeypatch)
     monkeypatch.setattr(assets.storage, "read_bytes", lambda key: _png_bytes())
 
     references = assets._visual_input_references(_ArchiveDB(), _project(), content_id=2)
+    _, details = assets._visual_input_references(
+        _ArchiveDB(), _project(), content_id=2, include_details=True,
+    )
 
     assert len(references) == 1
     assert references[0]["image_url"]["url"].startswith("data:image/png;base64,")
+    assert details == [{
+        "source": "published_archive",
+        "source_id": 42,
+        "title": "Архив публикаций · материал #42",
+        "role": "archive",
+        "role_label": "Опубликованный визуал",
+    }]
 
 
 def _project(code="test_project"):

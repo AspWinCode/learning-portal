@@ -875,6 +875,29 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
                   </Typography>
                 );
               })()}
+              {(() => {
+                const usage = asset.meta?.visual_references as {
+                  references?: Array<{ title?: string; role_label?: string }>;
+                  retried_with_one_reference?: boolean;
+                } | undefined;
+                if (!usage) return null;
+                const references = usage.references || [];
+                return (
+                  <Box sx={{ mt: 0.5 }}>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                      {references.length
+                        ? `Референсы генерации: ${references.length}`
+                        : 'Генерация без визуальных референсов'}
+                      {usage.retried_with_one_reference ? ' · повтор с одним референсом' : ''}
+                    </Typography>
+                    {references.map((reference, index) => (
+                      <Typography key={`${reference.title || 'reference'}-${index}`} variant="caption" color="text.secondary" sx={{ display: 'block', ml: 1 }}>
+                        · {reference.role_label || 'Визуальный ориентир'}: {reference.title || 'Без названия'}
+                      </Typography>
+                    ))}
+                  </Box>
+                );
+              })()}
               {canManage && item.status === 'draft' && (
                 <Button size="small" color="error" onClick={() => void removeDraftImage(item.id, asset.id)} disabled={busyId === item.id}>
                   Удалить картинку

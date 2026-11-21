@@ -1,6 +1,10 @@
 from types import SimpleNamespace
 
-from app.services.smm_projects.metrics import _count
+from datetime import datetime, timezone
+
+import pytest
+
+from app.services.smm_projects.metrics import _collect_instagram_metrics, _count
 from app.services.smm_projects.content_plans import _performance_breakdown
 
 
@@ -51,3 +55,56 @@ def test_performance_breakdown_does_not_treat_views_only_as_zero_engagement():
     result = _performance_breakdown([(publication, None, None)])
 
     assert result == {"by_channel_format": [], "by_channel_genre": []}
+
+
+@pytest.mark.asyncio
+async def test_instagram_metrics_persist_only_counters_returned_by_meta():
+    class Response:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"data": [
+                {"name": "views", "values": [{"value": 321}]},
+                {"name": "likes", "values": [{"value": 18}]},
+                {"name": "comments", "values": [{"value": 4}]},
+            ]}
+
+    class Client:
+        async def get(self, url, params):
+            assert url.endswith("/media-123/insights")
+            assert params["access_token"] == "secret"
+            return Response()
+
+    publication = SimpleNamespace(external_id="media-123", metrics_json=None, metrics_updated_at=None)
+    now = datetime.now(timezone.utc)
+
+    updated = await _collect_instagram_metrics(Client(), 1, [publication], {"token": "secret"}, now)
+
+    assert updated == 1
+    assert publication.metrics_json == {"views": 321, "likes": 18, "comments": 4}
+    assert publication.metrics_updated_at == now
+
+
+@pytest.mark.asyncio
+async def test_instagram_empty_insights_are_not_saved_as_zeroes():
+    class Response:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"data": []}
+
+    class Client:
+        async def get(self, url, params):
+            return Response()
+
+    publication = SimpleNamespace(external_id="media-456", metrics_json=None, metrics_updated_at=None)
+
+    updated = await _collect_instagram_metrics(
+        Client(), 1, [publication], {"token": "secret"}, datetime.now(timezone.utc),
+    )
+
+    assert updated == 1
+    assert publication.metrics_json is None
+    assert publication.metrics_updated_at is not None

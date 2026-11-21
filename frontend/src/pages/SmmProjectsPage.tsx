@@ -285,7 +285,7 @@ const ContentPlanTab: React.FC<{ projectCode: string; canGenerate: boolean }> = 
                 {readiness.publication_stats.engagement_metrics_available ? (
                   <>
                     <Typography variant="caption">
-                      Метрики VK ({readiness.publication_stats.metrics_publications} постов): просмотры {readiness.publication_stats.metrics_totals.views.toLocaleString('ru-RU')} · лайки {readiness.publication_stats.metrics_totals.likes.toLocaleString('ru-RU')} · комментарии {readiness.publication_stats.metrics_totals.comments.toLocaleString('ru-RU')} · репосты {readiness.publication_stats.metrics_totals.reposts.toLocaleString('ru-RU')}
+                      Метрики ({readiness.publication_stats.metrics_publications} постов): просмотры {readiness.publication_stats.metrics_totals.views.toLocaleString('ru-RU')} · охват {readiness.publication_stats.metrics_totals.reach.toLocaleString('ru-RU')} · лайки {readiness.publication_stats.metrics_totals.likes.toLocaleString('ru-RU')} · комментарии {readiness.publication_stats.metrics_totals.comments.toLocaleString('ru-RU')} · репосты {readiness.publication_stats.metrics_totals.reposts.toLocaleString('ru-RU')} · пересылки {readiness.publication_stats.metrics_totals.shares.toLocaleString('ru-RU')} · сохранения {readiness.publication_stats.metrics_totals.saved.toLocaleString('ru-RU')}
                     </Typography>
                     {readiness.publication_stats.performance_insights.by_channel_format.filter((row) => row.enough_data).sort((a, b) => b.engagement_rate - a.engagement_rate).slice(0, 3).map((row) => (
                       <Typography key={`${row.channel}-${row.format}`} variant="caption">

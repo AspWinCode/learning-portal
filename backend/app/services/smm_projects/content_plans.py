@@ -79,10 +79,10 @@ def _performance_breakdown(publications) -> Dict[str, List[Dict[str, Any]]]:
             continue
         # Some APIs (currently MAX) expose views without likes/comments/reposts.
         # Treating absent counters as zero would create a false 0% engagement rate.
-        if not any(key in metrics for key in ("likes", "comments", "reposts")):
+        if not any(key in metrics for key in ("likes", "comments", "reposts", "shares", "saved")):
             continue
         interactions = sum(
-            int(metrics.get(key) or 0) for key in ("likes", "comments", "reposts")
+            int(metrics.get(key) or 0) for key in ("likes", "comments", "reposts", "shares", "saved")
             if isinstance(metrics.get(key), (int, float))
         )
         content_format = (
@@ -134,7 +134,7 @@ def plan_readiness(db: Session, project: SmmProject) -> Dict[str, Any]:
     by_format: Dict[str, int] = {}
     successful = failed = scheduled = 0
     metrics_publications = 0
-    metrics_totals = {"views": 0, "likes": 0, "comments": 0, "reposts": 0}
+    metrics_totals = {"views": 0, "reach": 0, "likes": 0, "comments": 0, "reposts": 0, "shares": 0, "saved": 0}
     performance_insights = _performance_breakdown(publications)
     last_published_at = None
     for publication, content, plan_item in publications:
@@ -651,7 +651,7 @@ async def generate_plan(db: Session, user, *, project: SmmProject, payload: Dict
         f"Статистика прошлых публикаций: всего {stats['total']}, успешно {stats['successful']}, ошибок {stats['failed']}; "
         f"по каналам: {json.dumps(stats['by_channel'], ensure_ascii=False)}; "
         f"по форматам: {json.dumps(stats['by_format'], ensure_ascii=False)}.\n"
-        f"Метрики VK собраны для {stats['metrics_publications']} публикаций: "
+        f"Метрики собраны для {stats['metrics_publications']} публикаций: "
         f"{json.dumps(stats['metrics_totals'], ensure_ascii=False)}. Если метрик нет — не делай выводов об эффективности. "
         f"Эффективность по каналам/форматам: {json.dumps(stats['performance_insights']['by_channel_format'], ensure_ascii=False)}; "
         f"по каналам/жанрам: {json.dumps(stats['performance_insights']['by_channel_genre'], ensure_ascii=False)}. "

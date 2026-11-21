@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 
 import httpx
@@ -33,7 +34,7 @@ async def collect_due_metrics(db: Session, *, limit: int = 200) -> int:
     rows = (
         db.query(SmmPublication)
         .filter(
-            SmmPublication.channel.in_(("vk", "max")),
+            SmmPublication.channel.in_(("vk", "max", "instagram")),
             SmmPublication.status == SmmPublicationStatus.SUCCESS.value,
             SmmPublication.external_id.isnot(None),
             or_(SmmPublication.metrics_updated_at.is_(None), SmmPublication.metrics_updated_at < cutoff),
@@ -55,6 +56,9 @@ async def collect_due_metrics(db: Session, *, limit: int = 200) -> int:
                 continue
             if channel == "max":
                 updated += await _collect_max_metrics(client, project_id, publications, config, now)
+                continue
+            if channel == "instagram":
+                updated += await _collect_instagram_metrics(client, project_id, publications, config, now)
                 continue
             if not config.get("group_id"):
                 continue
@@ -124,6 +128,40 @@ async def _collect_max_metrics(client, project_id, publications, config, now) ->
                 updated += 1
         except (httpx.HTTPError, ValueError, TypeError) as exc:
             logger.warning("SMM MAX metrics request failed for project %s: %s", project_id, exc)
+    return updated
+
+
+async def _collect_instagram_metrics(client, project_id, publications, config, now) -> int:
+    """Read available lifetime insights for media published by this account."""
+    graph_version = os.getenv("SMM_META_GRAPH_VERSION", "v23.0").strip()
+    updated = 0
+    for row in publications:
+        try:
+            response = await client.get(
+                f"https://graph.facebook.com/{graph_version}/{row.external_id}/insights",
+                params={
+                    "metric": "comments,likes,reach,reposts,saved,shares,total_interactions,views",
+                    "access_token": config["token"],
+                },
+            )
+            response.raise_for_status()
+            payload = response.json()
+            values = {}
+            for item in payload.get("data", []) if isinstance(payload, dict) else []:
+                if not isinstance(item, dict):
+                    continue
+                name = item.get("name")
+                points = item.get("values")
+                value = points[0].get("value") if isinstance(points, list) and points and isinstance(points[0], dict) else None
+                if isinstance(name, str) and isinstance(value, (int, float)):
+                    values[name] = max(0, int(value))
+            # Persist only counters actually returned by Meta. An empty data set
+            # is a valid response (e.g. a metric is unavailable), not a zero.
+            row.metrics_json = values or None
+            row.metrics_updated_at = now
+            updated += 1
+        except (httpx.HTTPError, ValueError, TypeError) as exc:
+            logger.warning("SMM Instagram metrics fetch failed for project %s: %s", project_id, exc)
     return updated
 
 

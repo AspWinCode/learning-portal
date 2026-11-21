@@ -131,20 +131,25 @@ def _visual_input_references(
     # of new creatives without repeatedly sampling one and the same archive
     # asset or allowing old posts to replace the curated brand references.
     archived_candidates = []
-    archive_query = db.query(SmmContentAsset) if db is not None else None
-    if archive_query is not None and hasattr(archive_query, "join"):
-        archived_candidates = (
-            archive_query
-            .join(SmmPublication, SmmPublication.content_id == SmmContentAsset.content_id)
-            .filter(
-                SmmPublication.project_id == project.id,
-                SmmPublication.status == SmmPublicationStatus.SUCCESS.value,
-                SmmContentAsset.storage_key.isnot(None),
+    try:
+        archive_query = db.query(SmmContentAsset) if db is not None else None
+        if archive_query is not None and hasattr(archive_query, "join"):
+            archived_candidates = (
+                archive_query
+                .join(SmmPublication, SmmPublication.content_id == SmmContentAsset.content_id)
+                .filter(
+                    SmmPublication.project_id == project.id,
+                    SmmPublication.status == SmmPublicationStatus.SUCCESS.value,
+                    SmmContentAsset.storage_key.isnot(None),
+                )
+                .order_by(SmmPublication.published_at.desc(), SmmPublication.id.desc(), SmmContentAsset.id)
+                .limit(20)
+                .all()
             )
-            .order_by(SmmPublication.published_at.desc(), SmmPublication.id.desc(), SmmContentAsset.id)
-            .limit(20)
-            .all()
-        )
+    except Exception:  # noqa: BLE001 — отсутствие архива не должно блокировать генерацию
+        logger.exception("smm visual archive lookup failed for project %s", project.code)
+        if db is not None:
+            db.rollback()
     archived_candidates = list({asset.id: asset for asset in archived_candidates if asset.id is not None}.values())
     if archived_candidates:
         start = (max(int(content_id or 1), 1) - 1) % len(archived_candidates)
@@ -164,7 +169,16 @@ def _visual_input_references(
             content_type = mimetypes.guess_type(item.original_filename or "")[0] or "image/png"
         if content_type not in {"image/png", "image/jpeg", "image/webp"}:
             continue
-        raw = storage.read_bytes(item.storage_key)
+        try:
+            raw = storage.read_bytes(item.storage_key)
+        except Exception:  # noqa: BLE001 — один некорректный референс не ломает весь рендер
+            logger.warning(
+                "smm visual reference could not be read; skipping project=%s reference_id=%s",
+                project.code,
+                getattr(item, "id", None),
+                exc_info=True,
+            )
+            continue
         if not raw or len(raw) > 12 * 1024 * 1024 or total_bytes + len(raw) > 40 * 1024 * 1024:
             continue
         try:

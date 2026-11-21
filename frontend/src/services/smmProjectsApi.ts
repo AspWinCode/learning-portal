@@ -309,6 +309,13 @@ export interface GeneratedContent {
   updated_at: string | null;
 }
 
+export interface ContentTextReview {
+  status: 'ok' | 'needs_review';
+  summary: string;
+  issues: string[];
+  suggestions: string[];
+}
+
 export interface ContentList {
   items: GeneratedContent[];
   total: number;
@@ -375,6 +382,9 @@ export const approveContent = (id: number): Promise<GeneratedContent> =>
 
 export const transformContent = (id: number, action: TransformAction, channel?: string): Promise<GeneratedContent> =>
   api.post(`${BASE}/content/${id}/transform`, { action, channel }).then((r) => r.data);
+
+export const reviewContentText = (id: number): Promise<ContentTextReview> =>
+  api.post(`${BASE}/content/${id}/review-text`, {}, { timeout: 60000 }).then((r) => r.data);
 
 export const createContentVariant = (id: number, channel: string): Promise<GeneratedContent> =>
   api.post(`${BASE}/content/${id}/variant`, { channel }).then((r) => r.data);

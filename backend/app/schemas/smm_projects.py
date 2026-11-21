@@ -55,6 +55,7 @@ class ProjectUpdate(BaseModel):
 class BrandContextFieldOut(BaseModel):
     key: str
     label: str
+    hint: Optional[str] = None
 
 
 # ─── Knowledge ──────────────────────────────────────────────────────────────
@@ -265,6 +266,13 @@ class ContentUpdate(BaseModel):
     title: Optional[str] = None
     output_text: Optional[str] = None
     selected_asset_id: Optional[int] = None
+
+
+class ContentTextReviewOut(BaseModel):
+    status: Literal["ok", "needs_review"]
+    summary: str
+    issues: List[str] = Field(default_factory=list)
+    suggestions: List[str] = Field(default_factory=list)
 
 
 class TransformRequest(BaseModel):

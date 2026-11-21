@@ -421,6 +421,7 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
   const [hiddenScheduledCount, setHiddenScheduledCount] = useState(0);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editText, setEditText] = useState('');
+  const [textReviews, setTextReviews] = useState<Record<number, smm.ContentTextReview>>({});
 
   const stageLabel = (item: smm.GeneratedContent) => {
     const mediaStatus = item.input_json?.media_status;
@@ -512,9 +513,27 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
     setError(null);
     try {
       await smm.transformContent(id, action);
+      setTextReviews((current) => {
+        const next = { ...current };
+        delete next[id];
+        return next;
+      });
       await reload();
     } catch (e) {
       setError(extractApiError(e, 'Ошибка'));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const reviewText = async (id: number) => {
+    setBusyId(id);
+    setError(null);
+    try {
+      const review = await smm.reviewContentText(id);
+      setTextReviews((current) => ({ ...current, [id]: review }));
+    } catch (e) {
+      setError(extractApiError(e, 'Не удалось проверить текст'));
     } finally {
       setBusyId(null);
     }
@@ -529,6 +548,11 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
   const startEditing = (item: smm.GeneratedContent) => {
     setEditingId(item.id);
     setEditText(item.output_text || '');
+    setTextReviews((current) => {
+      const next = { ...current };
+      delete next[item.id];
+      return next;
+    });
     setError(null);
   };
 
@@ -546,6 +570,11 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
     setError(null);
     try {
       await smm.updateContent(id, { output_text: editText, status: 'draft' });
+      setTextReviews((current) => {
+        const next = { ...current };
+        delete next[id];
+        return next;
+      });
       cancelEditing();
       await reload();
     } catch (e) {
@@ -718,6 +747,22 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
               {readableSmmText(item.output_text, item.output_json)}
             </Typography>
           )}
+          {textReviews[item.id] && (
+            <Alert severity={textReviews[item.id].status === 'ok' ? 'success' : 'warning'} sx={{ mt: 1 }}>
+              <Typography variant="body2" fontWeight={600}>{textReviews[item.id].summary}</Typography>
+              {!!textReviews[item.id].issues.length && (
+                <Box component="ul" sx={{ my: 0.5, pl: 2.5 }}>
+                  {textReviews[item.id].issues.map((issue, index) => <li key={`issue-${index}`}><Typography variant="body2">{issue}</Typography></li>)}
+                </Box>
+              )}
+              {!!textReviews[item.id].suggestions.length && (
+                <Box component="ul" sx={{ my: 0.5, pl: 2.5 }}>
+                  {textReviews[item.id].suggestions.map((suggestion, index) => <li key={`suggestion-${index}`}><Typography variant="body2">{suggestion}</Typography></li>)}
+                </Box>
+              )}
+              <Typography variant="caption">Проверка справочная: текст не изменён.</Typography>
+            </Alert>
+          )}
           {item.input_json?.media_error && (
             <Alert severity="warning" sx={{ mt: 1 }}>
               Текст создан, но медиа не готово: {String(item.input_json.media_error)}. Можно повторить генерацию визуала ниже.
@@ -747,6 +792,9 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
                   />
                 ))}
               </Stack>
+              <Button size="small" sx={{ mt: 1 }} variant="outlined" onClick={() => void reviewText(item.id)} disabled={busyId === item.id || editingId === item.id}>
+                {busyId === item.id ? 'Проверяю текст…' : 'Проверить голос и факты'}
+              </Button>
             </Box>
           )}
           {canGenerate && (

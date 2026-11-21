@@ -35,6 +35,7 @@ from app.schemas.smm_projects import (
     ContentPlanOut,
     ContentPlanReadinessOut,
     ContentOut,
+    ContentTextReviewOut,
     ContentUpdate,
     EventPackRequest,
     EventPackResult,
@@ -664,6 +665,24 @@ async def transform_content(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     log_action(db, current_user.id, "update", "smm_content", content.id, {"action": payload.action})
     return content
+
+
+@router.post("/content/{content_id}/review-text", response_model=ContentTextReviewOut)
+async def review_content_text(
+    content_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("smm_projects.generate")),
+):
+    content = _get_content_or_404(db, content_id)
+    project = _project_for_content(db, content, current_user)
+    try:
+        result = await generation.review_text(db, current_user, project=project, content=content)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    log_action(db, current_user.id, "review", "smm_content", content_id, {"project": project.code})
+    return result
 
 
 @router.post("/content/{content_id}/variant", response_model=ContentOut)

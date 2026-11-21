@@ -848,7 +848,7 @@ async def create_event_pack(
 
 # ─── Assets ──────────────────────────────────────────────────────────────
 
-@router.post("/content/{content_id}/render-image", response_model=AssetOut)
+@router.post("/content/{content_id}/render-image", response_model=List[AssetOut])
 async def render_content_image(
     content_id: int,
     payload: RenderImageRequest,
@@ -860,27 +860,53 @@ async def render_content_image(
     try:
         content_format = str((content.input_json or {}).get("content_format") or "").lower()
         is_carousel = "карусел" in content_format or "carousel" in content_format
-        current_assets = db.query(SmmContentAsset).filter(SmmContentAsset.content_id == content.id).count()
-        assets_to_create = max(1, 5 - current_assets) if is_carousel else 1
-        asset = None
-        for slide_index in range(current_assets, current_assets + assets_to_create):
-            prompt = payload.prompt
-            if is_carousel:
-                prompt = f"{prompt or content.output_text or content.title or 'Публикация'}\n\nСлайд {slide_index + 1} из 5. Создай отдельное изображение для карусели."
-            asset = await assets_svc.render_image(
-                db,
-                current_user,
-                project=project,
-                content=content,
-                prompt=prompt,
-                meta={"slide": slide_index + 1, "slides_total": 5, "content_format": "Карусель"} if is_carousel else None,
-                selected_reference_keys=payload.visual_reference_keys,
+        if payload.target_channels is not None and not payload.target_channels:
+            raise ValueError("Выберите хотя бы одну площадку для визуала")
+        target_channels = list(dict.fromkeys(payload.target_channels)) if payload.target_channels is not None else [None]
+        created_assets = []
+        for target_channel in target_channels:
+            existing_assets = (
+                db.query(SmmContentAsset)
+                .filter(SmmContentAsset.content_id == content.id)
+                .order_by(SmmContentAsset.created_at, SmmContentAsset.id)
+                .all()
             )
+            if is_carousel:
+                matching_assets = []
+                for existing in existing_assets:
+                    existing_meta = existing.meta if isinstance(existing.meta, dict) else {}
+                    visual_format = existing_meta.get("visual_format") if isinstance(existing_meta.get("visual_format"), dict) else {}
+                    existing_channel = visual_format.get("target_channel")
+                    if existing_channel == target_channel:
+                        matching_assets.append(existing)
+                slide_start = len(matching_assets)
+                assets_to_create = max(1, 5 - slide_start)
+            else:
+                slide_start = 0
+                assets_to_create = 1
+            for slide_index in range(slide_start, slide_start + assets_to_create):
+                prompt = payload.prompt
+                if is_carousel:
+                    prompt = f"{prompt or content.output_text or content.title or 'Публикация'}\n\nСлайд {slide_index + 1} из 5. Создай отдельное изображение для карусели."
+                meta = {"slide": slide_index + 1, "slides_total": 5, "content_format": "Карусель"} if is_carousel else {}
+                asset = await assets_svc.render_image(
+                    db,
+                    current_user,
+                    project=project,
+                    content=content,
+                    prompt=prompt,
+                    meta=meta,
+                    selected_reference_keys=payload.visual_reference_keys,
+                    target_channel=target_channel,
+                )
+                created_assets.append(asset)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
-    assert asset is not None
-    log_action(db, current_user.id, "create", "smm_content_asset", asset.id, {"content_id": content_id})
-    return asset
+    log_action(db, current_user.id, "create", "smm_content_asset", None, {
+        "content_id": content_id, "asset_ids": [asset.id for asset in created_assets],
+        "target_channels": payload.target_channels,
+    })
+    return created_assets
 
 
 @router.get("/content/{content_id}/assets", response_model=List[AssetOut])
@@ -944,6 +970,23 @@ def download_vk_pack(
         .order_by(SmmContentAsset.id)
         .all()
     )
+    vk_assets = [
+        asset for asset in assets
+        if isinstance(asset.meta, dict)
+        and isinstance(asset.meta.get("visual_format"), dict)
+        and asset.meta["visual_format"].get("target_channel") == "vk"
+    ]
+    if vk_assets:
+        assets = vk_assets
+    else:
+        generic_assets = [
+            asset for asset in assets
+            if not isinstance(asset.meta, dict)
+            or not isinstance(asset.meta.get("visual_format"), dict)
+            or not asset.meta["visual_format"].get("target_channel")
+        ]
+        if generic_assets:
+            assets = generic_assets
     pack_assets = []
     for asset in assets:
         data = storage_svc.read_bytes(asset.storage_key)
@@ -1180,7 +1223,7 @@ def _attach_project_and_asset(db: Session, rows: List[SmmPublication]) -> List[S
         .order_by(SmmContentAsset.created_at, SmmContentAsset.id)
         .all()
     )
-    assets_by_content = {}
+    assets_by_content_channel = {}
     asset_urls = {}
     for asset in all_assets:
         # Generated images are commonly stored locally as b64 data and do not
@@ -1188,14 +1231,19 @@ def _attach_project_and_asset(db: Session, rows: List[SmmPublication]) -> List[S
         url = asset.url or (f"/api/v1/smm-projects/assets/{asset.id}/file" if asset.storage_key else None)
         if url:
             asset_urls[asset.id] = url
-            assets_by_content.setdefault(asset.content_id, []).append(url)
+            meta = asset.meta if isinstance(asset.meta, dict) else {}
+            visual_format = meta.get("visual_format") if isinstance(meta.get("visual_format"), dict) else {}
+            channel_key = visual_format.get("target_channel")
+            assets_by_content_channel.setdefault((asset.content_id, channel_key), []).append(url)
     for row in rows:
         row.project_code = project_codes.get(row.project_id, "")
         row.asset_url = asset_urls.get(row.asset_id) if row.asset_id else None
         content = content_by_id.get(row.content_id)
         content_format = str((content.input_json or {}).get("content_format") or "").lower() if content else ""
         is_carousel = "карусел" in content_format or "carousel" in content_format
-        row.asset_urls = assets_by_content.get(row.content_id, []) if is_carousel and row.asset_id else (
+        selected_channel_urls = assets_by_content_channel.get((row.content_id, row.channel))
+        generic_urls = assets_by_content_channel.get((row.content_id, None), [])
+        row.asset_urls = (selected_channel_urls or generic_urls) if is_carousel and row.asset_id else (
             [row.asset_url] if row.asset_url else []
         )
     return rows

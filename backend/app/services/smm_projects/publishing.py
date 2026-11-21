@@ -32,6 +32,45 @@ CHANNELS_WITHOUT_ASSETS = {"vk"}
 logger = logging.getLogger(__name__)
 
 
+def _asset_target_channel(asset: SmmContentAsset) -> Optional[str]:
+    meta = asset.meta if isinstance(asset.meta, dict) else {}
+    visual_format = meta.get("visual_format") if isinstance(meta.get("visual_format"), dict) else {}
+    return visual_format.get("target_channel")
+
+
+def _assets_for_channel(db: Session, content_id: int, channel: str) -> List[SmmContentAsset]:
+    assets = (
+        db.query(SmmContentAsset).filter(SmmContentAsset.content_id == content_id)
+        .order_by(SmmContentAsset.created_at, SmmContentAsset.id).all()
+    )
+    targeted = [asset for asset in assets if _asset_target_channel(asset) == channel]
+    if targeted:
+        return targeted
+    generic = [asset for asset in assets if _asset_target_channel(asset) is None]
+    if generic:
+        return generic
+    if any(_asset_target_channel(asset) for asset in assets):
+        return []
+    return assets
+
+
+def _asset_id_for_channel(db: Session, content: SmmContent, channel: str) -> Optional[int]:
+    if channel in CHANNELS_WITHOUT_ASSETS:
+        return None
+    assets = _assets_for_channel(db, content.id, channel)
+    if assets:
+        # A carousel uses all matching assets; the first one anchors its publication.
+        return assets[0].id if _is_carousel(content) else assets[-1].id
+    if content.selected_asset_id:
+        selected = db.query(SmmContentAsset).filter(
+            SmmContentAsset.id == content.selected_asset_id,
+            SmmContentAsset.content_id == content.id,
+        ).first()
+        if selected and _asset_target_channel(selected) is None:
+            return selected.id
+    return None
+
+
 def is_channel_configured(db: Session, project: SmmProject, channel: str) -> bool:
     return channels_svc.is_configured(db, project, channel)
 
@@ -44,11 +83,10 @@ def _context(db: Session, project: SmmProject, publication: SmmPublication, asse
         content_format = str((content.input_json or {}).get("content_format") or "").lower() if content else ""
         slides_total = (asset.meta or {}).get("slides_total") if isinstance(asset.meta, dict) else None
         if "карусел" in content_format or "carousel" in content_format:
-            # Legacy carousel assets may not have slides_total metadata. The
-            # content format is authoritative, so send all its images.
-            pass
+            # Isolate per-channel slide sets; legacy generic carousels remain valid.
+            all_assets = _assets_for_channel(db, publication.content_id, publication.channel)
         elif slides_total and int(slides_total) > 1:
-            all_assets = [candidate for candidate in all_assets if isinstance(candidate.meta, dict) and candidate.meta.get("slides_total") == slides_total]
+            all_assets = [candidate for candidate in all_assets if isinstance(candidate.meta, dict) and candidate.meta.get("slides_total") == slides_total and _asset_target_channel(candidate) == _asset_target_channel(asset)]
         else:
             all_assets = [asset]
     bytes_list = []
@@ -91,10 +129,10 @@ def _is_carousel(content: SmmContent) -> bool:
     return "карусел" in content_format or "carousel" in content_format
 
 
-def _ensure_carousel_assets(db: Session, content: SmmContent) -> None:
+def _ensure_carousel_assets(db: Session, content: SmmContent, channel: Optional[str] = None) -> None:
     if not _is_carousel(content):
         return
-    count = db.query(SmmContentAsset).filter(SmmContentAsset.content_id == content.id).count()
+    count = len(_assets_for_channel(db, content.id, channel)) if channel else db.query(SmmContentAsset).filter(SmmContentAsset.content_id == content.id).count()
     if count < 5:
         raise ValueError(f"Для карусели нужно минимум 5 изображений (сейчас {count})")
 
@@ -115,15 +153,16 @@ async def publish(db: Session, user, *, project: SmmProject, content: SmmContent
         raise ValueError(f"Канал «{channel}» не поддерживается. Доступны: {', '.join(SUPPORTED_CHANNELS)}")
     if content.status != "approved":
         raise ValueError("Материал можно публиковать только после одобрения")
-    _ensure_carousel_assets(db, content)
+    _ensure_carousel_assets(db, content, channel)
+    asset_id = _asset_id_for_channel(db, content, channel)
     text = _publication_text(content, channel=channel)
-    if not text and not getattr(content, "selected_asset_id", None):
+    if not text and not asset_id:
         raise ValueError("У материала нет текста или изображения для публикации")
 
     now = datetime.now(timezone.utc)
     publication = SmmPublication(
         content_id=content.id, project_id=project.id, channel=channel,
-        asset_id=getattr(content, "selected_asset_id", None), text_snapshot=text,
+        asset_id=asset_id, text_snapshot=text,
         status=SmmPublicationStatus.PUBLISHING.value, approved_by_id=getattr(user, "id", None), approved_at=now,
         idempotency_key=f"manual:{content.id}:{channel}:{now.isoformat()}", attempt_count=1,
     )
@@ -169,12 +208,19 @@ def create_publications(
             raise ValueError("Материал не найден в выбранном проекте")
         if content.status != "approved":
             raise ValueError(f"Материал #{content.id} можно публиковать только после одобрения")
-        _ensure_carousel_assets(db, content)
-        asset_id = item.get("asset_id") or getattr(content, "selected_asset_id", None)
+        _ensure_carousel_assets(db, content, channel)
+        asset_id = item.get("asset_id")
+        if asset_id is None:
+            asset_id = _asset_id_for_channel(db, content, channel)
         if channel in CHANNELS_WITHOUT_ASSETS:
             asset_id = None
-        if asset_id and not db.query(SmmContentAsset).filter(SmmContentAsset.id == asset_id, SmmContentAsset.content_id == content.id).first():
-            raise ValueError("Выбранный visual не принадлежит материалу")
+        if asset_id:
+            selected_asset = db.query(SmmContentAsset).filter(SmmContentAsset.id == asset_id, SmmContentAsset.content_id == content.id).first()
+            if not selected_asset:
+                raise ValueError("Выбранный visual не принадлежит материалу")
+            target_channel = _asset_target_channel(selected_asset)
+            if target_channel and target_channel != channel:
+                raise ValueError(f"Выбранный визуал подготовлен для площадки «{target_channel}», а публикация — для «{channel}»")
         text = _publication_text(content, channel=channel)
         if not text and not asset_id:
             raise ValueError(f"Материал #{content.id} не содержит текста или изображения")

@@ -43,12 +43,14 @@ const VisualReferencePicker: React.FC<{
   projectCode: string;
   contentId: number;
   disabled: boolean;
-  onGenerate: (keys: string[]) => void;
-}> = ({ projectCode, contentId, disabled, onGenerate }) => {
+  availableChannels: string[];
+  onGenerate: (keys: string[], channels: string[]) => void;
+}> = ({ projectCode, contentId, disabled, availableChannels, onGenerate }) => {
   const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [options, setOptions] = useState<smm.VisualReferenceOption[] | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
+  const [targetChannels, setTargetChannels] = useState<string[]>(['instagram']);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ title: string; url: string } | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -101,6 +103,16 @@ const VisualReferencePicker: React.FC<{
   const toggle = (key: string) => setSelected((current) => (
     current.includes(key) ? current.filter((value) => value !== key) : [...current, key]
   ));
+  const toggleTargetChannel = (channel: string) => setTargetChannels((current) => (
+    current.includes(channel) ? current.filter((value) => value !== channel) : [...current, channel]
+  ));
+
+  const visualChannelOptions = [
+    { key: 'instagram', label: 'Instagram · 4:5' },
+    { key: 'vk', label: 'VK · 1:1' },
+    { key: 'telegram', label: 'Telegram · 1:1' },
+    { key: 'max', label: 'MAX · 1:1' },
+  ].filter((channel) => availableChannels.includes(channel.key));
 
   return (
     <>
@@ -129,12 +141,26 @@ const VisualReferencePicker: React.FC<{
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
             Персонажи включаются только при явном выборе. Пустой набор отключает передачу изображений-референсов.
           </Typography>
+          <Typography variant="body2" sx={{ mt: 2, mb: 0.5 }}>Площадки и формат изображения</Typography>
+          <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+            {visualChannelOptions.map((channel) => (
+              <Chip
+                key={channel.key} size="small" clickable
+                color={targetChannels.includes(channel.key) ? 'secondary' : 'default'}
+                variant={targetChannels.includes(channel.key) ? 'filled' : 'outlined'}
+                label={channel.label} onClick={() => toggleTargetChannel(channel.key)}
+              />
+            ))}
+          </Stack>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+            Создаётся отдельное изображение для каждой выбранной площадки. Квадрат — наш универсальный шаблон для VK, Telegram и MAX; это рекомендация оформления, не обязательное ограничение API.
+          </Typography>
           <Button
-            sx={{ mt: 1 }} size="small" variant="contained" disabled={disabled || loading}
+            sx={{ mt: 1 }} size="small" variant="contained" disabled={disabled || loading || !targetChannels.length}
             startIcon={disabled ? <CircularProgress size={14} /> : undefined}
-            onClick={() => onGenerate(selected)}
+            onClick={() => onGenerate(selected, targetChannels)}
           >
-            {disabled ? 'Генерация визуала…' : 'Создать визуал с выбранными референсами'}
+            {disabled ? 'Генерация визуалов…' : `Создать визуалы · ${targetChannels.length} площадки`}
           </Button>
         </AccordionDetails>
       </Accordion>
@@ -608,12 +634,12 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectCode, reloadKey]);
 
-  const renderImage = async (id: number, visualReferenceKeys: string[]) => {
+  const renderImage = async (id: number, visualReferenceKeys: string[], targetChannels: string[]) => {
     setBusyId(id);
     setError(null);
     setImageErrors((current) => ({ ...current, [id]: '' }));
     try {
-      await smm.renderContentImage(id, undefined, visualReferenceKeys);
+      await smm.renderContentImage(id, undefined, visualReferenceKeys, targetChannels);
       const assets = await smm.listContentAssets(id);
       setAssetsByContent((a) => ({ ...a, [id]: assets }));
     } catch (e) {
@@ -822,14 +848,28 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
     setBusyId(id);
     setError(null);
     try {
+      const assets = assetsByContent[id] || [];
+      const channelAsset = (channel: string) => {
+        const targeted = assets.find((asset) => {
+          const format = asset.meta?.visual_format as { target_channel?: string } | undefined;
+          return format?.target_channel === channel;
+        });
+        if (targeted) return targeted.id;
+        const generic = assets.filter((asset) => {
+          const format = asset.meta?.visual_format as { target_channel?: string | null } | undefined;
+          return !format?.target_channel;
+        });
+        if (generic.length) return generic.find((asset) => asset.is_selected)?.id || generic[0].id;
+        return null;
+      };
       const rows = await smm.publishBundle(
         id,
         channels.map((channel) => ({
           channel,
           content_id: id,
-          // VK cannot accept the generated image; every other channel keeps
-          // the selected visual attached to the scheduled publication.
-          asset_id: channel === 'vk' ? null : (assetsByContent[id]?.find((asset) => asset.is_selected)?.id || assetsByContent[id]?.[0]?.id || null),
+          // VK remains text-only in the direct pipeline; other channels use
+          // their channel-specific visual, then fall back to a generic one.
+          asset_id: channel === 'vk' ? null : channelAsset(channel),
         })),
         scheduleAt[id] ? new Date(scheduleAt[id]).toISOString() : null
       );
@@ -957,7 +997,8 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
               projectCode={projectCode}
               contentId={item.id}
               disabled={busyId === item.id}
-              onGenerate={(keys) => void renderImage(item.id, keys)}
+              availableChannels={smm.ALL_CHANNELS.filter((channel) => channel !== 'zen')}
+              onGenerate={(keys, channels) => void renderImage(item.id, keys, channels)}
             />
           )}
           {imageErrors[item.id] && (
@@ -975,11 +1016,17 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
                 </Typography>
               )}
               {(() => {
-                const quality = asset.meta?.visual_quality_check as { review?: string; review_status?: string; ratio_ok?: boolean } | undefined;
+                const format = asset.meta?.visual_format as { label?: string; aspect_ratio?: string; dimensions?: string } | undefined;
+                if (!format) return null;
+                return <Chip size="small" sx={{ mt: 0.5 }} label={`${format.label || format.aspect_ratio || 'Универсальный'} · целевой размер ${format.dimensions || 'по профилю'}`} />;
+              })()}
+              {(() => {
+                const quality = asset.meta?.visual_quality_check as { review?: string; review_status?: string; ratio_ok?: boolean; ratio?: number; width?: number; height?: number } | undefined;
+                const format = asset.meta?.visual_format as { aspect_ratio?: string } | undefined;
                 if (!quality) return null;
                 return (
                   <Typography variant="caption" color={quality.review_status === 'reviewed' && quality.review && !/согласованно/i.test(quality.review) ? 'warning.main' : 'text.secondary'} sx={{ display: 'block', mt: 0.5 }}>
-                    Проверка визуала: {quality.ratio_ok ? 'формат 4:5' : 'проверьте пропорции'}{quality.review ? ` · ${quality.review}` : ''}
+                    Проверка визуала: {quality.ratio_ok ? `формат ${format?.aspect_ratio || 'по профилю'}` : 'проверьте пропорции'}{quality.width && quality.height ? ` · файл ${quality.width}×${quality.height}` : ''}{quality.review ? ` · ${quality.review}` : ''}
                   </Typography>
                 );
               })()}

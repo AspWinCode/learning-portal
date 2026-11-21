@@ -11,7 +11,7 @@ from typing import Any, Dict, Optional
 
 import httpx
 from sqlalchemy.orm import Session
-from PIL import Image
+from PIL import Image, ImageOps
 
 from app.models import SmmContent, SmmContentAsset, SmmKnowledgeItem, SmmProject, SmmPublication, SmmPublicationStatus
 from app.services import ai_gateway
@@ -41,6 +41,35 @@ _VISUAL_ROLE_LABELS = {
     "composition": "Ориентир по композиции",
     "example": "Пример публикации",
 }
+
+# Рекомендуемые шаблоны продукта: квадрат для карточных лент и компактных
+# превью, вертикальный feed-портрет для Instagram. Это не заявление о строгих
+# ограничениях VK/Telegram/MAX — их API допускают другие пропорции.
+CHANNEL_VISUAL_PROFILES = {
+    "instagram": {
+        "aspect_ratio": "4:5", "ratio": 0.8, "label": "Instagram · портрет 4:5",
+        "dimensions": "1080×1350", "safe_zone": "держи текст и логотипы внутри центральных 88% холста",
+    },
+    "vk": {
+        "aspect_ratio": "1:1", "ratio": 1.0, "label": "VK · квадрат 1:1",
+        "dimensions": "1080×1080", "safe_zone": "оставь 7% свободного края вокруг текста и логотипа",
+    },
+    "telegram": {
+        "aspect_ratio": "1:1", "ratio": 1.0, "label": "Telegram · квадрат 1:1",
+        "dimensions": "1080×1080", "safe_zone": "оставь 7% свободного края вокруг текста и логотипа",
+    },
+    "max": {
+        "aspect_ratio": "1:1", "ratio": 1.0, "label": "MAX · квадрат 1:1",
+        "dimensions": "1080×1080", "safe_zone": "оставь 7% свободного края вокруг текста и логотипа",
+    },
+}
+
+
+def channel_visual_profile(channel: Optional[str]) -> Dict[str, Any]:
+    return dict(CHANNEL_VISUAL_PROFILES.get(channel or "", {
+        "aspect_ratio": "4:5", "ratio": 0.8, "label": "Универсальный · 4:5",
+        "dimensions": "1080×1350", "safe_zone": "оставь 7% свободного края вокруг текста и логотипа",
+    }))
 
 
 def infer_visual_role(description: str) -> str:
@@ -89,7 +118,8 @@ def _format_visual_rules(content: SmmContent) -> tuple[str, str]:
 
 async def build_image_prompt(*, db: Session, project: SmmProject, content: SmmContent, user,
                              prompt_override: Optional[str] = None, include_knowledge: bool = True,
-                             selected_reference_keys: Optional[list[str]] = None) -> str:
+                             selected_reference_keys: Optional[list[str]] = None,
+                             target_channel: Optional[str] = None) -> str:
     structured = content.output_json if isinstance(content.output_json, dict) else {}
     input_data = content.input_json if isinstance(content.input_json, dict) else {}
     brand = project.brand_context if isinstance(project.brand_context, dict) else {}
@@ -141,10 +171,12 @@ async def build_image_prompt(*, db: Session, project: SmmProject, content: SmmCo
     )
     format_key, format_rules = _format_visual_rules(content)
     format_profile = str(brand.get(format_key) or "").strip()
+    channel_profile = channel_visual_profile(target_channel)
     prompt = (
         f"{base_prompt}\n\n"
         f"Формат материала: {str(input_data.get('content_format') or 'Пост')}. "
-        "Размер холста: вертикальный 4:5.\n"
+        f"Целевая площадка и холст: {channel_profile['label']}, {channel_profile['dimensions']} px, "
+        f"соотношение {channel_profile['aspect_ratio']}. {channel_profile['safe_zone']}.\n"
         f"{format_rules}\n"
         f"Особые правила этого формата проекта: {format_profile or 'не заданы; следуй общему визуальному профилю проекта'}.\n"
         f"Проект: {project.name}. Следуй его собственному бренд-профилю и не заимствуй "
@@ -329,10 +361,13 @@ def _visual_input_references(
 async def render_image(
     db: Session, user, *, project: SmmProject, content: SmmContent, prompt: Optional[str] = None,
     meta: Optional[Dict[str, Any]] = None, selected_reference_keys: Optional[list[str]] = None,
+    target_channel: Optional[str] = None,
 ) -> SmmContentAsset:
+    channel_profile = channel_visual_profile(target_channel)
     final_prompt = _with_image_text_guard((await build_image_prompt(
         db=db, project=project, content=content, user=user, prompt_override=prompt,
         include_knowledge=not bool(prompt), selected_reference_keys=selected_reference_keys,
+        target_channel=target_channel,
     )).strip())
     if not final_prompt:
         raise ValueError("Нет промпта для генерации изображения")
@@ -360,7 +395,7 @@ async def render_image(
         final_prompt = f"{final_prompt}\n\n{_VISUAL_REFERENCE_GUARD}"
     result = await ai_gateway.generate_image(
         feature=f"smm_projects:{project.code}:render_image", prompt=final_prompt,
-        aspect_ratio="4:5", input_references=references or None, user_id=getattr(user, "id", None),
+        aspect_ratio=channel_profile["aspect_ratio"], input_references=references or None, user_id=getattr(user, "id", None),
     )
     retried_with_one_reference = False
     if not result.ok and references:
@@ -373,7 +408,7 @@ async def render_image(
         retried_with_one_reference = True
         result = await ai_gateway.generate_image(
             feature=f"smm_projects:{project.code}:render_image", prompt=final_prompt,
-            aspect_ratio="4:5", input_references=references[:1], user_id=getattr(user, "id", None),
+            aspect_ratio=channel_profile["aspect_ratio"], input_references=references[:1], user_id=getattr(user, "id", None),
         )
     if not result.ok or not result.data:
         raise ValueError(result.error or "Генератор изображений вернул пустой ответ")
@@ -386,24 +421,51 @@ async def render_image(
         raise ValueError("Генератор изображений вернул ответ без url и без данных файла")
 
     storage_key = None
-    if b64:
-        storage_key = storage.save_bytes(base64.b64decode(b64), f"content_{content.id}.png")
-    elif url:
+    source_bytes = base64.b64decode(b64) if b64 else None
+    if not source_bytes and url:
         # Некоторые провайдеры (напр. Gemini через AI Tunnel) возвращают только
         # временный url, без b64_json. Без локальной копии байтов каналы,
         # которым нужен файл, а не ссылка (Telegram/VK/MAX), молча публикуют
         # пост без картинки — attachments остаются пустыми, publish() не
         # падает с ошибкой. Поэтому сразу скачиваем картинку по url и
-        # сохраняем как storage_key; сам url всё равно оставляем для Instagram.
+        # сохраняем как storage_key; для Instagram дальше отдаём публичный URL
+        # на нормализованную локальную JPEG-копию.
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
                 response = await client.get(url)
                 response.raise_for_status()
-            storage_key = storage.save_bytes(response.content, f"content_{content.id}.png")
+            source_bytes = response.content
         except Exception as exc:  # noqa: BLE001 — остаёмся на url-only, а не роняем генерацию
             logger.warning("smm asset download failed, keeping url-only: %s", exc)
 
     asset_meta = dict(meta or {})
+    asset_meta["visual_format"] = {
+        **channel_profile,
+        "target_channel": target_channel,
+    }
+    asset_meta["content_type"] = "image/jpeg" if target_channel == "instagram" else "image/png"
+    if source_bytes:
+        try:
+            width, height = (int(part) for part in channel_profile["dimensions"].split("×"))
+            with Image.open(io.BytesIO(source_bytes)) as image:
+                output = ImageOps.fit(
+                    image.convert("RGB"), (width, height), method=Image.Resampling.LANCZOS,
+                    centering=(0.5, 0.5),
+                )
+                normalized = io.BytesIO()
+                if target_channel == "instagram":
+                    output.save(normalized, format="JPEG", quality=90, optimize=True, progressive=True)
+                    filename = f"content_{content.id}_instagram.jpg"
+                else:
+                    output.save(normalized, format="PNG", optimize=True)
+                    filename = f"content_{content.id}_{target_channel or 'universal'}.png"
+            storage_key = storage.save_bytes(normalized.getvalue(), filename)
+        except Exception as exc:
+            if target_channel == "instagram":
+                raise ValueError(f"Не удалось подготовить JPEG для Instagram: {exc}") from exc
+            logger.warning("smm image normalization failed; keeping provider url: %s", exc)
+    elif target_channel == "instagram":
+        raise ValueError("Не удалось скачать изображение, чтобы подготовить публикационный JPEG для Instagram")
     used_reference_details = reference_details[:1] if retried_with_one_reference else reference_details
     asset_meta["visual_references"] = {
         "mode": "project_references" if any(ref["source"] == "project_reference" for ref in used_reference_details)
@@ -422,7 +484,8 @@ async def render_image(
                 ratio = round(width / height, 4) if height else 0
                 check: Dict[str, Any] = {
                     "width": width, "height": height, "ratio": ratio,
-                    "ratio_ok": bool(height and abs(ratio - 0.8) <= 0.04),
+                    "expected_ratio": channel_profile["ratio"],
+                    "ratio_ok": bool(height and abs(ratio - channel_profile["ratio"]) <= 0.04),
                     "review_status": "not_configured",
                 }
                 if ai_gateway.is_configured("vision"):
@@ -450,12 +513,17 @@ async def render_image(
             logger.warning("smm visual quality check failed", exc_info=True)
     asset = SmmContentAsset(
         content_id=content.id, asset_type="image", prompt=final_prompt, provider=result.provider,
-        model=result.model, url=url, storage_key=storage_key, meta=asset_meta,
+        model=result.model, url=url if target_channel != "instagram" else None,
+        storage_key=storage_key, meta=asset_meta,
         created_by_id=getattr(user, "id", None),
     )
     db.add(asset)
     db.commit()
     db.refresh(asset)
+    if target_channel == "instagram" and storage_key:
+        public_base = (os.getenv("PORTAL_BASE_URL") or "https://tirskix.space").rstrip("/")
+        asset.url = f"{public_base}/api/v1/smm-projects/assets/{asset.id}/file"
+        db.commit()
     # Публикация (publishing.create_publications) берёт картинку только из
     # content.selected_asset_id — в UI нет отдельного шага "выбрать визуал",
     # "Создать визуал" это единственное действие пользователя, поэтому без

@@ -177,7 +177,7 @@ async def test_render_image_downloads_url_only_response_for_byte_channels(monkey
         return ai_gateway.GatewayResult(ok=True, provider="tunnel", model="gemini", data=[{"url": "https://cdn.example/slide.png"}])
 
     monkeypatch.setattr(ai_gateway, "generate_image", fake_generate_image)
-    monkeypatch.setattr("httpx.AsyncClient", lambda *a, **k: _Client(_Response(b"downloaded-bytes")))
+    monkeypatch.setattr("httpx.AsyncClient", lambda *a, **k: _Client(_Response(_png_bytes())))
 
     saved = {}
 
@@ -193,7 +193,8 @@ async def test_render_image_downloads_url_only_response_for_byte_channels(monkey
 
     assert asset.url == "https://cdn.example/slide.png"
     assert asset.storage_key == "fake_storage_key.png"
-    assert saved["data"] == b"downloaded-bytes"
+    assert saved["data"].startswith(b"\x89PNG\r\n\x1a\n")
+    assert saved["filename"].endswith("universal.png")
     assert content.selected_asset_id == asset.id
 
 
@@ -230,6 +231,42 @@ async def test_render_image_keeps_url_only_when_download_fails(monkeypatch):
     assert asset.url == "https://cdn.example/slide.png"
     assert asset.storage_key is None
     assert content.selected_asset_id == asset.id
+
+
+@pytest.mark.asyncio
+async def test_instagram_asset_is_normalized_to_public_jpeg(monkeypatch):
+    monkeypatch.setattr(ai_gateway, "is_configured", lambda purpose: True)
+    monkeypatch.setattr(assets.knowledge_svc, "list_items", lambda db, project: [])
+    monkeypatch.setattr("httpx.AsyncClient", lambda *a, **k: _Client(_Response(_png_bytes())))
+    monkeypatch.setenv("PORTAL_BASE_URL", "https://portal.example/")
+
+    saved = {}
+
+    def fake_save_bytes(data, filename):
+        saved["data"] = data
+        saved["filename"] = filename
+        return "instagram.jpg"
+
+    monkeypatch.setattr(assets.storage, "save_bytes", fake_save_bytes)
+
+    async def fake_generate_image(**kwargs):
+        return ai_gateway.GatewayResult(
+            ok=True, provider="tunnel", model="gemini", data=[{"url": "https://cdn.example/image.png"}],
+        )
+
+    monkeypatch.setattr(ai_gateway, "generate_image", fake_generate_image)
+    asset = await assets.render_image(
+        _FakeDB(), None, project=_project(), content=_content(), prompt="draw a cat",
+        target_channel="instagram",
+    )
+
+    with Image.open(io.BytesIO(saved["data"])) as image:
+        assert image.format == "JPEG"
+        assert image.size == (1080, 1350)
+    assert saved["filename"].endswith("instagram.jpg")
+    assert asset.meta["content_type"] == "image/jpeg"
+    assert asset.url == f"https://portal.example/api/v1/smm-projects/assets/{asset.id}/file"
+    assert asset.storage_key == "instagram.jpg"
 
 
 def _png_bytes() -> bytes:
@@ -294,10 +331,13 @@ async def test_render_image_switches_selection_to_the_newly_generated_asset(monk
     attaching the stale one (or none, if the draft never had one selected)."""
     monkeypatch.setattr(ai_gateway, "is_configured", lambda purpose: True)
     monkeypatch.setattr(assets.knowledge_svc, "list_items", lambda db, project: [])
-    monkeypatch.setattr("httpx.AsyncClient", lambda *a, **k: _Client(_Response(b"bytes")))
+    monkeypatch.setattr("httpx.AsyncClient", lambda *a, **k: _Client(_Response(_png_bytes())))
     monkeypatch.setattr(assets.storage, "save_bytes", lambda data, filename: "storage_key.png")
 
+    calls = []
+
     async def fake_generate_image(**kwargs):
+        calls.append(kwargs)
         return ai_gateway.GatewayResult(ok=True, provider="tunnel", model="gemini", data=[{"url": "https://cdn.example/img.png"}])
 
     monkeypatch.setattr(ai_gateway, "generate_image", fake_generate_image)
@@ -308,11 +348,16 @@ async def test_render_image_switches_selection_to_the_newly_generated_asset(monk
     assert content.selected_asset_id == first.id
     assert first.is_selected is True
 
-    second = await assets.render_image(db, None, project=_project(), content=content, prompt="second")
+    second = await assets.render_image(
+        db, None, project=_project(), content=content, prompt="second", target_channel="telegram",
+    )
 
     assert content.selected_asset_id == second.id
     assert second.is_selected is True
     assert first.is_selected is False
+    assert calls[0]["aspect_ratio"] == "4:5"
+    assert calls[1]["aspect_ratio"] == "1:1"
+    assert second.meta["visual_format"]["target_channel"] == "telegram"
 
 
 @pytest.mark.asyncio

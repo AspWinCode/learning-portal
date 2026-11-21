@@ -488,11 +488,12 @@ export interface GeneratedAsset {
   created_at: string | null;
 }
 
-export const renderContentImage = (contentId: number, prompt?: string, visualReferenceKeys?: string[]): Promise<GeneratedAsset> =>
+export const renderContentImage = (contentId: number, prompt?: string, visualReferenceKeys?: string[], targetChannels?: string[]): Promise<GeneratedAsset[]> =>
   // Генерация изображения у Gemini может занимать больше общего API-таймаута.
   api.post(`${BASE}/content/${contentId}/render-image`, {
     prompt,
     ...(visualReferenceKeys === undefined ? {} : { visual_reference_keys: visualReferenceKeys }),
+    ...(targetChannels === undefined ? {} : { target_channels: targetChannels }),
   }, { timeout: 180000 }).then((r) => r.data);
 
 export const selectContentAsset = (contentId: number, assetId: number): Promise<GeneratedAsset> =>

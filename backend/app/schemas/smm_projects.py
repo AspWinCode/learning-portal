@@ -308,6 +308,7 @@ class EventPackResult(BaseModel):
 class RenderImageRequest(BaseModel):
     prompt: Optional[str] = None
     visual_reference_keys: Optional[List[str]] = Field(None, max_length=100)
+    target_channels: Optional[List[Literal["vk", "telegram", "instagram", "max"]]] = Field(None, max_length=4)
 
 
 class VisualReferenceOptionOut(BaseModel):

@@ -51,6 +51,9 @@ jobs:
 
       - name: Deploy to server
         uses: appleboy/ssh-action@v1.0.3
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           host: ${{ secrets.SSH_HOST }}
           username: root

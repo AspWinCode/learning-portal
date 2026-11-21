@@ -9,7 +9,7 @@ from typing import Any, Dict, List
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session, joinedload
 
-from app.models import SmmContent, SmmContentPlan, SmmContentPlanItem, SmmProject, SmmPublication
+from app.models import SmmContent, SmmContentPlan, SmmContentPlanItem, SmmProject, SmmPublication, SmmPublicationStatus
 from app.services import ai_gateway
 from app.services.smm_projects import knowledge as knowledge_svc
 from app.services.smm_projects import assets as assets_svc
@@ -114,6 +114,48 @@ def plan_readiness(db: Session, project: SmmProject) -> Dict[str, Any]:
             "engagement_metrics_available": False,
         },
     }
+
+
+def recent_publication_archive(db: Session, project: SmmProject, *, limit: int = 20) -> List[Dict[str, Any]]:
+    """Return successful posts as reusable editorial examples, newest first."""
+    rows = (
+        db.query(SmmPublication)
+        .join(SmmContent, SmmContent.id == SmmPublication.content_id)
+        .filter(
+            SmmPublication.project_id == project.id,
+            SmmPublication.status == SmmPublicationStatus.SUCCESS.value,
+        )
+        .order_by(SmmPublication.published_at.desc(), SmmPublication.id.desc())
+        .limit(limit)
+        .all()
+    )
+    archive = []
+    for publication in rows:
+        content = publication.content
+        body = _plain_post_text(publication.text_snapshot or content.output_text or "")
+        if not body:
+            continue
+        archive.append({
+            "title": content.title or "Без названия",
+            "channel": publication.channel,
+            "published_at": publication.published_at.date().isoformat() if publication.published_at else None,
+            "text": body[:900],
+        })
+    return archive
+
+
+def _archive_prompt_block(archive: List[Dict[str, Any]], *, max_chars: int = 7000) -> str:
+    if not archive:
+        return ""
+    lines = ["=== АРХИВ УЖЕ ОПУБЛИКОВАННОГО КОНТЕНТА (примеры подачи, не источник фактов) ==="]
+    used = len(lines[0])
+    for entry in archive:
+        line = f"[{entry.get('published_at') or 'дата неизвестна'}; {entry.get('channel')}] {entry['title']}: {entry['text']}"
+        if used + len(line) + 1 > max_chars:
+            break
+        lines.append(line)
+        used += len(line) + 1
+    return "\n".join(lines) if len(lines) > 1 else ""
 
 
 def _as_date(value: Any) -> date:
@@ -236,9 +278,10 @@ async def _generate_item_draft(
     if project is None:
         return False
     knowledge = knowledge_svc.as_prompt_block(knowledge_svc.list_items(db, project), max_chars=12000)
+    archive = _archive_prompt_block(recent_publication_archive(db, project)) if hasattr(db, "query") and hasattr(db.query(SmmPublication), "join") else ""
     genre_hint = GENRE_DRAFT_INSTRUCTIONS.get(item.genre)
     news_item = _pick_news_item(plan, item)
-    system = "\n\n".join(part for part in [GLOBAL_SAFETY_RULES, _brand_block(project), knowledge, genre_hint, (
+    system = "\n\n".join(part for part in [GLOBAL_SAFETY_RULES, _brand_block(project), knowledge, archive, genre_hint, (
         "Ты — редактор SMM-проекта. Создай готовый черновик публикации по брифу. "
         "Не выдумывай факты, даты, цены и характеристики, которых нет в контексте. "
         "Верни только текст публикации без пояснений."
@@ -252,6 +295,8 @@ async def _generate_item_draft(
         f"Канал: {item.channel or 'универсальный'}\n"
         f"Бриф: {item.brief or 'раскрой тему через подтверждённые факты проекта'}\n"
         f"Механика удержания: {item.retention_mechanic or 'вопрос аудитории в конце'}"
+        "\nНе повторяй точные формулировки и сюжеты из архива. Сохраняй узнаваемую подачу, "
+        "но придумай самостоятельный материал; факты бери только из базы знаний и брифа."
         + (f"\n\nРеальная новость, вставленная редактором (бери факты ТОЛЬКО отсюда, не из общих знаний):\n{news_item}" if news_item else "")
     )
     raw = ""
@@ -461,6 +506,8 @@ async def generate_plan(db: Session, user, *, project: SmmProject, payload: Dict
     hits = knowledge_svc.list_items(db, project)
     knowledge = knowledge_svc.as_prompt_block(hits, max_chars=18000)
     readiness = plan_readiness(db, project)
+    archive = recent_publication_archive(db, project)
+    archive_block = _archive_prompt_block(archive)
     stats = readiness["publication_stats"]
     fallback_payload = {**payload, "_knowledge_titles": [item.title for item in hits if item.title]}
     fallback = _fallback_items(fallback_payload)
@@ -472,7 +519,7 @@ async def generate_plan(db: Session, user, *, project: SmmProject, payload: Dict
         f"{len(requested_news_items)}): " + " ||| ".join(requested_news_items)
         if requested_news_items else ""
     )
-    system = "\n\n".join(part for part in [GLOBAL_SAFETY_RULES, _brand_block(project), knowledge, (
+    system = "\n\n".join(part for part in [GLOBAL_SAFETY_RULES, _brand_block(project), knowledge, archive_block, (
         "Ты — SMM-планер. Составляй только редакционный план, не готовые тексты. "
         "Опирайся на контекст проекта и не выдумывай факты. Верни ТОЛЬКО JSON вида "
         '{"items":[{"date":"YYYY-MM-DD","rubric":"...","title":"...",'
@@ -500,6 +547,8 @@ async def generate_plan(db: Session, user, *, project: SmmProject, payload: Dict
         f"Статистика прошлых публикаций: всего {stats['total']}, успешно {stats['successful']}, ошибок {stats['failed']}; "
         f"по каналам: {json.dumps(stats['by_channel'], ensure_ascii=False)}; "
         f"по форматам: {json.dumps(stats['by_format'], ensure_ascii=False)}.\n"
+        f"В архиве {len(archive)} последних опубликованных материалов; смотри их тексты выше. "
+        "Не предлагай близкий повтор этих тем, если нет нового угла или повода. "
         "Сделай равномерный план на весь период. Свяжи повторяющиеся форматы в серии, "
         "добавляй механику удержания и не называй характеристику продукта, которой нет в контексте."
     )

@@ -1240,7 +1240,7 @@ const LegacyBrandSettingsTab: React.FC<{ projectCode: string; canManage: boolean
   return (
     <Stack spacing={2} sx={{ maxWidth: 640 }}>
       <Typography variant="body2" color="text.secondary">
-        AI учитывает общий бренд-профиль и отдельные правила визуала для постов, каруселей и инфографики. Настройки применяются только к этому проекту.
+        AI учитывает позиционирование, голос и тон проекта, примеры подачи и правила площадок, а также отдельные визуальные настройки. Заполненный профиль применяется только к этому проекту.
       </Typography>
       {fields.map((f) => (
         <TextField
@@ -1249,8 +1249,9 @@ const LegacyBrandSettingsTab: React.FC<{ projectCode: string; canManage: boolean
           label={f.label}
           value={brand[f.key] || ''}
           onChange={(e) => setBrand((b) => ({ ...b, [f.key]: e.target.value }))}
+          helperText={f.hint}
           multiline
-          minRows={1}
+          minRows={f.key.startsWith('voice_') ? 2 : 1}
         />
       ))}
       {error && <Alert severity="error">{error}</Alert>}

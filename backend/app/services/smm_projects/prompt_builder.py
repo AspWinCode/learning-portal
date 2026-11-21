@@ -52,6 +52,20 @@ def _brand_block(project: SmmProject) -> str:
             if value:
                 parts.append(f"{field['label']}: {value}")
 
+        voice_fields = (
+            "voice_persona", "voice_tone", "voice_writing_rules", "voice_good_examples",
+            "voice_bad_examples", "voice_channel_rules", "voice_cta_rules",
+        )
+        if any(brand.get(key) for key in voice_fields):
+            parts.append(
+                "Правила применения голоса: соблюдай желаемый голос и тон во всех форматах; "
+                "адаптируй длину и структуру под канал, сохраняя узнаваемую манеру проекта. "
+                "Удачные примеры используй только как ориентир по подаче и не копируй дословно; "
+                "не считай примеры подтверждением фактов о проекте. Неудачные примеры и пояснения "
+                "к ним используй как запрет на аналогичную манеру. Факты бери только из брифа и "
+                "разрешённых источников проекта; эти правила не дают права их додумывать."
+            )
+
     if not parts:
         return ""
     return f"=== БРЕНД-ПРОФИЛЬ ПРОЕКТА «{project.name}» ===\n" + "\n".join(parts)
@@ -61,6 +75,7 @@ def build_system_prompt(
     project: SmmProject,
     template: Optional[SmmContentTemplate],
     knowledge_hits: List[SmmKnowledgeItem],
+    channel: Optional[str] = None,
 ) -> str:
     blocks = [GLOBAL_SAFETY_RULES]
     brand_block = _brand_block(project)
@@ -71,7 +86,16 @@ def build_system_prompt(
         blocks.append(knowledge_block)
     if template and template.description:
         blocks.append(f"=== СЦЕНАРИЙ: {template.name} ===\n{template.description.strip()}")
-    blocks.append("=== ПРАВИЛА КАНАЛОВ ===\n" + "\n".join(f"{channel}: {rule}" for channel, rule in CHANNEL_RULES.items()))
+    blocks.append("=== ПРАВИЛА КАНАЛОВ ===\n" + "\n".join(f"{name}: {rule}" for name, rule in CHANNEL_RULES.items()))
+    if channel:
+        key = channel.strip().lower()
+        aliases = {"вк": "vk", "вконтакте": "vk", "телеграм": "telegram", "тг": "telegram", "инстаграм": "instagram", "макс": "max"}
+        key = aliases.get(key, key)
+        if key in CHANNEL_RULES:
+            blocks.append(
+                f"Целевой канал: {channel}. Применяй правила канала {key} и соответствующие "
+                "проектные настройки площадок; остальные каналовые правила не применяй одновременно."
+            )
     blocks.append(
         "Структурированные сценарии (output_format=json) — верни ТОЛЬКО JSON без markdown-обёртки, "
         "строго с ключами, которые требует задание."

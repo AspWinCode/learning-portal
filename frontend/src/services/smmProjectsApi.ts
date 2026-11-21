@@ -37,6 +37,7 @@ export interface ProjectUpdate {
 export interface BrandContextField {
   key: string;
   label: string;
+  hint?: string;
 }
 
 export const listProjects = (): Promise<ProjectListItem[]> => api.get(`${BASE}/projects`).then((r) => r.data);

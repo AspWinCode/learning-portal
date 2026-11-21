@@ -187,7 +187,9 @@ async def generate(
 
     query_text = " ".join(str(v) for v in input_data.values() if v)
     knowledge_hits = await knowledge_svc.search(db, project, query_text)
-    system_prompt = prompt_builder.build_system_prompt(project, template, knowledge_hits)
+    system_prompt = prompt_builder.build_system_prompt(
+        project, template, knowledge_hits, channel=str(input_data.get("channel") or "") or None,
+    )
     user_prompt = prompt_builder.build_user_prompt(template, input_data)
 
     raw_output, provider, model = await _complete(
@@ -245,7 +247,9 @@ async def _rewrite(
         template = db.query(SmmContentTemplate).filter(SmmContentTemplate.id == source.template_id).first()
 
     knowledge_hits = await knowledge_svc.search(db, project, source.title or "")
-    system_prompt = prompt_builder.build_system_prompt(project, template, knowledge_hits)
+    system_prompt = prompt_builder.build_system_prompt(
+        project, template, knowledge_hits, channel=channel or source.channel,
+    )
     user_prompt = f"{instruction}\n\nИсходный текст:\n{source.output_text}"
 
     raw_output, provider, model = await _complete(
@@ -292,11 +296,13 @@ async def event_pack(db: Session, user, *, project: SmmProject, event_data: Dict
     facts_block = "Факты о мероприятии:\n" + "\n".join(facts_lines) if facts_lines else "Факты о мероприятии не предоставлены."
 
     knowledge_hits = await knowledge_svc.search(db, project, event_name)
-    system_prompt = prompt_builder.build_system_prompt(project, None, knowledge_hits)
 
     group_key = uuid.uuid4().hex
     created: List[SmmContent] = []
     for item in EVENT_PACK_ITEMS:
+        system_prompt = prompt_builder.build_system_prompt(
+            project, None, knowledge_hits, channel=item["channel"],
+        )
         user_prompt = f"{item['instruction']}\n\n{facts_block}"
         output_text, provider, model = await _complete(
             feature=f"smm_projects:{project.code}:event_pack:{item['key']}",

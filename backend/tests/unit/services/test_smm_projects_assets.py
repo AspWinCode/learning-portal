@@ -73,6 +73,7 @@ def test_visual_input_references_include_successful_project_archive(monkeypatch)
     assert len(references) == 1
     assert references[0]["image_url"]["url"].startswith("data:image/png;base64,")
     assert details == [{
+        "key": "archive:77",
         "source": "published_archive",
         "source_id": 42,
         "title": "Архив публикаций · материал #42",
@@ -247,7 +248,12 @@ async def test_render_image_retries_with_one_reference_when_provider_refuses(mon
     knowledge_items = []
     for index in range(2):
         knowledge_item = SmmKnowledgeItem()
+        knowledge_item.id = index + 1
+        knowledge_item.project_id = 1
+        knowledge_item.title = f"Style {index + 1}"
+        knowledge_item.content = ""
         knowledge_item.source_type = "image_reference"
+        knowledge_item.visual_role = "style"
         knowledge_item.storage_key = f"ref_key_{index}.png"
         knowledge_item.content_type = "image/png"
         knowledge_item.original_filename = f"ref_{index}.png"

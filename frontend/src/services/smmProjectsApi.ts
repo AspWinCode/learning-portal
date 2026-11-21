@@ -79,6 +79,26 @@ export interface KnowledgeItemList {
   total: number;
 }
 
+export interface VisualReferenceOption {
+  key: string;
+  title: string;
+  role: string;
+  role_label: string;
+  preview_url: string;
+  source: 'project_reference' | 'published_archive';
+}
+
+export interface VisualReferenceOptions {
+  options: VisualReferenceOption[];
+  suggested_keys: string[];
+}
+
+export const listVisualReferenceOptions = (projectCode: string, contentId: number): Promise<VisualReferenceOptions> =>
+  api.get(`${BASE}/projects/${projectCode}/content/${contentId}/visual-references`).then((r) => r.data);
+
+export const loadVisualReferencePreview = (url: string): Promise<Blob> =>
+  api.get(url, { responseType: 'blob' }).then((r) => r.data);
+
 export const listKnowledge = (code: string): Promise<KnowledgeItemList> =>
   api.get(`${BASE}/projects/${code}/knowledge`).then((r) => r.data);
 
@@ -468,9 +488,12 @@ export interface GeneratedAsset {
   created_at: string | null;
 }
 
-export const renderContentImage = (contentId: number, prompt?: string): Promise<GeneratedAsset> =>
+export const renderContentImage = (contentId: number, prompt?: string, visualReferenceKeys?: string[]): Promise<GeneratedAsset> =>
   // Генерация изображения у Gemini может занимать больше общего API-таймаута.
-  api.post(`${BASE}/content/${contentId}/render-image`, { prompt }, { timeout: 180000 }).then((r) => r.data);
+  api.post(`${BASE}/content/${contentId}/render-image`, {
+    prompt,
+    ...(visualReferenceKeys === undefined ? {} : { visual_reference_keys: visualReferenceKeys }),
+  }, { timeout: 180000 }).then((r) => r.data);
 
 export const selectContentAsset = (contentId: number, assetId: number): Promise<GeneratedAsset> =>
   api.post(`${BASE}/content/${contentId}/select-asset`, { asset_id: assetId }).then((r) => r.data);

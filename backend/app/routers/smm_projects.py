@@ -18,10 +18,11 @@ from xml.sax.saxutils import escape as xml_escape
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
+from PIL import Image
 
 from app import auth
 from app.database import get_db
-from app.models import SmmContent, SmmContentAsset, SmmContentPlanItem, SmmContentStatus, SmmKnowledgeItem, SmmProject, SmmPublication, User
+from app.models import SmmContent, SmmContentAsset, SmmContentPlanItem, SmmContentStatus, SmmKnowledgeItem, SmmProject, SmmPublication, SmmPublicationStatus, User
 from app.routers.action_log import log_action
 from app.schemas.smm_projects import (
     AssetOut,
@@ -61,6 +62,7 @@ from app.schemas.smm_projects import (
     TemplateOut,
     TransformRequest,
     VariantRequest,
+    VisualReferenceOptionsOut,
 )
 from app.services.smm_projects import access as access_svc
 from app.services.smm_projects import assets as assets_svc
@@ -331,6 +333,98 @@ async def upload_knowledge_file(
     )
     log_action(db, current_user.id, "create", "smm_knowledge_file", item.id, {"project": code, "filename": filename})
     return item
+
+
+@router.get("/projects/{code}/knowledge/{item_id}/preview")
+def preview_knowledge_image(
+    code: str,
+    item_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("smm_projects.access")),
+):
+    project = _get_accessible_project(db, code, current_user)
+    item = _get_knowledge_item_or_404(db, project, item_id)
+    suffix = os.path.splitext((item.original_filename or "").lower())[1]
+    if not item.storage_key or not (
+        (item.content_type or "").lower().startswith("image/")
+        or item.source_type == "image_reference"
+        or suffix in {".jpg", ".jpeg", ".png", ".webp"}
+    ):
+        raise HTTPException(status_code=404, detail="Изображение не найдено")
+    data = storage_svc.read_bytes(item.storage_key)
+    if not data:
+        raise HTTPException(status_code=404, detail="Изображение не найдено")
+    try:
+        with Image.open(BytesIO(data)) as image:
+            image.thumbnail((480, 480))
+            preview = BytesIO()
+            image.convert("RGB").save(preview, format="JPEG", quality=78, optimize=True)
+    except Exception as exc:
+        raise HTTPException(status_code=415, detail="Не удалось подготовить превью изображения") from exc
+    return Response(content=preview.getvalue(), media_type="image/jpeg", headers={"Cache-Control": "private, max-age=300"})
+
+
+@router.get("/projects/{code}/content/{content_id}/visual-references", response_model=VisualReferenceOptionsOut)
+def list_visual_reference_options(
+    code: str,
+    content_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.require_permission("smm_projects.generate")),
+):
+    project = _get_accessible_project(db, code, current_user)
+    content = _get_content_or_404(db, content_id)
+    if content.project_id != project.id:
+        raise HTTPException(status_code=404, detail="Материал не найден в этом проекте")
+
+    options = []
+    project_option_count = 0
+    for item in knowledge_svc.list_items(db, project):
+        if project_option_count >= 80:
+            break
+        content_type = (item.content_type or "").lower()
+        suffix = os.path.splitext((item.original_filename or "").lower())[1]
+        role = item.visual_role or "style"
+        if not item.storage_key or role not in assets_svc._VISUAL_ROLE_LABELS:
+            continue
+        if item.source_type != "image_reference" and not content_type.startswith("image/") and suffix not in {".jpg", ".jpeg", ".png", ".webp"}:
+            continue
+        options.append({
+            "key": f"project:{item.id}", "title": item.title, "role": role,
+            "role_label": assets_svc._VISUAL_ROLE_LABELS[role],
+            "preview_url": f"/api/v1/smm-projects/projects/{code}/knowledge/{item.id}/preview",
+            "source": "project_reference",
+        })
+        project_option_count += 1
+
+    archive_assets = (
+        db.query(SmmContentAsset)
+        .join(SmmPublication, SmmPublication.content_id == SmmContentAsset.content_id)
+        .filter(
+            SmmPublication.project_id == project.id,
+            SmmPublication.status == SmmPublicationStatus.SUCCESS.value,
+            SmmContentAsset.storage_key.isnot(None),
+        )
+        .order_by(SmmPublication.published_at.desc(), SmmPublication.id.desc(), SmmContentAsset.id)
+        .limit(20)
+        .all()
+    )
+    seen_asset_ids = set()
+    for asset in archive_assets:
+        if asset.id in seen_asset_ids:
+            continue
+        seen_asset_ids.add(asset.id)
+        options.append({
+            "key": f"archive:{asset.id}",
+            "title": f"Публикация · материал #{asset.content_id}",
+            "role": "archive", "role_label": "Опубликованный визуал",
+            "preview_url": f"/api/v1/smm-projects/assets/{asset.id}/file",
+            "source": "published_archive",
+        })
+
+    _, suggested_details = assets_svc._visual_input_references(
+        db, project, content_id=content.id, include_details=True,
+    )
+    return {"options": options, "suggested_keys": [item["key"] for item in suggested_details]}
 
 
 async def _create_uploaded_knowledge_item(
@@ -780,6 +874,7 @@ async def render_content_image(
                 content=content,
                 prompt=prompt,
                 meta={"slide": slide_index + 1, "slides_total": 5, "content_format": "Карусель"} if is_carousel else None,
+                selected_reference_keys=payload.visual_reference_keys,
             )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc

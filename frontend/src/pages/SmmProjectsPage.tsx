@@ -3,6 +3,9 @@ import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Alert,
   Box,
   Button,
@@ -13,6 +16,9 @@ import {
   Chip,
   CircularProgress,
   Divider,
+  Dialog,
+  DialogContent,
+  DialogTitle,
   FormControl,
   FormControlLabel,
   InputLabel,
@@ -26,11 +32,121 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import Layout from '../components/Layout';
 import { useAuth } from '../contexts/AuthContext';
 import { hasPermission } from '../utils/permissions';
 import { extractApiError } from '../utils/extractApiError';
 import * as smm from '../services/smmProjectsApi';
+
+const VisualReferencePicker: React.FC<{
+  projectCode: string;
+  contentId: number;
+  disabled: boolean;
+  onGenerate: (keys: string[]) => void;
+}> = ({ projectCode, contentId, disabled, onGenerate }) => {
+  const [expanded, setExpanded] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [options, setOptions] = useState<smm.VisualReferenceOption[] | null>(null);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [preview, setPreview] = useState<{ title: string; url: string } | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const previewUrl = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!expanded) return;
+    let active = true;
+    setLoading(true);
+    setError(null);
+    smm.listVisualReferenceOptions(projectCode, contentId)
+      .then((result) => {
+        if (!active) return;
+        setOptions(result.options);
+        setSelected(result.suggested_keys);
+      })
+      .catch((e) => {
+        if (active) setError(extractApiError(e, 'Не удалось загрузить визуальные референсы'));
+      })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [expanded, projectCode, contentId]);
+
+  useEffect(() => () => {
+    if (previewUrl.current) URL.revokeObjectURL(previewUrl.current);
+  }, []);
+
+  const showPreview = async (option: smm.VisualReferenceOption) => {
+    setPreviewLoading(true);
+    setError(null);
+    try {
+      const blob = await smm.loadVisualReferencePreview(option.preview_url);
+      if (previewUrl.current) URL.revokeObjectURL(previewUrl.current);
+      const url = URL.createObjectURL(blob);
+      previewUrl.current = url;
+      setPreview({ title: option.title, url });
+    } catch (e) {
+      setError(extractApiError(e, 'Не удалось открыть референс'));
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const closePreview = () => {
+    if (previewUrl.current) URL.revokeObjectURL(previewUrl.current);
+    previewUrl.current = null;
+    setPreview(null);
+  };
+
+  const toggle = (key: string) => setSelected((current) => (
+    current.includes(key) ? current.filter((value) => value !== key) : [...current, key]
+  ));
+
+  return (
+    <>
+      <Accordion expanded={expanded} onChange={(_, value) => setExpanded(value)} disableGutters elevation={0} sx={{ mt: 1, border: '1px solid', borderColor: 'divider', borderRadius: '8px !important', '&:before': { display: 'none' } }}>
+        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+          <Typography variant="body2">Референсы для визуала · {options === null ? 'автоматический набор' : `выбрано ${selected.length}`}</Typography>
+        </AccordionSummary>
+        <AccordionDetails>
+          {loading && <CircularProgress size={20} />}
+          {error && <Alert severity="error" sx={{ mb: 1 }}>{error}</Alert>}
+          {!loading && options?.length === 0 && !error && (
+            <Typography variant="body2" color="text.secondary">В проекте и архиве пока нет доступных изображений. Визуал будет создан без референсов.</Typography>
+          )}
+          <Stack spacing={0.5} sx={{ maxHeight: 360, overflowY: 'auto' }}>
+            {(options || []).map((option) => (
+              <Stack key={option.key} direction="row" alignItems="center" spacing={1}>
+                <FormControlLabel
+                  sx={{ flex: 1, m: 0 }}
+                  control={<Checkbox size="small" checked={selected.includes(option.key)} onChange={() => toggle(option.key)} />}
+                  label={<Box><Typography variant="body2">{option.title}</Typography><Typography variant="caption" color="text.secondary">{option.role_label} · {option.source === 'project_reference' ? 'этот проект' : 'архив публикаций'}</Typography></Box>}
+                />
+                <Button size="small" onClick={() => void showPreview(option)} disabled={previewLoading}>Предпросмотр</Button>
+              </Stack>
+            ))}
+          </Stack>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+            Персонажи включаются только при явном выборе. Пустой набор отключает передачу изображений-референсов.
+          </Typography>
+          <Button
+            sx={{ mt: 1 }} size="small" variant="contained" disabled={disabled || loading}
+            startIcon={disabled ? <CircularProgress size={14} /> : undefined}
+            onClick={() => onGenerate(selected)}
+          >
+            {disabled ? 'Генерация визуала…' : 'Создать визуал с выбранными референсами'}
+          </Button>
+        </AccordionDetails>
+      </Accordion>
+      <Dialog open={Boolean(preview)} onClose={closePreview} maxWidth="md">
+        <DialogTitle>{preview?.title || 'Предпросмотр референса'}</DialogTitle>
+        <DialogContent>
+          {preview && <Box component="img" src={preview.url} alt={preview.title} sx={{ display: 'block', maxWidth: 'min(80vw, 720px)', maxHeight: '75vh', objectFit: 'contain' }} />}
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+};
 
 const readableSmmText = (raw: string | null | undefined, structured?: Record<string, unknown> | null): string => {
   const fallback = raw || '';
@@ -492,12 +608,12 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectCode, reloadKey]);
 
-  const renderImage = async (id: number) => {
+  const renderImage = async (id: number, visualReferenceKeys: string[]) => {
     setBusyId(id);
     setError(null);
     setImageErrors((current) => ({ ...current, [id]: '' }));
     try {
-      await smm.renderContentImage(id);
+      await smm.renderContentImage(id, undefined, visualReferenceKeys);
       const assets = await smm.listContentAssets(id);
       setAssetsByContent((a) => ({ ...a, [id]: assets }));
     } catch (e) {
@@ -837,20 +953,12 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
             </Box>
           )}
           {canGenerate && (
-            <Box sx={{ mt: 1, p: 1, border: '1px solid', borderColor: 'divider', borderRadius: 1.5 }}>
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-                Визуал
-              </Typography>
-              <Button
-                size="small"
-                variant="outlined"
-                disabled={busyId === item.id}
-                onClick={() => renderImage(item.id)}
-                startIcon={busyId === item.id ? <CircularProgress size={14} /> : undefined}
-              >
-                {busyId === item.id ? 'Генерация визуала…' : 'Создать визуал'}
-              </Button>
-            </Box>
+            <VisualReferencePicker
+              projectCode={projectCode}
+              contentId={item.id}
+              disabled={busyId === item.id}
+              onGenerate={(keys) => void renderImage(item.id, keys)}
+            />
           )}
           {imageErrors[item.id] && (
             <Alert severity="error" sx={{ mt: 1 }}>

@@ -307,6 +307,21 @@ class EventPackResult(BaseModel):
 
 class RenderImageRequest(BaseModel):
     prompt: Optional[str] = None
+    visual_reference_keys: Optional[List[str]] = Field(None, max_length=100)
+
+
+class VisualReferenceOptionOut(BaseModel):
+    key: str
+    title: str
+    role: str
+    role_label: str
+    preview_url: str
+    source: Literal["project_reference", "published_archive"]
+
+
+class VisualReferenceOptionsOut(BaseModel):
+    options: List[VisualReferenceOptionOut]
+    suggested_keys: List[str]
 
 
 class SelectAssetRequest(BaseModel):

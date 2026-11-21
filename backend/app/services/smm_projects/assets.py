@@ -88,7 +88,8 @@ def _format_visual_rules(content: SmmContent) -> tuple[str, str]:
 
 
 async def build_image_prompt(*, db: Session, project: SmmProject, content: SmmContent, user,
-                             prompt_override: Optional[str] = None, include_knowledge: bool = True) -> str:
+                             prompt_override: Optional[str] = None, include_knowledge: bool = True,
+                             selected_reference_keys: Optional[list[str]] = None) -> str:
     structured = content.output_json if isinstance(content.output_json, dict) else {}
     input_data = content.input_json if isinstance(content.input_json, dict) else {}
     brand = project.brand_context if isinstance(project.brand_context, dict) else {}
@@ -110,12 +111,19 @@ async def build_image_prompt(*, db: Session, project: SmmProject, content: SmmCo
     # Visual identity is intentionally project-local even when a personal
     # social account is allowed to use facts from the other projects.
     wants_character = _requests_character_reference(content)
+    selected_project_ids = {
+        int(key.split(":", 1)[1]) for key in (selected_reference_keys or [])
+        if key.startswith("project:") and key.split(":", 1)[1].isdigit()
+    }
     visual_refs = [
         item for item in knowledge_items
         if item.source_type == "image_reference" or (item.content_type or "").startswith("image/")
         if (getattr(item, "visual_role", None) or "style") in {"style", "composition", "example"}
         or (wants_character and getattr(item, "visual_role", None) == "character")
+        or item.id in selected_project_ids
     ]
+    if selected_reference_keys is not None:
+        visual_refs = [item for item in visual_refs if item.id in selected_project_ids]
     visual_block = "\n\n=== РЕФЕРЕНСЫ ВИЗУАЛЬНОГО СТИЛЯ ЭТОГО ПРОЕКТА ===\n" + "\n".join(
         f"[{_VISUAL_ROLE_LABELS.get(getattr(item, 'visual_role', None) or 'style', 'Визуальный ориентир')}: {item.title}] {(item.content or '')[:1400]}"
         for item in visual_refs[:12]
@@ -159,6 +167,7 @@ async def build_image_prompt(*, db: Session, project: SmmProject, content: SmmCo
 
 def _visual_input_references(
     db: Session, project: SmmProject, *, content_id: Optional[int] = None, include_details: bool = False,
+    selected_reference_keys: Optional[list[str]] = None,
 ) -> list[dict[str, object]] | tuple[list[dict[str, object]], list[Dict[str, Any]]]:
     """Подготовить разнообразный набор изображений проекта для image-to-image.
 
@@ -169,8 +178,11 @@ def _visual_input_references(
     reference_details: list[Dict[str, Any]] = []
     total_bytes = 0
     candidates_by_role: dict[str, list[SmmKnowledgeItem]] = {role: [] for role in _VISUAL_ROLE_LABELS}
+    project_image_items: list[SmmKnowledgeItem] = []
     wants_character: Optional[bool] = None
     for item in knowledge_svc.list_items(db, project):
+        if item.project_id != project.id:
+            continue
         content_type = (item.content_type or "").lower()
         filename = (item.original_filename or "").lower()
         suffix = os.path.splitext(filename)[1]
@@ -183,10 +195,11 @@ def _visual_input_references(
             continue
         if not item.storage_key:
             continue
+        project_image_items.append(item)
         role = getattr(item, "visual_role", None) or "style"
         if role in {"style", "composition", "example"}:
             candidates_by_role[role].append(item)
-        elif role == "character" and content_id is not None:
+        elif role == "character" and content_id is not None and db is not None:
             if wants_character is None:
                 content = db.query(SmmContent).filter(SmmContent.id == content_id).first()
                 wants_character = _requests_character_reference(content) if content else False
@@ -218,24 +231,39 @@ def _visual_input_references(
         if db is not None:
             db.rollback()
     archived_candidates = list({asset.id: asset for asset in archived_candidates if asset.id is not None}.values())
+    if selected_reference_keys is not None:
+        selected_by_key: dict[str, Any] = {
+            f"project:{item.id}": item for item in project_image_items if item.id is not None
+        }
+        selected_by_key.update({
+            f"archive:{asset.id}": asset for asset in archived_candidates if asset.id is not None
+        })
+        unknown = [key for key in selected_reference_keys if key not in selected_by_key]
+        if unknown:
+            raise ValueError("Выбранный визуальный референс недоступен в этом проекте. Обновите список и повторите.")
+        candidates = [selected_by_key[key] for key in dict.fromkeys(selected_reference_keys)]
+    else:
+        candidates = []
     # If curated visual roles exist, use them as the source of style. Otherwise
     # fall back to this project's own published archive.
     has_curated_roles = any(candidates_by_role.values())
-    if has_curated_roles:
-        archived_candidates = []
-    elif archived_candidates:
-        start = (max(int(content_id or 1), 1) - 1) % len(archived_candidates)
-        archived_candidates = [archived_candidates[start]]
+    if selected_reference_keys is None:
+        if has_curated_roles:
+            archived_candidates = []
+        elif archived_candidates:
+            start = (max(int(content_id or 1), 1) - 1) % len(archived_candidates)
+            archived_candidates = [archived_candidates[start]]
 
-    candidates = list(archived_candidates)
+        candidates.extend(archived_candidates)
     item_offset = max(int(content_id or 1), 1) - 1
     role_order = ("character", "style", "composition", "example") if wants_character else ("style", "composition", "example")
     style_limit = 2 if wants_character or candidates_by_role["composition"] or candidates_by_role["example"] else 4
-    for role in role_order:
-        role_items = candidates_by_role[role]
-        role_limit = style_limit if role == "style" else 1
-        for index in range(min(role_limit, len(role_items))):
-            candidates.append(role_items[(item_offset + index) % len(role_items)])
+    if selected_reference_keys is None:
+        for role in role_order:
+            role_items = candidates_by_role[role]
+            role_limit = style_limit if role == "style" else 1
+            for index in range(min(role_limit, len(role_items))):
+                candidates.append(role_items[(item_offset + index) % len(role_items)])
 
     for item in candidates:
         item_meta = getattr(item, "meta", None)
@@ -277,6 +305,7 @@ def _visual_input_references(
         references.append({"type": "image_url", "image_url": {"url": data_uri}})
         if isinstance(item, SmmContentAsset):
             reference_details.append({
+                "key": f"archive:{item.id}",
                 "source": "published_archive",
                 "source_id": item.content_id,
                 "title": f"Архив публикаций · материал #{item.content_id}",
@@ -286,6 +315,7 @@ def _visual_input_references(
         else:
             role = getattr(item, "visual_role", None) or "style"
             reference_details.append({
+                "key": f"project:{item.id}",
                 "source": "project_reference",
                 "source_id": item.id,
                 "title": item.title,
@@ -298,10 +328,11 @@ def _visual_input_references(
 
 async def render_image(
     db: Session, user, *, project: SmmProject, content: SmmContent, prompt: Optional[str] = None,
-    meta: Optional[Dict[str, Any]] = None,
+    meta: Optional[Dict[str, Any]] = None, selected_reference_keys: Optional[list[str]] = None,
 ) -> SmmContentAsset:
     final_prompt = _with_image_text_guard((await build_image_prompt(
-        db=db, project=project, content=content, user=user, prompt_override=prompt, include_knowledge=not bool(prompt),
+        db=db, project=project, content=content, user=user, prompt_override=prompt,
+        include_knowledge=not bool(prompt), selected_reference_keys=selected_reference_keys,
     )).strip())
     if not final_prompt:
         raise ValueError("Нет промпта для генерации изображения")
@@ -312,7 +343,19 @@ async def render_image(
     # Передаём именно загруженные изображения персонажей/стиля, а не только их OCR/AI-описания.
     references, reference_details = _visual_input_references(
         db, project, content_id=getattr(content, "id", None), include_details=True,
+        selected_reference_keys=selected_reference_keys,
     )
+    if selected_reference_keys is not None:
+        if reference_details:
+            labels = ", ".join(f"{item['role_label']}: {item['title']}" for item in reference_details)
+            final_prompt += (
+                "\n\nПользователь вручную выбрал именно эти визуальные ориентиры. Соблюдай их роли и стиль, "
+                "не подменяй их другими проектными референсами: " + labels + "."
+            )
+            if any(item.get("role") == "character" for item in reference_details):
+                final_prompt += " Выбор референса персонажа означает, что персонаж явно разрешён в этой генерации."
+        else:
+            final_prompt += "\n\nПользователь выбрал генерацию без приложенных визуальных референсов."
     if references and _VISUAL_REFERENCE_GUARD not in final_prompt:
         final_prompt = f"{final_prompt}\n\n{_VISUAL_REFERENCE_GUARD}"
     result = await ai_gateway.generate_image(

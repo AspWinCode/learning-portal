@@ -12,7 +12,7 @@ import httpx
 from sqlalchemy.orm import Session
 from PIL import Image
 
-from app.models import SmmContent, SmmContentAsset, SmmProject
+from app.models import SmmContent, SmmContentAsset, SmmProject, SmmPublication, SmmPublicationStatus
 from app.services import ai_gateway
 from app.services.smm_projects import knowledge as knowledge_svc
 from app.services.smm_projects import storage
@@ -137,10 +137,35 @@ def _visual_input_references(
             continue
         candidates.append(item)
 
+    # Use one visual from a successful publication in this project alongside
+    # the project's curated references. This lets the archive inform the look
+    # of new creatives without repeatedly sampling one and the same archive
+    # asset or allowing old posts to replace the curated brand references.
+    archived_candidates = []
+    archive_query = db.query(SmmContentAsset) if db is not None else None
+    if archive_query is not None and hasattr(archive_query, "join"):
+        archived_candidates = (
+            archive_query
+            .join(SmmPublication, SmmPublication.content_id == SmmContentAsset.content_id)
+            .filter(
+                SmmPublication.project_id == project.id,
+                SmmPublication.status == SmmPublicationStatus.SUCCESS.value,
+                SmmContentAsset.storage_key.isnot(None),
+            )
+            .order_by(SmmPublication.published_at.desc(), SmmPublication.id.desc(), SmmContentAsset.id)
+            .limit(20)
+            .all()
+        )
+    archived_candidates = list({asset.id: asset for asset in archived_candidates if asset.id is not None}.values())
+    if archived_candidates:
+        start = (max(int(content_id or 1), 1) - 1) % len(archived_candidates)
+        archived_candidates = [archived_candidates[start]]
+
     if candidates:
-        max_references = 4
         start = (max(int(content_id or 1), 1) - 1) % len(candidates)
-        candidates = [candidates[(start + index) % len(candidates)] for index in range(min(max_references, len(candidates)))]
+        curated_limit = 3 if archived_candidates else 4
+        candidates = [candidates[(start + index) % len(candidates)] for index in range(min(curated_limit, len(candidates)))]
+    candidates = archived_candidates + candidates
 
     for item in candidates:
         content_type = (item.content_type or mimetypes.guess_type(item.original_filename or "")[0] or "").lower()

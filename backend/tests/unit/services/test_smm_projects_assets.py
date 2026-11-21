@@ -3,7 +3,7 @@ import io
 import pytest
 from PIL import Image
 
-from app.models import SmmContent, SmmKnowledgeItem, SmmProject
+from app.models import SmmContent, SmmContentAsset, SmmKnowledgeItem, SmmProject
 from app.services import ai_gateway
 from app.services.smm_projects import assets
 
@@ -14,6 +14,42 @@ def test_image_prompt_always_contains_russian_text_guard():
     assert "только русский язык и кириллицу" in prompt
     assert "латинские буквы" in prompt
     assert assets._with_image_text_guard(prompt) == prompt
+
+
+def test_visual_input_references_include_successful_project_archive(monkeypatch):
+    archived = SmmContentAsset()
+    archived.id = 77
+    archived.storage_key = "archive.png"
+    archived.content_type = "image/png"
+    archived.original_filename = "archive.png"
+
+    class _ArchiveQuery:
+        def join(self, *args):
+            return self
+
+        def filter(self, *args):
+            return self
+
+        def order_by(self, *args):
+            return self
+
+        def limit(self, *args):
+            return self
+
+        def all(self):
+            return [archived]
+
+    class _ArchiveDB:
+        def query(self, model):
+            return _ArchiveQuery()
+
+    monkeypatch.setattr(assets.knowledge_svc, "list_items", lambda db, project: [])
+    monkeypatch.setattr(assets.storage, "read_bytes", lambda key: _png_bytes())
+
+    references = assets._visual_input_references(_ArchiveDB(), _project(), content_id=2)
+
+    assert len(references) == 1
+    assert references[0]["image_url"]["url"].startswith("data:image/png;base64,")
 
 
 def _project(code="test_project"):

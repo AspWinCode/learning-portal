@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List
 
 from sqlalchemy import and_, or_
@@ -116,14 +116,18 @@ def plan_readiness(db: Session, project: SmmProject) -> Dict[str, Any]:
     }
 
 
-def recent_publication_archive(db: Session, project: SmmProject, *, limit: int = 20) -> List[Dict[str, Any]]:
-    """Return successful posts as reusable editorial examples, newest first."""
+def recent_publication_archive(
+    db: Session, project: SmmProject, *, limit: int = 100, lookback_days: int = 365,
+) -> List[Dict[str, Any]]:
+    """Return successful posts for recent-duplicate checks and editorial examples."""
+    cutoff = datetime.now(timezone.utc) - timedelta(days=lookback_days)
     rows = (
         db.query(SmmPublication)
         .join(SmmContent, SmmContent.id == SmmPublication.content_id)
         .filter(
             SmmPublication.project_id == project.id,
             SmmPublication.status == SmmPublicationStatus.SUCCESS.value,
+            SmmPublication.published_at >= cutoff,
         )
         .order_by(SmmPublication.published_at.desc(), SmmPublication.id.desc())
         .limit(limit)
@@ -142,6 +146,35 @@ def recent_publication_archive(db: Session, project: SmmProject, *, limit: int =
             "text": body[:900],
         })
     return archive
+
+
+def _topic_tokens(value: str) -> set[str]:
+    stop = {"как", "что", "это", "для", "или", "при", "над", "под", "про", "его", "ее", "their", "with"}
+    return {word.lower() for word in re.findall(r"[\wа-яёА-ЯЁ]{3,}", value or "") if word.lower() not in stop}
+
+
+def _recent_topic_warnings(archive: List[Dict[str, Any]], *, within_days: int = 90) -> List[str]:
+    today = date.today()
+    warnings = []
+    seen: set[str] = set()
+    for post in archive:
+        date_text = post.get("published_at")
+        if not date_text:
+            continue
+        try:
+            published = date.fromisoformat(date_text)
+        except ValueError:
+            continue
+        age = (today - published).days
+        if age < 0 or age > within_days:
+            continue
+        title = str(post.get("title") or "")
+        normalized = " ".join(sorted(_topic_tokens(title)))
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        warnings.append(f"{published.isoformat()} ({age} дн. назад), {post.get('channel')}: {title}")
+    return warnings
 
 
 def _archive_prompt_block(archive: List[Dict[str, Any]], *, max_chars: int = 7000) -> str:
@@ -508,6 +541,7 @@ async def generate_plan(db: Session, user, *, project: SmmProject, payload: Dict
     readiness = plan_readiness(db, project)
     archive = recent_publication_archive(db, project)
     archive_block = _archive_prompt_block(archive)
+    recent_topics = _recent_topic_warnings(archive)
     stats = readiness["publication_stats"]
     fallback_payload = {**payload, "_knowledge_titles": [item.title for item in hits if item.title]}
     fallback = _fallback_items(fallback_payload)
@@ -548,7 +582,9 @@ async def generate_plan(db: Session, user, *, project: SmmProject, payload: Dict
         f"по каналам: {json.dumps(stats['by_channel'], ensure_ascii=False)}; "
         f"по форматам: {json.dumps(stats['by_format'], ensure_ascii=False)}.\n"
         f"В архиве {len(archive)} последних опубликованных материалов; смотри их тексты выше. "
-        "Не предлагай близкий повтор этих тем, если нет нового угла или повода. "
+        f"Темы, опубликованные за последние 90 дней (с датой и каналом): {json.dumps(recent_topics, ensure_ascii=False)}. "
+        "Не предлагай совпадающую тему первые 90 дней. Для более старых повторов добавляй новый практический угол, "
+        "а для свежих тем повтор допустим только при явно новом поводе и существенном отличии. "
         "Сделай равномерный план на весь период. Свяжи повторяющиеся форматы в серии, "
         "добавляй механику удержания и не называй характеристику продукта, которой нет в контексте."
     )

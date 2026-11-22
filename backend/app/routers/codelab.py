@@ -5,7 +5,7 @@ import logging
 import os
 from typing import Dict, List
 
-from fastapi import APIRouter, Depends, File as FastAPIFile, HTTPException, Request, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File as FastAPIFile, HTTPException, Query, Request, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app import auth
@@ -391,33 +391,33 @@ async def admin_get_task(task_id: int, current_user: User = Depends(_submissions
 
 
 @router.put("/admin/tasks/{task_id}")
-async def admin_update_task(task_id: int, payload: dict, current_user: User = Depends(_manage)):
+async def admin_update_task(task_id: int, payload: dict, publish: bool = Query(True), current_user: User = Depends(_manage)):
     try:
-        return await cl.update_task(current_user, task_id, payload)
+        return await cl.update_task(current_user, task_id, payload, publish=publish)
     except CodelabError as e:
         _raise(e)
 
 
 @router.post("/admin/courses/{course_id}/items", status_code=status.HTTP_201_CREATED)
-async def admin_create_item(course_id: int, payload: dict, current_user: User = Depends(_manage)):
+async def admin_create_item(course_id: int, payload: dict, publish: bool = Query(True), current_user: User = Depends(_manage)):
     try:
-        return await cl.create_item(current_user, course_id, payload)
+        return await cl.create_item(current_user, course_id, payload, publish=publish)
     except CodelabError as e:
         _raise(e)
 
 
 @router.put("/admin/items/{item_id}")
-async def admin_update_item(item_id: int, payload: dict, current_user: User = Depends(_manage)):
+async def admin_update_item(item_id: int, payload: dict, publish: bool = Query(True), current_user: User = Depends(_manage)):
     try:
-        return await cl.update_item(current_user, item_id, payload)
+        return await cl.update_item(current_user, item_id, payload, publish=publish)
     except CodelabError as e:
         _raise(e)
 
 
 @router.delete("/admin/items/{item_id}")
-async def admin_delete_item(item_id: int, current_user: User = Depends(_manage)):
+async def admin_delete_item(item_id: int, publish: bool = Query(True), current_user: User = Depends(_manage)):
     try:
-        await cl.delete_item(current_user, item_id)
+        await cl.delete_item(current_user, item_id, publish=publish)
     except CodelabError as e:
         _raise(e)
         return
@@ -425,9 +425,9 @@ async def admin_delete_item(item_id: int, current_user: User = Depends(_manage))
 
 
 @router.put("/admin/items/{item_id}/archive")
-async def admin_archive_item(item_id: int, payload: dict, current_user: User = Depends(_manage)):
+async def admin_archive_item(item_id: int, payload: dict, publish: bool = Query(True), current_user: User = Depends(_manage)):
     try:
-        return await cl.archive_item(current_user, item_id, bool(payload.get("archived")))
+        return await cl.archive_item(current_user, item_id, bool(payload.get("archived")), publish=publish)
     except CodelabError as e:
         _raise(e)
 
@@ -435,6 +435,7 @@ async def admin_archive_item(item_id: int, payload: dict, current_user: User = D
 @router.put("/admin/courses/{course_id}/items/reorder")
 async def admin_reorder_items(
     course_id: int, payload: CodelabItemsReorderIn,
+    publish: bool = Query(True),
     current_user: User = Depends(_manage), db: Session = Depends(get_db),
 ):
     """Переставить siblings (одного parent_id) внутри курса. Codelab не даёт
@@ -478,7 +479,7 @@ async def admin_reorder_items(
         if by_id[item_id].get("position") == position:
             continue
         try:
-            await cl.update_item(current_user, item_id, {"position": position})
+            await cl.update_item(current_user, item_id, {"position": position}, publish=publish)
         except CodelabError as e:
             raise HTTPException(
                 status_code=e.status_code if e.status_code < 500 else 502,
@@ -524,6 +525,14 @@ async def admin_get_course_tree(course_id: int, current_user: User = Depends(_ac
     """Read-only tree used to choose projects in the submissions workspace."""
     try:
         return await cl.get_course_tree(current_user, course_id)
+    except CodelabError as e:
+        _raise(e)
+
+
+@router.get("/admin/courses/{course_id}/draft-status")
+async def admin_get_draft_status(course_id: int, current_user: User = Depends(_manage)):
+    try:
+        return await cl.get_draft_status(current_user, course_id)
     except CodelabError as e:
         _raise(e)
 

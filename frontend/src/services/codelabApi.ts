@@ -44,6 +44,13 @@ export interface CodelabCourse {
   is_archived: boolean;
 }
 
+export interface CodelabDraftStatus {
+  course_id: number;
+  active_version_number: number | null;
+  draft_version_number: number | null;
+  has_unpublished_changes: boolean;
+}
+
 // 4 фиксированных структурных уровня — каждый следующий только внутри
 // предыдущего (app/services/tree_rules.py в Codelab); контент лежит на любом
 // из них или в корне курса.
@@ -271,18 +278,19 @@ export const codelabStudioApi = {
   createTask: (courseId: number, p: Record<string, unknown>): Promise<CodelabTask> =>
     api.post(`${B}/courses/${courseId}/tasks`, p).then((r) => r.data),
   getTask: (taskId: number): Promise<CodelabTask> => api.get(`${B}/tasks/${taskId}`).then((r) => r.data),
-  updateTask: (taskId: number, p: Record<string, unknown>): Promise<CodelabTask> =>
-    api.put(`${B}/tasks/${taskId}`, p).then((r) => r.data),
-  createItem: (courseId: number, p: Record<string, unknown>): Promise<CodelabLearningItem> =>
-    api.post(`${B}/courses/${courseId}/items`, p).then((r) => r.data),
-  updateItem: (itemId: number, p: Record<string, unknown>): Promise<CodelabLearningItem> =>
-    api.put(`${B}/items/${itemId}`, p).then((r) => r.data),
-  deleteItem: (itemId: number): Promise<void> => api.delete(`${B}/items/${itemId}`).then(() => undefined),
-  archiveItem: (itemId: number, archived: boolean): Promise<CodelabLearningItem> =>
-    api.put(`${B}/items/${itemId}/archive`, { archived }).then((r) => r.data),
+  updateTask: (taskId: number, p: Record<string, unknown>, publish = false): Promise<CodelabTask> =>
+    api.put(`${B}/tasks/${taskId}`, p, { params: { publish } }).then((r) => r.data),
+  createItem: (courseId: number, p: Record<string, unknown>, publish = false): Promise<CodelabLearningItem> =>
+    api.post(`${B}/courses/${courseId}/items`, p, { params: { publish } }).then((r) => r.data),
+  updateItem: (itemId: number, p: Record<string, unknown>, publish = false): Promise<CodelabLearningItem> =>
+    api.put(`${B}/items/${itemId}`, p, { params: { publish } }).then((r) => r.data),
+  deleteItem: (itemId: number, publish = false): Promise<void> => api.delete(`${B}/items/${itemId}`, { params: { publish } }).then(() => undefined),
+  archiveItem: (itemId: number, archived: boolean, publish = false): Promise<CodelabLearningItem> =>
+    api.put(`${B}/items/${itemId}/archive`, { archived }, { params: { publish } }).then((r) => r.data),
   getTree: (courseId: number): Promise<CodelabLearningItem[]> => api.get(`${B}/courses/${courseId}/tree`).then((r) => r.data),
-  reorderItems: (courseId: number, parentId: number | null, itemIds: number[]): Promise<CodelabLearningItem[]> =>
-    api.put(`${B}/courses/${courseId}/items/reorder`, { parent_id: parentId, item_ids: itemIds }).then((r) => r.data),
+  reorderItems: (courseId: number, parentId: number | null, itemIds: number[], publish = false): Promise<CodelabLearningItem[]> =>
+    api.put(`${B}/courses/${courseId}/items/reorder`, { parent_id: parentId, item_ids: itemIds }, { params: { publish } }).then((r) => r.data),
+  getDraftStatus: (courseId: number): Promise<CodelabDraftStatus> => api.get(`${B}/courses/${courseId}/draft-status`).then((r) => r.data),
   publishCourse: (courseId: number): Promise<CodelabCourse> => api.post(`${B}/courses/${courseId}/publish`).then((r) => r.data),
   unpublishCourse: (courseId: number): Promise<CodelabCourse> => api.post(`${B}/courses/${courseId}/unpublish`).then((r) => r.data),
 

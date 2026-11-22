@@ -320,6 +320,7 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
   const [courses, setCourses] = useState<CodelabCourse[]>([]);
   const [selected, setSelected] = useState<CodelabCourse | null>(null);
   const [tree, setTree] = useState<CodelabLearningItem[]>([]);
+  const [draftStatus, setDraftStatus] = useState<{ has_unpublished_changes: boolean } | null>(null);
   const [loading, setLoading] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [newTitle, setNewTitle] = useState('');
@@ -371,7 +372,9 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
     setSelected(c);
     setLoading(true);
     try {
-      setTree(await api.getTree(c.id));
+      const [nextTree, nextDraftStatus] = await Promise.all([api.getTree(c.id), api.getDraftStatus(c.id)]);
+      setTree(nextTree);
+      setDraftStatus(nextDraftStatus);
     } catch (e: any) {
       onToast({ msg: errMsg(e), err: true });
     } finally {
@@ -845,13 +848,19 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
                 <Button size="small" variant="outlined" onClick={() => openCreate(null, 'turtle_task')}>+ Задание Черепашка</Button>
                 <Button size="small" variant="outlined" onClick={() => openCreate(null, 'quiz')}>+ Тест</Button>
                 <Button size="small" variant="outlined" onClick={() => openCreate(null, 'project')}>+ Проект</Button>
-                {selected.status === 'published' ? (
-                  <Button size="small" startIcon={<UnpublishIcon />} onClick={unpublish}>Снять с публикации</Button>
-                ) : (
+                {draftStatus?.has_unpublished_changes || selected.status !== 'published' ? (
                   <Button size="small" variant="contained" startIcon={<PublishIcon />} onClick={publish}>Опубликовать</Button>
+                ) : (
+                  <Button size="small" startIcon={<UnpublishIcon />} onClick={unpublish}>Снять с публикации</Button>
                 )}
               </Stack>
             </Stack>
+
+            {draftStatus?.has_unpublished_changes && (
+              <Alert severity="info" sx={{ mb: 2 }}>
+                Есть неопубликованные изменения. Ученики увидят их после нажатия «Опубликовать».
+              </Alert>
+            )}
 
             {loading ? <CircularProgress size={24} /> : (
               <Paper variant="outlined">

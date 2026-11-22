@@ -131,28 +131,32 @@ async def get_task(user, task_id: int) -> dict:
     return await _request("GET", f"/api/lms-admin/tasks/{task_id}", user)
 
 
-async def update_task(user, task_id: int, payload: dict) -> dict:
-    return await _request("PUT", f"/api/lms-admin/tasks/{task_id}", user, json=payload)
+async def update_task(user, task_id: int, payload: dict, *, publish: bool = True) -> dict:
+    return await _request("PUT", f"/api/lms-admin/tasks/{task_id}", user, json=payload, extra_params={"publish": str(publish).lower()})
 
 
-async def create_item(user, course_id: int, payload: dict) -> dict:
-    return await _request("POST", f"/api/lms-admin/courses/{course_id}/items", user, json=payload)
+async def create_item(user, course_id: int, payload: dict, *, publish: bool = True) -> dict:
+    return await _request("POST", f"/api/lms-admin/courses/{course_id}/items", user, json=payload, extra_params={"publish": str(publish).lower()})
 
 
-async def update_item(user, item_id: int, payload: dict) -> dict:
-    return await _request("PUT", f"/api/lms-admin/items/{item_id}", user, json=payload)
+async def update_item(user, item_id: int, payload: dict, *, publish: bool = True) -> dict:
+    return await _request("PUT", f"/api/lms-admin/items/{item_id}", user, json=payload, extra_params={"publish": str(publish).lower()})
 
 
-async def delete_item(user, item_id: int) -> None:
-    await _request("DELETE", f"/api/lms-admin/items/{item_id}", user)
+async def delete_item(user, item_id: int, *, publish: bool = True) -> None:
+    await _request("DELETE", f"/api/lms-admin/items/{item_id}", user, extra_params={"publish": str(publish).lower()})
 
 
-async def archive_item(user, item_id: int, archived: bool) -> dict:
-    return await _request("PUT", f"/api/lms-admin/items/{item_id}/archive", user, json={"archived": archived})
+async def archive_item(user, item_id: int, archived: bool, *, publish: bool = True) -> dict:
+    return await _request("PUT", f"/api/lms-admin/items/{item_id}/archive", user, json={"archived": archived}, extra_params={"publish": str(publish).lower()})
 
 
 async def get_course_tree(user, course_id: int) -> Any:
     return await _request("GET", f"/api/lms-admin/courses/{course_id}/tree", user)
+
+
+async def get_draft_status(user, course_id: int) -> dict:
+    return await _request("GET", f"/api/lms-admin/courses/{course_id}/draft-status", user)
 
 
 async def publish_course(user, course_id: int) -> dict:

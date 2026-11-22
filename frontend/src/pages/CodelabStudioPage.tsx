@@ -328,6 +328,16 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
   const [nodeTitle, setNodeTitle] = useState('');
   const [nodeContent, setNodeContent] = useState('');
   const [ogeAnswer, setOgeAnswer] = useState('');
+  const [ogeChecker, setOgeChecker] = useState('number');
+  const [ogeAcceptedAnswers, setOgeAcceptedAnswers] = useState('');
+  const [ogeTolerance, setOgeTolerance] = useState('');
+  const [ogeCaseSensitive, setOgeCaseSensitive] = useState(false);
+  const [ogeIgnoreSpaces, setOgeIgnoreSpaces] = useState(true);
+  const [ogeExplanation, setOgeExplanation] = useState('');
+  const [ogeMaxAttempts, setOgeMaxAttempts] = useState('');
+  const [ogeAllowRetryAfterSuccess, setOgeAllowRetryAfterSuccess] = useState(true);
+  const [ogeShowResultImmediately, setOgeShowResultImmediately] = useState(true);
+  const [ogeShowCorrectAnswer, setOgeShowCorrectAnswer] = useState(false);
   const [ogeAttachments, setOgeAttachments] = useState<TaskAttachment[]>([]);
   const [ogeAttachmentLoading, setOgeAttachmentLoading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<CodelabLearningItem | null>(null);
@@ -402,6 +412,9 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
     setNodeTitle('');
     setNodeContent('');
     setOgeAnswer('');
+    setOgeChecker('number'); setOgeAcceptedAnswers(''); setOgeTolerance(''); setOgeCaseSensitive(false);
+    setOgeIgnoreSpaces(true); setOgeExplanation(''); setOgeMaxAttempts(''); setOgeAllowRetryAfterSuccess(true);
+    setOgeShowResultImmediately(true); setOgeShowCorrectAnswer(false);
     setOgeAttachments([]);
     setTaskStatement('');
     setTaskInputFormat('');
@@ -420,6 +433,16 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
     setNodeTitle(item.title);
     setNodeContent(item.content || '');
     setOgeAnswer(item.oge_answer?.answer || '');
+    setOgeChecker(item.oge_answer?.checker || 'number');
+    setOgeAcceptedAnswers((item.oge_answer?.accepted_answers || []).join('\n'));
+    setOgeTolerance(item.oge_answer?.tolerance == null ? '' : String(item.oge_answer.tolerance));
+    setOgeCaseSensitive(!!item.oge_answer?.case_sensitive);
+    setOgeIgnoreSpaces(item.oge_answer?.ignore_spaces ?? true);
+    setOgeExplanation(item.oge_answer?.explanation || '');
+    setOgeMaxAttempts(item.oge_max_attempts == null ? '' : String(item.oge_max_attempts));
+    setOgeAllowRetryAfterSuccess(item.oge_allow_retry_after_success ?? true);
+    setOgeShowResultImmediately(item.oge_show_result_immediately ?? true);
+    setOgeShowCorrectAnswer(item.oge_show_correct_answer ?? false);
     if (item.type === 'oge_task') setOgeAttachments(extractTaskAttachments(item.content || ''));
     if (item.type === 'task' && item.problem_revision_id) {
       setTaskLoading(true);
@@ -580,7 +603,16 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
           onToast({ msg: 'Тест добавлен' });
         }
       } else if (nodeDialog.type === 'oge_task') {
-        const patch = { title: nodeTitle, content: withTaskAttachments(nodeContent, ogeAttachments), oge_answer: ogeAnswer.trim() };
+        const accepted_answers = ogeAcceptedAnswers.split(/[,\n]/).map((value) => value.trim()).filter(Boolean);
+        const patch = {
+          title: nodeTitle, content: withTaskAttachments(nodeContent, ogeAttachments),
+          oge_answer: { checker: ogeChecker, answer: ogeAnswer.trim(), accepted_answers, case_sensitive: ogeCaseSensitive,
+            ignore_spaces: ogeIgnoreSpaces, tolerance: ogeTolerance ? Number(ogeTolerance) : null, explanation: ogeExplanation.trim() || null },
+          oge_max_attempts: ogeMaxAttempts ? Number(ogeMaxAttempts) : null,
+          oge_allow_retry_after_success: ogeAllowRetryAfterSuccess,
+          oge_show_result_immediately: ogeShowResultImmediately,
+          oge_show_correct_answer: ogeShowCorrectAnswer,
+        };
         if (nodeDialog.editing) {
           await api.updateItem(nodeDialog.editing.id, patch);
           onToast({ msg: 'Задание ОГЭ обновлено' });
@@ -982,6 +1014,26 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
             helperText="Ответ хранится на сервере и не показывается ученику. Можно использовать точку или запятую."
             sx={{ mt: 2 }}
           />
+          <Stack spacing={1} sx={{ mt: 2 }}>
+            <TextField select fullWidth label="Тип проверки" value={ogeChecker} onChange={(e) => setOgeChecker(e.target.value)}>
+              <MenuItem value="number">Число</MenuItem><MenuItem value="integer">Целое число</MenuItem>
+              <MenuItem value="decimal">Десятичное число с погрешностью</MenuItem><MenuItem value="text">Текст</MenuItem>
+              <MenuItem value="boolean">Да / нет</MenuItem><MenuItem value="custom">Точное совпадение</MenuItem>
+            </TextField>
+            <TextField fullWidth multiline minRows={2} label="Допустимые варианты ответа" value={ogeAcceptedAnswers}
+              onChange={(e) => setOgeAcceptedAnswers(e.target.value)} helperText="По одному варианту в строке или через запятую" />
+            {(ogeChecker === 'decimal' || ogeChecker === 'number') && <TextField fullWidth type="number" label="Погрешность" value={ogeTolerance}
+              onChange={(e) => setOgeTolerance(e.target.value)} helperText="Оставьте пустым для точного сравнения" />}
+            {(ogeChecker === 'text' || ogeChecker === 'custom') && <FormControlLabel control={<Checkbox checked={ogeCaseSensitive} onChange={(e) => setOgeCaseSensitive(e.target.checked)} />} label="Учитывать регистр" />}
+            <FormControlLabel control={<Checkbox checked={ogeIgnoreSpaces} onChange={(e) => setOgeIgnoreSpaces(e.target.checked)} />} label="Игнорировать пробелы по краям" />
+            <TextField fullWidth multiline minRows={2} label="Объяснение ответа (необязательно)" value={ogeExplanation}
+              onChange={(e) => setOgeExplanation(e.target.value)} />
+            <TextField fullWidth type="number" label="Максимум попыток" value={ogeMaxAttempts}
+              onChange={(e) => setOgeMaxAttempts(e.target.value)} helperText="Пусто — без ограничения" />
+            <FormControlLabel control={<Checkbox checked={ogeAllowRetryAfterSuccess} onChange={(e) => setOgeAllowRetryAfterSuccess(e.target.checked)} />} label="Разрешать повторную попытку после верного ответа" />
+            <FormControlLabel control={<Checkbox checked={ogeShowResultImmediately} onChange={(e) => setOgeShowResultImmediately(e.target.checked)} />} label="Показывать результат сразу" />
+            <FormControlLabel control={<Checkbox checked={ogeShowCorrectAnswer} onChange={(e) => setOgeShowCorrectAnswer(e.target.checked)} />} label="Показывать правильный ответ при проверке" />
+          </Stack>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setNodeDialog(null)}>Отмена</Button>

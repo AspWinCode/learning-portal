@@ -98,7 +98,11 @@ export interface CodelabLearningItem {
   is_archived: boolean;
   steps: CodelabSnapStep[] | null;
   quiz_questions: CodelabQuizQuestion[] | null;
-  oge_answer?: { answer: string } | null;
+  oge_answer?: { answer: string; checker?: string; accepted_answers?: string[]; case_sensitive?: boolean; ignore_spaces?: boolean; tolerance?: number | null; explanation?: string | null } | null;
+  oge_max_attempts?: number | null;
+  oge_allow_retry_after_success?: boolean;
+  oge_show_result_immediately?: boolean;
+  oge_show_correct_answer?: boolean;
   due_at: string | null; // только для type="project" — срок сдачи
   children: CodelabLearningItem[];
 }

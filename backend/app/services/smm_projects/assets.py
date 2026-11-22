@@ -158,8 +158,16 @@ async def build_image_prompt(*, db: Session, project: SmmProject, content: SmmCo
         f"[{_VISUAL_ROLE_LABELS.get(getattr(item, 'visual_role', None) or 'style', 'Визуальный ориентир')}: {item.title}] {(item.content or '')[:1400]}"
         for item in visual_refs[:12]
     ) if visual_refs else ""
-    content_sources = knowledge_svc.content_items(db, project) if include_knowledge else []
-    context_block = knowledge_svc.as_prompt_block(content_sources[:12], max_chars=7000) if content_sources else ""
+    source_query = "\n".join(filter(None, (
+        content.title,
+        content.output_text[:1200] if content.output_text else None,
+        str(input_data.get("content_format") or ""),
+        base_prompt,
+    )))
+    content_sources = await knowledge_svc.search(
+        db, project, source_query, limit=8, user_id=getattr(user, "id", None), _exclude_visual=True,
+    ) if include_knowledge and source_query.strip() else []
+    context_block = knowledge_svc.as_prompt_block(content_sources, max_chars=7000) if content_sources else ""
     brand = project.brand_context if isinstance(project.brand_context, dict) else {}
     visual_profile = "\n".join(
         f"{label}: {brand[key]}" for key, label in (

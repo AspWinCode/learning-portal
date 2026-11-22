@@ -201,18 +201,24 @@ async def search(
 
     source_projects = projects_svc.content_source_projects(db, project) if _apply_content_scope else [project]
     if len(source_projects) > 1:
-        results: List[SmmKnowledgeItem] = []
+        ranked_by_project: List[List[SmmKnowledgeItem]] = []
         seen: set[int] = set()
         for source_project in source_projects:
             hits = await search(
                 db, source_project, q, limit=limit, user_id=user_id, _apply_content_scope=False,
                 _exclude_visual=source_project.id != project.id,
             )
-            for hit in hits:
-                if hit.id not in seen:
-                    seen.add(hit.id)
-                    results.append(hit)
-        return results[:limit * len(source_projects)]
+            ranked_by_project.append(hits)
+        # Each project search already ranks its own matches. Interleave those
+        # ranked lists so the first project in id order cannot consume the
+        # entire personal-brand context before the other eligible projects.
+        results: List[SmmKnowledgeItem] = []
+        for rank in range(limit):
+            for hits in ranked_by_project:
+                if rank < len(hits) and hits[rank].id not in seen:
+                    seen.add(hits[rank].id)
+                    results.append(hits[rank])
+        return results[:limit]
 
     caps = capabilities(db)
     text_only_filter = (

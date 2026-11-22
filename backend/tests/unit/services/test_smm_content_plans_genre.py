@@ -121,7 +121,12 @@ def test_pick_news_item_none_when_plan_has_no_news():
 
 @pytest.mark.asyncio
 async def test_generate_item_draft_grounds_programming_news_in_pasted_item(monkeypatch):
-    monkeypatch.setattr(content_plans.knowledge_svc, "content_items", lambda db, project: [])
+    async def fake_search(db, project, query, **kwargs):
+        assert "Unity выпустила новую версию движка" in query
+        assert kwargs["_exclude_visual"] is True
+        return []
+
+    monkeypatch.setattr(content_plans.knowledge_svc, "search", fake_search)
     captured = {}
 
     async def fake_complete_text(**kwargs):
@@ -142,7 +147,10 @@ async def test_generate_item_draft_grounds_programming_news_in_pasted_item(monke
 
 @pytest.mark.asyncio
 async def test_generate_item_draft_adds_genre_instruction_for_organizer_thoughts(monkeypatch):
-    monkeypatch.setattr(content_plans.knowledge_svc, "content_items", lambda db, project: [])
+    async def fake_search(*args, **kwargs):
+        return []
+
+    monkeypatch.setattr(content_plans.knowledge_svc, "search", fake_search)
     captured = {}
 
     async def fake_complete_text(**kwargs):
@@ -163,7 +171,10 @@ async def test_generate_item_draft_adds_genre_instruction_for_organizer_thoughts
 
 @pytest.mark.asyncio
 async def test_generate_item_draft_skips_genre_instruction_for_generic_genre(monkeypatch):
-    monkeypatch.setattr(content_plans.knowledge_svc, "content_items", lambda db, project: [])
+    async def fake_search(*args, **kwargs):
+        return []
+
+    monkeypatch.setattr(content_plans.knowledge_svc, "search", fake_search)
     captured = {}
 
     async def fake_complete_text(**kwargs):

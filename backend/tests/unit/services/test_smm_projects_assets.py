@@ -8,6 +8,14 @@ from app.services import ai_gateway
 from app.services.smm_projects import assets
 
 
+@pytest.fixture(autouse=True)
+def _empty_relevant_knowledge_search(monkeypatch):
+    async def fake_search(*args, **kwargs):
+        return []
+
+    monkeypatch.setattr(assets.knowledge_svc, "search", fake_search)
+
+
 def test_image_prompt_always_contains_russian_text_guard():
     prompt = assets._with_image_text_guard("draw a social media character")
 

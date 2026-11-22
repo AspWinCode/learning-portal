@@ -404,7 +404,16 @@ async def _generate_item_draft(
     project = db.query(SmmProject).filter(SmmProject.id == plan.project_id).first()
     if project is None:
         return False
-    knowledge = knowledge_svc.as_prompt_block(knowledge_svc.content_items(db, project), max_chars=12000)
+    source_query = "\n".join(filter(None, (
+        item.title,
+        item.rubric,
+        item.brief,
+        _pick_news_item(plan, item),
+    )))
+    knowledge_hits = await knowledge_svc.search(
+        db, project, source_query, limit=10, user_id=plan.created_by_id, _exclude_visual=True,
+    )
+    knowledge = knowledge_svc.as_prompt_block(knowledge_hits, max_chars=9000)
     archive = _archive_prompt_block(recent_publication_archive(db, project)) if hasattr(db, "query") and hasattr(db.query(SmmPublication), "join") else ""
     genre_hint = GENRE_DRAFT_INSTRUCTIONS.get(item.genre)
     news_item = _pick_news_item(plan, item)

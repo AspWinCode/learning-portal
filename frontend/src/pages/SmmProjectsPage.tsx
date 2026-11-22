@@ -435,6 +435,19 @@ const ContentPlanTab: React.FC<{ projectCode: string; canGenerate: boolean }> = 
                         Срез: {row.channel} · {row.format} — {row.engagement_rate.toLocaleString('ru-RU')}% от {row.exposure_basis === 'reach' ? 'охвата' : 'просмотров'} ({row.sample_size} поста(ов)).
                       </Typography>
                     ))}
+                    {readiness.publication_stats.performance_recommendations.length ? (
+                      <Box sx={{ mt: 0.5 }}>
+                        <Typography variant="caption" fontWeight={600}>Что попробовать в следующем плане</Typography>
+                        {readiness.publication_stats.performance_recommendations.map((recommendation) => (
+                          <Typography key={`${recommendation.channel}-${recommendation.dimension}-${recommendation.value}`} variant="caption" display="block">
+                            {recommendation.action} Вовлечённость {recommendation.engagement_rate.toLocaleString('ru-RU')}% против медианы {recommendation.baseline_rate.toLocaleString('ru-RU')}% ({recommendation.sample_size} поста(ов); от {recommendation.exposure_basis === 'reach' ? 'охвата' : 'просмотров'}).
+                          </Typography>
+                        ))}
+                        <Typography variant="caption" color="text.secondary" display="block">Это направление для небольшого теста, а не гарантия результата.</Typography>
+                      </Box>
+                    ) : readiness.publication_stats.performance_insights.by_channel_format.some((row) => row.enough_data) || readiness.publication_stats.performance_insights.by_channel_genre.some((row) => row.enough_data) ? (
+                      <Typography variant="caption" color="text.secondary">Пока нет заметного устойчивого преимущества одного формата или жанра. Сохраняйте разнообразие и продолжайте собирать данные.</Typography>
+                    ) : null}
                   </>
                 ) : readiness.publication_stats.total > 0 ? (
                   <Typography variant="caption">Показатели VK, MAX и Instagram обновляются раз в 6 часов, если их отдаёт API канала. Для сравнения форматов нужны просмотры или охват и хотя бы один показатель взаимодействий; уверенные срезы строятся от трёх постов.</Typography>

@@ -134,6 +134,44 @@ def _performance_breakdown(publications) -> Dict[str, List[Dict[str, Any]]]:
     return result
 
 
+def _performance_recommendations(insights: Dict[str, List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+    """Suggest small follow-up tests only for well-sampled, same-channel segments."""
+    recommendations: List[Dict[str, Any]] = []
+    for dimension, label_key, dimension_label in (
+        ("by_channel_format", "format", "формат"),
+        ("by_channel_genre", "genre", "жанр"),
+    ):
+        rows_by_channel: Dict[str, List[Dict[str, Any]]] = {}
+        for row in insights.get(dimension, []):
+            if row.get("enough_data"):
+                rows_by_channel.setdefault(row["channel"], []).append(row)
+        for channel, rows in rows_by_channel.items():
+            if len(rows) < 2:
+                continue
+            rates = sorted(float(row["engagement_rate"]) for row in rows)
+            middle = len(rates) // 2
+            baseline = rates[middle] if len(rates) % 2 else (rates[middle - 1] + rates[middle]) / 2
+            best = max(rows, key=lambda row: row["engagement_rate"])
+            uplift = float(best["engagement_rate"]) - baseline
+            if uplift < max(0.5, baseline * 0.15):
+                continue
+            recommendations.append({
+                "channel": channel,
+                "dimension": dimension_label,
+                "value": best[label_key],
+                "sample_size": best["sample_size"],
+                "engagement_rate": best["engagement_rate"],
+                "baseline_rate": round(baseline, 2),
+                "exposure_basis": best["exposure_basis"],
+                "action": f"В следующем плане попробуйте добавить ещё одну публикацию: {dimension_label} «{best[label_key]}» для канала {channel}.",
+            })
+    return sorted(
+        recommendations,
+        key=lambda row: (row["engagement_rate"] - row["baseline_rate"], row["sample_size"]),
+        reverse=True,
+    )[:5]
+
+
 def plan_readiness(db: Session, project: SmmProject) -> Dict[str, Any]:
     knowledge_items = knowledge_svc.content_items(db, project)
     publications = (
@@ -150,6 +188,7 @@ def plan_readiness(db: Session, project: SmmProject) -> Dict[str, Any]:
     metrics_totals = {"views": 0, "reach": 0, "likes": 0, "comments": 0, "reposts": 0, "shares": 0, "saved": 0}
     metrics_counts = {key: 0 for key in metrics_totals}
     performance_insights = _performance_breakdown(publications)
+    performance_recommendations = _performance_recommendations(performance_insights)
     last_published_at = None
     for publication, content, plan_item in publications:
         by_channel[publication.channel] = by_channel.get(publication.channel, 0) + 1
@@ -202,6 +241,7 @@ def plan_readiness(db: Session, project: SmmProject) -> Dict[str, Any]:
             "metrics_totals": metrics_totals,
             "metrics_counts": metrics_counts,
             "performance_insights": performance_insights,
+            "performance_recommendations": performance_recommendations,
         },
     }
 
@@ -688,6 +728,7 @@ async def generate_plan(db: Session, user, *, project: SmmProject, payload: Dict
         f"{json.dumps(stats['metrics_totals'], ensure_ascii=False)}. Если метрик нет — не делай выводов об эффективности. "
         f"Эффективность по каналам/форматам: {json.dumps(stats['performance_insights']['by_channel_format'], ensure_ascii=False)}; "
         f"по каналам/жанрам: {json.dumps(stats['performance_insights']['by_channel_genre'], ensure_ascii=False)}. "
+        f"Осторожные рекомендации для следующего плана (только подтверждённые срезы): {json.dumps(stats['performance_recommendations'], ensure_ascii=False)}. "
         "Учитывай выводы по сегменту только при enough_data=true (не менее трёх публикаций с просмотрами); "
         "метрики не являются причинным доказательством — используй их как один из сигналов, сохраняя разнообразие плана. "
         f"В архиве {len(archive)} последних опубликованных материалов; смотри их тексты выше. "

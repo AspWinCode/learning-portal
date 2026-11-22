@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import pytest
 
 from app.services.smm_projects.metrics import _collect_instagram_metrics, _count
-from app.services.smm_projects.content_plans import _performance_breakdown
+from app.services.smm_projects.content_plans import _performance_breakdown, _performance_recommendations
 
 
 def test_count_reads_vk_counter_object():
@@ -69,6 +69,25 @@ def test_instagram_engagement_uses_reach_when_available():
     assert insight["exposure_basis"] == "reach"
     assert insight["reach"] == 200
     assert insight["engagement_rate"] == 12.0
+
+
+def test_performance_recommendations_compare_only_well_sampled_segments_within_channel():
+    rows = [
+        {"channel": "vk", "format": "Пост", "sample_size": 6, "engagement_rate": 12.0,
+         "exposure_basis": "views", "enough_data": True},
+        {"channel": "vk", "format": "Карусель", "sample_size": 3, "engagement_rate": 6.0,
+         "exposure_basis": "views", "enough_data": True},
+        {"channel": "telegram", "format": "Опрос", "sample_size": 2, "engagement_rate": 50.0,
+         "exposure_basis": "views", "enough_data": False},
+    ]
+
+    recommendations = _performance_recommendations({"by_channel_format": rows, "by_channel_genre": []})
+
+    assert len(recommendations) == 1
+    assert recommendations[0]["channel"] == "vk"
+    assert recommendations[0]["value"] == "Пост"
+    assert recommendations[0]["baseline_rate"] == 9.0
+    assert recommendations[0]["sample_size"] == 6
 
 
 @pytest.mark.asyncio

@@ -669,6 +669,21 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
     }
   };
 
+  const createChannelVariant = async (id: number, channel: string) => {
+    setBusyId(id);
+    setError(null);
+    setNotice(null);
+    try {
+      const variant = await smm.createContentVariant(id, channel);
+      setNotice(`Создан отдельный черновик для ${channel}: «${variant.title || `#${variant.id}`}».`);
+      await reload();
+    } catch (e) {
+      setError(extractApiError(e, `Не удалось подготовить вариант для ${channel}`));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const reviewText = async (id: number) => {
     setBusyId(id);
     setError(null);
@@ -936,6 +951,58 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
             <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', mt: 1 }}>
               {readableSmmText(item.output_text, item.output_json)}
             </Typography>
+          )}
+          {!isImageOnly && editingId !== item.id && (
+            <Accordion disableGutters elevation={0} sx={{ mt: 1, border: '1px solid', borderColor: 'divider', borderRadius: '8px !important', '&:before': { display: 'none' } }}>
+              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                <Typography variant="body2">Предпросмотр и текст по площадкам</Typography>
+              </AccordionSummary>
+              <AccordionDetails>
+                <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap>
+                  {smm.VARIANT_CHANNELS.map((channel) => {
+                    const variant = items.find((candidate) => candidate.parent_content_id === item.id && candidate.channel === channel);
+                    const assets = assetsByContent[item.id] || [];
+                    const channelAsset = assets.find((asset) => {
+                      const format = asset.meta?.visual_format as { target_channel?: string } | undefined;
+                      return format?.target_channel === channel;
+                    }) || assets.find((asset) => {
+                      const format = asset.meta?.visual_format as { target_channel?: string | null } | undefined;
+                      return !format?.target_channel && asset.is_selected;
+                    }) || assets.find((asset) => {
+                      const format = asset.meta?.visual_format as { target_channel?: string | null } | undefined;
+                      return !format?.target_channel;
+                    });
+                    return (
+                      <Paper key={channel} variant="outlined" sx={{ p: 1.5, width: { xs: '100%', sm: 300 }, alignSelf: 'flex-start' }}>
+                        <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1}>
+                          <Chip size="small" label={channel} />
+                          {variant && <Chip size="small" color="success" variant="outlined" label="Отдельный текст" />}
+                        </Stack>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                          {variant ? 'Вариант для этой площадки' : 'Пока используется исходный текст'}
+                        </Typography>
+                        {channelAsset?.url && (
+                          <Box component="img" src={channelAsset.url} alt={`Визуал ${channel}`} sx={{ display: 'block', mt: 1, width: '100%', maxHeight: 220, objectFit: 'contain', bgcolor: 'action.hover', borderRadius: 1 }} />
+                        )}
+                        <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', mt: 0.75, maxHeight: 260, overflow: 'auto' }}>
+                          {readableSmmText(variant?.output_text || item.output_text, variant?.output_json || item.output_json)}
+                        </Typography>
+                        {channel === 'vk' && (
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                            Во VK текст публикуется автоматически; изображение прикрепляется вручную.
+                          </Typography>
+                        )}
+                        {canGenerate && !variant && !item.parent_content_id && (
+                          <Button size="small" sx={{ mt: 1 }} variant="outlined" onClick={() => void createChannelVariant(item.id, channel)} disabled={busyId === item.id}>
+                            {busyId === item.id ? 'Готовлю…' : `Создать текст для ${channel}`}
+                          </Button>
+                        )}
+                      </Paper>
+                    );
+                  })}
+                </Stack>
+              </AccordionDetails>
+            </Accordion>
           )}
           {textReviews[item.id] && (
             <Alert severity={textReviews[item.id].status === 'ok' ? 'success' : 'warning'} sx={{ mt: 1 }}>

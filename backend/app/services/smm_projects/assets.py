@@ -11,7 +11,7 @@ from typing import Any, Dict, Optional
 
 import httpx
 from sqlalchemy.orm import Session
-from PIL import Image, ImageOps
+from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 
 from app.models import SmmContent, SmmContentAsset, SmmKnowledgeItem, SmmProject, SmmPublication, SmmPublicationStatus
 from app.services import ai_gateway
@@ -448,10 +448,25 @@ async def render_image(
         try:
             width, height = (int(part) for part in channel_profile["dimensions"].split("×"))
             with Image.open(io.BytesIO(source_bytes)) as image:
-                output = ImageOps.fit(
-                    image.convert("RGB"), (width, height), method=Image.Resampling.LANCZOS,
+                source = ImageOps.exif_transpose(image).convert("RGB")
+                source_width, source_height = source.size
+                # Preserve the complete generated frame. Center-cropping can
+                # remove text, logos, faces, or other key details; use a soft
+                # blurred extension of the image to fill any extra canvas.
+                scale = min(width / source_width, height / source_height)
+                foreground_size = (
+                    max(1, round(source_width * scale)),
+                    max(1, round(source_height * scale)),
+                )
+                foreground = source.resize(foreground_size, Image.Resampling.LANCZOS)
+                background = ImageOps.fit(
+                    source, (width, height), method=Image.Resampling.LANCZOS,
                     centering=(0.5, 0.5),
                 )
+                blur_radius = max(8, min(width, height) // 32)
+                background = ImageEnhance.Brightness(background.filter(ImageFilter.GaussianBlur(blur_radius))).enhance(0.68)
+                output = background
+                output.paste(foreground, ((width - foreground_size[0]) // 2, (height - foreground_size[1]) // 2))
                 normalized = io.BytesIO()
                 if target_channel == "instagram":
                     output.save(normalized, format="JPEG", quality=90, optimize=True, progressive=True)
@@ -486,6 +501,10 @@ async def render_image(
                     "width": width, "height": height, "ratio": ratio,
                     "expected_ratio": channel_profile["ratio"],
                     "ratio_ok": bool(height and abs(ratio - channel_profile["ratio"]) <= 0.04),
+                    "source_width": source_width,
+                    "source_height": source_height,
+                    "source_ratio": round(source_width / source_height, 4) if source_height else 0,
+                    "crop_policy": "preserve_full_frame_with_blurred_fill",
                     "review_status": "not_configured",
                 }
                 if ai_gateway.is_configured("vision"):

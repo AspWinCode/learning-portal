@@ -1088,12 +1088,12 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
                 return <Chip size="small" sx={{ mt: 0.5 }} label={`${format.label || format.aspect_ratio || 'Универсальный'} · целевой размер ${format.dimensions || 'по профилю'}`} />;
               })()}
               {(() => {
-                const quality = asset.meta?.visual_quality_check as { review?: string; review_status?: string; ratio_ok?: boolean; ratio?: number; width?: number; height?: number } | undefined;
+                const quality = asset.meta?.visual_quality_check as { review?: string; review_status?: string; ratio_ok?: boolean; ratio?: number; width?: number; height?: number; source_width?: number; source_height?: number; crop_policy?: string } | undefined;
                 const format = asset.meta?.visual_format as { aspect_ratio?: string } | undefined;
                 if (!quality) return null;
                 return (
                   <Typography variant="caption" color={quality.review_status === 'reviewed' && quality.review && !/согласованно/i.test(quality.review) ? 'warning.main' : 'text.secondary'} sx={{ display: 'block', mt: 0.5 }}>
-                    Проверка визуала: {quality.ratio_ok ? `формат ${format?.aspect_ratio || 'по профилю'}` : 'проверьте пропорции'}{quality.width && quality.height ? ` · файл ${quality.width}×${quality.height}` : ''}{quality.review ? ` · ${quality.review}` : ''}
+                    Проверка визуала: {quality.ratio_ok ? `формат ${format?.aspect_ratio || 'по профилю'}` : 'проверьте пропорции'}{quality.width && quality.height ? ` · файл ${quality.width}×${quality.height}` : ''}{quality.crop_policy === 'preserve_full_frame_with_blurred_fill' ? ` · исходный кадр сохранён целиком${quality.source_width && quality.source_height ? ` (${quality.source_width}×${quality.source_height})` : ''}` : ''}{quality.review ? ` · ${quality.review}` : ''}
                   </Typography>
                 );
               })()}

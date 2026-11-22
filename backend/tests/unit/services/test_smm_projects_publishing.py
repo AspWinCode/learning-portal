@@ -2,6 +2,7 @@ import pytest
 
 from app.models import SmmContent, SmmContentAsset, SmmProject, SmmPublication, SmmPublicationStatus
 from app.services.smm_projects import publishing
+from app.services.smm_projects.publishers.base import PublisherResult
 
 
 def _project(code="test_project"):
@@ -27,6 +28,12 @@ class _Query:
 
     def filter(self, *a, **k):
         return self
+
+    def order_by(self, *a, **k):
+        return self
+
+    def all(self):
+        return []
 
     def first(self):
         return self._result
@@ -79,6 +86,21 @@ async def test_publish_channel_not_configured_is_audited_as_error(monkeypatch):
     logs = [obj for obj in db.added if obj.__class__.__name__ == "SmmPublishLog"]
     assert len(logs) == 1
     assert logs[0].status == "error"
+
+
+@pytest.mark.asyncio
+async def test_zen_publish_is_marked_as_rss_ready_not_social_success(monkeypatch):
+    async def fake_deliver(db, project, publication, asset):
+        return PublisherResult(external_id=None, external_url="https://example.test/zen-feed.xml")
+
+    monkeypatch.setattr(publishing, "_deliver", fake_deliver)
+    db = _FakeDB()
+
+    log = await publishing.publish(db, object(), project=_project(), content=_content(), channel="zen")
+
+    publication = next(obj for obj in db.added if isinstance(obj, SmmPublication))
+    assert publication.status == SmmPublicationStatus.FEED_READY.value
+    assert log.status == SmmPublicationStatus.FEED_READY.value
 
 
 def test_due_publication_ids_filters_by_status_and_time():

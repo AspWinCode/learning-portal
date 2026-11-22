@@ -177,10 +177,11 @@ async def publish(db: Session, user, *, project: SmmProject, content: SmmContent
     log = SmmPublishLog(content_id=content.id, project_id=project.id, channel=channel, published_by_id=getattr(user, "id", None))
     try:
         result = await _deliver(db, project, publication, asset)
+        delivered_status = SmmPublicationStatus.FEED_READY.value if channel == "zen" else SmmPublicationStatus.SUCCESS.value
         publication.status, publication.external_id, publication.external_url, publication.published_at = (
-            SmmPublicationStatus.SUCCESS.value, result.external_id, result.external_url, datetime.now(timezone.utc),
+            delivered_status, result.external_id, result.external_url, datetime.now(timezone.utc),
         )
-        log.status, log.external_id, log.external_url = "success", result.external_id, result.external_url
+        log.status, log.external_id, log.external_url = delivered_status, result.external_id, result.external_url
     except Exception as exc:  # noqa: BLE001 — внешний API, ошибка должна попасть в аудит, не в 500
         publication.status, publication.last_error = SmmPublicationStatus.ERROR.value, str(exc)
         log.status, log.error = "error", str(exc)
@@ -261,7 +262,11 @@ async def process_publication(db: Session, publication_id: int) -> Optional[SmmP
     """Вызывается фоновой задачей — ручной клик здесь уже случился раньше
     (approve/schedule), это только исполнение. Идемпотентно по claim-статусу."""
     row = db.query(SmmPublication).filter(SmmPublication.id == publication_id).first()
-    if row is None or row.status in (SmmPublicationStatus.SUCCESS.value, SmmPublicationStatus.CANCELLED.value):
+    if row is None or row.status in (
+        SmmPublicationStatus.SUCCESS.value,
+        SmmPublicationStatus.FEED_READY.value,
+        SmmPublicationStatus.CANCELLED.value,
+    ):
         return row
     now = datetime.now(timezone.utc)
     if row.status == SmmPublicationStatus.SCHEDULED.value and row.scheduled_at and row.scheduled_at > now:
@@ -280,10 +285,11 @@ async def process_publication(db: Session, publication_id: int) -> Optional[SmmP
     status_before = row.status
     try:
         result = await _deliver(db, project, row, asset)
+        delivered_status = SmmPublicationStatus.FEED_READY.value if row.channel == "zen" else SmmPublicationStatus.SUCCESS.value
         row.status, row.external_id, row.external_url, row.published_at, row.last_error = (
-            SmmPublicationStatus.SUCCESS.value, result.external_id, result.external_url, datetime.now(timezone.utc), None,
+            delivered_status, result.external_id, result.external_url, datetime.now(timezone.utc), None,
         )
-        log_status, error = "success", None
+        log_status, error = delivered_status, None
     except Exception as exc:  # noqa: BLE001
         row.status, row.last_error = SmmPublicationStatus.ERROR.value, str(exc)
         log_status, error = "error", str(exc)

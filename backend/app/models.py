@@ -4792,6 +4792,7 @@ class SmmPublicationStatus(str, enum.Enum):
     SCHEDULED = "scheduled"
     PUBLISHING = "publishing"
     SUCCESS = "success"
+    FEED_READY = "feed_ready"
     ERROR = "error"
     CANCELLED = "cancelled"
 

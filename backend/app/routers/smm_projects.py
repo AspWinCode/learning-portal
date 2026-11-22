@@ -145,7 +145,7 @@ def delete_project(
     project = _get_accessible_project(db, code, current_user)
     active_publication = db.query(SmmPublication).filter(
         SmmPublication.project_id == project.id,
-        SmmPublication.status.notin_(("success", "error", "cancelled")),
+        SmmPublication.status.notin_(("success", "feed_ready", "error", "cancelled")),
     ).first()
     if active_publication:
         raise HTTPException(
@@ -1269,7 +1269,7 @@ def list_my_publications(
     project_ids = [p.id for p in projects]
     if not project_ids:
         return []
-    statuses = ("approved", "scheduled", "publishing") if state == "scheduled" else ("success", "error", "cancelled")
+    statuses = ("approved", "scheduled", "publishing") if state == "scheduled" else ("success", "feed_ready", "error", "cancelled")
     rows = (
         db.query(SmmPublication)
         .filter(SmmPublication.project_id.in_(project_ids), SmmPublication.status.in_(statuses))
@@ -1305,7 +1305,7 @@ def zen_feed(code: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Проект не найден")
     rows = (
         db.query(SmmPublication)
-        .filter(SmmPublication.project_id == project.id, SmmPublication.channel == "zen", SmmPublication.status == "success")
+        .filter(SmmPublication.project_id == project.id, SmmPublication.channel == "zen", SmmPublication.status.in_(("success", "feed_ready")))
         .order_by(SmmPublication.published_at.desc())
         .limit(50)
         .all()

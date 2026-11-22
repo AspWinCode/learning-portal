@@ -616,7 +616,7 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
             // approved, scheduled, being published, or already published.
             // Keep error/cancelled publications visible so they can be retried
             // or edited by the content manager.
-            .filter(([, rows]) => rows.some((row) => ['approved', 'scheduled', 'publishing', 'success'].includes(row.status)))
+            .filter(([, rows]) => rows.some((row) => ['approved', 'scheduled', 'publishing', 'success', 'feed_ready'].includes(row.status)))
             .map(([id]) => id)
         );
         const visibleItems = orderedItems.filter((item) => !activePublicationIds.has(item.id));
@@ -1223,7 +1223,9 @@ const DraftsTab: React.FC<{ projectCode: string; canGenerate: boolean; canManage
             <Stack spacing={0.5} sx={{ mt: 1 }}>
               {publications[item.id].map((p) => {
                 const label =
-                  p.status === 'success'
+                  p.status === 'feed_ready'
+                    ? `${p.channel}: Добавлено в RSS — ожидает импорта Дзена`
+                    : p.status === 'success'
                     ? `${p.channel}: Опубликовано ✓`
                     : p.status === 'error'
                     ? `${p.channel}: Ошибка — ${p.last_error || 'см. детали'}`
@@ -2078,8 +2080,10 @@ const ComposeTab: React.FC<{ onPublished: () => void }> = ({ onPublished }) => {
 
       {error && <Alert severity="error">{error}</Alert>}
       {result && (
-        <Alert severity="success">
-          Отправлено в {result.length} канал(ов) — см. вкладку «{scheduled ? 'Запланированные' : 'Отправленные'}».
+        <Alert severity={result.some((row) => row.status === 'feed_ready') ? 'info' : 'success'}>
+          {result.some((row) => row.status === 'feed_ready')
+            ? 'Запись добавлена в RSS-фид. Импорт и публикация Дзена пока не подтверждены; сервис заберёт запись при следующем опросе фида.'
+            : `Отправлено в ${result.length} канал(ов) — см. вкладку «${scheduled ? 'Запланированные' : 'Отправленные'}».`}
         </Alert>
       )}
 
@@ -2102,6 +2106,7 @@ const PUBLICATION_STATUS_LABEL: Record<string, string> = {
   scheduled: 'Запланировано',
   publishing: 'Публикуется…',
   success: 'Опубликовано',
+  feed_ready: 'В RSS — ожидает импорта Дзена',
   error: 'Ошибка',
   cancelled: 'Отменено',
 };
@@ -2111,6 +2116,7 @@ const PUBLICATION_STATUS_COLOR: Record<string, 'default' | 'warning' | 'info' | 
   scheduled: 'info',
   publishing: 'warning',
   success: 'success',
+  feed_ready: 'info',
   error: 'error',
   cancelled: 'default',
 };
@@ -2233,6 +2239,7 @@ const PublicationsListTab: React.FC<{ state: 'scheduled' | 'sent'; reloadKey: nu
             )}
             {p.external_url && (
               <Typography variant="body2" sx={{ mt: 1 }}>
+                {p.status === 'feed_ready' ? 'RSS-фид Дзена: ' : ''}
                 <a href={p.external_url} target="_blank" rel="noreferrer">
                   {p.external_url}
                 </a>

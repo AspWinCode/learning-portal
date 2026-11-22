@@ -70,13 +70,16 @@ def _performance_breakdown(publications) -> Dict[str, List[Dict[str, Any]]]:
     Rates are weighted by views; segments with fewer than three measured posts
     stay visible for context but are marked ineligible for AI recommendations.
     """
-    grouped: Dict[str, Dict[tuple, Dict[str, int]]] = {"by_channel_format": {}, "by_channel_genre": {}}
+    grouped: Dict[str, Dict[tuple, Dict[str, Any]]] = {"by_channel_format": {}, "by_channel_genre": {}}
     for publication, content, plan_item in publications:
         if publication.status != SmmPublicationStatus.SUCCESS.value:
             continue
         metrics = publication.metrics_json if isinstance(publication.metrics_json, dict) else {}
         views = metrics.get("views")
-        if not isinstance(views, (int, float)) or views <= 0:
+        reach = metrics.get("reach")
+        exposure_basis = "reach" if publication.channel == "instagram" and isinstance(reach, (int, float)) and reach > 0 else "views"
+        exposure = reach if exposure_basis == "reach" else views
+        if not isinstance(exposure, (int, float)) or exposure <= 0:
             continue
         # Some APIs (currently MAX) expose views without likes/comments/reposts.
         # Treating absent counters as zero would create a false 0% engagement rate.
@@ -93,13 +96,19 @@ def _performance_breakdown(publications) -> Dict[str, List[Dict[str, Any]]]:
         )
         genre = (plan_item.genre if plan_item else None) or "Не указан"
         dimensions = (
-            ("by_channel_format", (publication.channel, content_format)),
-            ("by_channel_genre", (publication.channel, genre)),
+            ("by_channel_format", (publication.channel, content_format, exposure_basis)),
+            ("by_channel_genre", (publication.channel, genre, exposure_basis)),
         )
         for dimension, key in dimensions:
-            group = grouped[dimension].setdefault(key, {"posts": 0, "views": 0, "interactions": 0})
+            group = grouped[dimension].setdefault(key, {
+                "posts": 0, "views": 0, "reach": 0, "interactions": 0,
+                "exposure_basis": exposure_basis,
+            })
             group["posts"] += 1
-            group["views"] += int(views)
+            if isinstance(views, (int, float)):
+                group["views"] += int(views)
+            if isinstance(reach, (int, float)):
+                group["reach"] += int(reach)
             group["interactions"] += interactions
 
     result: Dict[str, List[Dict[str, Any]]] = {}
@@ -108,12 +117,15 @@ def _performance_breakdown(publications) -> Dict[str, List[Dict[str, Any]]]:
         for key, totals in values.items():
             labels = {"channel": key[0]}
             labels["format" if dimension == "by_channel_format" else "genre"] = key[1]
+            exposure_total = totals[totals["exposure_basis"]]
             rows.append({
                 **labels,
                 "sample_size": totals["posts"],
                 "views": totals["views"],
+                "reach": totals["reach"],
                 "interactions": totals["interactions"],
-                "engagement_rate": round(totals["interactions"] / totals["views"] * 100, 2),
+                "exposure_basis": totals["exposure_basis"],
+                "engagement_rate": round(totals["interactions"] / exposure_total * 100, 2),
                 "enough_data": totals["posts"] >= 3,
             })
         result[dimension] = sorted(
@@ -136,6 +148,7 @@ def plan_readiness(db: Session, project: SmmProject) -> Dict[str, Any]:
     successful = failed = scheduled = 0
     metrics_publications = 0
     metrics_totals = {"views": 0, "reach": 0, "likes": 0, "comments": 0, "reposts": 0, "shares": 0, "saved": 0}
+    metrics_counts = {key: 0 for key in metrics_totals}
     performance_insights = _performance_breakdown(publications)
     last_published_at = None
     for publication, content, plan_item in publications:
@@ -160,6 +173,7 @@ def plan_readiness(db: Session, project: SmmProject) -> Dict[str, Any]:
                 value = metrics.get(key)
                 if isinstance(value, (int, float)):
                     metrics_totals[key] += int(value)
+                    metrics_counts[key] += 1
     return {
         "ai": ai_gateway.configuration_status("text"),
         "context": {
@@ -186,6 +200,7 @@ def plan_readiness(db: Session, project: SmmProject) -> Dict[str, Any]:
             "engagement_metrics_available": metrics_publications > 0,
             "metrics_publications": metrics_publications,
             "metrics_totals": metrics_totals,
+            "metrics_counts": metrics_counts,
             "performance_insights": performance_insights,
         },
     }

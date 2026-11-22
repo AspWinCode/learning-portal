@@ -57,6 +57,20 @@ def test_performance_breakdown_does_not_treat_views_only_as_zero_engagement():
     assert result == {"by_channel_format": [], "by_channel_genre": []}
 
 
+def test_instagram_engagement_uses_reach_when_available():
+    publication = SimpleNamespace(
+        status="success", channel="instagram",
+        metrics_json={"reach": 200, "likes": 20, "comments": 4},
+    )
+
+    result = _performance_breakdown([(publication, None, None)])
+
+    insight = result["by_channel_format"][0]
+    assert insight["exposure_basis"] == "reach"
+    assert insight["reach"] == 200
+    assert insight["engagement_rate"] == 12.0
+
+
 @pytest.mark.asyncio
 async def test_instagram_metrics_persist_only_counters_returned_by_meta():
     class Response:

@@ -263,10 +263,10 @@ export interface ContentPlanReadiness {
   context: { active_items: number; indexed_items: number; total_chars: number; source_projects: Array<{ code: string; name: string }>; items: Array<{ id: number; title: string; source_type: string; filename: string | null }> };
   publication_stats: {
     total: number; successful: number; failed: number; scheduled: number; by_channel: Record<string, number>; by_format: Record<string, number>;
-    last_published_at: string | null; engagement_metrics_available: boolean; metrics_publications: number; metrics_totals: Record<string, number>;
+    last_published_at: string | null; engagement_metrics_available: boolean; metrics_publications: number; metrics_totals: Record<string, number>; metrics_counts: Record<string, number>;
     performance_insights: {
-      by_channel_format: Array<{ channel: string; format: string; sample_size: number; views: number; interactions: number; engagement_rate: number; enough_data: boolean }>;
-      by_channel_genre: Array<{ channel: string; genre: string; sample_size: number; views: number; interactions: number; engagement_rate: number; enough_data: boolean }>;
+      by_channel_format: Array<{ channel: string; format: string; sample_size: number; views: number; reach: number; interactions: number; exposure_basis: 'views' | 'reach'; engagement_rate: number; enough_data: boolean }>;
+      by_channel_genre: Array<{ channel: string; genre: string; sample_size: number; views: number; reach: number; interactions: number; exposure_basis: 'views' | 'reach'; engagement_rate: number; enough_data: boolean }>;
     };
   };
 }

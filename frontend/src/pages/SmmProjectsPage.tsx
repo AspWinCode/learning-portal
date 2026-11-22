@@ -428,16 +428,16 @@ const ContentPlanTab: React.FC<{ projectCode: string; canGenerate: boolean }> = 
                 {readiness.publication_stats.engagement_metrics_available ? (
                   <>
                     <Typography variant="caption">
-                      Метрики ({readiness.publication_stats.metrics_publications} постов): просмотры {readiness.publication_stats.metrics_totals.views.toLocaleString('ru-RU')} · охват {readiness.publication_stats.metrics_totals.reach.toLocaleString('ru-RU')} · лайки {readiness.publication_stats.metrics_totals.likes.toLocaleString('ru-RU')} · комментарии {readiness.publication_stats.metrics_totals.comments.toLocaleString('ru-RU')} · репосты {readiness.publication_stats.metrics_totals.reposts.toLocaleString('ru-RU')} · пересылки {readiness.publication_stats.metrics_totals.shares.toLocaleString('ru-RU')} · сохранения {readiness.publication_stats.metrics_totals.saved.toLocaleString('ru-RU')}
+                      Метрики ({readiness.publication_stats.metrics_publications} постов): {Object.entries(readiness.publication_stats.metrics_totals).filter(([key]) => (readiness.publication_stats.metrics_counts[key] || 0) > 0).map(([key, value]) => `${({ views: 'просмотры', reach: 'охват', likes: 'лайки', comments: 'комментарии', reposts: 'репосты', shares: 'пересылки', saved: 'сохранения' } as Record<string, string>)[key] || key} ${value.toLocaleString('ru-RU')} · доступно для ${readiness.publication_stats.metrics_counts[key]} пост.`).join(' · ')}
                     </Typography>
                     {readiness.publication_stats.performance_insights.by_channel_format.filter((row) => row.enough_data).sort((a, b) => b.engagement_rate - a.engagement_rate).slice(0, 3).map((row) => (
                       <Typography key={`${row.channel}-${row.format}`} variant="caption">
-                        Стабильный срез: {row.channel} · {row.format} — {row.engagement_rate.toLocaleString('ru-RU')}% вовлечённости ({row.sample_size} поста(ов)).
+                        Срез: {row.channel} · {row.format} — {row.engagement_rate.toLocaleString('ru-RU')}% от {row.exposure_basis === 'reach' ? 'охвата' : 'просмотров'} ({row.sample_size} поста(ов)).
                       </Typography>
                     ))}
                   </>
                 ) : readiness.publication_stats.total > 0 ? (
-                  <Typography variant="caption">Сбор метрик подключён для VK; первый сбор выполняется в течение 6 часов после деплоя.</Typography>
+                  <Typography variant="caption">Показатели VK, MAX и Instagram обновляются раз в 6 часов, если их отдаёт API канала. Для сравнения форматов нужны просмотры или охват и хотя бы один показатель взаимодействий; уверенные срезы строятся от трёх постов.</Typography>
                 ) : null}
               </Stack>
             </Alert>

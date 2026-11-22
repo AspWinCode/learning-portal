@@ -267,6 +267,7 @@ export interface ContentPlanReadiness {
     performance_insights: {
       by_channel_format: Array<{ channel: string; format: string; sample_size: number; views: number; reach: number; interactions: number; exposure_basis: 'views' | 'reach'; engagement_rate: number; enough_data: boolean }>;
       by_channel_genre: Array<{ channel: string; genre: string; sample_size: number; views: number; reach: number; interactions: number; exposure_basis: 'views' | 'reach'; engagement_rate: number; enough_data: boolean }>;
+      by_channel_topic: Array<{ channel: string; topic: string; sample_size: number; views: number; reach: number; interactions: number; exposure_basis: 'views' | 'reach'; engagement_rate: number; enough_data: boolean }>;
     };
     performance_recommendations: Array<{ channel: string; dimension: string; value: string; sample_size: number; engagement_rate: number; baseline_rate: number; exposure_basis: 'views' | 'reach'; action: string }>;
   };

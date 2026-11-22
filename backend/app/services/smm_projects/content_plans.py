@@ -65,12 +65,14 @@ def _pick_news_item(plan: SmmContentPlan, item: SmmContentPlanItem) -> str | Non
 
 
 def _performance_breakdown(publications) -> Dict[str, List[Dict[str, Any]]]:
-    """Aggregate engagement by channel+format and channel+genre.
+    """Aggregate engagement by channel, topic/rubric, format, and genre.
 
-    Rates are weighted by views; segments with fewer than three measured posts
-    stay visible for context but are marked ineligible for AI recommendations.
+    Rates are weighted by their available exposure counter; segments with fewer
+    than three measured posts stay visible but are ineligible for recommendations.
     """
-    grouped: Dict[str, Dict[tuple, Dict[str, Any]]] = {"by_channel_format": {}, "by_channel_genre": {}}
+    grouped: Dict[str, Dict[tuple, Dict[str, Any]]] = {
+        "by_channel_format": {}, "by_channel_genre": {}, "by_channel_topic": {},
+    }
     for publication, content, plan_item in publications:
         if publication.status != SmmPublicationStatus.SUCCESS.value:
             continue
@@ -95,9 +97,15 @@ def _performance_breakdown(publications) -> Dict[str, List[Dict[str, Any]]]:
             or "Не указан"
         )
         genre = (plan_item.genre if plan_item else None) or "Не указан"
+        topic = (
+            (getattr(plan_item, "rubric", None) if plan_item else None)
+            or (getattr(content, "title", None) if content else None)
+            or "Не указан"
+        )
         dimensions = (
             ("by_channel_format", (publication.channel, content_format, exposure_basis)),
             ("by_channel_genre", (publication.channel, genre, exposure_basis)),
+            ("by_channel_topic", (publication.channel, topic, exposure_basis)),
         )
         for dimension, key in dimensions:
             group = grouped[dimension].setdefault(key, {
@@ -116,7 +124,12 @@ def _performance_breakdown(publications) -> Dict[str, List[Dict[str, Any]]]:
         rows = []
         for key, totals in values.items():
             labels = {"channel": key[0]}
-            labels["format" if dimension == "by_channel_format" else "genre"] = key[1]
+            label_key = {
+                "by_channel_format": "format",
+                "by_channel_genre": "genre",
+                "by_channel_topic": "topic",
+            }[dimension]
+            labels[label_key] = key[1]
             exposure_total = totals[totals["exposure_basis"]]
             rows.append({
                 **labels,
@@ -140,6 +153,7 @@ def _performance_recommendations(insights: Dict[str, List[Dict[str, Any]]]) -> L
     for dimension, label_key, dimension_label in (
         ("by_channel_format", "format", "формат"),
         ("by_channel_genre", "genre", "жанр"),
+        ("by_channel_topic", "topic", "тему/рубрику"),
     ):
         rows_by_channel: Dict[str, List[Dict[str, Any]]] = {}
         for row in insights.get(dimension, []):

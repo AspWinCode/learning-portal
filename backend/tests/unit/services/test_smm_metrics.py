@@ -30,7 +30,7 @@ def test_performance_breakdown_uses_view_weighted_rates_and_minimum_sample():
             metrics_json={"views": 100, "likes": 10, "comments": 2, "reposts": 3},
         )
         content = SimpleNamespace(input_json={"content_format": "Пост"})
-        plan_item = SimpleNamespace(content_format="Пост", genre="Образовательный")
+        plan_item = SimpleNamespace(content_format="Пост", genre="Образовательный", rubric="Python для начинающих")
         rows.append((publication, content, plan_item))
     # A low-sample segment should be retained for reporting but marked ineligible.
     rows.append((
@@ -46,6 +46,10 @@ def test_performance_breakdown_uses_view_weighted_rates_and_minimum_sample():
     assert post["sample_size"] == 3
     assert post["engagement_rate"] == 15.0
     assert post["enough_data"] is True
+    topic = next(row for row in result["by_channel_topic"] if row["topic"] == "Python для начинающих")
+    assert topic["sample_size"] == 3
+    assert topic["engagement_rate"] == 15.0
+    assert topic["enough_data"] is True
     assert carousel["engagement_rate"] == 80.0
     assert carousel["enough_data"] is False
 
@@ -54,7 +58,7 @@ def test_performance_breakdown_does_not_treat_views_only_as_zero_engagement():
     publication = SimpleNamespace(status="success", channel="max", metrics_json={"views": 120})
     result = _performance_breakdown([(publication, None, None)])
 
-    assert result == {"by_channel_format": [], "by_channel_genre": []}
+    assert result == {"by_channel_format": [], "by_channel_genre": [], "by_channel_topic": []}
 
 
 def test_instagram_engagement_uses_reach_when_available():
@@ -81,13 +85,27 @@ def test_performance_recommendations_compare_only_well_sampled_segments_within_c
          "exposure_basis": "views", "enough_data": False},
     ]
 
-    recommendations = _performance_recommendations({"by_channel_format": rows, "by_channel_genre": []})
+    recommendations = _performance_recommendations({"by_channel_format": rows, "by_channel_genre": [], "by_channel_topic": []})
 
     assert len(recommendations) == 1
     assert recommendations[0]["channel"] == "vk"
     assert recommendations[0]["value"] == "Пост"
     assert recommendations[0]["baseline_rate"] == 9.0
     assert recommendations[0]["sample_size"] == 6
+
+
+def test_topic_recommendation_uses_repeated_rubric_and_names_it_as_topic():
+    rows = [
+        {"channel": "vk", "topic": "Олимпиадное программирование", "sample_size": 5,
+         "engagement_rate": 14.0, "exposure_basis": "views", "enough_data": True},
+        {"channel": "vk", "topic": "Истории учеников", "sample_size": 3,
+         "engagement_rate": 7.0, "exposure_basis": "views", "enough_data": True},
+    ]
+
+    recommendations = _performance_recommendations({"by_channel_format": [], "by_channel_genre": [], "by_channel_topic": rows})
+
+    assert recommendations[0]["dimension"] == "тему/рубрику"
+    assert recommendations[0]["value"] == "Олимпиадное программирование"
 
 
 @pytest.mark.asyncio

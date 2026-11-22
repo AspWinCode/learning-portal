@@ -20,6 +20,7 @@ export interface Project extends ProjectListItem {
   tone_of_voice: string | null;
   audience_description: string | null;
   brand_context: Record<string, string> | null;
+  content_scope: 'project_only' | 'all_projects';
   default_language: string;
 }
 
@@ -30,6 +31,7 @@ export interface ProjectUpdate {
   tone_of_voice?: string;
   audience_description?: string;
   brand_context?: Record<string, string>;
+  content_scope?: 'project_only' | 'all_projects';
   default_language?: string;
   is_active?: boolean;
 }

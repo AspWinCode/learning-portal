@@ -81,12 +81,8 @@ def get_by_code(db: Session, code: str) -> Optional[SmmProject]:
 
 
 def can_use_cross_project_content(project: SmmProject) -> bool:
-    """Only a clearly identified personal-social project may read other projects."""
-    identity = f"{project.code or ''} {project.name or ''}".casefold()
-    personal_marker = any(marker in identity for marker in ("личн", "собствен", "personal", "own_", "own social"))
-    social_marker = any(marker in identity for marker in ("соц", "social", "smm"))
-    personal_brand = "личн" in identity and "бренд" in identity
-    return personal_marker and (social_marker or personal_brand)
+    """Read the persisted scope; project names must never grant data access."""
+    return getattr(project, "content_scope", "project_only") == "all_projects"
 
 
 def content_source_projects(db: Session, project: SmmProject) -> List[SmmProject]:
@@ -111,11 +107,16 @@ def create_project(db: Session, user, *, name: str, description: Optional[str] =
 
 
 def update_project(db: Session, project: SmmProject, updates: Dict[str, Any]) -> SmmProject:
+    requested_scope = updates.get("content_scope")
+    if requested_scope == "all_projects" and project.code != "lichny_brand":
+        raise ValueError("Общие источники доступны только проекту «Личный бренд»")
     for field in ("name", "description", "system_prompt", "tone_of_voice", "audience_description", "default_language", "is_active"):
         if field in updates and updates[field] is not None:
             setattr(project, field, updates[field])
     if "brand_context" in updates and updates["brand_context"] is not None:
         project.brand_context = updates["brand_context"]
+    if requested_scope is not None:
+        project.content_scope = requested_scope
     db.commit()
     db.refresh(project)
     return project

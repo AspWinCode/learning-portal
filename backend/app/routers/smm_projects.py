@@ -194,7 +194,10 @@ def update_project(
     current_user: User = Depends(auth.require_permission("smm_projects.manage_project")),
 ):
     project = _get_accessible_project(db, code, current_user)
-    updated = projects_svc.update_project(db, project, payload.model_dump(exclude_unset=True))
+    try:
+        updated = projects_svc.update_project(db, project, payload.model_dump(exclude_unset=True))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     log_action(db, current_user.id, "update", "smm_project", project.id, {"code": code})
     return updated
 

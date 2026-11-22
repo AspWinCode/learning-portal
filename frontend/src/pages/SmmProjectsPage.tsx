@@ -1494,7 +1494,7 @@ const LegacyBrandSettingsTab: React.FC<{ projectCode: string; canManage: boolean
     setError(null);
     setSaved(false);
     try {
-      await smm.updateProject(projectCode, { brand_context: brand });
+      await smm.updateProject(projectCode, { brand_context: brand, content_scope: project.content_scope });
       setSaved(true);
     } catch (e) {
       setError(extractApiError(e, 'Ошибка'));
@@ -1512,6 +1512,22 @@ const LegacyBrandSettingsTab: React.FC<{ projectCode: string; canManage: boolean
       <Typography variant="body2" color="text.secondary">
         AI учитывает позиционирование, голос и тон проекта, примеры подачи и правила площадок, а также отдельные визуальные настройки. Заполненный профиль применяется только к этому проекту.
       </Typography>
+      {project.code === 'lichny_brand' ? (
+        <FormControl size="small" fullWidth>
+          <InputLabel id="smm-content-scope-label">Источники материалов</InputLabel>
+          <Select
+            labelId="smm-content-scope-label"
+            label="Источники материалов"
+            value={project.content_scope}
+            onChange={(event) => setProject((current) => current ? { ...current, content_scope: event.target.value as smm.Project['content_scope'] } : current)}
+          >
+            <MenuItem value="all_projects">Все активные проекты</MenuItem>
+            <MenuItem value="project_only">Только личный бренд</MenuItem>
+          </Select>
+        </FormControl>
+      ) : (
+        <Alert severity="info">Этот проект использует только собственные материалы. Общие источники доступны личному бренду.</Alert>
+      )}
       {fields.map((f) => (
         <TextField
           key={f.key}

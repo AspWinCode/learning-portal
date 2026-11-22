@@ -20,6 +20,7 @@ class ProjectOut(BaseModel):
     tone_of_voice: Optional[str]
     audience_description: Optional[str]
     brand_context: Optional[Dict[str, Any]]
+    content_scope: Literal["project_only", "all_projects"] = "project_only"
     default_language: str
     is_active: bool
 
@@ -48,6 +49,7 @@ class ProjectUpdate(BaseModel):
     tone_of_voice: Optional[str] = None
     audience_description: Optional[str] = None
     brand_context: Optional[Dict[str, Any]] = None
+    content_scope: Optional[Literal["project_only", "all_projects"]] = None
     default_language: Optional[str] = None
     is_active: Optional[bool] = None
 

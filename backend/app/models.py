@@ -4592,6 +4592,7 @@ class SmmProject(Base):
     tone_of_voice = Column(Text, nullable=True)
     audience_description = Column(Text, nullable=True)
     brand_context = Column(JSON, nullable=True)
+    content_scope = Column(String(24), nullable=False, default="project_only", server_default="project_only")
     default_language = Column(String(16), nullable=False, default="ru")
     is_active = Column(Boolean, nullable=False, default=True, index=True)
     created_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)

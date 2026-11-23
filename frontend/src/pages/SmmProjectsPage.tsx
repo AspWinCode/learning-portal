@@ -1580,6 +1580,7 @@ const LegacyBrandSettingsTab: React.FC<{ projectCode: string; canManage: boolean
   const save = async () => {
     setError(null);
     setSaved(false);
+    if (!project) return;
     try {
       await smm.updateProject(projectCode, { brand_context: brand, content_scope: project.content_scope });
       setSaved(true);

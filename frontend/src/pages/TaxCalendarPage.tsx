@@ -163,6 +163,11 @@ const TaxCalendarPage: React.FC = () => {
   }, [additionalContributions, documentedExpenses, fixedContributions, hasEmployees, incomeTotal]);
 
   const money = (value: number) => value.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const highlightedTax = regime === 'usn'
+    ? { label: 'УСН до уменьшения', value: `${money(taxCalculation.grossUsn)} ₽`, hint: '6% от доходов' }
+    : regime === 'osno'
+      ? { label: 'ОСНО: ориентировочный НДФЛ', value: `${money(taxCalculation.osnoNdfl)} ₽`, hint: `13% от базы ${money(taxCalculation.osnoBase)} ₽` }
+      : { label: 'Патент', value: '—', hint: 'стоимость указывается из патента' };
 
   return (
     <Layout>
@@ -210,7 +215,7 @@ const TaxCalendarPage: React.FC = () => {
             <Grid container spacing={2}>
               <Grid item xs={12} sm={4}><Card variant="outlined"><CardContent><Typography color="text.secondary">Доходы</Typography><Typography variant="h5" fontWeight={700}>{money(incomeTotal)} ₽</Typography><Typography variant="caption" color="text.secondary">{incomeCount} операций</Typography></CardContent></Card></Grid>
               <Grid item xs={12} sm={4}><Card variant="outlined"><CardContent><Typography color="text.secondary">Расходы в журнале</Typography><Typography variant="h5" fontWeight={700}>{money(expenseTotal)} ₽</Typography><Typography variant="caption" color="text.secondary">для контроля, не уменьшают УСН 6%</Typography></CardContent></Card></Grid>
-              <Grid item xs={12} sm={4}><Card variant="outlined" sx={{ bgcolor: 'primary.50' }}><CardContent><Typography color="text.secondary">УСН до уменьшения</Typography><Typography variant="h5" fontWeight={700}>{money(taxCalculation.grossUsn)} ₽</Typography><Typography variant="caption" color="text.secondary">6% от доходов</Typography></CardContent></Card></Grid>
+              <Grid item xs={12} sm={4}><Card variant="outlined" sx={{ bgcolor: 'primary.50' }}><CardContent><Typography color="text.secondary">{highlightedTax.label}</Typography><Typography variant="h5" fontWeight={700}>{highlightedTax.value}</Typography><Typography variant="caption" color="text.secondary">{highlightedTax.hint}</Typography></CardContent></Card></Grid>
             </Grid>
             {regime === 'usn' && (
               <>

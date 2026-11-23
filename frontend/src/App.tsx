@@ -112,6 +112,7 @@ const OwnerCounterpartiesPage = React.lazy(() => import('./pages/OwnerCounterpar
 const CounterpartyDetailPage = React.lazy(() => import('./pages/CounterpartyDetailPage'));
 const ProjectDetailPage = React.lazy(() => import('./pages/ProjectDetailPage'));
 const FinanceOverviewPage = React.lazy(() => import('./pages/FinanceOverviewPage'));
+const TaxCalendarPage = React.lazy(() => import('./pages/TaxCalendarPage'));
 const RolesPage = React.lazy(() => import('./pages/RolesPage'));
 const PersonRegistryPage = React.lazy(() => import('./pages/PersonRegistryPage'));
 const UserDetailsPage = React.lazy(() => import('./pages/UserDetailsPage'));
@@ -1084,6 +1085,14 @@ function App() {
             />
             {/* Настройки таск трекера и контрагентов переехали в общий раздел настроек */}
             <Route path="/owner-workspace/settings" element={<RedirectWithSearch to="/admin/settings?tab=ownerWorkspace" />} />
+            <Route
+              path="/owner/tax-calendar"
+              element={
+                <PrivateRoute allowedRoles={['owner']} requiredPermission="finance.access">
+                  <TaxCalendarPage />
+                </PrivateRoute>
+              }
+            />
             <Route
               path="/owner-workspace/projects"
               element={

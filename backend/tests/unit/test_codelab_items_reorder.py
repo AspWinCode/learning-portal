@@ -56,7 +56,7 @@ def test_reorder_persists_new_order_and_skips_unchanged_positions(monkeypatch):
     async def fake_get_tree(*_args, **_kwargs):
         return _tree()
 
-    async def fake_update_item(_user, item_id, payload):
+    async def fake_update_item(_user, item_id, payload, **_kwargs):
         calls.append((item_id, payload["position"]))
         return {"id": item_id, **payload}
 
@@ -67,7 +67,7 @@ def test_reorder_persists_new_order_and_skips_unchanged_positions(monkeypatch):
     # [51, 60, 55, 71] -> [51, 55, 60, 71]: 55 поднимается, 60 опускается,
     # 51 и 71 остаются на своих позициях (0 и 3) и не должны слать лишний PUT.
     payload = CodelabItemsReorderIn(parent_id=10, item_ids=[51, 55, 60, 71])
-    result = asyncio.run(codelab.admin_reorder_items(4, payload, methodist, _FakeDb()))
+    result = asyncio.run(codelab.admin_reorder_items(4, payload, current_user=methodist, db=_FakeDb()))
 
     assert calls == [(55, 1), (60, 2)]
     assert result == _tree()  # get_course_tree re-fetched (второй вызов — тот же fake)
@@ -80,7 +80,7 @@ def test_reorder_rejects_different_parent_ids_in_one_batch(monkeypatch):
     # 90 принадлежит parent_id=None, а не 10.
     payload = CodelabItemsReorderIn(parent_id=10, item_ids=[51, 60, 55, 90])
     with pytest.raises(HTTPException) as exc:
-        asyncio.run(codelab.admin_reorder_items(4, payload, methodist, _FakeDb()))
+        asyncio.run(codelab.admin_reorder_items(4, payload, current_user=methodist, db=_FakeDb()))
     assert exc.value.status_code == 400
 
 
@@ -91,7 +91,7 @@ def test_reorder_rejects_item_from_another_course(monkeypatch):
     # 999 не существует в дереве курса 4 (например, относится к другому курсу).
     payload = CodelabItemsReorderIn(parent_id=10, item_ids=[51, 60, 55, 999])
     with pytest.raises(HTTPException) as exc:
-        asyncio.run(codelab.admin_reorder_items(4, payload, methodist, _FakeDb()))
+        asyncio.run(codelab.admin_reorder_items(4, payload, current_user=methodist, db=_FakeDb()))
     assert exc.value.status_code == 404
 
 
@@ -102,7 +102,7 @@ def test_reorder_rejects_partial_subset_of_siblings(monkeypatch):
     # Пропущен 71 — набор siblings неполный.
     payload = CodelabItemsReorderIn(parent_id=10, item_ids=[51, 60, 55])
     with pytest.raises(HTTPException) as exc:
-        asyncio.run(codelab.admin_reorder_items(4, payload, methodist, _FakeDb()))
+        asyncio.run(codelab.admin_reorder_items(4, payload, current_user=methodist, db=_FakeDb()))
     assert exc.value.status_code == 400
 
 
@@ -112,7 +112,7 @@ def test_reorder_rejects_duplicate_item_ids(monkeypatch):
 
     payload = CodelabItemsReorderIn(parent_id=10, item_ids=[51, 51, 60, 55, 71])
     with pytest.raises(HTTPException) as exc:
-        asyncio.run(codelab.admin_reorder_items(4, payload, methodist, _FakeDb()))
+        asyncio.run(codelab.admin_reorder_items(4, payload, current_user=methodist, db=_FakeDb()))
     assert exc.value.status_code == 400
 
 
@@ -123,7 +123,7 @@ def test_reorder_surfaces_codelab_error_with_progress_so_far(monkeypatch):
     применится, чтобы frontend мог обновить дерево и показать расхождение."""
     methodist = SimpleNamespace(id=1)
 
-    async def fake_update_item(_user, item_id, payload):
+    async def fake_update_item(_user, item_id, payload, **_kwargs):
         if item_id == 60:
             raise CodelabError(409, "conflict")
         return {"id": item_id, **payload}
@@ -134,7 +134,7 @@ def test_reorder_surfaces_codelab_error_with_progress_so_far(monkeypatch):
 
     payload = CodelabItemsReorderIn(parent_id=10, item_ids=[71, 55, 60, 51])
     with pytest.raises(HTTPException) as exc:
-        asyncio.run(codelab.admin_reorder_items(4, payload, methodist, _FakeDb()))
+        asyncio.run(codelab.admin_reorder_items(4, payload, current_user=methodist, db=_FakeDb()))
     assert exc.value.status_code == 409
     assert exc.value.detail["failed_item_id"] == 60
     assert exc.value.detail["updated_item_ids"] == [71, 55]

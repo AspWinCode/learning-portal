@@ -28,16 +28,15 @@ def test_slugify_truncates_long_names():
 
 
 def test_only_personal_social_project_can_read_cross_project_content():
-    assert can_use_cross_project_content(SimpleNamespace(code="lichnye_sotsseti", name="Личные соцсети"))
-    assert can_use_cross_project_content(SimpleNamespace(code="own_socials", name="Собственные соцсети"))
-    assert not can_use_cross_project_content(SimpleNamespace(code="kodarena", name="КодАрена"))
-    assert not can_use_cross_project_content(SimpleNamespace(code="academy", name="TirSkix Academy"))
+    assert can_use_cross_project_content(SimpleNamespace(code="lichny_brand", content_scope="all_projects"))
+    assert not can_use_cross_project_content(SimpleNamespace(code="kodarena", content_scope="project_only"))
+    assert not can_use_cross_project_content(SimpleNamespace(code="academy", content_scope="project_only"))
 
 
 def test_personal_social_sources_all_active_projects_but_brands_stay_local():
     local = SimpleNamespace(id=1, code="kodarena", name="КодАрена")
     academy = SimpleNamespace(id=2, code="academy", name="TirSkix Academy")
-    personal = SimpleNamespace(id=3, code="personal_socials", name="Personal Socials")
+    personal = SimpleNamespace(id=3, code="lichny_brand", name="Личный бренд", content_scope="all_projects")
 
     class Query:
         def filter(self, *_):

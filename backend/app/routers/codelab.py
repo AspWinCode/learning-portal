@@ -537,6 +537,14 @@ async def admin_get_draft_status(course_id: int, current_user: User = Depends(_m
         _raise(e)
 
 
+@router.get("/admin/courses/{course_id}/validation")
+async def admin_get_course_validation(course_id: int, current_user: User = Depends(_manage)):
+    try:
+        return await cl.get_validation(current_user, course_id)
+    except CodelabError as e:
+        _raise(e)
+
+
 @router.post("/admin/courses/{course_id}/restore-draft")
 async def admin_restore_draft(course_id: int, current_user: User = Depends(_manage), db: Session = Depends(get_db)):
     try:

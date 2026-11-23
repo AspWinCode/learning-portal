@@ -322,6 +322,7 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
   const [tree, setTree] = useState<CodelabLearningItem[]>([]);
   const [draftStatus, setDraftStatus] = useState<{ has_unpublished_changes: boolean } | null>(null);
   const [validation, setValidation] = useState<CodelabCourseValidation | null>(null);
+  const [reorderBusy, setReorderBusy] = useState(false);
   const [loading, setLoading] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [newTitle, setNewTitle] = useState('');
@@ -676,15 +677,18 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
   // снимок до drag и показываем Snackbar. При успехе backend возвращает
   // актуальное дерево — используем его вместо отдельного refresh().
   const reorderSiblings = async (parentId: number | null, orderedIds: number[]) => {
-    if (!selected) return;
+    if (!selected || reorderBusy) return;
     const prevTree = tree;
     setTree((t) => reorderChildrenOf(t, parentId, orderedIds));
+    setReorderBusy(true);
     try {
       const updated = await api.reorderItems(selected.id, parentId, orderedIds);
       setTree(updated);
     } catch (e: any) {
       setTree(prevTree);
       onToast({ msg: errMsg(e), err: true });
+    } finally {
+      setReorderBusy(false);
     }
   };
 

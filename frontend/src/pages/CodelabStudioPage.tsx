@@ -20,7 +20,7 @@ import {
   CODELAB_CHILD_STRUCTURAL_TYPE, CODELAB_STRUCTURAL_LABEL, CodelabCourse, CodelabCourseAnalytics,
   CodelabLearningItem, CodelabLoginEvent, CodelabProblemTest, CodelabProjectSubmission, CodelabProjectSubmissionReview,
   CodelabQuizQuestion, CodelabSnapStep, CodelabStructuralType,
-  CodelabSubmissionReview, CodelabSystemStatus, CodelabUser, codelabStudioApi as api,
+  CodelabSubmissionReview, CodelabSystemStatus, CodelabUser, CodelabCourseValidation, codelabStudioApi as api,
 } from '../services/codelabApi';
 
 const CONTENT_TYPE_LABEL: Record<string, string> = {
@@ -321,6 +321,7 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
   const [selected, setSelected] = useState<CodelabCourse | null>(null);
   const [tree, setTree] = useState<CodelabLearningItem[]>([]);
   const [draftStatus, setDraftStatus] = useState<{ has_unpublished_changes: boolean } | null>(null);
+  const [validation, setValidation] = useState<CodelabCourseValidation | null>(null);
   const [loading, setLoading] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [newTitle, setNewTitle] = useState('');
@@ -382,9 +383,10 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
     setSelected(c);
     setLoading(true);
     try {
-      const [nextTree, nextDraftStatus] = await Promise.all([api.getTree(c.id), api.getDraftStatus(c.id)]);
+      const [nextTree, nextDraftStatus, nextValidation] = await Promise.all([api.getTree(c.id), api.getDraftStatus(c.id), api.getValidation(c.id)]);
       setTree(nextTree);
       setDraftStatus(nextDraftStatus);
+      setValidation(nextValidation);
     } catch (e: any) {
       onToast({ msg: errMsg(e), err: true });
     } finally {
@@ -891,6 +893,14 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
             {draftStatus?.has_unpublished_changes && (
               <Alert severity="info" sx={{ mb: 2 }}>
                 Есть неопубликованные изменения. Ученики увидят их после нажатия «Опубликовать».
+              </Alert>
+            )}
+            {validation && !validation.valid && (
+              <Alert severity="warning" sx={{ mb: 2 }}>
+                <Typography variant="subtitle2" sx={{ mb: 0.5 }}>Публикация заблокирована — исправьте ошибки:</Typography>
+                <Stack component="ul" spacing={0.25} sx={{ m: 0, pl: 2.5 }}>
+                  {validation.errors.map((issue) => <li key={`${issue.code}-${issue.item_id}-${issue.message}`}><Typography variant="body2">{issue.message}</Typography></li>)}
+                </Stack>
               </Alert>
             )}
 

@@ -51,6 +51,18 @@ export interface CodelabDraftStatus {
   has_unpublished_changes: boolean;
 }
 
+export interface CodelabValidationError {
+  item_id: number | null;
+  code: string;
+  message: string;
+}
+
+export interface CodelabCourseValidation {
+  valid: boolean;
+  errors: CodelabValidationError[];
+  warnings: CodelabValidationError[];
+}
+
 // 4 фиксированных структурных уровня — каждый следующий только внутри
 // предыдущего (app/services/tree_rules.py в Codelab); контент лежит на любом
 // из них или в корне курса.
@@ -295,6 +307,7 @@ export const codelabStudioApi = {
   reorderItems: (courseId: number, parentId: number | null, itemIds: number[], publish = false): Promise<CodelabLearningItem[]> =>
     api.put(`${B}/courses/${courseId}/items/reorder`, { parent_id: parentId, item_ids: itemIds }, { params: { publish } }).then((r) => r.data),
   getDraftStatus: (courseId: number): Promise<CodelabDraftStatus> => api.get(`${B}/courses/${courseId}/draft-status`).then((r) => r.data),
+  getValidation: (courseId: number): Promise<CodelabCourseValidation> => api.get(`${B}/courses/${courseId}/validation`).then((r) => r.data),
   publishCourse: (courseId: number): Promise<CodelabCourse> => api.post(`${B}/courses/${courseId}/publish`).then((r) => r.data),
   unpublishCourse: (courseId: number): Promise<CodelabCourse> => api.post(`${B}/courses/${courseId}/unpublish`).then((r) => r.data),
 

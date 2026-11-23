@@ -537,6 +537,17 @@ async def admin_get_draft_status(course_id: int, current_user: User = Depends(_m
         _raise(e)
 
 
+@router.post("/admin/courses/{course_id}/restore-draft")
+async def admin_restore_draft(course_id: int, current_user: User = Depends(_manage), db: Session = Depends(get_db)):
+    try:
+        result = await cl.restore_draft(current_user, course_id)
+    except CodelabError as e:
+        _raise(e)
+        return
+    log_action(db, current_user.id, "restore_draft", "codelab_course", course_id, {})
+    return result
+
+
 @router.post("/admin/courses/{course_id}/publish")
 async def admin_publish_course(course_id: int, current_user: User = Depends(_manage), db: Session = Depends(get_db)):
     try:

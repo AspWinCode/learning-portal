@@ -307,6 +307,7 @@ export const codelabStudioApi = {
   reorderItems: (courseId: number, parentId: number | null, itemIds: number[], publish = false): Promise<CodelabLearningItem[]> =>
     api.put(`${B}/courses/${courseId}/items/reorder`, { parent_id: parentId, item_ids: itemIds }, { params: { publish } }).then((r) => r.data),
   getDraftStatus: (courseId: number): Promise<CodelabDraftStatus> => api.get(`${B}/courses/${courseId}/draft-status`).then((r) => r.data),
+  restoreDraft: (courseId: number): Promise<CodelabDraftStatus> => api.post(`${B}/courses/${courseId}/restore-draft`).then((r) => r.data),
   getValidation: (courseId: number): Promise<CodelabCourseValidation> => api.get(`${B}/courses/${courseId}/validation`).then((r) => r.data),
   publishCourse: (courseId: number): Promise<CodelabCourse> => api.post(`${B}/courses/${courseId}/publish`).then((r) => r.data),
   unpublishCourse: (courseId: number): Promise<CodelabCourse> => api.post(`${B}/courses/${courseId}/unpublish`).then((r) => r.data),

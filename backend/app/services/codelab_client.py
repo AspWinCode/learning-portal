@@ -159,6 +159,10 @@ async def get_draft_status(user, course_id: int) -> dict:
     return await _request("GET", f"/api/lms-admin/courses/{course_id}/draft-status", user)
 
 
+async def restore_draft(user, course_id: int) -> dict:
+    return await _request("POST", f"/api/lms-admin/courses/{course_id}/restore-draft", user)
+
+
 async def publish_course(user, course_id: int) -> dict:
     return await _request("POST", f"/api/lms-admin/courses/{course_id}/publish", user)
 

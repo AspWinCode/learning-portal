@@ -396,6 +396,17 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
 
   const refresh = () => { if (selected) selectCourse(selected); };
 
+  const restoreDraft = async () => {
+    if (!selected) return;
+    try {
+      await api.restoreDraft(selected.id);
+      onToast({ msg: 'Черновик восстановлен из опубликованной версии' });
+      await selectCourse(selected);
+    } catch (e: any) {
+      onToast({ msg: errMsg(e), err: true });
+    }
+  };
+
   const createCourse = async () => {
     try {
       const course = await api.createCourse({ title: newTitle });
@@ -914,7 +925,16 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
                   onReorder={reorderSiblings}
                   onAddChild={openCreate} onEdit={openEdit} onArchive={toggleArchive} onDelete={setDeleteTarget}
                 />
-                {tree.length === 0 && <Typography variant="caption" color="text.secondary" sx={{ p: 2, display: 'block' }}>В черновике пока пусто.</Typography>}
+                {tree.length === 0 && (
+                  <Stack spacing={1} sx={{ p: 2 }}>
+                    <Typography variant="caption" color="text.secondary">В черновике пока пусто.</Typography>
+                    {selected.status === 'published' && (
+                      <Button size="small" variant="outlined" onClick={restoreDraft} sx={{ alignSelf: 'flex-start' }}>
+                        Восстановить черновик из опубликованной версии
+                      </Button>
+                    )}
+                  </Stack>
+                )}
               </Paper>
             )}
           </>

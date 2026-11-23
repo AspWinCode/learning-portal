@@ -1,12 +1,15 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Box,
   Card,
   CardContent,
   Chip,
+  Checkbox,
+  CircularProgress,
   Divider,
   FormControl,
+  FormControlLabel,
   Grid,
   InputLabel,
   MenuItem,
@@ -19,6 +22,8 @@ import EventAvailableIcon from '@mui/icons-material/EventAvailable';
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import Layout from '../components/Layout';
+import { financeApi } from '../services/api';
+import type { FinanceLedgerBankRow } from '../types';
 
 type Regime = 'usn' | 'osno' | 'psn';
 type TaxItem = { date: Date; title: string; detail: string; tone: 'primary' | 'warning' | 'success' | 'info' };
@@ -41,6 +46,12 @@ function addDays(value: Date, days: number): Date {
   const result = new Date(value);
   result.setDate(result.getDate() + days);
   return result;
+}
+
+function defaultFixedContribution(year: number): number {
+  if (year === 2026) return 57390;
+  if (year === 2025) return 53658;
+  return 0;
 }
 
 function getPatentItems(start: string, end: string): TaxItem[] {
@@ -96,8 +107,62 @@ const TaxCalendarPage: React.FC = () => {
   const [regime, setRegime] = useState<Regime>('usn');
   const [patentStart, setPatentStart] = useState(`${currentYear}-01-01`);
   const [patentEnd, setPatentEnd] = useState(`${currentYear}-12-31`);
+  const [incomeTotal, setIncomeTotal] = useState(0);
+  const [expenseTotal, setExpenseTotal] = useState(0);
+  const [incomeCount, setIncomeCount] = useState(0);
+  const [incomeLoading, setIncomeLoading] = useState(true);
+  const [incomeError, setIncomeError] = useState<string | null>(null);
+  const [hasEmployees, setHasEmployees] = useState(false);
+  const [fixedContributions, setFixedContributions] = useState(defaultFixedContribution(currentYear));
+  const [additionalContributions, setAdditionalContributions] = useState(0);
+  const [documentedExpenses, setDocumentedExpenses] = useState(0);
   const items = useMemo(() => buildItems(year, regime, patentStart, patentEnd).sort((a, b) => a.date.getTime() - b.date.getTime()), [year, regime, patentStart, patentEnd]);
   const nextSwitchDate = `${year}-12-31`;
+
+  useEffect(() => {
+    let active = true;
+    setIncomeLoading(true);
+    setIncomeError(null);
+    Promise.all([
+      financeApi.listJournalTransactions({ direction: 'income', date_from: `${year}-01-01`, date_to: `${year}-12-31`, limit: 50000, include_unassigned_targets: true }),
+      financeApi.listJournalTransactions({ direction: 'expense', date_from: `${year}-01-01`, date_to: `${year}-12-31`, limit: 50000, include_unassigned_targets: true }),
+    ]).then(([incomeRows, expenseRows]) => {
+      if (!active) return;
+      const sum = (rows: FinanceLedgerBankRow[]) => rows.reduce((total, row) => total + Math.abs(Number(row.amount) || 0), 0);
+      setIncomeTotal(sum(incomeRows));
+      setExpenseTotal(sum(expenseRows));
+      setIncomeCount(incomeRows.length);
+    }).catch((error) => {
+      if (!active) return;
+      setIncomeError(error instanceof Error ? error.message : 'Не удалось загрузить операции из финансового журнала');
+      setIncomeTotal(0);
+      setExpenseTotal(0);
+      setIncomeCount(0);
+    }).finally(() => {
+      if (active) setIncomeLoading(false);
+    });
+    return () => { active = false; };
+  }, [year]);
+
+  useEffect(() => {
+    setFixedContributions(defaultFixedContribution(year));
+    setAdditionalContributions(0);
+    setDocumentedExpenses(0);
+  }, [year]);
+
+  const taxCalculation = useMemo(() => {
+    const grossUsn = incomeTotal * 0.06;
+    const paidContributions = Math.max(0, Number(fixedContributions) || 0) + Math.max(0, Number(additionalContributions) || 0);
+    const reductionLimit = hasEmployees ? grossUsn * 0.5 : grossUsn;
+    const usnReduction = Math.min(grossUsn, reductionLimit, paidContributions);
+    const usnPayable = Math.max(0, grossUsn - usnReduction);
+    const osnoBase = Math.max(0, incomeTotal - Math.max(0, Number(documentedExpenses) || 0));
+    const osnoNdfl = osnoBase * 0.13;
+    const expectedAdditional = Math.max(0, incomeTotal - 300000) * 0.01;
+    return { grossUsn, paidContributions, reductionLimit, usnReduction, usnPayable, osnoBase, osnoNdfl, expectedAdditional };
+  }, [additionalContributions, documentedExpenses, fixedContributions, hasEmployees, incomeTotal]);
+
+  const money = (value: number) => value.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   return (
     <Layout>
@@ -131,6 +196,44 @@ const TaxCalendarPage: React.FC = () => {
         <Alert icon={<AccountBalanceIcon />} severity="info" sx={{ mb: 3 }}>
           В календаре установлен режим <strong>{regimeLabels[regime]}</strong>. Это рабочая подсказка для планирования, а не замена проверке сроков в личном кабинете ФНС: при переносе выходных срок переносится на ближайший рабочий день.
         </Alert>
+
+        <Card sx={{ mb: 3 }}>
+          <CardContent>
+            <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={2} sx={{ mb: 2 }}>
+              <Box>
+                <Typography variant="h6" fontWeight={700}>Расчет по операциям за {year}</Typography>
+                <Typography variant="body2" color="text.secondary">Доходы берутся из финансового журнала по операциям с направлением «Доход».</Typography>
+              </Box>
+              {incomeLoading && <CircularProgress size={24} />}
+            </Stack>
+            {incomeError && <Alert severity="error" sx={{ mb: 2 }}>{incomeError}</Alert>}
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={4}><Card variant="outlined"><CardContent><Typography color="text.secondary">Доходы</Typography><Typography variant="h5" fontWeight={700}>{money(incomeTotal)} ₽</Typography><Typography variant="caption" color="text.secondary">{incomeCount} операций</Typography></CardContent></Card></Grid>
+              <Grid item xs={12} sm={4}><Card variant="outlined"><CardContent><Typography color="text.secondary">Расходы в журнале</Typography><Typography variant="h5" fontWeight={700}>{money(expenseTotal)} ₽</Typography><Typography variant="caption" color="text.secondary">для контроля, не уменьшают УСН 6%</Typography></CardContent></Card></Grid>
+              <Grid item xs={12} sm={4}><Card variant="outlined" sx={{ bgcolor: 'primary.50' }}><CardContent><Typography color="text.secondary">УСН до уменьшения</Typography><Typography variant="h5" fontWeight={700}>{money(taxCalculation.grossUsn)} ₽</Typography><Typography variant="caption" color="text.secondary">6% от доходов</Typography></CardContent></Card></Grid>
+            </Grid>
+            {regime === 'usn' && (
+              <>
+                <Divider sx={{ my: 2 }} />
+                <Grid container spacing={2} alignItems="center">
+                  <Grid item xs={12} md={3}><TextField fullWidth size="small" type="number" label="Фиксированные взносы оплачены" value={fixedContributions} onChange={(e) => setFixedContributions(Number(e.target.value))} InputProps={{ endAdornment: <Typography variant="caption">₽</Typography> }} /></Grid>
+                  <Grid item xs={12} md={3}><TextField fullWidth size="small" type="number" label="Доп. 1% оплачено" value={additionalContributions} onChange={(e) => setAdditionalContributions(Number(e.target.value))} InputProps={{ endAdornment: <Typography variant="caption">₽</Typography> }} /></Grid>
+                  <Grid item xs={12} md={3}><FormControlLabel control={<Checkbox checked={hasEmployees} onChange={(e) => setHasEmployees(e.target.checked)} />} label="Есть работники" /></Grid>
+                  <Grid item xs={12} md={3}><Typography variant="body2" color="text.secondary">Ожидаемый 1%: <strong>{money(taxCalculation.expectedAdditional)} ₽</strong></Typography></Grid>
+                </Grid>
+                <Alert severity="success" sx={{ mt: 2 }}>К доплате по УСН 6%: <strong>{money(taxCalculation.usnPayable)} ₽</strong>. Уменьшение на взносы: {money(taxCalculation.usnReduction)} ₽ из {money(taxCalculation.reductionLimit)} ₽ допустимого лимита.</Alert>
+              </>
+            )}
+            {regime === 'osno' && (
+              <>
+                <Divider sx={{ my: 2 }} />
+                <TextField fullWidth size="small" type="number" label="Документально подтвержденные расходы для ориентировочного НДФЛ" value={documentedExpenses} onChange={(e) => setDocumentedExpenses(Number(e.target.value))} InputProps={{ endAdornment: <Typography variant="caption">₽</Typography> }} />
+                <Alert severity="warning" sx={{ mt: 2 }}>Ориентировочный НДФЛ: <strong>{money(taxCalculation.osnoNdfl)} ₽</strong> с базы {money(taxCalculation.osnoBase)} ₽. НДС, профессиональные вычеты и авансы требуют отдельного учета.</Alert>
+              </>
+            )}
+            {regime === 'psn' && <Alert severity="info" sx={{ mt: 2 }}>Стоимость патента не выводится из фактического дохода: она рассчитывается по потенциально возможному доходу региона. В календаре рассчитаны сроки платежей, сумму нужно внести из патента.</Alert>}
+          </CardContent>
+        </Card>
 
         {regime === 'psn' && (
           <Card sx={{ mb: 3 }}>

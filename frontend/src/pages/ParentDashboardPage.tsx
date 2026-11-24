@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import NpsSurveyPrompt from '../components/NpsSurveyPrompt';
 import {
-  Alert, Avatar, Box, Button, Chip, Divider, FormControl, Grid, InputLabel,
+  Alert, Avatar, Box, Button, Chip, FormControl, Grid, InputLabel,
   LinearProgress, MenuItem, Paper, Select, Skeleton, Stack, Typography,
 } from '@mui/material';
 import {
@@ -46,6 +46,14 @@ function CardTitle({ icon, title, action }: { icon: React.ReactNode; title: stri
 
 function Empty({ children }: { children: React.ReactNode }) {
   return <Box sx={{ py: 2, color: 'text.secondary' }}><Typography variant="body2">{children}</Typography></Box>;
+}
+
+function publishedFeedback(characteristic: any | undefined): Array<{ label: string; text: string }> {
+  if (!characteristic?.data || typeof characteristic.data !== 'object') return [];
+  return Object.entries(characteristic.data)
+    .filter(([key, value]) => (key.toLowerCase().includes('comment') || key.toLowerCase().includes('recommend')) && typeof value === 'string' && value.trim())
+    .map(([key, value]) => ({ label: key.replace(/_/g, ' ').replace(/comment/i, 'Комментарий').replace(/recommendation/i, 'Рекомендация'), text: String(value).trim() }))
+    .slice(0, 4);
 }
 
 const ParentDashboardPage: React.FC<ParentDashboardPageProps> = ({ previewParentId }) => {
@@ -123,6 +131,8 @@ const ParentDashboardPage: React.FC<ParentDashboardPageProps> = ({ previewParent
   const selectedCodelab = selectedId ? codelab[selectedId] : null;
   const selectedComparison = selectedId ? comparisons[selectedId] : undefined;
   const selectedCharacteristics = selectedId ? characteristics[selectedId] || [] : [];
+  const latestCharacteristic = selectedCharacteristics[selectedCharacteristics.length - 1];
+  const feedbackItems = publishedFeedback(latestCharacteristic);
   const activeTemplate = templates[0];
   const ratingLabels = useMemo(() => (activeTemplate?.fields || []).reduce((acc: Record<string, string>, field: any) => {
     acc[field.name] = field.label; return acc;
@@ -183,7 +193,7 @@ const ParentDashboardPage: React.FC<ParentDashboardPageProps> = ({ previewParent
           <Grid item xs={12} md={6}><Card sx={{ height: '100%' }}><CardTitle icon={<AssignmentTurnedIn />} title="Практика Codelab" />{!selectedCodelab ? <Empty>Данные Codelab пока недоступны.</Empty> : <><Stack direction="row" justifyContent="space-between"><Box><Typography variant="h5" fontWeight={850}>{selectedCodelab.points_total.toLocaleString('ru-RU')} баллов</Typography><Typography color="text.secondary">Заработано в практических заданиях</Typography></Box><Chip label={selectedCodelab.rank_name || 'В процессе'} variant="outlined" /></Stack>{codelabPercent === null ? <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>Количество доступных задач пока не указано.</Typography> : <><LinearProgress variant="determinate" value={codelabPercent} sx={{ mt: 2, height: 9, borderRadius: 5 }} /><Stack direction="row" justifyContent="space-between" sx={{ mt: 1 }}><Typography variant="body2">Решено {solved} из {tasksTotal} задач</Typography><Typography variant="body2" fontWeight={750}>{codelabPercent}%</Typography></Stack></>}{selectedCodelab.recent_submissions?.length ? <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>Последняя активность: {dateOnly(selectedCodelab.recent_submissions[0].created_at)}</Typography> : null}</>}</Card></Grid>
           <Grid item xs={12} md={6}><Card sx={{ height: '100%' }}><CardTitle icon={<CheckCircle />} title="Посещаемость" />{!selectedAttendance || selectedAttendance.total === 0 ? <Empty>История посещаемости пока недоступна.</Empty> : <><Stack direction="row" spacing={3} alignItems="center"><Typography variant="h4" fontWeight={850} color={selectedAttendance.missed ? 'warning.main' : 'success.main'}>{Math.round((selectedAttendance.attended / selectedAttendance.total) * 100)}%</Typography><Box><Typography fontWeight={750}>Посещаемость</Typography><Typography variant="body2" color="text.secondary">Проведено: {selectedAttendance.total} · Посещено: {selectedAttendance.attended} · Пропущено: {selectedAttendance.missed}</Typography></Box></Stack><LinearProgress variant="determinate" value={(selectedAttendance.attended / selectedAttendance.total) * 100} color={selectedAttendance.missed ? 'warning' : 'success'} sx={{ mt: 2, height: 9, borderRadius: 5 }} /></>}</Card></Grid>
         </Grid>
-        <Card sx={{ mt: 2 }}><CardTitle icon={<NotificationsActive />} title="Последние характеристики" />{selectedCharacteristics.length === 0 ? <Empty>Преподаватель пока не оставил опубликованных характеристик.</Empty> : <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} divider={<Divider orientation="vertical" flexItem />}>{selectedCharacteristics.slice(-3).reverse().map((item: any) => <Box key={item.id} sx={{ flex: 1 }}><Typography fontWeight={750}>{item.month}/{item.year}</Typography><Typography variant="body2" color="text.secondary">Опубликованная характеристика ученика</Typography></Box>)}</Stack>}</Card>
+        <Card sx={{ mt: 2 }}><CardTitle icon={<NotificationsActive />} title="Обратная связь преподавателя" action={<Button size="small" endIcon={<ArrowForward />} onClick={() => navigate('/characteristics')}>История</Button>} />{feedbackItems.length === 0 ? <Empty>Преподаватель пока не оставил комментариев в опубликованной характеристике.</Empty> : <Stack spacing={1.5}>{feedbackItems.map((item) => <Box key={`${item.label}-${item.text}`} sx={{ p: 1.5, borderRadius: 2, bgcolor: '#faf7ff' }}><Typography variant="caption" color="text.secondary">{item.label}</Typography><Typography variant="body2" sx={{ mt: .5, whiteSpace: 'pre-wrap' }}>{item.text}</Typography></Box>)}<Typography variant="caption" color="text.secondary">{latestCharacteristic?.trainer?.full_name ? `${latestCharacteristic.trainer.full_name} · ` : ''}Характеристика за {latestCharacteristic?.month}/{latestCharacteristic?.year}</Typography></Stack>}</Card>
       </>}
     </Box>
   </Layout>;

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Box,
+  Button,
   Card,
   CardContent,
   Chip,
@@ -12,6 +13,7 @@ import {
   FormControlLabel,
   Grid,
   InputLabel,
+  LinearProgress,
   MenuItem,
   Select,
   Stack,
@@ -28,6 +30,7 @@ import type { FinanceLedgerBankRow } from '../types';
 
 type Regime = 'usn' | 'osno' | 'psn';
 type TaxItem = { date: Date; title: string; detail: string; tone: 'primary' | 'warning' | 'success' | 'info' };
+type ChecklistStep = { id: string; title: string; detail: string };
 
 const regimeLabels: Record<Regime, string> = {
   usn: 'УСН 6% (доходы)',
@@ -125,6 +128,7 @@ const TaxCalendarPage: React.FC = () => {
   const [fixedContributions, setFixedContributions] = useState(defaultFixedContribution(currentYear));
   const [additionalContributions, setAdditionalContributions] = useState(0);
   const [documentedExpenses, setDocumentedExpenses] = useState(0);
+  const [completedChecklistIds, setCompletedChecklistIds] = useState<string[]>([]);
   const items = useMemo(() => buildItems(year, regime, patentStart, patentEnd, patentCost).sort((a, b) => a.date.getTime() - b.date.getTime()), [year, regime, patentStart, patentEnd, patentCost]);
   const nextSwitchDate = `${year}-12-31`;
 
@@ -178,6 +182,60 @@ const TaxCalendarPage: React.FC = () => {
     : regime === 'osno'
       ? { label: 'ОСНО: ориентировочный НДФЛ', value: `${money(taxCalculation.osnoNdfl)} ₽`, hint: `13% от базы ${money(taxCalculation.osnoBase)} ₽` }
       : { label: 'Патент', value: patentCost ? `${money(patentCost)}` + ' ₽' : '—', hint: 'Черемхово · дополнительное образование' };
+  const checklistSteps = useMemo<ChecklistStep[]>(() => {
+    if (regime === 'usn') {
+      return [
+        { id: 'income', title: 'Сверить доходы за год', detail: 'Проверьте операции в журнале, уберите дубли и убедитесь, что в доходах остались только предпринимательские поступления.' },
+        { id: 'contributions', title: 'Рассчитать страховые взносы', detail: 'Зафиксируйте обязательные взносы за себя и дополнительный 1% с дохода свыше 300 000 ₽.' },
+        { id: 'limit', title: 'Проверить лимит уменьшения', detail: hasEmployees ? 'При работниках уменьшение УСН ограничено 50%; проверьте, что взносы не используются повторно.' : 'Без работников налог можно уменьшить вплоть до нуля, но только на фактически начисленные и уплаченные взносы.' },
+        { id: 'payment', title: 'Подтвердить оплату взносов', detail: 'Сверьте платежи и сальдо ЕНС, чтобы взносы можно было учесть при расчете аванса или годового налога.' },
+        { id: 'advance', title: 'Пересчитать аванс УСН', detail: 'Сначала посчитайте 6% от доходов, затем вычтите допустимую сумму взносов и проверьте сумму к доплате.' },
+        { id: 'notification', title: 'Подать уведомление и оплатить налог', detail: 'Перед каждым сроком из календаря проверьте уведомление об исчисленной сумме и оплату через ЕНС.' },
+        { id: 'declaration', title: 'Закрыть годовую декларацию', detail: 'Сверьте итоговый доход, взносы и авансы, затем подайте декларацию и доплатите остаток в установленный срок.' },
+      ];
+    }
+    if (regime === 'osno') {
+      return [
+        { id: 'income', title: 'Сверить доходы и расходы', detail: 'Закройте финансовый журнал за период и проверьте, что операции относятся к правильному году.' },
+        { id: 'primary', title: 'Собрать первичные документы', detail: 'Оставьте в расходах только затраты, связанные с доходом и подтвержденные договорами, актами, чеками и оплатой.' },
+        { id: 'deduction', title: 'Выбрать способ учета расходов', detail: 'Сравните фактические подтвержденные расходы с профессиональным вычетом 20%, если документы невозможно собрать.' },
+        { id: 'vat', title: 'Отдельно сверить НДС', detail: 'Проверьте книгу продаж, входной НДС, счета-фактуры, вычеты и квартальные декларации — они не входят в расчет НДФЛ на экране.' },
+        { id: 'advance', title: 'Пересчитать аванс НДФЛ', detail: 'Проверьте налоговую базу после вычетов, аванс и уведомление об исчисленной сумме.' },
+        { id: 'year-end', title: 'Закрыть год по ОСНО', detail: 'Подготовьте 3-НДФЛ, проверьте ЕНС и оплатите итоговый НДФЛ по срокам календаря.' },
+      ];
+    }
+    return [
+      { id: 'activity', title: 'Проверить право на патент', detail: 'Сверьте вид деятельности, муниципалитет, физические показатели и период действия патента.' },
+      { id: 'cost', title: 'Подтвердить стоимость патента', detail: `Укажите сумму из патента: сейчас в расчете ${patentCost ? `${money(patentCost)} ₽` : 'сумма не задана'}.` },
+      { id: 'schedule', title: 'Разнести платежи по срокам', detail: 'Проверьте график 1/3 и 2/3 либо единого платежа в зависимости от срока патента.' },
+      { id: 'contributions', title: 'Рассчитать взносы для уменьшения', detail: 'Определите, какие взносы относятся к патентной деятельности и не были использованы в другом режиме.' },
+      { id: 'notice', title: 'Подать уведомление КНД 1112021', detail: 'Передайте уведомление об уменьшении стоимости патента в ФНС и сохраните подтверждение отправки.' },
+      { id: 'combine', title: 'Проверить совмещение режимов', detail: 'Не уменьшайте УСН и ПСН одними и теми же взносами; распределение зафиксируйте в учете.' },
+      { id: 'change', title: 'Проверить изменения показателей', detail: 'Если площадь, число объектов или другой физический показатель изменились, уточните необходимость переоформления патента.' },
+    ];
+  }, [hasEmployees, money, patentCost, regime]);
+  const checklistStorageKey = `tax-checklist:${year}:${regime}`;
+  const completedChecklistCount = checklistSteps.filter((step) => completedChecklistIds.includes(step.id)).length;
+  const checklistProgress = checklistSteps.length ? Math.round((completedChecklistCount / checklistSteps.length) * 100) : 0;
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(checklistStorageKey);
+      setCompletedChecklistIds(saved ? JSON.parse(saved) : []);
+    } catch {
+      setCompletedChecklistIds([]);
+    }
+  }, [checklistStorageKey]);
+  const toggleChecklistStep = (id: string) => {
+    setCompletedChecklistIds((current) => {
+      const next = current.includes(id) ? current.filter((item) => item !== id) : [...current, id];
+      window.localStorage.setItem(checklistStorageKey, JSON.stringify(next));
+      return next;
+    });
+  };
+  const resetChecklist = () => {
+    window.localStorage.removeItem(checklistStorageKey);
+    setCompletedChecklistIds([]);
+  };
   const recommendations = useMemo(() => {
     if (regime === 'usn') {
       const remainingReduction = Math.max(0, taxCalculation.reductionLimit - taxCalculation.usnReduction);
@@ -333,6 +391,36 @@ const TaxCalendarPage: React.FC = () => {
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
               Источники: <a href="https://www.nalog.gov.ru/rn77/ip/ip_pay_taxes/usn/" target="_blank" rel="noreferrer">ФНС — УСН</a>, <a href="https://www.nalog.gov.ru/rn77/ip/ip_pay_taxes/ndfl/" target="_blank" rel="noreferrer">ФНС — НДФЛ ИП</a>, <a href="https://www.nalog.gov.ru/rn77/about_fts/about_nalog/14140758/" target="_blank" rel="noreferrer">ФНС — уменьшение ПСН на взносы</a>.
             </Typography>
+          </CardContent>
+        </Card>
+
+        <Card sx={{ mb: 3 }}>
+          <CardContent>
+            <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'center' }} spacing={1} sx={{ mb: 1 }}>
+              <Box>
+                <Typography variant="h6" fontWeight={700}>Пошаговый чек-лист уменьшения налогов</Typography>
+                <Typography variant="body2" color="text.secondary">Отмечайте выполненные действия по режиму {regimeLabels[regime]}. Прогресс хранится отдельно для {year} года.</Typography>
+              </Box>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Chip label={`${completedChecklistCount}/${checklistSteps.length}`} color={checklistProgress === 100 ? 'success' : 'primary'} />
+                <Button size="small" onClick={resetChecklist} disabled={!completedChecklistCount}>Сбросить</Button>
+              </Stack>
+            </Stack>
+            <LinearProgress variant="determinate" value={checklistProgress} sx={{ mb: 1.5, height: 7, borderRadius: 4 }} />
+            <Typography variant="caption" color="text.secondary">Готово: {checklistProgress}%</Typography>
+            <Stack divider={<Divider flexItem />} sx={{ mt: 1 }}>
+              {checklistSteps.map((step, index) => (
+                <FormControlLabel
+                  key={step.id}
+                  sx={{ alignItems: 'flex-start', m: 0, py: 1 }}
+                  control={<Checkbox checked={completedChecklistIds.includes(step.id)} onChange={() => toggleChecklistStep(step.id)} />}
+                  label={<Box><Typography fontWeight={600}>{index + 1}. {step.title}</Typography><Typography variant="body2" color="text.secondary">{step.detail}</Typography></Box>}
+                />
+              ))}
+            </Stack>
+            <Alert severity="warning" sx={{ mt: 2 }}>
+              Чек-лист помогает не пропустить законные действия, но не заменяет проверку ограничений режима, ЕНС и документов в личном кабинете ФНС.
+            </Alert>
           </CardContent>
         </Card>
 

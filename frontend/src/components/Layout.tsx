@@ -392,7 +392,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     if (role === 'guest') return [{ text: 'Программы', icon: <Book />, path: '/programs' }];
     if (role === 'parent')
       return [
-        { text: 'Главная', icon: <Home />, path: '/parent-dashboard' },
+        { text: 'Обзор', icon: <Home />, path: '/parent-dashboard' },
         { text: 'Программы', icon: <Book />, path: '/programs' },
         { text: 'Оценки', icon: <Grade />, path: '/grades' },
         { text: 'Характеристики', icon: <Description />, path: '/characteristics' },
@@ -555,7 +555,7 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
   };
 
   const appBarPageTitle =
-    (isParentPreview ? 'Кабинет родителя' : null) ??
+    ((isParentPreview || (role === 'parent' && location.pathname === '/parent-dashboard')) ? 'Кабинет родителя' : null) ??
     effectiveMenuItems.find((item) => item.path === location.pathname)?.text ??
     (location.pathname === '/calendar' ? 'Календарь' : null) ??
     (location.pathname.startsWith('/owner-workspace/counterparties') ? 'Контрагенты' : null) ??

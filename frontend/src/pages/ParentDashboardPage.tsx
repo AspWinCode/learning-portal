@@ -1,919 +1,192 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import NpsSurveyPrompt from '../components/NpsSurveyPrompt';
 import {
-  Alert,
-  Typography,
-  Box,
-  Button,
-  Paper,
-  LinearProgress,
-  Grid,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Divider,
-  Rating,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Chip,
-  Stack,
-  TextField,
-  Tooltip as MuiTooltip,
+  Alert, Avatar, Box, Button, Chip, Divider, FormControl, Grid, InputLabel,
+  LinearProgress, MenuItem, Paper, Select, Skeleton, Stack, Typography,
 } from '@mui/material';
-import { ExpandMore as ExpandMoreIcon, NotificationsActive as NotificationsActiveIcon, NotificationsOff as NotificationsOffIcon } from '@mui/icons-material';
 import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  BarChart,
-  Bar,
+  AccountBalanceWallet, ArrowForward, AssignmentTurnedIn, CalendarMonth,
+  CheckCircle, ChevronRight, EventBusy, Groups, Insights, NotificationsActive,
+  Payment, School, Star, TrendingUp, WarningAmber,
+} from '@mui/icons-material';
+import {
+  CartesianGrid, Line, LineChart, PolarAngleAxis, PolarGrid, PolarRadiusAxis,
+  Radar, RadarChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
-import {
-  gradesApi,
-  studentsApi,
-  programsApi,
-  characteristicsApi,
-  reportsApi,
-  parentDashboardApi,
-} from '../services/api';
-import {
-  Student,
-  Program,
-  Characteristic,
-  CharacteristicTemplate,
-  ParentDashboardSummary,
-  OwnerWorkspaceWebPushStatus,
-} from '../types';
-import { extractApiError } from '../utils/extractApiError';
-import { getStudentTechnoLabProgress, TechnoLabStudentProgress } from '../services/technolabApi';
-import { getStudentPixelForgeProgress, PixelForgeStudentProgress } from '../services/pixelforgeApi';
+import { characteristicsApi, gradesApi, parentDashboardApi, reportsApi, studentsApi } from '../services/api';
 import { getStudentCodelabProgress, CodelabStudentProgress } from '../services/codelabApi';
+import { ParentDashboardSummary } from '../types';
+import { extractApiError } from '../utils/extractApiError';
 
-type ComparisonResponse = {
-  current: any | null;
-  previous: any | null;
-  before_previous: any | null;
-};
+interface ParentDashboardPageProps { previewParentId?: number; }
+type DashboardStudent = { id: number; full_name: string };
+type CharacteristicComparison = { current: any | null; previous: any | null; before_previous: any | null };
+type AttendanceSummary = { total: number; attended: number; missed: number };
 
-type GradeDynamicsResponse = {
-  student_id: number;
-  dynamics: Array<{ month: string; average_grade: number }>;
-};
+const purple = '#8738C9';
+const surface = { border: '1px solid', borderColor: 'rgba(24,24,27,.09)', borderRadius: 3, boxShadow: '0 8px 24px rgba(24,24,27,.04)' };
+const money = (value: number) => `${Math.abs(value).toLocaleString('ru-RU')} ₽`;
+const dateOnly = (value?: string | null) => value ? new Date(value).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }) : '—';
+const shortDate = (value?: string | null) => value ? new Date(value).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }) : '—';
+const timeOnly = (value?: string | null) => value ? value.slice(0, 5) : '—';
+const percent = (value: number) => Math.max(0, Math.min(100, Math.round(value)));
 
-function urlBase64ToUint8Array(base64String: string): Uint8Array {
-  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
-  const normalized = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-  const rawData = window.atob(normalized);
-  const outputArray = new Uint8Array(rawData.length);
-  for (let i = 0; i < rawData.length; i += 1) {
-    outputArray[i] = rawData.charCodeAt(i);
-  }
-  return outputArray;
+function Card({ children, sx = {} }: { children: React.ReactNode; sx?: any }) {
+  return <Paper sx={{ ...surface, p: { xs: 2, sm: 2.5 }, ...sx }}>{children}</Paper>;
 }
 
-interface ParentDashboardPageProps {
-  previewParentId?: number;
+function CardTitle({ icon, title, action }: { icon: React.ReactNode; title: string; action?: React.ReactNode }) {
+  return <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1} sx={{ mb: 2 }}>
+    <Stack direction="row" spacing={1} alignItems="center"><Box sx={{ color: purple, display: 'flex' }}>{icon}</Box><Typography fontWeight={800}>{title}</Typography></Stack>
+    {action}
+  </Stack>;
+}
+
+function Empty({ children }: { children: React.ReactNode }) {
+  return <Box sx={{ py: 2, color: 'text.secondary' }}><Typography variant="body2">{children}</Typography></Box>;
 }
 
 const ParentDashboardPage: React.FC<ParentDashboardPageProps> = ({ previewParentId }) => {
-  const [students, setStudents] = useState<Student[]>([]);
-  const [progress, setProgress] = useState<any>({});
-  const [programsById, setProgramsById] = useState<Record<number, Program>>({});
-  const [comparisons, setComparisons] = useState<Record<number, ComparisonResponse>>({});
-  const [gradeDynamics, setGradeDynamics] = useState<Record<number, GradeDynamicsResponse>>({});
-  const [publishedChars, setPublishedChars] = useState<Record<number, Characteristic[]>>({});
-  const [templates, setTemplates] = useState<CharacteristicTemplate[]>([]);
-  const [rangeSelection, setRangeSelection] = useState<
-    Record<number, { startId?: number; endId?: number }>
-  >({});
+  const navigate = useNavigate();
+  const [students, setStudents] = useState<DashboardStudent[]>([]);
   const [summary, setSummary] = useState<ParentDashboardSummary>({ students: [] });
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [progress, setProgress] = useState<Record<number, any>>({});
+  const [comparisons, setComparisons] = useState<Record<number, CharacteristicComparison>>({});
+  const [dynamics, setDynamics] = useState<Record<number, Array<{ month: string; average_grade: number }>>>({});
+  const [characteristics, setCharacteristics] = useState<Record<number, any[]>>({});
+  const [codelab, setCodelab] = useState<Record<number, CodelabStudentProgress | null>>({});
+  const [attendance, setAttendance] = useState<Record<number, AttendanceSummary>>({});
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [questionByStudent, setQuestionByStudent] = useState<Record<number, { topic: string; message: string }>>({});
-  const [sendingQuestionFor, setSendingQuestionFor] = useState<number | null>(null);
-  const [webPushStatus, setWebPushStatus] = useState<OwnerWorkspaceWebPushStatus | null>(null);
-  const [webPushPermission, setWebPushPermission] = useState<'default' | 'denied' | 'granted'>('default');
-  const [webPushBusy, setWebPushBusy] = useState(false);
-  const [technolabByStudentId, setTechnolabByStudentId] = useState<Record<number, TechnoLabStudentProgress>>({});
-  const [pixelforgeByStudentId, setPixelforgeByStudentId] = useState<Record<number, PixelForgeStudentProgress>>({});
-  const [codelabByStudentId, setCodelabByStudentId] = useState<Record<number, CodelabStudentProgress>>({});
+  const [detailErrors, setDetailErrors] = useState<string[]>([]);
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
-    try {
-      const previewData = previewParentId ? await parentDashboardApi.getPreview(previewParentId) : null;
-      const [programs, studentsData] = await Promise.all([
-        programsApi.getAll(),
-        previewData
-          ? Promise.resolve(
-              previewData.summary.students.map((item) => ({
-                id: item.student_id,
-                full_name: item.student_name,
-                parent_id: previewParentId,
-                status: 'active' as const,
-                created_at: new Date().toISOString(),
-              }))
-            )
-          : studentsApi.getAll(),
+  const loadDetails = async (studentList: DashboardStudent[]) => {
+    const nextErrors: string[] = [];
+    await Promise.all(studentList.map(async (student) => {
+      const requests = await Promise.allSettled([
+        gradesApi.getStudentProgress(student.id),
+        reportsApi.getGradeDynamics(student.id),
+        characteristicsApi.getComparison(student.id),
+        characteristicsApi.getPublishedForStudent(student.id),
+        studentsApi.getAttendances(student.id, 80),
+        getStudentCodelabProgress(student.id),
       ]);
-      const dashboardSummary = previewData?.summary || await parentDashboardApi.getSummary().catch(() => ({ students: [] }));
-      setProgramsById(
-        programs.reduce((acc: any, p: Program) => {
-          acc[p.id] = p;
-          return acc;
-        }, {})
-      );
-      setStudents(studentsData);
-      setSummary(dashboardSummary);
-      setError('');
-
-      try {
-        const tpls = await characteristicsApi.getTemplates();
-        setTemplates(tpls.filter((t) => t.is_active));
-      } catch (err) {
-        console.error('Ошибка загрузки шаблонов характеристик', err);
+      const [progressResult, dynamicsResult, comparisonResult, characteristicsResult, attendanceResult, codelabResult] = requests;
+      if (progressResult.status === 'fulfilled') setProgress((v) => ({ ...v, [student.id]: progressResult.value }));
+      else nextErrors.push(`${student.full_name}: не удалось загрузить прогресс`);
+      if (dynamicsResult.status === 'fulfilled') setDynamics((v) => ({ ...v, [student.id]: dynamicsResult.value.dynamics || [] }));
+      if (comparisonResult.status === 'fulfilled') setComparisons((v) => ({ ...v, [student.id]: comparisonResult.value }));
+      if (characteristicsResult.status === 'fulfilled') setCharacteristics((v) => ({ ...v, [student.id]: characteristicsResult.value }));
+      if (attendanceResult.status === 'fulfilled') {
+        const rows = attendanceResult.value || [];
+        const attended = rows.filter((row) => row.attended).length;
+        setAttendance((v) => ({ ...v, [student.id]: { total: rows.length, attended, missed: rows.length - attended } }));
       }
-
-      // Загружаем данные для каждого ученика (параллельно)
-      await Promise.all(
-        studentsData.map(async (student) => {
-          try {
-            const progressData = await gradesApi.getStudentProgress(student.id);
-            setProgress((prev: any) => ({ ...prev, [student.id]: progressData }));
-          } catch (err) {
-            console.error(`Ошибка загрузки прогресса для ученика ${student.id}`, err);
-          }
-
-          try {
-            const comp = await characteristicsApi.getComparison(student.id);
-            setComparisons((prev) => ({ ...prev, [student.id]: comp }));
-          } catch (err) {
-            console.error(`Ошибка загрузки сравнения характеристик для ученика ${student.id}`, err);
-          }
-
-          try {
-            const list = await characteristicsApi.getPublishedForStudent(student.id);
-            setPublishedChars((prev) => ({ ...prev, [student.id]: list }));
-            if (list.length) {
-              setRangeSelection((prev) => ({
-                ...prev,
-                [student.id]: {
-                  startId: prev[student.id]?.startId ?? list[0].id,
-                  endId: prev[student.id]?.endId ?? list[list.length - 1].id,
-                },
-              }));
-            }
-          } catch (err) {
-            console.error(`Ошибка загрузки опубликованных характеристик для ученика ${student.id}`, err);
-          }
-
-          try {
-            const dyn = await reportsApi.getGradeDynamics(student.id);
-            setGradeDynamics((prev) => ({ ...prev, [student.id]: dyn }));
-          } catch (err) {
-            console.error(`Ошибка загрузки динамики оценок для ученика ${student.id}`, err);
-          }
-
-          try {
-            const tl = await getStudentTechnoLabProgress(student.id);
-            if (tl.started) setTechnolabByStudentId((prev) => ({ ...prev, [student.id]: tl }));
-          } catch (err) {
-            console.error(`Ошибка загрузки прогресса ТехноЛаб для ученика ${student.id}`, err);
-          }
-
-          try {
-            const pf = await getStudentPixelForgeProgress(student.id);
-            if (pf.started) setPixelforgeByStudentId((prev) => ({ ...prev, [student.id]: pf }));
-          } catch (err) {
-            console.error(`Ошибка загрузки прогресса PixelForge для ученика ${student.id}`, err);
-          }
-
-          try {
-            const cl = await getStudentCodelabProgress(student.id);
-            if (cl.started) setCodelabByStudentId((prev) => ({ ...prev, [student.id]: cl }));
-          } catch (err) {
-            console.error(`Ошибка загрузки прогресса Codelab для ученика ${student.id}`, err);
-          }
-        })
-      );
-    } catch (err) {
-      console.error('Ошибка загрузки данных', err);
-    }
+      if (codelabResult.status === 'fulfilled') setCodelab((v) => ({ ...v, [student.id]: codelabResult.value.started ? codelabResult.value : null }));
+    }));
+    setDetailErrors(nextErrors);
   };
 
   useEffect(() => {
-    if (previewParentId) {
-      setWebPushStatus(null);
-      return;
-    }
-    setWebPushPermission(typeof Notification !== 'undefined' ? Notification.permission : 'default');
-    parentDashboardApi
-      .getWebPushStatus()
-      .then(setWebPushStatus)
-      .catch(() => setWebPushStatus(null));
+    let active = true;
+    (async () => {
+      setLoading(true); setError('');
+      try {
+        const preview = previewParentId ? await parentDashboardApi.getPreview(previewParentId) : null;
+        const dashboard = preview?.summary || await parentDashboardApi.getSummary();
+        if (!active) return;
+        setSummary(dashboard);
+        const list = dashboard.students.map((item) => ({ id: item.student_id, full_name: item.student_name }));
+        setStudents(list);
+        setSelectedId((current) => current && list.some((student) => student.id === current) ? current : list[0]?.id || null);
+        try { setTemplates((await characteristicsApi.getTemplates()).filter((template) => template.is_active)); } catch { /* optional */ }
+        await loadDetails(list);
+      } catch (err) {
+        if (active) setError(extractApiError(err, 'Не удалось загрузить кабинет родителя.'));
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => { active = false; };
+    // Route is remounted when the preview parent changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [previewParentId]);
 
-  const handleQuestionChange = (studentId: number, patch: Partial<{ topic: string; message: string }>) => {
-    setQuestionByStudent((prev) => ({
-      ...prev,
-      [studentId]: {
-        topic: prev[studentId]?.topic || '',
-        message: prev[studentId]?.message || '',
-        ...patch,
-      },
-    }));
-  };
-
-  const handleSendQuestion = async (studentId: number) => {
-    const draft = questionByStudent[studentId];
-    if (!draft?.message?.trim()) return;
-    setSendingQuestionFor(studentId);
-    try {
-      await parentDashboardApi.createQuestion({
-        student_id: studentId,
-        topic: draft.topic.trim() || undefined,
-        message: draft.message.trim(),
-      });
-      handleQuestionChange(studentId, { topic: '', message: '' });
-      setError('');
-    } catch (err) {
-      setError(extractApiError(err, 'Не удалось отправить вопрос.'));
-    } finally {
-      setSendingQuestionFor(null);
-    }
-  };
-
-  const handleEnableWebPush = async () => {
-    if (!webPushStatus?.configured || !webPushStatus.public_key) return;
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-      setError('Этот браузер не поддерживает web push.');
-      return;
-    }
-    setWebPushBusy(true);
-    try {
-      let permission = Notification.permission;
-      if (permission !== 'granted') {
-        permission = await Notification.requestPermission();
-      }
-      setWebPushPermission(permission);
-      if (permission !== 'granted') {
-        throw new Error('Разрешение на web push не выдано.');
-      }
-      const registration = await navigator.serviceWorker.register('/sw.js');
-      let subscription = await registration.pushManager.getSubscription();
-      if (!subscription) {
-        subscription = await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(webPushStatus.public_key),
-        });
-      }
-      const json = subscription.toJSON();
-      await parentDashboardApi.upsertWebPushSubscription({
-        endpoint: json.endpoint || '',
-        p256dh: json.keys?.p256dh || '',
-        auth: json.keys?.auth || '',
-        user_agent: navigator.userAgent,
-      });
-      setWebPushStatus(await parentDashboardApi.getWebPushStatus());
-      setError('');
-    } catch (err) {
-      setError(extractApiError(err, 'Не удалось подключить web push.'));
-    } finally {
-      setWebPushBusy(false);
-    }
-  };
-
-  const handleDisableWebPush = async () => {
-    if (!('serviceWorker' in navigator)) return;
-    setWebPushBusy(true);
-    try {
-      const registration = await navigator.serviceWorker.register('/sw.js');
-      const subscription = await registration.pushManager.getSubscription();
-      if (subscription) {
-        await parentDashboardApi.removeWebPushSubscription(subscription.endpoint);
-        await subscription.unsubscribe();
-      }
-      setWebPushStatus(await parentDashboardApi.getWebPushStatus());
-      setError('');
-    } catch (err) {
-      setError(extractApiError(err, 'Не удалось отключить web push.'));
-    } finally {
-      setWebPushBusy(false);
-    }
-  };
-
-  const formatMonth = (raw: string) => {
-    // backend возвращает str(month) где month = date_trunc('month', ...)
-    // обычно это "2026-01-01 00:00:00+00:00" или ISO
-    const d = new Date(raw);
-    if (Number.isNaN(d.getTime())) return raw;
-    return d.toLocaleDateString('ru-RU', { year: 'numeric', month: 'short' });
-  };
-
-  const formatPeriod = (c: any) => {
-    if (!c) return '—';
-    if (c.month && c.year) return `${c.month}/${c.year}`;
-    if (c.published_at) return new Date(c.published_at).toLocaleDateString('ru-RU');
-    return '—';
-  };
-
-  const prettifyKey = (k: string) => {
-    // fallback, если нет шаблона
-    return k
-      .replace(/_/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .replace(/^\w/, (m) => m.toUpperCase());
-  };
-
-  const getAllKeys = (comp?: ComparisonResponse) => {
-    const keys = new Set<string>();
-    const add = (obj: any) => {
-      if (!obj?.data) return;
-      Object.keys(obj.data).forEach((k) => keys.add(k));
-    };
-    add(comp?.current);
-    add(comp?.previous);
-    add(comp?.before_previous);
-    const arr = Array.from(keys);
-    // сортируем по русским лейблам (если есть), иначе по ключу
-    return arr.sort((a, b) => {
-      const la = fieldLabelByName[a] || prettifyKey(a);
-      const lb = fieldLabelByName[b] || prettifyKey(b);
-      return la.localeCompare(lb, 'ru');
-    });
-  };
-
-  const renderValue = (v: any) => {
-    if (v === undefined || v === null || v === '') return '—';
-    if (typeof v === 'object') return JSON.stringify(v);
-    return String(v);
-  };
-
+  const selected = students.find((student) => student.id === selectedId) || null;
+  const selectedSummary = summary.students.find((item) => item.student_id === selectedId) || null;
+  const selectedProgress = selectedId ? progress[selectedId] : null;
+  const selectedAttendance = selectedId ? attendance[selectedId] : undefined;
+  const selectedCodelab = selectedId ? codelab[selectedId] : null;
+  const selectedComparison = selectedId ? comparisons[selectedId] : undefined;
+  const selectedCharacteristics = selectedId ? characteristics[selectedId] || [] : [];
   const activeTemplate = templates[0];
-  const fieldLabelByName: Record<string, string> = (activeTemplate?.fields || []).reduce((acc: any, f: any) => {
-    acc[f.name] = f.label;
-    return acc;
-  }, {});
+  const ratingLabels = useMemo(() => (activeTemplate?.fields || []).reduce((acc: Record<string, string>, field: any) => {
+    acc[field.name] = field.label; return acc;
+  }, {}), [activeTemplate]);
+  const ratingData = useMemo(() => {
+    const current = selectedComparison?.current?.data || {};
+    const previous = selectedComparison?.previous?.data || {};
+    return Object.entries(current)
+      .filter(([key, value]) => key.endsWith('_rating') && Number.isFinite(Number(value)))
+      .map(([key, value]) => ({ subject: ratingLabels[key] || key.replace(/_rating$/, '').replace(/_/g, ' '), current: Number(value), previous: Number(previous[key] || 0) }))
+      .slice(0, 8);
+  }, [ratingLabels, selectedComparison]);
+  const gradePoints = selectedId ? (dynamics[selectedId] || []).map((point) => ({ month: shortDate(point.month), average: Number(point.average_grade) })) : [];
+  const averageGrade = selectedProgress && Number.isFinite(Number(selectedProgress.average_grade)) ? Number(selectedProgress.average_grade) : null;
+  const progressValue = selectedProgress && Number.isFinite(Number(selectedProgress.progress_percent)) ? percent(Number(selectedProgress.progress_percent)) : null;
+  const solved = selectedCodelab?.courses.reduce((sum, course) => sum + course.tasks_solved, 0) || 0;
+  const tasksTotal = selectedCodelab?.courses.reduce((sum, course) => sum + course.tasks_total, 0) || 0;
+  const codelabPercent = tasksTotal > 0 ? percent((solved / tasksTotal) * 100) : null;
+  const balance = selectedSummary?.current_balance ?? null;
+  const nearest = selectedSummary?.nearest_lesson;
+  const attentionItems = [
+    balance !== null && balance < 0 ? { icon: <Payment />, title: 'Нужно пополнить баланс', text: `Задолженность ${money(balance)}.`, action: selectedSummary?.payment_link ? <Button size="small" variant="contained" href={selectedSummary.payment_link} target="_blank" rel="noreferrer">Оплатить</Button> : null } : null,
+    selectedAttendance?.missed ? { icon: <EventBusy />, title: 'Есть пропущенные занятия', text: `Пропущено занятий: ${selectedAttendance.missed}. Уточните варианты отработки у преподавателя.`, action: null } : null,
+    selectedSummary?.ai_insight?.weak_zone ? { icon: <TrendingUp />, title: 'Рекомендация по обучению', text: selectedSummary.ai_insight.weak_zone.recommendation || selectedSummary.ai_insight.dropout_risk.recommended_action || `Обратите внимание на тему «${selectedSummary.ai_insight.weak_zone.topic_name}».`, action: null } : null,
+  ].filter(Boolean) as Array<{ icon: React.ReactNode; title: string; text: string; action: React.ReactNode }>;
 
-  const extractRatingMetrics = (data: Record<string, any> | undefined) => {
-    if (!data) return [] as Array<{ key: string; label: string; value: number }>;
-    const out: Array<{ key: string; label: string; value: number }> = [];
-    for (const [k, v] of Object.entries(data)) {
-      if (!k.endsWith('_rating')) continue;
-      const num = typeof v === 'number' ? v : parseFloat(String(v));
-      if (Number.isNaN(num)) continue;
-      out.push({ key: k, label: fieldLabelByName[k] || k, value: num });
-    }
-    return out.sort((a, b) => a.label.localeCompare(b.label, 'ru'));
-  };
+  if (loading) return <Layout><Box sx={{ maxWidth: 1440, mx: 'auto' }}><Skeleton width={220} height={48} /><Skeleton variant="rounded" height={110} sx={{ mt: 2 }} /><Grid container spacing={2} sx={{ mt: 1 }}>{[1, 2, 3, 4].map((item) => <Grid item xs={12} sm={6} lg={3} key={item}><Skeleton variant="rounded" height={170} /></Grid>)}</Grid><Skeleton variant="rounded" height={320} sx={{ mt: 2 }} /></Box></Layout>;
 
-  const getCharById = (studentId: number, id?: number) => {
-    const list = publishedChars[studentId] || [];
-    return list.find((c) => c.id === id);
-  };
-
-  const summaryByStudentId = summary.students.reduce<Record<number, ParentDashboardSummary['students'][number]>>((acc, item) => {
-    acc[item.student_id] = item;
-    return acc;
-  }, {});
-
-  const webPushOn = !!webPushStatus?.subscription_count;
-
-  return (
-    <Layout>
-      {!previewParentId && <NpsSurveyPrompt />}
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1, mb: 2 }}>
-        <Typography variant="h4">{previewParentId ? 'Кабинет родителя' : 'Дашборд родителя'}</Typography>
-        {!previewParentId && <MuiTooltip
-          title={
-            webPushOn
-              ? 'Уведомления о новых характеристиках включены. Нажмите, чтобы отключить.'
-              : webPushStatus?.configured
-              ? 'Получать уведомление в браузер, когда появится новая характеристика'
-              : 'Web push пока не настроен на сервере'
-          }
-        >
-          <span>
-            <Chip
-              size="small"
-              icon={webPushOn ? <NotificationsActiveIcon fontSize="small" /> : <NotificationsOffIcon fontSize="small" />}
-              label={webPushBusy ? 'Подождите…' : webPushOn ? 'Уведомления включены' : 'Уведомления выключены'}
-              color={webPushOn ? 'success' : 'default'}
-              variant={webPushOn ? 'filled' : 'outlined'}
-              onClick={webPushOn ? handleDisableWebPush : handleEnableWebPush}
-              disabled={webPushBusy || (!webPushOn && !webPushStatus?.configured)}
-              sx={{ cursor: 'pointer' }}
-            />
-          </span>
-        </MuiTooltip>}
-      </Box>
-      {previewParentId && (
-        <Alert severity="info" sx={{ mb: 2 }}>
-          Реальный кабинет родителя в режиме просмотра. Действия сотрудника и авторизация администратора не меняются.
-        </Alert>
-      )}
-      {error ? (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
-          {error}
-        </Alert>
-      ) : null}
-      <Grid container spacing={3}>
-        {students.map((student) => (
-          <Grid item xs={12} md={6} key={student.id}>
-            <Paper sx={{ p: 2 }}>
-              <Typography variant="h6" gutterBottom>
-                {student.full_name}
-              </Typography>
-              {summaryByStudentId[student.id] ? (
-                <>
-                <Grid container spacing={1.5} sx={{ mb: 1 }}>
-                  <Grid item xs={12} sm={6}>
-                    <Paper variant="outlined" sx={{ p: 1.5 }}>
-                      <Typography variant="subtitle2">Ближайшее занятие</Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        {summaryByStudentId[student.id].nearest_lesson
-                          ? `${new Date(summaryByStudentId[student.id].nearest_lesson!.lesson_date).toLocaleDateString('ru-RU')} ${summaryByStudentId[student.id].nearest_lesson!.start_time.slice(0, 5)}`
-                          : 'Пока нет данных'}
-                      </Typography>
-                      <Typography variant="body2">
-                        {summaryByStudentId[student.id].nearest_lesson?.group_name || '—'}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        Тренер: {summaryByStudentId[student.id].nearest_lesson?.trainer_name || '—'}
-                      </Typography>
-                    </Paper>
-                  </Grid>
-                  <Grid item xs={12} sm={6}>
-                    <Paper variant="outlined" sx={{ p: 1.5 }}>
-                      <Typography variant="subtitle2">Баланс</Typography>
-                      <Typography variant="h6">{summaryByStudentId[student.id].current_balance.toLocaleString('ru-RU')} ₽</Typography>
-                      <Typography variant="caption" color="text.secondary" display="block">
-                        Следующая оплата: {summaryByStudentId[student.id].next_payment_date ? new Date(summaryByStudentId[student.id].next_payment_date!).toLocaleDateString('ru-RU') : '—'}
-                      </Typography>
-                      {summaryByStudentId[student.id].payment_link ? (
-                        <Button
-                          component="a"
-                          size="small"
-                          href={summaryByStudentId[student.id].payment_link as string}
-                          target="_blank"
-                          rel="noreferrer"
-                          sx={{ mt: 1, px: 0 }}
-                        >
-                          Перейти к оплате
-                        </Button>
-                      ) : null}
-                    </Paper>
-                  </Grid>
-                </Grid>
-                {summaryByStudentId[student.id].ai_insight ? (
-                  <Paper variant="outlined" sx={{ p: 1.5, mb: 1.5 }}>
-                    <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" sx={{ mb: 0.75 }}>
-                      <Chip
-                        size="small"
-                        label={`Риск: ${summaryByStudentId[student.id].ai_insight!.dropout_risk.level}`}
-                        color={
-                          summaryByStudentId[student.id].ai_insight!.dropout_risk.level === 'high'
-                            ? 'error'
-                            : summaryByStudentId[student.id].ai_insight!.dropout_risk.level === 'medium'
-                            ? 'warning'
-                            : 'success'
-                        }
-                        variant="outlined"
-                      />
-                      {summaryByStudentId[student.id].ai_insight!.weak_zone ? (
-                        <Chip
-                          size="small"
-                          label={`Слабая зона: ${summaryByStudentId[student.id].ai_insight!.weak_zone!.topic_name}`}
-                          color="warning"
-                          variant="outlined"
-                        />
-                      ) : null}
-                    </Stack>
-                    <Typography variant="caption" color="text.secondary" display="block">
-                      {summaryByStudentId[student.id].ai_insight!.dropout_risk.recommended_action}
-                    </Typography>
-                  </Paper>
-                ) : null}
-                {(summaryByStudentId[student.id]?.course_progress?.length ?? 0) > 0 ? (
-                  <Paper variant="outlined" sx={{ p: 1.5, mt: 1.5 }}>
-                    <Typography variant="subtitle2" gutterBottom>Прогресс на платформах</Typography>
-                    <Stack spacing={1}>
-                      {summaryByStudentId[student.id].course_progress!.map((cp) => (
-                        <Box key={cp.course_code}>
-                          <Stack direction="row" justifyContent="space-between" alignItems="center">
-                            <Typography variant="body2" fontWeight={500}>{cp.course_name}</Typography>
-                            {cp.rank_name ? <Chip size="small" label={cp.rank_name} variant="outlined" /> : null}
-                          </Stack>
-                          <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 0.5 }}>
-                            <Typography variant="caption" color="text.secondary">
-                              Решено: {cp.cases_solved}{cp.cases_total > 0 ? ` / ${cp.cases_total}` : ''}
-                            </Typography>
-                            {cp.badges_count > 0 ? (
-                              <Typography variant="caption" color="text.secondary">
-                                Значков: {cp.badges_count}{cp.last_badge_name ? ` (последний: ${cp.last_badge_name})` : ''}
-                              </Typography>
-                            ) : null}
-                          </Stack>
-                        </Box>
-                      ))}
-                    </Stack>
-                  </Paper>
-                ) : null}
-                {technolabByStudentId[student.id] ? (
-                  <Paper variant="outlined" sx={{ p: 1.5, mt: 1.5 }}>
-                    <Stack direction="row" justifyContent="space-between" alignItems="center">
-                      <Typography variant="subtitle2">ТехноЛаб</Typography>
-                      <Chip size="small" label={`${technolabByStudentId[student.id].wallet_balance} баллов`} variant="outlined" />
-                    </Stack>
-                    <Stack spacing={1} sx={{ mt: 1 }}>
-                      {technolabByStudentId[student.id].courses.length === 0 ? (
-                        <Typography variant="caption" color="text.secondary">Курсов ещё не открывал.</Typography>
-                      ) : (
-                        technolabByStudentId[student.id].courses.map((c) => (
-                          <Box key={c.course_id}>
-                            <Stack direction="row" justifyContent="space-between" alignItems="center">
-                              <Typography variant="body2" fontWeight={500}>{c.course_title}</Typography>
-                              <Typography variant="caption" color="text.secondary">{Math.round(c.progress_percent)}%</Typography>
-                            </Stack>
-                            <LinearProgress variant="determinate" value={Math.min(c.progress_percent, 100)} sx={{ mt: 0.5, mb: 0.5, borderRadius: 1, height: 6 }} />
-                            <Typography variant="caption" color="text.secondary">
-                              Решено задач: {c.completed_tasks_count} / {c.total_tasks_count}
-                            </Typography>
-                          </Box>
-                        ))
-                      )}
-                    </Stack>
-                  </Paper>
-                ) : null}
-                {pixelforgeByStudentId[student.id] ? (
-                  <Paper variant="outlined" sx={{ p: 1.5, mt: 1.5 }}>
-                    <Stack direction="row" justifyContent="space-between" alignItems="center">
-                      <Typography variant="subtitle2">PixelForge</Typography>
-                      <Chip
-                        size="small"
-                        label={`${pixelforgeByStudentId[student.id].xp_total} XP${pixelforgeByStudentId[student.id].level_name ? ` · ${pixelforgeByStudentId[student.id].level_name}` : ''}`}
-                        variant="outlined"
-                      />
-                    </Stack>
-                    <Stack spacing={1} sx={{ mt: 1 }}>
-                      {pixelforgeByStudentId[student.id].courses.length === 0 ? (
-                        <Typography variant="caption" color="text.secondary">Курсов ещё не открывал.</Typography>
-                      ) : (
-                        pixelforgeByStudentId[student.id].courses.map((c) => (
-                          <Box key={c.course_id}>
-                            <Stack direction="row" justifyContent="space-between" alignItems="center">
-                              <Typography variant="body2" fontWeight={500}>{c.course_title}</Typography>
-                              <Typography variant="caption" color="text.secondary">{Math.round(c.progress_percent)}%</Typography>
-                            </Stack>
-                            <LinearProgress variant="determinate" value={Math.min(c.progress_percent, 100)} sx={{ mt: 0.5, mb: 0.5, borderRadius: 1, height: 6 }} />
-                            <Typography variant="caption" color="text.secondary">
-                              Пройдено уроков: {c.completed_lessons} / {c.total_lessons}
-                            </Typography>
-                          </Box>
-                        ))
-                      )}
-                    </Stack>
-                  </Paper>
-                ) : null}
-                {codelabByStudentId[student.id] ? (
-                  <Paper variant="outlined" sx={{ p: 1.5, mt: 1.5 }}>
-                    <Stack direction="row" justifyContent="space-between" alignItems="center">
-                      <Typography variant="subtitle2">Codelab</Typography>
-                      <Chip
-                        size="small"
-                        label={`${codelabByStudentId[student.id].points_total} б.${codelabByStudentId[student.id].rank_name ? ` · ${codelabByStudentId[student.id].rank_name}` : ''}`}
-                        variant="outlined"
-                      />
-                    </Stack>
-                    <Stack spacing={1} sx={{ mt: 1 }}>
-                      {codelabByStudentId[student.id].courses.length === 0 ? (
-                        <Typography variant="caption" color="text.secondary">Курсов ещё не открывал.</Typography>
-                      ) : (
-                        codelabByStudentId[student.id].courses.map((c) => (
-                          <Box key={c.course_id}>
-                            <Stack direction="row" justifyContent="space-between" alignItems="center">
-                              <Typography variant="body2" fontWeight={500}>{c.course_title}</Typography>
-                              <Typography variant="caption" color="text.secondary">{c.points} б.</Typography>
-                            </Stack>
-                            <Typography variant="caption" color="text.secondary">
-                              Решено задач: {c.tasks_solved} / {c.tasks_total}
-                            </Typography>
-                          </Box>
-                        ))
-                      )}
-                    </Stack>
-                  </Paper>
-                ) : null}
-                </>
-              ) : null}
-              {progress[student.id]?.program_id && (
-                <Typography variant="body2" color="text.secondary">
-                  Программа: {programsById[progress[student.id].program_id]?.name || '—'} (v
-                  {programsById[progress[student.id].program_id]?.version || '—'})
-                </Typography>
-              )}
-              {progress[student.id] && (
-                <Box sx={{ mt: 2 }}>
-                  <Typography variant="body2" gutterBottom>
-                    Прогресс: {progress[student.id].progress_percent}%
-                  </Typography>
-                  <LinearProgress
-                    variant="determinate"
-                    value={progress[student.id].progress_percent}
-                    sx={{ mt: 1 }}
-                  />
-                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                    Оценено тем: {progress[student.id].graded_topics} из {progress[student.id].total_topics}
-                  </Typography>
-                </Box>
-              )}
-
-              {/* Сравнение характеристик */}
-              <Accordion sx={{ mt: 2 }}>
-                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                  <Typography>Сравнение характеристик</Typography>
-                </AccordionSummary>
-                <AccordionDetails>
-                  {(() => {
-                    const comp = comparisons[student.id];
-                    if (!comp || (!comp.current && !comp.previous && !comp.before_previous)) {
-                      return (
-                        <Typography variant="body2" color="text.secondary">
-                          Пока нет опубликованных характеристик для сравнения.
-                        </Typography>
-                      );
-                    }
-                    const keys = getAllKeys(comp);
-                    return (
-                      <Box>
-                        <Typography variant="caption" color="text.secondary">
-                          Текущая: {formatPeriod(comp.current)} • Предыдущая: {formatPeriod(comp.previous)} •
-                          Позапрошлая: {formatPeriod(comp.before_previous)}
-                        </Typography>
-                        <TableContainer sx={{ mt: 1, maxWidth: '100%', overflowX: 'auto' }}>
-                          <Table size="small" sx={{ minWidth: 680 }}>
-                            <TableHead>
-                              <TableRow>
-                                <TableCell>Показатель</TableCell>
-                                <TableCell>Текущая</TableCell>
-                                <TableCell>Предыдущая</TableCell>
-                                <TableCell>Позапрошлая</TableCell>
-                              </TableRow>
-                            </TableHead>
-                            <TableBody>
-                              {keys.map((k) => (
-                                <TableRow key={k}>
-                                  <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                                    {fieldLabelByName[k] || prettifyKey(k)}
-                                  </TableCell>
-                                  <TableCell>{renderValue(comp.current?.data?.[k])}</TableCell>
-                                  <TableCell>{renderValue(comp.previous?.data?.[k])}</TableCell>
-                                  <TableCell>{renderValue(comp.before_previous?.data?.[k])}</TableCell>
-                                </TableRow>
-                              ))}
-                            </TableBody>
-                          </Table>
-                        </TableContainer>
-                      </Box>
-                    );
-                  })()}
-                </AccordionDetails>
-              </Accordion>
-
-              {/* Инфографика: последняя характеристика + сравнение периода */}
-              <Accordion sx={{ mt: 1 }}>
-                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                  <Typography>Характеристика (инфографика)</Typography>
-                </AccordionSummary>
-                <AccordionDetails>
-                  {(() => {
-                    const list = publishedChars[student.id] || [];
-                    if (!list.length) {
-                      return (
-                        <Typography variant="body2" color="text.secondary">
-                          Пока нет опубликованных характеристик.
-                        </Typography>
-                      );
-                    }
-
-                    const latest = list[list.length - 1];
-                    const latestRatings = extractRatingMetrics(latest.data);
-
-                    const sel = rangeSelection[student.id] || {};
-                    const start = getCharById(student.id, sel.startId) || list[0];
-                    const end = getCharById(student.id, sel.endId) || latest;
-
-                    const startRatings = extractRatingMetrics(start.data);
-                    const endRatings = extractRatingMetrics(end.data);
-                    const byKeyStart = new Map(startRatings.map((r) => [r.key, r]));
-                    const byKeyEnd = new Map(endRatings.map((r) => [r.key, r]));
-                    const keys = Array.from(
-                      new Set([
-                        ...Array.from(byKeyStart.keys()),
-                        ...Array.from(byKeyEnd.keys()),
-                      ])
-                    );
-                    const deltaData = keys
-                      .map((k) => {
-                        const a = byKeyStart.get(k)?.value ?? 0;
-                        const b = byKeyEnd.get(k)?.value ?? 0;
-                        return {
-                          label: fieldLabelByName[k] || k,
-                          delta: Number((b - a).toFixed(2)),
-                        };
-                      })
-                      .sort((a, b) => a.label.localeCompare(b.label, 'ru'));
-
-                    return (
-                      <Box>
-                        <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
-                          Последняя характеристика: {formatPeriod(latest)}
-                        </Typography>
-
-                        {latestRatings.length > 0 && (
-                          <Grid container spacing={1.5} sx={{ mt: 1 }}>
-                            {latestRatings.map((m) => (
-                              <Grid item xs={12} sm={6} key={m.key}>
-                                <Paper sx={{ p: 1.5 }}>
-                                  <Typography variant="body2" sx={{ fontWeight: 650 }}>
-                                    {m.label}
-                                  </Typography>
-                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
-                                    <Rating value={m.value} readOnly precision={0.5} />
-                                    <Chip size="small" label={m.value} />
-                                  </Box>
-                                </Paper>
-                              </Grid>
-                            ))}
-                          </Grid>
-                        )}
-
-                        <Divider sx={{ my: 2 }} />
-
-                        <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
-                          Сравнение периода
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          Выберите “от” и “до”, чтобы увидеть, как изменились оценки по критериям.
-                        </Typography>
-
-                        <Box sx={{ display: 'flex', gap: 2, mt: 1, flexWrap: 'wrap' }}>
-                          <FormControl size="small" sx={{ minWidth: 220 }}>
-                            <InputLabel>От</InputLabel>
-                            <Select
-                              label="От"
-                              value={sel.startId ?? list[0].id}
-                              onChange={(e) =>
-                                setRangeSelection((prev) => ({
-                                  ...prev,
-                                  [student.id]: { ...prev[student.id], startId: Number(e.target.value) },
-                                }))
-                              }
-                            >
-                              {list.map((c) => (
-                                <MenuItem key={c.id} value={c.id}>
-                                  {formatPeriod(c)}
-                                </MenuItem>
-                              ))}
-                            </Select>
-                          </FormControl>
-
-                          <FormControl size="small" sx={{ minWidth: 220 }}>
-                            <InputLabel>До</InputLabel>
-                            <Select
-                              label="До"
-                              value={sel.endId ?? latest.id}
-                              onChange={(e) =>
-                                setRangeSelection((prev) => ({
-                                  ...prev,
-                                  [student.id]: { ...prev[student.id], endId: Number(e.target.value) },
-                                }))
-                              }
-                            >
-                              {list.map((c) => (
-                                <MenuItem key={c.id} value={c.id}>
-                                  {formatPeriod(c)}
-                                </MenuItem>
-                              ))}
-                            </Select>
-                          </FormControl>
-                        </Box>
-
-                        {deltaData.length > 0 ? (
-                          <Box sx={{ height: 260, mt: 2 }}>
-                            <ResponsiveContainer width="100%" height="100%">
-                              <BarChart data={deltaData} margin={{ top: 10, right: 10, bottom: 10, left: 0 }}>
-                                <CartesianGrid strokeDasharray="3 3" />
-                                <XAxis dataKey="label" hide />
-                                <YAxis />
-                                <Tooltip />
-                                <Bar dataKey="delta" fill="#7C3AED" radius={[6, 6, 0, 0]} />
-                              </BarChart>
-                            </ResponsiveContainer>
-                            <Typography variant="caption" color="text.secondary">
-                              Положительное значение = рост, отрицательное = снижение (по шкале 1–5).
-                            </Typography>
-                          </Box>
-                        ) : (
-                          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-                            Для сравнения нет числовых шкал (полей вида *_rating).
-                          </Typography>
-                        )}
-                      </Box>
-                    );
-                  })()}
-                </AccordionDetails>
-              </Accordion>
-
-              {/* Динамика средней оценки */}
-              <Accordion sx={{ mt: 1 }}>
-                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                  <Typography>Динамика средней оценки</Typography>
-                </AccordionSummary>
-                <AccordionDetails>
-                  {(() => {
-                    const dyn = gradeDynamics[student.id];
-                    const points = dyn?.dynamics || [];
-                    if (!points.length) {
-                      return (
-                        <Typography variant="body2" color="text.secondary">
-                          Пока недостаточно данных для графика.
-                        </Typography>
-                      );
-                    }
-                    const chartData = points.map((p) => ({
-                      month: formatMonth(p.month),
-                      average: p.average_grade,
-                    }));
-                    return (
-                      <Box sx={{ height: 220 }}>
-                        <ResponsiveContainer width="100%" height="100%">
-                          <LineChart data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: 0 }}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="month" />
-                            <YAxis domain={[0, 5]} />
-                            <Tooltip />
-                            <Line type="monotone" dataKey="average" stroke="#2563EB" strokeWidth={2} dot />
-                          </LineChart>
-                        </ResponsiveContainer>
-                      </Box>
-                    );
-                  })()}
-                </AccordionDetails>
-              </Accordion>
-              {!previewParentId && <Paper variant="outlined" sx={{ mt: 2, p: 1.5 }}>
-                <Typography variant="subtitle2" gutterBottom>
-                  Вопрос тренеру или администратору
-                </Typography>
-                <Stack spacing={1.5}>
-                  <TextField
-                    size="small"
-                    label="Тема"
-                    value={questionByStudent[student.id]?.topic || ''}
-                    onChange={(event) => handleQuestionChange(student.id, { topic: event.target.value })}
-                  />
-                  <TextField
-                    size="small"
-                    label="Сообщение"
-                    multiline
-                    minRows={3}
-                    value={questionByStudent[student.id]?.message || ''}
-                    onChange={(event) => handleQuestionChange(student.id, { message: event.target.value })}
-                  />
-                  <Box display="flex" justifyContent="flex-end">
-                    <Button
-                      variant="contained"
-                      onClick={() => handleSendQuestion(student.id)}
-                      disabled={sendingQuestionFor === student.id || !(questionByStudent[student.id]?.message || '').trim()}
-                    >
-                      Отправить вопрос
-                    </Button>
-                  </Box>
-                </Stack>
-              </Paper>}
-            </Paper>
-          </Grid>
-        ))}
-      </Grid>
-    </Layout>
-  );
+  return <Layout>
+    {!previewParentId && <NpsSurveyPrompt />}
+    <Box sx={{ maxWidth: 1440, mx: 'auto', pb: 4 }}>
+      <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} spacing={2} sx={{ mb: 2.5 }}>
+        <Box><Typography variant="h4" sx={{ fontWeight: 850, letterSpacing: '-.03em' }}>Обзор</Typography><Typography color="text.secondary">Состояние обучения и ближайшие важные события</Typography></Box>
+        {students.length > 1 && <FormControl size="small" sx={{ minWidth: 240 }}><InputLabel>Ребёнок</InputLabel><Select label="Ребёнок" value={selectedId || ''} onChange={(event) => setSelectedId(Number(event.target.value))}>{students.map((student) => <MenuItem key={student.id} value={student.id}>{student.full_name}</MenuItem>)}</Select></FormControl>}
+      </Stack>
+      {previewParentId && <Alert severity="info" sx={{ mb: 2, borderRadius: 2 }}>Режим просмотра кабинета родителя. Ваша авторизация сотрудника не меняется, действия от имени родителя отключены.</Alert>}
+      {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
+      {detailErrors.length > 0 && <Alert severity="warning" sx={{ mb: 2 }}>Часть аналитики временно недоступна. Основная информация кабинета продолжает работать.</Alert>}
+      {!selected ? <Card><Empty>У родителя пока нет активных детей.</Empty></Card> : <>
+        <Card sx={{ mb: 2.5, background: 'linear-gradient(135deg, #fff 0%, #fbf7ff 100%)' }}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} spacing={2}>
+            <Stack direction="row" spacing={1.5} alignItems="center"><Avatar sx={{ width: 56, height: 56, bgcolor: purple, fontWeight: 800 }}>{selected.full_name.split(' ').map((part) => part[0]).slice(0, 2).join('')}</Avatar><Box><Typography variant="h5" fontWeight={850}>{selected.full_name}</Typography><Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: .5 }}><Chip size="small" icon={<School />} label={selectedProgress?.program_id ? 'Программа обучения' : 'Обучение'} variant="outlined" /><Chip size="small" icon={<Groups />} label={nearest?.group_name || 'Группа пока не указана'} variant="outlined" /></Stack></Box></Stack>
+            <Stack direction="row" spacing={1} alignItems="center"><Chip color="success" variant="outlined" label="Обучение активно" />{nearest?.trainer_name && <Typography variant="body2" color="text.secondary">Преподаватель: {nearest.trainer_name}</Typography>}</Stack>
+          </Stack>
+        </Card>
+        {attentionItems.length > 0 && <Card sx={{ mb: 2.5, borderColor: 'rgba(217,119,6,.28)' }}><CardTitle icon={<WarningAmber />} title="Требует внимания" /><Stack spacing={1}>{attentionItems.map((item) => <Stack key={item.title} direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ xs: 'flex-start', sm: 'center' }} sx={{ p: 1.5, borderRadius: 2, bgcolor: '#fff8eb' }}><Box sx={{ color: '#D97706', display: 'flex' }}>{item.icon}</Box><Box sx={{ flex: 1 }}><Typography fontWeight={750}>{item.title}</Typography><Typography variant="body2" color="text.secondary">{item.text}</Typography></Box>{item.action}</Stack>)}</Stack></Card>}
+        <Grid container spacing={2}>
+          <Grid item xs={12} sm={6} lg={3}><Card sx={{ height: '100%' }}><CardTitle icon={<CalendarMonth />} title="Следующее занятие" action={<Button size="small" endIcon={<ChevronRight />} onClick={() => navigate('/parent-dashboard')}>Расписание</Button>} />{nearest ? <><Typography variant="h6" fontWeight={850}>{new Date(nearest.lesson_date).toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'long' })}</Typography><Typography variant="h5" sx={{ color: purple, fontWeight: 850, mt: .5 }}>{timeOnly(nearest.start_time)}</Typography><Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>{nearest.group_name}</Typography><Typography variant="body2" color="text.secondary">{nearest.trainer_name || 'Преподаватель не указан'}</Typography></> : <Empty>Ближайшие занятия пока не запланированы.</Empty>}</Card></Grid>
+          <Grid item xs={12} sm={6} lg={3}><Card sx={{ height: '100%' }}><CardTitle icon={<AccountBalanceWallet />} title="Баланс обучения" action={<Payment />} />{balance === null ? <Empty>Данные о балансе пока недоступны.</Empty> : <><Typography variant="h5" fontWeight={850} color={balance < 0 ? 'error.main' : 'success.main'}>{balance < 0 ? `Задолженность ${money(balance)}` : `${balance.toLocaleString('ru-RU')} ₽`}</Typography><Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>Следующая оплата: {dateOnly(selectedSummary?.next_payment_date)}</Typography>{selectedSummary?.payment_link && <Button fullWidth variant="contained" sx={{ mt: 2 }} href={selectedSummary.payment_link} target="_blank" rel="noreferrer">Перейти к оплате</Button>}</>}</Card></Grid>
+          <Grid item xs={12} sm={6} lg={3}><Card sx={{ height: '100%' }}><CardTitle icon={<AssignmentTurnedIn />} title="Освоение программы" />{progressValue === null ? <Empty>Данные о прогрессе пока недоступны.</Empty> : <><Typography variant="h5" fontWeight={850}>{progressValue}%</Typography><LinearProgress variant="determinate" value={progressValue} sx={{ mt: 2, height: 9, borderRadius: 5 }} /><Typography variant="body2" color="text.secondary" sx={{ mt: 1.5 }}>{selectedProgress.graded_topics ? `Оценено тем: ${selectedProgress.graded_topics} из ${selectedProgress.total_topics || '—'}` : 'Оценки по темам пока не выставлены'}</Typography></>}</Card></Grid>
+          <Grid item xs={12} sm={6} lg={3}><Card sx={{ height: '100%' }}><CardTitle icon={<Star />} title="Успеваемость" action={<Button size="small" endIcon={<ArrowForward />} onClick={() => navigate('/grades')}>Все оценки</Button>} />{averageGrade === null ? <Empty>Оценки пока не выставлены.</Empty> : <><Typography variant="h4" fontWeight={850}>{averageGrade.toLocaleString('ru-RU')}<Typography component="span" color="text.secondary" fontSize="1rem"> / 5</Typography></Typography><Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>Средняя оценка · {selectedProgress.graded_topics || 0} оценок по темам</Typography></>}</Card></Grid>
+        </Grid>
+        <Grid container spacing={2} sx={{ mt: 0 }}>
+          <Grid item xs={12} lg={7}><Card sx={{ height: '100%' }}><CardTitle icon={<Insights />} title="Динамика успеваемости" />{gradePoints.length < 2 ? <Empty>Недостаточно данных для графика динамики.</Empty> : <Box sx={{ height: 300, width: '100%' }}><ResponsiveContainer><LineChart data={gradePoints} margin={{ top: 12, right: 12, left: -18, bottom: 4 }}><CartesianGrid strokeDasharray="3 3" stroke="#eee" /><XAxis dataKey="month" tick={{ fontSize: 12 }} /><YAxis domain={[0, 5]} tick={{ fontSize: 12 }} /><Tooltip formatter={(value) => [`${value} из 5`, 'Средняя оценка']} /><Line type="monotone" dataKey="average" stroke={purple} strokeWidth={3} dot={{ r: 4 }} /></LineChart></ResponsiveContainer></Box>}</Card></Grid>
+          <Grid item xs={12} lg={5}><Card sx={{ height: '100%' }}><CardTitle icon={<TrendingUp />} title="Развитие навыков" action={<Button size="small" onClick={() => navigate('/characteristics')}>Подробнее</Button>} />{ratingData.length === 0 ? <Empty>Опубликованных характеристик с числовыми оценками пока нет.</Empty> : <><Box sx={{ height: 275 }}><ResponsiveContainer><RadarChart data={ratingData} outerRadius="72%"><PolarGrid /><PolarAngleAxis dataKey="subject" tick={{ fontSize: 11 }} /><PolarRadiusAxis domain={[0, 5]} tick={{ fontSize: 10 }} /><Radar name="Текущий период" dataKey="current" stroke={purple} fill={purple} fillOpacity={.25} /><Radar name="Предыдущий период" dataKey="previous" stroke="#94a3b8" fill="#94a3b8" fillOpacity={.08} /></RadarChart></ResponsiveContainer></Box><Stack direction="row" spacing={1}><Chip size="small" sx={{ bgcolor: '#f3e8ff', color: purple }} label="Текущий период" /><Chip size="small" variant="outlined" label="Предыдущий период" /></Stack></>}</Card></Grid>
+        </Grid>
+        <Grid container spacing={2} sx={{ mt: 0 }}>
+          <Grid item xs={12} md={6}><Card sx={{ height: '100%' }}><CardTitle icon={<AssignmentTurnedIn />} title="Практика Codelab" />{!selectedCodelab ? <Empty>Данные Codelab пока недоступны.</Empty> : <><Stack direction="row" justifyContent="space-between"><Box><Typography variant="h5" fontWeight={850}>{selectedCodelab.points_total.toLocaleString('ru-RU')} баллов</Typography><Typography color="text.secondary">Заработано в практических заданиях</Typography></Box><Chip label={selectedCodelab.rank_name || 'В процессе'} variant="outlined" /></Stack>{codelabPercent === null ? <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>Количество доступных задач пока не указано.</Typography> : <><LinearProgress variant="determinate" value={codelabPercent} sx={{ mt: 2, height: 9, borderRadius: 5 }} /><Stack direction="row" justifyContent="space-between" sx={{ mt: 1 }}><Typography variant="body2">Решено {solved} из {tasksTotal} задач</Typography><Typography variant="body2" fontWeight={750}>{codelabPercent}%</Typography></Stack></>}{selectedCodelab.recent_submissions?.length ? <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>Последняя активность: {dateOnly(selectedCodelab.recent_submissions[0].created_at)}</Typography> : null}</>}</Card></Grid>
+          <Grid item xs={12} md={6}><Card sx={{ height: '100%' }}><CardTitle icon={<CheckCircle />} title="Посещаемость" />{!selectedAttendance || selectedAttendance.total === 0 ? <Empty>История посещаемости пока недоступна.</Empty> : <><Stack direction="row" spacing={3} alignItems="center"><Typography variant="h4" fontWeight={850} color={selectedAttendance.missed ? 'warning.main' : 'success.main'}>{Math.round((selectedAttendance.attended / selectedAttendance.total) * 100)}%</Typography><Box><Typography fontWeight={750}>Посещаемость</Typography><Typography variant="body2" color="text.secondary">Проведено: {selectedAttendance.total} · Посещено: {selectedAttendance.attended} · Пропущено: {selectedAttendance.missed}</Typography></Box></Stack><LinearProgress variant="determinate" value={(selectedAttendance.attended / selectedAttendance.total) * 100} color={selectedAttendance.missed ? 'warning' : 'success'} sx={{ mt: 2, height: 9, borderRadius: 5 }} /></>}</Card></Grid>
+        </Grid>
+        <Card sx={{ mt: 2 }}><CardTitle icon={<NotificationsActive />} title="Последние характеристики" />{selectedCharacteristics.length === 0 ? <Empty>Преподаватель пока не оставил опубликованных характеристик.</Empty> : <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} divider={<Divider orientation="vertical" flexItem />}>{selectedCharacteristics.slice(-3).reverse().map((item: any) => <Box key={item.id} sx={{ flex: 1 }}><Typography fontWeight={750}>{item.month}/{item.year}</Typography><Typography variant="body2" color="text.secondary">Опубликованная характеристика ученика</Typography></Box>)}</Stack>}</Card>
+      </>}
+    </Box>
+  </Layout>;
 };
 
 export default ParentDashboardPage;
-

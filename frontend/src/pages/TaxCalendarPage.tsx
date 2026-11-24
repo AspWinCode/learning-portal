@@ -129,8 +129,13 @@ const TaxCalendarPage: React.FC = () => {
   const [additionalContributions, setAdditionalContributions] = useState(0);
   const [documentedExpenses, setDocumentedExpenses] = useState(0);
   const [completedChecklistIds, setCompletedChecklistIds] = useState<string[]>([]);
+  const [completedTaxItemIds, setCompletedTaxItemIds] = useState<string[]>([]);
+  const [taxItemsLoaded, setTaxItemsLoaded] = useState(false);
   const items = useMemo(() => buildItems(year, regime, patentStart, patentEnd, patentCost).sort((a, b) => a.date.getTime() - b.date.getTime()), [year, regime, patentStart, patentEnd, patentCost]);
   const nextSwitchDate = `${year}-12-31`;
+  const taxItemsStorageKey = `tax-calendar-items:${year}:${regime}`;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
 
   useEffect(() => {
     let active = true;
@@ -225,6 +230,17 @@ const TaxCalendarPage: React.FC = () => {
       setCompletedChecklistIds([]);
     }
   }, [checklistStorageKey]);
+  useEffect(() => {
+    setTaxItemsLoaded(false);
+    try {
+      const saved = window.localStorage.getItem(taxItemsStorageKey);
+      setCompletedTaxItemIds(saved ? JSON.parse(saved) : []);
+    } catch {
+      setCompletedTaxItemIds([]);
+    } finally {
+      setTaxItemsLoaded(true);
+    }
+  }, [taxItemsStorageKey]);
   const toggleChecklistStep = (id: string) => {
     setCompletedChecklistIds((current) => {
       const next = current.includes(id) ? current.filter((item) => item !== id) : [...current, id];
@@ -235,6 +251,34 @@ const TaxCalendarPage: React.FC = () => {
   const resetChecklist = () => {
     window.localStorage.removeItem(checklistStorageKey);
     setCompletedChecklistIds([]);
+  };
+  const taxItemId = (item: TaxItem) => `${item.title}:${item.date.toISOString().slice(0, 10)}`;
+  const overdueTaxItems = items.filter((item) => item.date < today && !completedTaxItemIds.includes(taxItemId(item)));
+  const upcomingTaxItems = items.filter((item) => item.date >= today && item.date.getTime() - today.getTime() <= 7 * 86400000 && !completedTaxItemIds.includes(taxItemId(item)));
+  const browserNotificationsSupported = typeof window !== 'undefined' && 'Notification' in window;
+  const requestBrowserNotifications = async () => {
+    if (!browserNotificationsSupported) return;
+    const permission = await window.Notification.requestPermission();
+    if (permission === 'granted' && overdueTaxItems.length > 0) {
+      new window.Notification(`Пропущено сроков: ${overdueTaxItems.length}`, { body: overdueTaxItems.slice(0, 3).map((item) => `${item.title} — ${formatDate(item.date)}`).join('\n') });
+    }
+  };
+  useEffect(() => {
+    if (!taxItemsLoaded || !browserNotificationsSupported || window.Notification.permission !== 'granted') return;
+    overdueTaxItems.forEach((item) => {
+      const key = `tax-notified:${taxItemId(item)}`;
+      if (window.localStorage.getItem(key)) return;
+      new window.Notification('Пропущен срок в налоговом календаре', { body: `${item.title} — ${formatDate(item.date)}` });
+      window.localStorage.setItem(key, '1');
+    });
+  }, [completedTaxItemIds, items, taxItemsLoaded]);
+  const toggleTaxItem = (item: TaxItem) => {
+    const id = taxItemId(item);
+    setCompletedTaxItemIds((current) => {
+      const next = current.includes(id) ? current.filter((value) => value !== id) : [...current, id];
+      window.localStorage.setItem(taxItemsStorageKey, JSON.stringify(next));
+      return next;
+    });
   };
   const recommendations = useMemo(() => {
     if (regime === 'usn') {
@@ -421,6 +465,54 @@ const TaxCalendarPage: React.FC = () => {
             <Alert severity="warning" sx={{ mt: 2 }}>
               Чек-лист помогает не пропустить законные действия, но не заменяет проверку ограничений режима, ЕНС и документов в личном кабинете ФНС.
             </Alert>
+          </CardContent>
+        </Card>
+
+        <Card sx={{ mb: 3, border: overdueTaxItems.length ? '1px solid' : undefined, borderColor: overdueTaxItems.length ? 'error.light' : undefined }}>
+          <CardContent>
+            <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'center' }} spacing={1} sx={{ mb: 1 }}>
+              <Box>
+                <Typography variant="h6" fontWeight={700}>Оповещения и пропущенные сроки</Typography>
+                <Typography variant="body2" color="text.secondary">Отмечайте событие после выполнения. Невыполненные сроки будут выделены как пропущенные.</Typography>
+              </Box>
+              {browserNotificationsSupported && window.Notification.permission !== 'granted' && (
+                <Button variant="outlined" size="small" onClick={requestBrowserNotifications}>Разрешить уведомления</Button>
+              )}
+            </Stack>
+            {overdueTaxItems.length > 0 && (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                Пропущено сроков: <strong>{overdueTaxItems.length}</strong>. Проверьте ЕНС и личный кабинет ФНС, затем отметьте фактически выполненные действия.
+              </Alert>
+            )}
+            {upcomingTaxItems.length > 0 && (
+              <Alert severity="info" sx={{ mb: 2 }}>
+                В ближайшие 7 дней: <strong>{upcomingTaxItems.length}</strong> событ{upcomingTaxItems.length === 1 ? 'ие' : 'ия'}.
+              </Alert>
+            )}
+            <Stack divider={<Divider flexItem />}>
+              {items.map((item) => {
+                const id = taxItemId(item);
+                const done = completedTaxItemIds.includes(id);
+                const overdue = item.date < today && !done;
+                return (
+                  <FormControlLabel
+                    key={id}
+                    sx={{ alignItems: 'flex-start', m: 0, py: 1 }}
+                    control={<Checkbox checked={done} onChange={() => toggleTaxItem(item)} />}
+                    label={<Box>
+                      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                        <Typography fontWeight={600}>{item.title}</Typography>
+                        <Chip size="small" color={done ? 'success' : overdue ? 'error' : 'default'} label={done ? 'Выполнено' : overdue ? 'Пропущено' : formatDate(item.date)} />
+                      </Stack>
+                      <Typography variant="body2" color="text.secondary">{formatDate(item.date)} · {item.detail}</Typography>
+                    </Box>}
+                  />
+                );
+              })}
+            </Stack>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>
+              Браузерные уведомления работают после выдачи разрешения и при открытом приложении. Для email или push в фоне потребуется подключить этот календарь к серверному планировщику уведомлений.
+            </Typography>
           </CardContent>
         </Card>
 

@@ -84,7 +84,11 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return outputArray;
 }
 
-const ParentDashboardPage: React.FC = () => {
+interface ParentDashboardPageProps {
+  previewParentId?: number;
+}
+
+const ParentDashboardPage: React.FC<ParentDashboardPageProps> = ({ previewParentId }) => {
   const [students, setStudents] = useState<Student[]>([]);
   const [progress, setProgress] = useState<any>({});
   const [programsById, setProgramsById] = useState<Record<number, Program>>({});
@@ -112,11 +116,22 @@ const ParentDashboardPage: React.FC = () => {
 
   const loadData = async () => {
     try {
-      const [programs, studentsData, dashboardSummary] = await Promise.all([
+      const previewData = previewParentId ? await parentDashboardApi.getPreview(previewParentId) : null;
+      const [programs, studentsData] = await Promise.all([
         programsApi.getAll(),
-        studentsApi.getAll(),
-        parentDashboardApi.getSummary().catch(() => ({ students: [] })),
+        previewData
+          ? Promise.resolve(
+              previewData.summary.students.map((item) => ({
+                id: item.student_id,
+                full_name: item.student_name,
+                parent_id: previewParentId,
+                status: 'active' as const,
+                created_at: new Date().toISOString(),
+              }))
+            )
+          : studentsApi.getAll(),
       ]);
+      const dashboardSummary = previewData?.summary || await parentDashboardApi.getSummary().catch(() => ({ students: [] }));
       setProgramsById(
         programs.reduce((acc: any, p: Program) => {
           acc[p.id] = p;
@@ -202,12 +217,16 @@ const ParentDashboardPage: React.FC = () => {
   };
 
   useEffect(() => {
+    if (previewParentId) {
+      setWebPushStatus(null);
+      return;
+    }
     setWebPushPermission(typeof Notification !== 'undefined' ? Notification.permission : 'default');
     parentDashboardApi
       .getWebPushStatus()
       .then(setWebPushStatus)
       .catch(() => setWebPushStatus(null));
-  }, []);
+  }, [previewParentId]);
 
   const handleQuestionChange = (studentId: number, patch: Partial<{ topic: string; message: string }>) => {
     setQuestionByStudent((prev) => ({
@@ -378,10 +397,10 @@ const ParentDashboardPage: React.FC = () => {
 
   return (
     <Layout>
-      <NpsSurveyPrompt />
+      {!previewParentId && <NpsSurveyPrompt />}
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1, mb: 2 }}>
-        <Typography variant="h4">Дашборд родителя</Typography>
-        <MuiTooltip
+        <Typography variant="h4">{previewParentId ? 'Кабинет родителя' : 'Дашборд родителя'}</Typography>
+        {!previewParentId && <MuiTooltip
           title={
             webPushOn
               ? 'Уведомления о новых характеристиках включены. Нажмите, чтобы отключить.'
@@ -402,8 +421,13 @@ const ParentDashboardPage: React.FC = () => {
               sx={{ cursor: 'pointer' }}
             />
           </span>
-        </MuiTooltip>
+        </MuiTooltip>}
       </Box>
+      {previewParentId && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Реальный кабинет родителя в режиме просмотра. Действия сотрудника и авторизация администратора не меняются.
+        </Alert>
+      )}
       {error ? (
         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
           {error}
@@ -853,7 +877,7 @@ const ParentDashboardPage: React.FC = () => {
                   })()}
                 </AccordionDetails>
               </Accordion>
-              <Paper variant="outlined" sx={{ mt: 2, p: 1.5 }}>
+              {!previewParentId && <Paper variant="outlined" sx={{ mt: 2, p: 1.5 }}>
                 <Typography variant="subtitle2" gutterBottom>
                   Вопрос тренеру или администратору
                 </Typography>
@@ -882,7 +906,7 @@ const ParentDashboardPage: React.FC = () => {
                     </Button>
                   </Box>
                 </Stack>
-              </Paper>
+              </Paper>}
             </Paper>
           </Grid>
         ))}

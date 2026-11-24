@@ -126,8 +126,6 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    ports:
-      - "127.0.0.1:8000:8000"  # для проверки с сервера: curl http://localhost:8000/api/auth/me
     environment:
       <<: *app_common_env
       IN_PROCESS_SCHEDULER_ENABLED: "0"

@@ -349,7 +349,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     navigate('/login');
   };
 
-  const role = getEffectiveRole(user);
+  // В режиме просмотра родителя оболочка тоже должна быть родительской.
+  // Токен остаётся сотрудническим: меняется только навигация, а не права сессии.
+  const isParentPreview = location.pathname.startsWith('/parent-dashboard/preview/');
+  const role = isParentPreview ? 'parent' : getEffectiveRole(user);
   const isAdminLike = role === 'admin' || role === 'owner';
   const canAccessGroups = hasPermission(user, 'groups.access');
   const canAccessPrograms = hasPermission(user, 'programs.access');
@@ -531,9 +534,11 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
   if (canAccessAgile && !permissionExpandedMenuItems.some(i => i.path === '/agile')) {
     permissionExpandedMenuItems.push({ text: 'IT-проекты', icon: <RocketLaunch />, path: '/agile' });
   }
-  const baseVisibleMenuItems = canAccessOwnerWorkspace
-    ? permissionExpandedMenuItems
-    : permissionExpandedMenuItems.filter((item) => !item.path.startsWith('/owner-workspace') && item.path !== '/disk');
+  const baseVisibleMenuItems = isParentPreview
+    ? permissionFilteredMenuItems
+    : canAccessOwnerWorkspace
+      ? permissionExpandedMenuItems
+      : permissionExpandedMenuItems.filter((item) => !item.path.startsWith('/owner-workspace') && item.path !== '/disk');
   const visibleMenuItems = isPwaNavigation
     ? baseVisibleMenuItems.filter((item) => pwaAllowedRoutes?.has(item.path))
     : baseVisibleMenuItems;
@@ -550,6 +555,7 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
   };
 
   const appBarPageTitle =
+    (isParentPreview ? 'Кабинет родителя' : null) ??
     effectiveMenuItems.find((item) => item.path === location.pathname)?.text ??
     (location.pathname === '/calendar' ? 'Календарь' : null) ??
     (location.pathname.startsWith('/owner-workspace/counterparties') ? 'Контрагенты' : null) ??
@@ -575,6 +581,7 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
 
   // Секции навбара для дополнительных ролей пользователя
   const extraRoleSections = React.useMemo(() => {
+    if (isParentPreview) return [];
     const extra = (user?.extra_roles || []).filter(r => EXTRA_ROLE_NAV_ITEMS[r]);
     return extra.map(r => ({
       id: `extra-${r}`,
@@ -584,7 +591,7 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
       ),
     })).filter(s => s.items.length > 0);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.extra_roles, visibleMenuItems.map(i => i.path).join(',')]);
+  }, [isParentPreview, user?.extra_roles, visibleMenuItems.map(i => i.path).join(',')]);
 
   const allGroupedPaths = new Set(NAV_GROUPS.flatMap(g => [...g.paths]));
   const grouped = NAV_GROUPS.map(g => {

@@ -21,6 +21,7 @@ import {
 import EventAvailableIcon from '@mui/icons-material/EventAvailable';
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
+import LightbulbOutlinedIcon from '@mui/icons-material/LightbulbOutlined';
 import Layout from '../components/Layout';
 import { financeApi } from '../services/api';
 import type { FinanceLedgerBankRow } from '../types';
@@ -177,6 +178,69 @@ const TaxCalendarPage: React.FC = () => {
     : regime === 'osno'
       ? { label: 'ОСНО: ориентировочный НДФЛ', value: `${money(taxCalculation.osnoNdfl)} ₽`, hint: `13% от базы ${money(taxCalculation.osnoBase)} ₽` }
       : { label: 'Патент', value: patentCost ? `${money(patentCost)}` + ' ₽' : '—', hint: 'Черемхово · дополнительное образование' };
+  const recommendations = useMemo(() => {
+    if (regime === 'usn') {
+      const remainingReduction = Math.max(0, taxCalculation.reductionLimit - taxCalculation.usnReduction);
+      return [
+        {
+          title: 'Зачтите страховые взносы в уменьшение УСН',
+          text: `Сейчас учтено ${money(taxCalculation.usnReduction)} ₽. Потенциально доступный остаток уменьшения — ${money(remainingReduction)} ₽, но только в пределах фактически начисленных/уплаченных взносов и правил ЕНС.`,
+        },
+        {
+          title: hasEmployees ? 'Контролируйте лимит 50%' : 'Без работников можно уменьшить налог до 100%',
+          text: hasEmployees
+            ? 'При наличии работников взносы уменьшают налог не более чем на 50%. Не переносите одни и те же взносы одновременно на УСН и патент.'
+            : 'Если работников нет, налог и авансы по УСН «Доходы» можно уменьшать на страховые взносы вплоть до нуля.',
+        },
+        {
+          title: 'Сверяйте классификацию доходов',
+          text: 'Перед расчетом аванса проверьте, что платежи не задублированы и относятся к предпринимательской деятельности. Расходы сами по себе не уменьшают УСН 6%.',
+        },
+        {
+          title: 'Сравните УСН с патентом до переключения',
+          text: `Ориентир для сравнения: УСН до уменьшения — ${money(taxCalculation.grossUsn)} ₽, стоимость патента — ${patentCost ? `${money(patentCost)} ₽` : 'не задана'}. Сравнивать нужно по виду деятельности, муниципалитету, сроку и возможности уменьшения на взносы.`,
+        },
+      ];
+    }
+    if (regime === 'osno') {
+      return [
+        {
+          title: 'Подтверждайте расходы первичными документами',
+          text: 'Для НДФЛ ИП учитывает фактически произведенные и документально подтвержденные расходы, непосредственно связанные с получением дохода.',
+        },
+        {
+          title: 'Если документов нет — проверьте профессиональный вычет 20%',
+          text: 'ФНС допускает профессиональный вычет в размере 20% дохода от предпринимательской деятельности, когда расходы невозможно документально подтвердить.',
+        },
+        {
+          title: 'Ведите отдельный контроль НДС',
+          text: 'НДС, входной налог и сроки деклараций не входят в ориентировочный НДФЛ на этом экране. Их нужно вести отдельным регистром и проверять право на освобождение или вычеты.',
+        },
+        {
+          title: 'Сравните ОСНО с УСН и ПСН до смены режима',
+          text: 'Сравнивайте не только ставку, но и расходы, НДС, страховые взносы, ограничения режима и региональные условия. Переключение должно быть подтверждено расчетом за полный год.',
+        },
+      ];
+    }
+    return [
+      {
+        title: 'Уменьшите стоимость патента на страховые взносы',
+        text: `В расчет можно заложить до ${money(Math.min(patentCost, taxCalculation.paidContributions))} ₽ уменьшения, но фактическое распределение зависит от работников, периода патента и уже использованных взносов.`,
+      },
+      {
+        title: 'Подайте уведомление об уменьшении патента',
+        text: 'Для уменьшения стоимости патента используется уведомление по форме КНД 1112021. Система не отправляет его автоматически — срок и отправку нужно подтвердить в личном кабинете ФНС.',
+      },
+      {
+        title: 'При совмещении режимов распределяйте взносы',
+        text: 'Не учитывайте одни и те же страховые взносы повторно на УСН и ПСН. Распределение зависит от доходов и от того, в какой деятельности заняты работники.',
+      },
+      {
+        title: 'Проверьте физические показатели патента',
+        text: 'Если показатель, от которого зависит патент, уменьшился, проверьте возможность заменить патент или пересчитать его через налоговую.',
+      },
+    ];
+  }, [hasEmployees, patentCost, regime, taxCalculation]);
 
   return (
     <Layout>
@@ -246,6 +310,29 @@ const TaxCalendarPage: React.FC = () => {
               </>
             )}
             {regime === 'psn' && <Alert severity="info" sx={{ mt: 2 }}>Для города Черемхово установлена стоимость 29 262 ₽ на 2026 год для дополнительного образования и репетиторства. В других муниципалитетах Иркутской области сумма может отличаться.</Alert>}
+          </CardContent>
+        </Card>
+
+        <Card sx={{ mb: 3, border: '1px solid', borderColor: 'warning.light' }}>
+          <CardContent>
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+              <LightbulbOutlinedIcon color="warning" />
+              <Typography variant="h6" fontWeight={700}>Законные способы снизить налоговую нагрузку</Typography>
+            </Stack>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Рекомендации рассчитаны по выбранному режиму и данным журнала. Они не означают автоматическое право на вычет: подтверждайте операции, сроки и условия в ФНС.
+            </Typography>
+            <Stack spacing={1.5}>
+              {recommendations.map((recommendation) => (
+                <Box key={recommendation.title} sx={{ pl: 2, borderLeft: '3px solid', borderColor: 'warning.main' }}>
+                  <Typography fontWeight={700}>{recommendation.title}</Typography>
+                  <Typography variant="body2" color="text.secondary">{recommendation.text}</Typography>
+                </Box>
+              ))}
+            </Stack>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
+              Источники: <a href="https://www.nalog.gov.ru/rn77/ip/ip_pay_taxes/usn/" target="_blank" rel="noreferrer">ФНС — УСН</a>, <a href="https://www.nalog.gov.ru/rn77/ip/ip_pay_taxes/ndfl/" target="_blank" rel="noreferrer">ФНС — НДФЛ ИП</a>, <a href="https://www.nalog.gov.ru/rn77/about_fts/about_nalog/14140758/" target="_blank" rel="noreferrer">ФНС — уменьшение ПСН на взносы</a>.
+            </Typography>
           </CardContent>
         </Card>
 

@@ -206,6 +206,11 @@ async def read_user(
     load_extra_custom_roles(db, [user])
     if current_user.id == user_id:
         return user
+    if auth.has_permission(current_user, "users.access"):
+        return user
+    if auth.resolve_effective_role(current_user) == UserRole.SALES and auth.resolve_effective_role(user) == UserRole.TRAINER:
+        return user
+    raise HTTPException(status_code=403, detail="Not enough permissions")
 
 
 @router.get("/{user_id}/access-history", response_model=List[UserAccessEventResponse])
@@ -234,11 +239,6 @@ async def read_user_access_history(
         .limit(limit)
         .all()
     )
-    if auth.has_permission(current_user, "users.access"):
-        return user
-    if auth.resolve_effective_role(current_user) == UserRole.SALES and auth.resolve_effective_role(user) == UserRole.TRAINER:
-        return user
-    raise HTTPException(status_code=403, detail="Not enough permissions")
 
 
 @router.put("/{user_id}", response_model=UserResponse)

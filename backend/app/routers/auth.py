@@ -55,7 +55,13 @@ async def login(
         data={"sub": user.email, "role": user.role.value},
         expires_delta=access_token_expires,
     )
-    log_action(db, user.id, "login", "user", user.id)
+    log_action(
+        db, user.id, "login", "user", user.id,
+        details={
+            "ip": request.client.host if request.client else None,
+            "user_agent": request.headers.get("user-agent"),
+        },
+    )
     return {"access_token": access_token, "token_type": "bearer"}
 
 
@@ -72,13 +78,20 @@ async def guest_login(db: Session = Depends(get_db)):
 
 @router.post("/logout")
 async def logout(
+    request: Request,
     token: str = Depends(auth.oauth2_scheme),
     current_user: User = Depends(auth.get_current_active_user),
     db: Session = Depends(get_db),
 ):
     auth.blacklist_token(token)
     log_user_id = None if int(current_user.id) == auth.GUEST_USER_ID else current_user.id
-    log_action(db, log_user_id, "logout", "user", current_user.id)
+    log_action(
+        db, log_user_id, "logout", "user", current_user.id,
+        details={
+            "ip": request.client.host if request.client else None,
+            "user_agent": request.headers.get("user-agent"),
+        },
+    )
     return {"message": "Logged out"}
 
 

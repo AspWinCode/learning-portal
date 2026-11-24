@@ -7,6 +7,7 @@ import {
   Chip,
   CircularProgress,
   Divider,
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Paper,
   Stack,
   Typography,
@@ -48,6 +49,7 @@ const UserDetailsPage: React.FC = () => {
   const [targetUser, setTargetUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [accessHistory, setAccessHistory] = useState<Array<{ action_type: 'login' | 'logout'; created_at: string; details?: { ip?: string | null; user_agent?: string | null } | null }>>([]);
 
   useEffect(() => {
     const parsedId = Number(userId);
@@ -64,6 +66,9 @@ const UserDetailsPage: React.FC = () => {
         const response = await usersApi.getById(parsedId);
         if (!cancelled) {
           setTargetUser(response);
+          if (response.effective_role === 'parent') {
+            usersApi.getAccessHistory(parsedId).then(setAccessHistory).catch(() => setAccessHistory([]));
+          }
           setError('');
         }
       } catch (err: unknown) {
@@ -202,6 +207,20 @@ const UserDetailsPage: React.FC = () => {
                       Комментарий: {fieldValue(targetUser.trainer_comment)}
                     </Typography>
                   </Stack>
+                </Paper>
+              ) : null}
+
+              {targetUser.effective_role === 'parent' ? (
+                <Paper sx={{ p: 3 }}>
+                  <Typography variant="h6" gutterBottom>Входы и сеансы кабинета</Typography>
+                  {accessHistory.length === 0 ? <Typography color="text.secondary">История входов пока пуста.</Typography> : (
+                    <TableContainer>
+                      <Table size="small">
+                        <TableHead><TableRow><TableCell>Событие</TableCell><TableCell>Дата и время</TableCell><TableCell>IP</TableCell><TableCell>Браузер</TableCell></TableRow></TableHead>
+                        <TableBody>{accessHistory.map((event, index) => <TableRow key={`${event.created_at}-${index}`}><TableCell>{event.action_type === 'login' ? <Chip size="small" color="success" label="Вход" /> : <Chip size="small" label="Выход" />}</TableCell><TableCell>{new Date(event.created_at).toLocaleString('ru-RU')}</TableCell><TableCell>{event.details?.ip || '—'}</TableCell><TableCell sx={{ maxWidth: 360, whiteSpace: 'normal' }}>{event.details?.user_agent || '—'}</TableCell></TableRow>)}</TableBody>
+                      </Table>
+                    </TableContainer>
+                  )}
                 </Paper>
               ) : null}
 

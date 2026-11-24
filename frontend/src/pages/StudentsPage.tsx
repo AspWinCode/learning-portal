@@ -1591,11 +1591,19 @@ const StudentsPage: React.FC = () => {
                       <TableCell>{parent.is_active ? 'Активен' : 'Неактивен'}</TableCell>
                       <TableCell>{studentsCount}</TableCell>
                       <TableCell>
+                        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                        <Button size="small" variant="contained" onClick={() => navigate(`/parent-dashboard/preview/${parent.id}`)}>
+                          Кабинет
+                        </Button>
+                        <Button size="small" variant="outlined" onClick={() => navigate(`/users/${parent.id}`)}>
+                          Сеансы
+                        </Button>
                         {parent.is_active ? (
                           <Button size="small" color="warning" onClick={async () => { try { await usersApi.update(parent.id, { is_active: false }); loadParents(); } catch (err: any) { setError(err.response?.data?.detail || 'Ошибка'); } }}>Архивировать</Button>
                         ) : (
                           <Button size="small" color="success" onClick={async () => { try { await usersApi.update(parent.id, { is_active: true }); loadParents(); } catch (err: any) { setError(err.response?.data?.detail || 'Ошибка'); } }}>Разархивировать</Button>
                         )}
+                        </Stack>
                       </TableCell>
                     </TableRow>
                   );

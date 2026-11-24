@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app import auth
 from app.cache import CACHE_NS_PARENT_DASHBOARD
 from app.database import get_db
-from app.models import User
+from app.models import User, UserRole
 from app.routers.action_log import log_action
 from app.schemas.owner_workspace import (
     OwnerWorkspaceWebPushStatusResponse,
@@ -13,6 +13,7 @@ from app.schemas.owner_workspace import (
     OwnerWorkspaceWebPushSubscriptionUpsert,
 )
 from app.schemas.parent_dashboard import (
+    ParentDashboardPreviewResponse,
     ParentDashboardSummaryResponse,
     ParentNpsPromptStatusResponse,
     ParentNpsResponseOut,
@@ -35,6 +36,26 @@ router = APIRouter()
 
 def _require_parent(current_user: User) -> None:
     auth.ensure_permission(current_user, "parent_dashboard.access")
+
+
+@router.get("/preview/{parent_user_id}", response_model=ParentDashboardPreviewResponse)
+async def get_parent_dashboard_preview(
+    parent_user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """Безопасный просмотр кабинета родителя без смены текущей сессии сотрудника."""
+    if not auth.has_permission(current_user, "users.access"):
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+    parent = db.query(User).filter(User.id == parent_user_id).first()
+    if parent is None:
+        raise HTTPException(status_code=404, detail="Parent not found")
+    if auth.resolve_effective_role(parent) != UserRole.PARENT:
+        raise HTTPException(status_code=400, detail="Selected user is not a parent")
+    return {
+        "parent": {"id": parent.id, "full_name": parent.full_name, "email": parent.email},
+        "summary": build_parent_dashboard_summary(db, parent.id),
+    }
 
 
 def _parent_dashboard_key_builder(func, namespace="", *, request=None, response=None, args=(), kwargs={}):

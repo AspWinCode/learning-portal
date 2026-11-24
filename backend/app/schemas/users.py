@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
@@ -92,6 +92,14 @@ class UserListResponse(BaseModel):
     items: List[UserResponse]
     skip: int
     limit: int
+
+
+class UserAccessEventResponse(BaseModel):
+    action_type: Literal["login", "logout"]
+    created_at: datetime
+    details: Optional[Dict[str, Any]] = None
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 __all__ = [name for name in globals() if not name.startswith("_")]

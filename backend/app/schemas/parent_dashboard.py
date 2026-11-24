@@ -44,6 +44,17 @@ class ParentDashboardSummaryResponse(BaseModel):
     students: List[ParentDashboardStudentSummaryResponse]
 
 
+class ParentDashboardPreviewParentResponse(BaseModel):
+    id: int
+    full_name: str
+    email: str
+
+
+class ParentDashboardPreviewResponse(BaseModel):
+    parent: ParentDashboardPreviewParentResponse
+    summary: ParentDashboardSummaryResponse
+
+
 class ParentQuestionCreate(BaseModel):
     student_id: int
     topic: Optional[str] = Field(None, max_length=255)

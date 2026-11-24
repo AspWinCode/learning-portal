@@ -59,6 +59,7 @@ const LegoPaymentsPage = React.lazy(() => import('./features/lego/LegoPaymentsPa
 const LegoDebtsPage = React.lazy(() => import('./features/lego/LegoDebtsPage'));
 const LegoEventsPage = React.lazy(() => import('./features/lego/LegoEventsPage'));
 const ParentDashboardPage = React.lazy(() => import('./pages/ParentDashboardPage'));
+const ParentDashboardPreviewPage = React.lazy(() => import('./pages/ParentDashboardPreviewPage'));
 const TrainerCockpitPage = React.lazy(() => import('./pages/TrainerCockpitPage'));
 const TrainerSubmissionsPage = React.lazy(() => import('./pages/TrainerSubmissionsPage'));
 const TrainerGradesPage = React.lazy(() => import('./pages/TrainerGradesPage'));
@@ -1267,6 +1268,14 @@ function App() {
               element={
                 <PrivateRoute requiredPermission="owner_workspace.access">
                   <OwnerWorkspacePage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/parent-dashboard/preview/:parentId"
+              element={
+                <PrivateRoute requiredPermission="users.access">
+                  <ParentDashboardPreviewPage />
                 </PrivateRoute>
               }
             />

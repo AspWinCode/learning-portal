@@ -271,6 +271,10 @@ export const usersApi = {
     const response = await api.get(`/api/users/${id}`);
     return response.data;
   },
+  getAccessHistory: async (id: number): Promise<Array<{ action_type: 'login' | 'logout'; created_at: string; details?: { ip?: string | null; user_agent?: string | null } | null }>> => {
+    const response = await api.get(`/api/users/${id}/access-history`);
+    return response.data;
+  },
   create: async (data: {
     full_name: string;
     email: string;
@@ -406,6 +410,10 @@ export const trainerCockpitApi = {
 export const parentDashboardApi = {
   getSummary: async (): Promise<ParentDashboardSummary> => {
     const response = await api.get('/api/parent-dashboard/summary');
+    return response.data;
+  },
+  getPreview: async (parentId: number): Promise<{ parent: { id: number; full_name: string; email: string }; summary: ParentDashboardSummary }> => {
+    const response = await api.get(`/api/parent-dashboard/preview/${parentId}`);
     return response.data;
   },
   createQuestion: async (data: ParentQuestionCreate): Promise<ParentQuestion> => {

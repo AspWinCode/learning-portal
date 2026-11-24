@@ -54,22 +54,29 @@ function defaultFixedContribution(year: number): number {
   return 0;
 }
 
-function getPatentItems(start: string, end: string): TaxItem[] {
+function defaultPatentCost(year: number): number {
+  // Черемхово, Иркутская область, 2026: дополнительное образование и репетиторство,
+  // без работников, полный календарный год.
+  if (year === 2026) return 29262;
+  return 0;
+}
+
+function getPatentItems(start: string, end: string, patentCost: number): TaxItem[] {
   if (!start || !end) return [];
   const startDate = new Date(`${start}T00:00:00`);
   const endDate = new Date(`${end}T00:00:00`);
   if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime()) || endDate < startDate) return [];
   const durationDays = Math.floor((endDate.getTime() - startDate.getTime()) / 86400000) + 1;
   if (durationDays <= 150) {
-    return [{ date: endDate, title: 'Оплата патента', detail: '100% стоимости — не позднее окончания действия патента', tone: 'primary' }];
+    return [{ date: endDate, title: 'Оплата патента', detail: '100% стоимости — ' + patentCost.toLocaleString('ru-RU') + ' ₽, не позднее окончания действия патента', tone: 'primary' }];
   }
   return [
-    { date: addDays(startDate, 89), title: '1-й платеж по патенту', detail: 'Не менее 1/3 стоимости — в течение 90 дней с начала действия', tone: 'primary' },
-    { date: endDate, title: '2-й платеж по патенту', detail: 'Оставшиеся 2/3 — не позднее окончания действия патента', tone: 'primary' },
+    { date: addDays(startDate, 89), title: '1-й платеж по патенту', detail: 'Не менее 1/3 стоимости — ' + (patentCost / 3).toLocaleString('ru-RU', { maximumFractionDigits: 2 }) + ' ₽, в течение 90 дней с начала действия', tone: 'primary' },
+    { date: endDate, title: '2-й платеж по патенту', detail: 'Оставшиеся 2/3 — ' + (patentCost * 2 / 3).toLocaleString('ru-RU', { maximumFractionDigits: 2 }) + ' ₽, не позднее окончания действия патента', tone: 'primary' },
   ];
 }
 
-function buildItems(year: number, regime: Regime, patentStart: string, patentEnd: string): TaxItem[] {
+function buildItems(year: number, regime: Regime, patentStart: string, patentEnd: string, patentCost: number): TaxItem[] {
   const next = year + 1;
   const common: TaxItem[] = [
     { date: dateAt(year, 12, 28), title: 'Фиксированные страховые взносы ИП', detail: 'За себя, в совокупном размере за расчетный год', tone: 'success' },
@@ -98,7 +105,7 @@ function buildItems(year: number, regime: Regime, patentStart: string, patentEnd
       ...common,
     ];
   }
-  return [...getPatentItems(patentStart, patentEnd), ...common];
+  return [...getPatentItems(patentStart, patentEnd, patentCost), ...common];
 }
 
 const TaxCalendarPage: React.FC = () => {
@@ -107,6 +114,7 @@ const TaxCalendarPage: React.FC = () => {
   const [regime, setRegime] = useState<Regime>('usn');
   const [patentStart, setPatentStart] = useState(`${currentYear}-01-01`);
   const [patentEnd, setPatentEnd] = useState(`${currentYear}-12-31`);
+  const [patentCost, setPatentCost] = useState(defaultPatentCost(currentYear));
   const [incomeTotal, setIncomeTotal] = useState(0);
   const [expenseTotal, setExpenseTotal] = useState(0);
   const [incomeCount, setIncomeCount] = useState(0);
@@ -116,7 +124,7 @@ const TaxCalendarPage: React.FC = () => {
   const [fixedContributions, setFixedContributions] = useState(defaultFixedContribution(currentYear));
   const [additionalContributions, setAdditionalContributions] = useState(0);
   const [documentedExpenses, setDocumentedExpenses] = useState(0);
-  const items = useMemo(() => buildItems(year, regime, patentStart, patentEnd).sort((a, b) => a.date.getTime() - b.date.getTime()), [year, regime, patentStart, patentEnd]);
+  const items = useMemo(() => buildItems(year, regime, patentStart, patentEnd, patentCost).sort((a, b) => a.date.getTime() - b.date.getTime()), [year, regime, patentStart, patentEnd, patentCost]);
   const nextSwitchDate = `${year}-12-31`;
 
   useEffect(() => {
@@ -146,6 +154,7 @@ const TaxCalendarPage: React.FC = () => {
 
   useEffect(() => {
     setFixedContributions(defaultFixedContribution(year));
+    setPatentCost(defaultPatentCost(year));
     setAdditionalContributions(0);
     setDocumentedExpenses(0);
   }, [year]);
@@ -167,7 +176,7 @@ const TaxCalendarPage: React.FC = () => {
     ? { label: 'УСН до уменьшения', value: `${money(taxCalculation.grossUsn)} ₽`, hint: '6% от доходов' }
     : regime === 'osno'
       ? { label: 'ОСНО: ориентировочный НДФЛ', value: `${money(taxCalculation.osnoNdfl)} ₽`, hint: `13% от базы ${money(taxCalculation.osnoBase)} ₽` }
-      : { label: 'Патент', value: '—', hint: 'стоимость указывается из патента' };
+      : { label: 'Патент', value: patentCost ? `${money(patentCost)}` + ' ₽' : '—', hint: 'Черемхово · дополнительное образование' };
 
   return (
     <Layout>
@@ -236,7 +245,7 @@ const TaxCalendarPage: React.FC = () => {
                 <Alert severity="warning" sx={{ mt: 2 }}>Ориентировочный НДФЛ: <strong>{money(taxCalculation.osnoNdfl)} ₽</strong> с базы {money(taxCalculation.osnoBase)} ₽. НДС, профессиональные вычеты и авансы требуют отдельного учета.</Alert>
               </>
             )}
-            {regime === 'psn' && <Alert severity="info" sx={{ mt: 2 }}>Стоимость патента не выводится из фактического дохода: она рассчитывается по потенциально возможному доходу региона. В календаре рассчитаны сроки платежей, сумму нужно внести из патента.</Alert>}
+            {regime === 'psn' && <Alert severity="info" sx={{ mt: 2 }}>Для города Черемхово установлена стоимость 29 262 ₽ на 2026 год для дополнительного образования и репетиторства. В других муниципалитетах Иркутской области сумма может отличаться.</Alert>}
           </CardContent>
         </Card>
 
@@ -245,8 +254,9 @@ const TaxCalendarPage: React.FC = () => {
             <CardContent>
               <Typography variant="h6" fontWeight={700} gutterBottom>Параметры патента</Typography>
               <Grid container spacing={2}>
-                <Grid item xs={12} sm={6}><TextField fullWidth size="small" type="date" label="Начало действия" InputLabelProps={{ shrink: true }} value={patentStart} onChange={(e) => setPatentStart(e.target.value)} /></Grid>
-                <Grid item xs={12} sm={6}><TextField fullWidth size="small" type="date" label="Окончание действия" InputLabelProps={{ shrink: true }} value={patentEnd} onChange={(e) => setPatentEnd(e.target.value)} /></Grid>
+                <Grid item xs={12} sm={4}><TextField fullWidth size="small" type="date" label="Начало действия" InputLabelProps={{ shrink: true }} value={patentStart} onChange={(e) => setPatentStart(e.target.value)} /></Grid>
+                <Grid item xs={12} sm={4}><TextField fullWidth size="small" type="date" label="Окончание действия" InputLabelProps={{ shrink: true }} value={patentEnd} onChange={(e) => setPatentEnd(e.target.value)} /></Grid>
+                <Grid item xs={12} sm={4}><TextField fullWidth size="small" type="number" label="Стоимость патента, ₽" value={patentCost} onChange={(e) => setPatentCost(Number(e.target.value))} helperText="Черемхово, доп. образование" /></Grid>
               </Grid>
             </CardContent>
           </Card>

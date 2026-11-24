@@ -6,8 +6,8 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app import auth
 from app.schemas.auth import ParentInviteRequest, ParentInviteResponse
-from app.schemas.users import UserCreate, UserListResponse, UserResponse, UserUpdate
-from app.models import User, UserRole, Role
+from app.schemas.users import UserAccessEventResponse, UserCreate, UserListResponse, UserResponse, UserUpdate
+from app.models import ActionLog, User, UserRole, Role
 from app.routers.action_log import log_action
 from app.services.parent_invite import create_parent_with_invite
 from app.services.email_sender import is_email_configured
@@ -206,6 +206,34 @@ async def read_user(
     load_extra_custom_roles(db, [user])
     if current_user.id == user_id:
         return user
+
+
+@router.get("/{user_id}/access-history", response_model=List[UserAccessEventResponse])
+async def read_user_access_history(
+    user_id: int,
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(auth.get_current_active_user),
+):
+    """История входов/выходов пользователя, доступная сотрудникам с users.access."""
+    if not auth.has_permission(current_user, "users.access"):
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+    target = db.query(User).filter(User.id == user_id).first()
+    if target is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    if auth.resolve_effective_role(target) != UserRole.PARENT:
+        raise HTTPException(status_code=400, detail="Access history is available for parents only")
+    return (
+        db.query(ActionLog)
+        .filter(
+            ActionLog.user_id == user_id,
+            ActionLog.entity_type == "user",
+            ActionLog.action_type.in_(("login", "logout")),
+        )
+        .order_by(ActionLog.created_at.desc())
+        .limit(limit)
+        .all()
+    )
     if auth.has_permission(current_user, "users.access"):
         return user
     if auth.resolve_effective_role(current_user) == UserRole.SALES and auth.resolve_effective_role(user) == UserRole.TRAINER:

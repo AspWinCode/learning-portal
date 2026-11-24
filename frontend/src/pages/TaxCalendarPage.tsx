@@ -131,9 +131,11 @@ const TaxCalendarPage: React.FC = () => {
   const [completedChecklistIds, setCompletedChecklistIds] = useState<string[]>([]);
   const [completedTaxItemIds, setCompletedTaxItemIds] = useState<string[]>([]);
   const [taxItemsLoaded, setTaxItemsLoaded] = useState(false);
+  const [psnSettlementDocumentEnabled, setPsnSettlementDocumentEnabled] = useState(false);
   const items = useMemo(() => buildItems(year, regime, patentStart, patentEnd, patentCost).sort((a, b) => a.date.getTime() - b.date.getTime()), [year, regime, patentStart, patentEnd, patentCost]);
   const nextSwitchDate = `${year}-12-31`;
   const taxItemsStorageKey = `tax-calendar-items:${year}:${regime}`;
+  const psnDocumentStorageKey = `tax-psn-settlement-document:${year}`;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -168,6 +170,14 @@ const TaxCalendarPage: React.FC = () => {
     setAdditionalContributions(0);
     setDocumentedExpenses(0);
   }, [year]);
+
+  useEffect(() => {
+    try {
+      setPsnSettlementDocumentEnabled(window.localStorage.getItem(psnDocumentStorageKey) === '1');
+    } catch {
+      setPsnSettlementDocumentEnabled(false);
+    }
+  }, [psnDocumentStorageKey]);
 
   const taxCalculation = useMemo(() => {
     const grossUsn = incomeTotal * 0.06;
@@ -251,6 +261,10 @@ const TaxCalendarPage: React.FC = () => {
   const resetChecklist = () => {
     window.localStorage.removeItem(checklistStorageKey);
     setCompletedChecklistIds([]);
+  };
+  const togglePsnSettlementDocument = (enabled: boolean) => {
+    setPsnSettlementDocumentEnabled(enabled);
+    window.localStorage.setItem(psnDocumentStorageKey, enabled ? '1' : '0');
   };
   const taxItemId = (item: TaxItem) => `${item.title}:${item.date.toISOString().slice(0, 10)}`;
   const overdueTaxItems = items.filter((item) => item.date < today && !completedTaxItemIds.includes(taxItemId(item)));
@@ -412,6 +426,34 @@ const TaxCalendarPage: React.FC = () => {
               </>
             )}
             {regime === 'psn' && <Alert severity="info" sx={{ mt: 2 }}>Для города Черемхово установлена стоимость 29 262 ₽ на 2026 год для дополнительного образования и репетиторства. В других муниципалитетах Иркутской области сумма может отличаться.</Alert>}
+          </CardContent>
+        </Card>
+
+        <Card sx={{ mb: 3 }}>
+          <CardContent>
+            <Typography variant="h6" fontWeight={700} gutterBottom>Документ при оплате</Typography>
+            {regime === 'psn' ? (
+              <>
+                <FormControlLabel
+                  control={<Checkbox checked={psnSettlementDocumentEnabled} onChange={(event) => togglePsnSettlementDocument(event.target.checked)} />}
+                  label="Для дополнительного образования применять расчетный документ вместо ККТ"
+                />
+                {psnSettlementDocumentEnabled ? (
+                  <Alert severity="warning" sx={{ mt: 1 }}>
+                    Включено только для патентной деятельности «дополнительное образование и репетиторство». Система будет ориентироваться на расчетный документ, но перед включением проверьте формулировку патента и соответствие ст. 2 закона 54-ФЗ.
+                  </Alert>
+                ) : (
+                  <Alert severity="info" sx={{ mt: 1 }}>
+                    По умолчанию используется кассовый чек через ККТ/ОФД. Включайте замену только если ваш вид деятельности и условия патента дают такое право.
+                  </Alert>
+                )}
+              </>
+            ) : (
+              <Alert severity="info">Для выбранного режима система предполагает кассовый чек через зарегистрированную ККТ и ОФД.</Alert>
+            )}
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+              Расчетный документ не отправляется в ОФД как кассовый чек: его нужно выдать или направить клиенту и сохранить в учете.
+            </Typography>
           </CardContent>
         </Card>
 

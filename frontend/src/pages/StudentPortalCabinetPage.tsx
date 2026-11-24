@@ -16,10 +16,11 @@ import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
 import MilitaryTechIcon from '@mui/icons-material/MilitaryTech';
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
+import LinkIcon from '@mui/icons-material/Link';
 import SchoolIcon from '@mui/icons-material/School';
 import TaskAltIcon from '@mui/icons-material/TaskAlt';
 import StarIcon from '@mui/icons-material/Star';
-import { studentPortalApi, StudentPortalProfile, UpcomingLesson, StudentGrade, StudentNewsItem } from '../services/studentPortalApi';
+import { studentPortalApi, StudentPortalProfile, UpcomingLesson, StudentGrade, StudentNewsItem, StudentUsefulLink } from '../services/studentPortalApi';
 import { CourseCatalogItemOut } from '../types';
 import { useManifestOverride } from '../hooks/useManifestOverride';
 import PwaInstallButton from '../components/PwaInstallButton';
@@ -54,6 +55,7 @@ const StudentPortalCabinetPage: React.FC = () => {
   const [grades, setGrades] = useState<StudentGrade[]>([]);
   const [abonement, setAbonement] = useState<{ name: string; training_start_date: string | null } | null>(null);
   const [news, setNews] = useState<StudentNewsItem[]>([]);
+  const [usefulLinks, setUsefulLinks] = useState<StudentUsefulLink[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [launchingId, setLaunchingId] = useState<number | null>(null);
@@ -70,10 +72,11 @@ const StudentPortalCabinetPage: React.FC = () => {
       studentPortalApi.getGrades(),
       studentPortalApi.getAbonement(),
       studentPortalApi.getNews(),
+      studentPortalApi.getUsefulLinks(),
     ])
-      .then(([me, courseList, lessonList, gradeList, abon, newsList]) => {
+      .then(([me, courseList, lessonList, gradeList, abon, newsList, usefulLinkList]) => {
         setProfile(me); setCourses(courseList); setSchedule(lessonList);
-        setGrades(gradeList); setAbonement(abon); setNews(newsList);
+        setGrades(gradeList); setAbonement(abon); setNews(newsList); setUsefulLinks(usefulLinkList);
       })
       .catch((err: any) => setError(err.response?.data?.detail || err.message || 'Не удалось загрузить кабинет'))
       .finally(() => setLoading(false));
@@ -481,6 +484,7 @@ const StudentPortalCabinetPage: React.FC = () => {
           {/* ── Right column: Grades ──────────────────────────────────────── */}
           <Box sx={{ order: { xs: 3, lg: 2 } }}>
             <NewsTicker items={news} />
+            <UsefulLinks items={usefulLinks} />
             <Typography sx={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.68rem', fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', mb: 1 }}>
               ⭐ Последние оценки
             </Typography>
@@ -600,5 +604,24 @@ const NewsTicker: React.FC<{ items: StudentNewsItem[] }> = ({ items }) => {
     </Box>}
   </Box>;
 };
+
+const UsefulLinks: React.FC<{ items: StudentUsefulLink[] }> = ({ items }) => (
+  <Box sx={{ mb: 2 }}>
+    <Typography sx={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.68rem', fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', mb: 1 }}>🔗 Полезные ссылки</Typography>
+    {items.length === 0 ? <EmptyCard><Typography sx={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.85rem' }}>Ссылок пока нет</Typography></EmptyCard> : (
+      <Stack gap={0.75}>
+        {items.map((item) => (
+          <Box key={item.id} component="a" href={item.url} target="_blank" rel="noopener noreferrer" sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, p: 1.25, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '12px', textDecoration: 'none', transition: 'all .2s', '&:hover': { bgcolor: 'rgba(127,35,204,.16)', borderColor: 'rgba(171,103,229,.45)' } }}>
+            <LinkIcon sx={{ color: '#AB67E5', fontSize: 19, mt: .1 }} />
+            <Box sx={{ minWidth: 0 }}>
+              <Typography sx={{ color: '#fff', fontSize: '.82rem', fontWeight: 700 }}>{item.title}</Typography>
+              {item.description && <Typography sx={{ color: 'rgba(255,255,255,.42)', fontSize: '.72rem', mt: .25 }}>{item.description}</Typography>}
+            </Box>
+          </Box>
+        ))}
+      </Stack>
+    )}
+  </Box>
+);
 
 export default StudentPortalCabinetPage;

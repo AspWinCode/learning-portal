@@ -116,6 +116,7 @@ DEFAULT_ROLE_PERMISSIONS: Dict[str, Set[str]] = {
         "lessons.access",
         "lessons.mark_attendance",
         "lessons.manual_create",
+        "student_portal.manage",
     },
     UserRole.DEVELOPER.value: {
         "agile.access",

@@ -59,6 +59,7 @@ from app.schemas.student_portal import (
     StudentAbonementOut,
     StudentCredentialUpdate,
     StudentPortalSettings,
+    StudentPortalUsefulLink,
     StudentGradeOut,
     StudentLoginRequest,
     StudentPhoneLoginRequest,
@@ -350,6 +351,14 @@ async def get_student_news(
     db: Session = Depends(get_db),
 ):
     return [item for item in _load_news(db) if item.is_published]
+
+
+@router.get("/useful-links", response_model=List[StudentPortalUsefulLink])
+async def get_student_useful_links(
+    current_student: Student = Depends(auth.get_current_student),
+    db: Session = Depends(get_db),
+):
+    return _load_portal_settings(db).useful_links
 
 
 @router.get("/admin/news", response_model=List[StudentNewsItem])

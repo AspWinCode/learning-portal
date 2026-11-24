@@ -708,11 +708,11 @@ export const studentPortalAdminApi = {
     link.remove();
     window.URL.revokeObjectURL(url);
   },
-  getPortalSettings: async (): Promise<{ show_abonement: boolean }> => {
+  getPortalSettings: async (): Promise<{ show_abonement: boolean; useful_links: { id: number; title: string; url: string; description?: string | null }[] }> => {
     const response = await api.get('/api/student-portal/admin/portal-settings');
     return response.data;
   },
-  updatePortalSettings: async (payload: { show_abonement: boolean }): Promise<{ show_abonement: boolean }> => {
+  updatePortalSettings: async (payload: { show_abonement: boolean; useful_links: { id: number; title: string; url: string; description?: string | null }[] }): Promise<{ show_abonement: boolean; useful_links: { id: number; title: string; url: string; description?: string | null }[] }> => {
     const response = await api.put('/api/student-portal/admin/portal-settings', payload);
     return response.data;
   },

@@ -2,7 +2,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 import json
 import os
@@ -329,6 +329,22 @@ def _set_json_setting(db: Session, key: str, value) -> None:
     else:
         setting.value = raw
         db.add(setting)
+
+
+def _get_student_success_story_summaries(db: Session):
+    """Удаляет тяжёлые data URL на стороне PostgreSQL до передачи ответа приложению."""
+    row = db.execute(text("""
+        SELECT COALESCE(
+            jsonb_agg(
+                (story - 'answers') || jsonb_build_object(
+                    'answers', (story->'answers') - 'photo_data_url' - 'proof_data_urls'
+                )
+            ), '[]'::jsonb
+        )
+        FROM app_settings, jsonb_array_elements(value::jsonb) AS story
+        WHERE key = :key
+    """), {"key": STUDENT_SUCCESS_STORIES_KEY}).scalar_one()
+    return row if isinstance(row, list) else []
 
 
 def _slugify_questionnaire_key(value: str, fallback: str) -> str:
@@ -1515,8 +1531,7 @@ async def list_student_success_stories(
     db: Session = Depends(get_db),
     current_user: User = Depends(auth.require_permission("owner_dashboard.access")),
 ):
-    stories = _get_json_setting(db, STUDENT_SUCCESS_STORIES_KEY) or []
-    return {"items": stories if isinstance(stories, list) else []}
+    return {"items": _get_student_success_story_summaries(db)}
 
 
 @router.get("/parent-weekly-digest", response_model=ParentWeeklyDigestSettingsResponse)

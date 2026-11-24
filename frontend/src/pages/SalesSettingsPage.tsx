@@ -191,7 +191,7 @@ const SalesSettingsPage: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [error, setError] = useState('');
-  const [portalSettings, setPortalSettings] = useState<{ show_abonement: boolean }>({ show_abonement: false });
+  const [portalSettings, setPortalSettings] = useState<{ show_abonement: boolean; useful_links: { id: number; title: string; url: string; description?: string | null }[] }>({ show_abonement: false, useful_links: [] });
   const [portalSettingsLoading, setPortalSettingsLoading] = useState(false);
   const [sources, setSources] = useState<LeadSource[]>([]);
   const [templates, setTemplates] = useState<LeadTaskTemplate[]>([]);
@@ -2555,7 +2555,7 @@ const SalesSettingsPage: React.FC = () => {
                   onChange={async (e) => {
                     setPortalSettingsLoading(true);
                     try {
-                      const updated = await studentPortalAdminApi.updatePortalSettings({ show_abonement: e.target.checked });
+                      const updated = await studentPortalAdminApi.updatePortalSettings({ show_abonement: e.target.checked, useful_links: portalSettings.useful_links });
                       setPortalSettings(updated);
                     } catch (err: any) {
                       setError(extractApiError(err, 'Не удалось сохранить настройку'));

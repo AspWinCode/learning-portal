@@ -222,8 +222,16 @@ class StudentGradeOut(BaseModel):
     trainer_name: str
 
 
+class StudentPortalUsefulLink(BaseModel):
+    id: int
+    title: str
+    url: str
+    description: Optional[str] = None
+
+
 class StudentPortalSettings(BaseModel):
     show_abonement: bool = False
+    useful_links: List[StudentPortalUsefulLink] = Field(default_factory=list)
 
 
 class StudentNewsItem(BaseModel):

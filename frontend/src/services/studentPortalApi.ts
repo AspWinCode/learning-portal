@@ -36,6 +36,13 @@ export interface StudentNewsItem {
   is_published: boolean;
 }
 
+export interface StudentUsefulLink {
+  id: number;
+  title: string;
+  url: string;
+  description?: string | null;
+}
+
 export const studentPortalApi = {
   login: async (login: string, password: string): Promise<{ access_token: string; student: StudentPortalProfile }> => {
     const response = await studentPortalClient.post('/api/student-portal/auth/login', { login, password });
@@ -78,6 +85,10 @@ export const studentPortalApi = {
   },
   getNews: async (): Promise<StudentNewsItem[]> => {
     const response = await studentPortalClient.get('/api/student-portal/news');
+    return response.data;
+  },
+  getUsefulLinks: async (): Promise<StudentUsefulLink[]> => {
+    const response = await studentPortalClient.get('/api/student-portal/useful-links');
     return response.data;
   },
   getKodikFeedbackStatus: async (): Promise<{ should_prompt: boolean; period_label: string }> => {

@@ -42,6 +42,8 @@ import DescriptionIcon from '@mui/icons-material/Description';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import AddIcon from '@mui/icons-material/Add';
+import LinkIcon from '@mui/icons-material/Link';
 import { format, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { studentsApi, salesApi, studentCardsApi, studentAccountsApi, abonementsApi, financeApi, studentPortalAdminApi } from '../services/api';
@@ -209,6 +211,10 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
   const [editLogin, setEditLogin] = useState('');
   const [editPassword, setEditPassword] = useState('');
   const [savingCredential, setSavingCredential] = useState(false);
+  const [portalUsefulLinks, setPortalUsefulLinks] = useState<Array<{ id: number; title: string; url: string; description?: string | null }>>([]);
+  const [portalShowAbonement, setPortalShowAbonement] = useState(false);
+  const [newUsefulLink, setNewUsefulLink] = useState({ title: '', url: '', description: '' });
+  const [savingUsefulLinks, setSavingUsefulLinks] = useState(false);
   const isOwner = effectiveRole === 'owner';
   const [freezes, setFreezes] = useState<Array<{ id: number; freeze_start: string; freeze_end: string }>>([]);
   const [freezeStart, setFreezeStart] = useState('');
@@ -325,17 +331,44 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
     setPortalLoading(true);
     setPortalError(null);
     try {
-      const [view, catalogList] = await Promise.all([
+      const [view, catalogList, portalSettings] = await Promise.all([
         studentPortalAdminApi.getStudentView(studentId),
         studentPortalAdminApi.listCatalog(),
+        canManageStudentPortal ? studentPortalAdminApi.getPortalSettings() : Promise.resolve({ show_abonement: false, useful_links: [] }),
       ]);
       setPortalView(view);
       setCatalog(catalogList);
+      setPortalUsefulLinks(portalSettings.useful_links || []);
+      setPortalShowAbonement(portalSettings.show_abonement);
     } catch (err: any) {
       setPortalError(err.response?.data?.detail || err.message || 'Не удалось загрузить кабинет');
     } finally {
       setPortalLoading(false);
     }
+  };
+
+  const savePortalUsefulLinks = async (links: Array<{ id: number; title: string; url: string; description?: string | null }>) => {
+    setSavingUsefulLinks(true);
+    setPortalError(null);
+    try {
+      const updated = await studentPortalAdminApi.updatePortalSettings({ show_abonement: portalShowAbonement, useful_links: links });
+      setPortalUsefulLinks(updated.useful_links || []);
+    } catch (err: any) {
+      setPortalError(err.response?.data?.detail || err.message || 'Не удалось сохранить полезные ссылки');
+    } finally {
+      setSavingUsefulLinks(false);
+    }
+  };
+
+  const addPortalUsefulLink = async () => {
+    const title = newUsefulLink.title.trim();
+    const url = newUsefulLink.url.trim();
+    if (!title || !/^https?:\/\//i.test(url)) {
+      setPortalError('Укажите название и ссылку в формате https://...');
+      return;
+    }
+    await savePortalUsefulLinks([...portalUsefulLinks, { id: Date.now(), title, url, description: newUsefulLink.description.trim() || null }]);
+    setNewUsefulLink({ title: '', url: '', description: '' });
   };
 
   useEffect(() => {
@@ -1485,6 +1518,36 @@ const StudentDetailPopup: React.FC<StudentDetailPopupProps> = ({ open, onClose, 
                       ) : (
                         <Typography variant="body2" color="text.secondary">Логин не создан.</Typography>
                       )}
+                    </Box>
+
+                    <Box>
+                      <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>Полезные ссылки в кабинете ученика</Typography>
+                      {canManageStudentPortal ? (
+                        <>
+                          <Stack spacing={1}>
+                            {portalUsefulLinks.map((link, index) => (
+                              <Stack key={link.id} direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
+                                <LinkIcon color="action" fontSize="small" />
+                                <TextField size="small" label="Название" value={link.title} onChange={(e) => setPortalUsefulLinks((prev) => prev.map((item, i) => i === index ? { ...item, title: e.target.value } : item))} sx={{ flex: 1 }} />
+                                <TextField size="small" label="URL" value={link.url} onChange={(e) => setPortalUsefulLinks((prev) => prev.map((item, i) => i === index ? { ...item, url: e.target.value } : item))} sx={{ flex: 1.4 }} />
+                                <TextField size="small" label="Описание" value={link.description || ''} onChange={(e) => setPortalUsefulLinks((prev) => prev.map((item, i) => i === index ? { ...item, description: e.target.value } : item))} sx={{ flex: 1 }} />
+                                <IconButton size="small" color="error" aria-label="Удалить ссылку" onClick={() => setPortalUsefulLinks((prev) => prev.filter((item) => item.id !== link.id))}><DeleteOutlineIcon fontSize="small" /></IconButton>
+                              </Stack>
+                            ))}
+                          </Stack>
+                          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 1 }}>
+                            <TextField size="small" label="Новая ссылка" value={newUsefulLink.title} onChange={(e) => setNewUsefulLink((prev) => ({ ...prev, title: e.target.value }))} />
+                            <TextField size="small" label="URL (https://...)" value={newUsefulLink.url} onChange={(e) => setNewUsefulLink((prev) => ({ ...prev, url: e.target.value }))} sx={{ flex: 1 }} />
+                            <TextField size="small" label="Описание" value={newUsefulLink.description} onChange={(e) => setNewUsefulLink((prev) => ({ ...prev, description: e.target.value }))} />
+                            <Button size="small" startIcon={<AddIcon />} onClick={addPortalUsefulLink}>Добавить</Button>
+                          </Stack>
+                          <Button size="small" variant="outlined" sx={{ mt: 1 }} disabled={savingUsefulLinks} onClick={() => savePortalUsefulLinks(portalUsefulLinks)}>
+                            {savingUsefulLinks ? 'Сохраняем…' : 'Сохранить ссылки'}
+                          </Button>
+                        </>
+                      ) : portalUsefulLinks.length > 0 ? (
+                        <Stack spacing={0.5}>{portalUsefulLinks.map((link) => <Typography key={link.id} variant="body2"><LinkIcon fontSize="inherit" sx={{ mr: 0.5, verticalAlign: 'middle' }} /><a href={link.url} target="_blank" rel="noreferrer">{link.title}</a></Typography>)}</Stack>
+                      ) : <Typography variant="body2" color="text.secondary">Ссылок пока нет.</Typography>}
                     </Box>
 
                     <Box>

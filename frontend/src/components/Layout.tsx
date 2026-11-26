@@ -487,6 +487,7 @@ items.push({ text: 'Задачи', icon: <Assignment />, path: '/tasks' });
     if (canAccessLego) items.push({ text: 'LEGO — Ленинец', icon: <Group />, path: '/lego' });
     if (canAccessSettings) items.push({ text: 'Настройки', icon: <Settings />, path: '/admin/settings' });
     if (hasPermission(user, 'student_portal.manage')) items.push({ text: 'Новости ученикам', icon: <Notifications />, path: '/student-portal/news' });
+    if (role === 'owner' || role === 'admin' || hasPermission(user, 'student_portal.manage')) items.push({ text: 'Ссылки ученикам', icon: <Link />, path: '/student-portal/admin/links' });
     if (canAccessCommunications) items.push({ text: 'Communication Hub', icon: <Notifications />, path: '/settings/communications' });
     if (canAccessRoles) items.push({ text: 'Роли и доступы', icon: <People />, path: '/roles' });
     if (role === 'owner' && canAccessOwnerWorkspace) {

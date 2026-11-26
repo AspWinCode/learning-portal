@@ -343,6 +343,7 @@ class OwnerWorkspaceContactResponse(BaseModel):
     folder_id: Optional[int] = None
     linked_project_ids: List[int] = []
     active_tasks_count: int = 0
+    active_task_titles: List[str] = Field(default_factory=list)
     projects_count: int = 0
     last_interaction_at: Optional[datetime] = Field(None)
     created_at: Optional[datetime] = None

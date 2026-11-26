@@ -767,6 +767,17 @@ def _contact_to_response(
         OwnerWorkspaceTask.contact_id == contact.id,
         OwnerWorkspaceTask.status.in_(["new", "in_progress", "waiting"]),
     ).count()
+    active_task_titles = [
+        task.title
+        for task in db.query(OwnerWorkspaceTask)
+        .filter(
+            OwnerWorkspaceTask.contact_id == contact.id,
+            OwnerWorkspaceTask.status.in_(["new", "in_progress", "waiting"]),
+        )
+        .order_by(OwnerWorkspaceTask.id.desc())
+        .all()
+        if task.title
+    ]
     last_interaction_at = _contact_last_interaction_at(
         db,
         contact,
@@ -794,6 +805,7 @@ def _contact_to_response(
         folder_id=contact.folder_id,
         linked_project_ids=[x.project_id for x in linked],
         active_tasks_count=active_tasks_count,
+        active_task_titles=active_task_titles,
         projects_count=projects_count,
         last_interaction_at=last_interaction_at,
         created_at=contact.created_at,

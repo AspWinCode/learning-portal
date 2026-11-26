@@ -759,7 +759,26 @@ export function OwnerWorkspaceContactsTab({
                       <TableCell>{contact.company || '—'}</TableCell>
                       <TableCell>{contact.position || '—'}</TableCell>
                       <TableCell>{contact.linked_project_ids?.length ?? 0}</TableCell>
-                      <TableCell>{contact.active_tasks_count ?? 0}</TableCell>
+                      <TableCell>
+                        {(contact.active_tasks_count ?? 0) > 0 ? (
+                          <Tooltip
+                            arrow
+                            placement="top"
+                            title={(
+                              <Box sx={{ whiteSpace: 'pre-line' }}>
+                                {(contact.active_task_titles ?? []).join('\n') || 'Есть активная задача'}
+                              </Box>
+                            )}
+                            slotProps={{ tooltip: { sx: { maxWidth: 360, fontSize: '0.8rem' } } }}
+                          >
+                            <Box component="span" sx={{ cursor: 'help', fontWeight: 600 }}>
+                              {contact.active_tasks_count}
+                            </Box>
+                          </Tooltip>
+                        ) : (
+                          0
+                        )}
+                      </TableCell>
                       <TableCell>
                         <Tooltip title={interaction.exact || ''}>
                           <span>{interaction.relative}</span>

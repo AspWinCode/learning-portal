@@ -85,6 +85,14 @@ export const GoogleContactsSyncPanel: React.FC<GoogleContactsSyncPanelProps> = (
     }
   };
 
+  const authError = Boolean(status?.last_sync_error && (
+    status.last_sync_error.includes('invalid_grant') ||
+    status.last_sync_error.includes('unauthorized_client') ||
+    status.last_sync_error.includes('invalid_rapt') ||
+    status.last_sync_error.includes('401') ||
+    status.last_sync_error.includes('403')
+  ));
+
   return (
     <Box sx={{ mb: 2 }}>
       <Collapse in={!!notice}>
@@ -125,9 +133,15 @@ export const GoogleContactsSyncPanel: React.FC<GoogleContactsSyncPanelProps> = (
         )}
         {status?.connected ? (
           <>
-            <Button size="small" startIcon={<SyncIcon />} onClick={handleRunNow} disabled={loading}>
-              Синхронизировать сейчас
-            </Button>
+            {authError ? (
+              <Button size="small" variant="outlined" onClick={handleConnect} disabled={loading || !status?.configured}>
+                Переподключить Google
+              </Button>
+            ) : (
+              <Button size="small" startIcon={<SyncIcon />} onClick={handleRunNow} disabled={loading}>
+                Синхронизировать сейчас
+              </Button>
+            )}
             <Button size="small" color="inherit" startIcon={<LinkOffIcon />} onClick={handleDisconnect} disabled={loading}>
               Отключить
             </Button>

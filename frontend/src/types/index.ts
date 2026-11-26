@@ -1877,6 +1877,7 @@ export interface OwnerWorkspaceContact {
   folder_id?: number | null;
   linked_project_ids: number[];
   active_tasks_count: number;
+  active_task_titles?: string[];
   projects_count?: number;
   /** ISO datetime: max(сообщение, задача, updated_at карточки) */
   last_interaction_at?: string | null;

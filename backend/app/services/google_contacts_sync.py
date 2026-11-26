@@ -204,6 +204,13 @@ def disconnect(db: Session) -> None:
     db.commit()
 
 
+def _is_auth_error(message: str) -> bool:
+    return any(
+        marker in message
+        for marker in ("invalid_grant", "unauthorized_client", "401", "403", "invalid_rapt")
+    )
+
+
 def _build_service(db: Session):
     refresh_token = _get_setting(db, KEY_REFRESH_TOKEN)
     if not refresh_token or not is_configured():
@@ -484,9 +491,9 @@ def run_sync_job(db: Session) -> None:
     logger.error("Google Contacts sync failed", exc_info=last_exc)
     _set_setting(db, KEY_LAST_SYNC_ERROR, message[:2000])
     db.commit()
-    is_auth_error = any(
-        marker in message
-        for marker in ("invalid_grant", "unauthorized_client", "401", "403", "invalid_rapt")
-    )
-    if is_auth_error:
+    if _is_auth_error(message):
         _notify_auth_failed(db, message)
+        # A revoked/expired refresh token cannot recover by retrying. Clear it
+        # so the UI does not keep reporting a broken connection as active and
+        # exposes the normal OAuth reconnect flow.
+        disconnect(db)

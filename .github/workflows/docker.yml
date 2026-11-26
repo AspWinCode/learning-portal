@@ -91,7 +91,7 @@ jobs:
             echo "Waiting for backend..."
             backend_ready=0
             for i in $(seq 1 18); do
-              if curl -sf http://localhost:8000/api/v1/health > /dev/null 2>&1; then
+              if docker compose exec -T backend python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health')" > /dev/null 2>&1; then
                 echo "Backend is up after $((i * 5))s"
                 backend_ready=1
                 break

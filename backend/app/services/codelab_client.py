@@ -139,6 +139,13 @@ async def create_item(user, course_id: int, payload: dict, *, publish: bool = Tr
     return await _request("POST", f"/api/lms-admin/courses/{course_id}/items", user, json=payload, extra_params={"publish": str(publish).lower()})
 
 
+async def get_item(user, item_id: int) -> dict:
+    """Полное содержимое одного элемента (content/steps/quiz_questions/
+    oge_answer) — get_course_tree теперь lean на стороне Codelab, конструктор
+    дозапрашивает это при открытии элемента на редактирование."""
+    return await _request("GET", f"/api/lms-admin/items/{item_id}", user)
+
+
 async def update_item(user, item_id: int, payload: dict, *, publish: bool = True) -> dict:
     return await _request("PUT", f"/api/lms-admin/items/{item_id}", user, json=payload, extra_params={"publish": str(publish).lower()})
 

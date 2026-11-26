@@ -406,6 +406,17 @@ async def admin_create_item(course_id: int, payload: dict, publish: bool = Query
         _raise(e)
 
 
+@router.get("/admin/items/{item_id}")
+async def admin_get_item(item_id: int, current_user: User = Depends(_manage)):
+    """Полное содержимое одного элемента — get_course_tree теперь lean на
+    стороне Codelab (см. app/services/codelab_client.py), конструктор
+    дозапрашивает это при открытии элемента на редактирование."""
+    try:
+        return await cl.get_item(current_user, item_id)
+    except CodelabError as e:
+        _raise(e)
+
+
 @router.put("/admin/items/{item_id}")
 async def admin_update_item(item_id: int, payload: dict, publish: bool = Query(True), current_user: User = Depends(_manage)):
     try:

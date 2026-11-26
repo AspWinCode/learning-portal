@@ -1,4 +1,5 @@
 import csv
+import logging
 from datetime import datetime, timedelta
 from io import BytesIO, StringIO
 from typing import Dict, List, Optional
@@ -75,6 +76,7 @@ from app.utils.datetime import utcnow
 from app.utils.phone import normalize_ru_phone_display
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def _filter_query_by_role(query, user: User):
@@ -927,8 +929,19 @@ async def update_sales_school(
         item.email = str(data["email"]) if data["email"] else None
     if "is_active" in data:
         item.is_active = data["is_active"]
-    _sync_sales_school_to_b2b(db, item)
     db.commit()
+    db.refresh(item)
+
+    # Updating the Sales directory must not fail because a legacy or partially
+    # migrated B2B mirror cannot be synchronized. Keep the primary edit
+    # committed and repair the mirror on a later sync/import.
+    try:
+        _sync_sales_school_to_b2b(db, item)
+        db.commit()
+    except Exception:  # noqa: BLE001
+        db.rollback()
+        logger.exception("Failed to sync sales school %s to B2B mirror", item.id)
+
     db.refresh(item)
     log_action(db, current_user.id, "update", "sales_school", item.id, data)
     return item

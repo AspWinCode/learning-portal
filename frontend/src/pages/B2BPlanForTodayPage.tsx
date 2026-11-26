@@ -8,11 +8,9 @@ import {
   Chip,
   CircularProgress,
   Grid,
-  LinearProgress,
   Stack,
   Tab,
   Tabs,
-  Tooltip,
   Typography,
 } from '@mui/material';
 import OpenInNew from '@mui/icons-material/OpenInNew';
@@ -94,6 +92,13 @@ const normalizePriority = (value?: string | null): PlannerTask['priority'] => {
     return value;
   }
   return 'normal';
+};
+
+const priorityLabel = (priority: PlannerTask['priority']) => {
+  if (priority === 'critical') return 'Критический';
+  if (priority === 'high') return 'Высокий';
+  if (priority === 'medium' || priority === 'normal') return 'Средний';
+  return 'Низкий';
 };
 
 const urgencyByDeadline = (deadline?: string | null) => {
@@ -196,12 +201,11 @@ const TaskCard: React.FC<{
           <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" gap={1}>
             <Box>
               <Stack direction="row" gap={1} alignItems="center" flexWrap="wrap">
-                <Chip size="small" color="primary" label="Таск-трекер" />
-                <Chip size="small" variant="outlined" label={`Score ${task.score}`} />
+                <Chip size="small" color="primary" label="Трекер задач" />
                 <Chip
                   size="small"
                   color={task.priority === 'critical' ? 'error' : task.priority === 'high' ? 'warning' : 'default'}
-                  label={task.priority}
+                  label={priorityLabel(task.priority)}
                 />
                 {task.overdue && <Chip size="small" color="error" label="Просрочено" />}
                 {task.dueToday && <Chip size="small" color="primary" label="Сегодня" />}
@@ -230,14 +234,6 @@ const TaskCard: React.FC<{
               </Button>
             </Stack>
           </Stack>
-          <Tooltip title={`Срочность ${task.urgencyScore}, риск ${task.riskScore}, важность ${task.importanceScore}, возраст ${task.ageScore}`}>
-            <LinearProgress
-              variant="determinate"
-              value={task.score}
-              color={task.score >= 75 ? 'warning' : task.score >= 50 ? 'primary' : 'success'}
-              sx={{ height: 6, borderRadius: 999 }}
-            />
-          </Tooltip>
         </Stack>
       </CardContent>
     </Card>
@@ -436,7 +432,7 @@ const B2BPlanForTodayPage: React.FC = () => {
                   Сегодня: {stats.dayHours} ч из 8 ч · Неделя: {stats.weekHours} ч из 40 ч
                 </Typography>
               </Box>
-              <Chip color="primary" label={`Таск-трекер: ${stats.total}`} />
+              <Chip color="primary" label={`Трекер задач: ${stats.total}`} />
             </Stack>
           </CardContent>
         </Card>
@@ -459,7 +455,7 @@ const B2BPlanForTodayPage: React.FC = () => {
               <Stack spacing={2}>
                 <TaskSection
                   title="Обязательно выполнить сегодня"
-                  caption="Критические и просроченные задачи, а также задачи с высоким рейтингом риска."
+                  caption="Критические и просроченные задачи, а также задачи с высоким риском."
                   tasks={mustToday}
                   onComplete={handleComplete}
                   onPinToday={handlePinToday}
@@ -509,7 +505,7 @@ const B2BPlanForTodayPage: React.FC = () => {
             {tab === 'risks' && (
               <TaskSection
                 title="Риски"
-                caption="Скоро просрочатся, уже просрочены, либо имеют высокий риск по score."
+                caption="Скоро просрочатся, уже просрочены или имеют высокий риск."
                 tasks={risks}
                 onComplete={handleComplete}
                 onPinToday={handlePinToday}

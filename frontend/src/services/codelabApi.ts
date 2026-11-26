@@ -304,6 +304,9 @@ export const codelabStudioApi = {
   archiveItem: (itemId: number, archived: boolean, publish = false): Promise<CodelabLearningItem> =>
     api.put(`${B}/items/${itemId}/archive`, { archived }, { params: { publish } }).then((r) => r.data),
   getTree: (courseId: number): Promise<CodelabLearningItem[]> => api.get(`${B}/courses/${courseId}/tree`).then((r) => r.data),
+  // /tree отдаёт лёгкие узлы без content/steps/quiz_questions/oge_answer —
+  // полный элемент (для диалога редактирования) только отсюда.
+  getItem: (itemId: number): Promise<CodelabLearningItem> => api.get(`${B}/items/${itemId}`).then((r) => r.data),
   reorderItems: (courseId: number, parentId: number | null, itemIds: number[], publish = false): Promise<CodelabLearningItem[]> =>
     api.put(`${B}/courses/${courseId}/items/reorder`, { parent_id: parentId, item_ids: itemIds }, { params: { publish } }).then((r) => r.data),
   getDraftStatus: (courseId: number): Promise<CodelabDraftStatus> => api.get(`${B}/courses/${courseId}/draft-status`).then((r) => r.data),

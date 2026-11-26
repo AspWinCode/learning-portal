@@ -359,6 +359,11 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
   const [taskAttachments, setTaskAttachments] = useState<TaskAttachment[]>([]);
   const [taskAttachmentLoading, setTaskAttachmentLoading] = useState(false);
   const [taskLoading, setTaskLoading] = useState(false);
+  // /tree теперь lean (см. codelabApi.getTree) — при открытии существующего
+  // элемента на редактирование content/steps/quiz_questions/oge_answer
+  // дозапрашиваются отдельно; гейтит Save, чтобы не сохранить пустые поля
+  // поверх настоящего контента, пока запрос ещё не вернулся.
+  const [itemDetailLoading, setItemDetailLoading] = useState(false);
 
   // Snap!-задание: пошаговая инструкция слева (см. CoursePage в Codelab),
   // панель snap.tirskix.space справа — одна на весь элемент, шагами не управляется.
@@ -484,6 +489,32 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
     if (item.type === 'project') {
       setProjectDueAt(item.due_at ? item.due_at.slice(0, 16) : '');
     }
+
+    setItemDetailLoading(true);
+    api.getItem(item.id).then((full) => {
+      setNodeContent(full.content || '');
+      setOgeAnswer(full.oge_answer?.answer || '');
+      setOgeChecker(full.oge_answer?.checker || 'number');
+      setOgeAcceptedAnswers((full.oge_answer?.accepted_answers || []).join('\n'));
+      setOgeTolerance(full.oge_answer?.tolerance == null ? '' : String(full.oge_answer.tolerance));
+      setOgeCaseSensitive(!!full.oge_answer?.case_sensitive);
+      setOgeIgnoreSpaces(full.oge_answer?.ignore_spaces ?? true);
+      setOgeExplanation(full.oge_answer?.explanation || '');
+      if (full.type === 'oge_task') setOgeAttachments(extractTaskAttachments(full.content || ''));
+      if (full.type === 'snap_task' || full.type === 'gdevelop_task' || full.type === 'turtle_task') {
+        setSnapSteps(full.steps && full.steps.length > 0 ? full.steps : [{ title: '', content: '' }]);
+      }
+      if (full.type === 'quiz') {
+        setQuizQuestions(
+          full.quiz_questions && full.quiz_questions.length > 0
+            ? full.quiz_questions
+            : [{ text: '', options: [{ text: '', correct: false }, { text: '', correct: false }] }],
+        );
+      }
+    }).catch((e: any) => {
+      onToast({ msg: errMsg(e), err: true });
+      setNodeDialog(null);
+    }).finally(() => setItemDetailLoading(false));
   };
 
   const addTestRow = () => setTaskTests((prev) => [...prev, { input: '', expected: '', is_hidden: false }]);
@@ -985,7 +1016,7 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setNodeDialog(null)}>Отмена</Button>
-          <Button variant="contained" disabled={!nodeTitle.trim()} onClick={saveNode}>{nodeDialog?.editing ? 'Сохранить' : 'Добавить'}</Button>
+          <Button variant="contained" disabled={!nodeTitle.trim() || itemDetailLoading} onClick={saveNode}>{nodeDialog?.editing ? 'Сохранить' : 'Добавить'}</Button>
         </DialogActions>
       </Dialog>
 
@@ -1071,7 +1102,7 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setNodeDialog(null)}>Отмена</Button>
-          <Button variant="contained" disabled={!nodeTitle.trim() || !nodeContent.trim() || !ogeAnswer.trim()} onClick={saveNode}>
+          <Button variant="contained" disabled={!nodeTitle.trim() || !nodeContent.trim() || !ogeAnswer.trim() || itemDetailLoading} onClick={saveNode}>
             {nodeDialog?.editing ? 'Сохранить' : 'Добавить'}
           </Button>
         </DialogActions>
@@ -1220,7 +1251,7 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setNodeDialog(null)}>Отмена</Button>
-          <Button variant="contained" disabled={!nodeTitle.trim()} onClick={saveNode}>
+          <Button variant="contained" disabled={!nodeTitle.trim() || itemDetailLoading} onClick={saveNode}>
             {nodeDialog?.editing ? 'Сохранить' : 'Добавить'}
           </Button>
         </DialogActions>
@@ -1279,7 +1310,7 @@ function CoursesTab({ onToast }: { onToast: (t: Toast) => void }) {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setNodeDialog(null)}>Отмена</Button>
-          <Button variant="contained" disabled={!nodeTitle.trim()} onClick={saveNode}>
+          <Button variant="contained" disabled={!nodeTitle.trim() || itemDetailLoading} onClick={saveNode}>
             {nodeDialog?.editing ? 'Сохранить' : 'Добавить'}
           </Button>
         </DialogActions>

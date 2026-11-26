@@ -136,7 +136,7 @@ const PixelForgeQuestionnairePage: React.FC = () => {
           </Typography>
           <Typography variant="body1" sx={{ mb: 2 }}>
             Анкета успешно отправлена. Менеджер свяжется с вами в ближайшее время, чтобы рассказать
-            о направлении PixelForge и подобрать формат обучения.
+            о подходящих направлениях и подобрать формат обучения.
           </Typography>
         </Box>
       </Container>
@@ -151,7 +151,7 @@ const PixelForgeQuestionnairePage: React.FC = () => {
         </Typography>
         <Typography variant="body1" sx={{ mb: 3 }}>
           Заполните, пожалуйста, анкету. Это поможет нам связаться с вами и подобрать подходящий
-          формат обучения по направлению PixelForge.
+          формат обучения.
         </Typography>
 
         {error && (
